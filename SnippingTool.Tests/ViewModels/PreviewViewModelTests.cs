@@ -130,10 +130,14 @@ public class PreviewViewModelTests
     {
         var vm = Vm();
 
-        vm.BeginGroup(); vm.TrackElement(new object()); vm.CommitGroup();
+        vm.BeginGroup();
+        vm.TrackElement(new object());
+        vm.CommitGroup();
         Assert.Equal(1, vm.UndoCount);
 
-        vm.BeginGroup(); vm.TrackElement(new object()); vm.CommitGroup();
+        vm.BeginGroup();
+        vm.TrackElement(new object());
+        vm.CommitGroup();
         Assert.Equal(2, vm.UndoCount);
 
         vm.UndoCommand.Execute(null);

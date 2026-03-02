@@ -5,14 +5,14 @@ namespace SnippingTool.Models;
 
 public abstract record ShapeParameters;
 
-public record ArrowShapeParameters(
+public sealed record ArrowShapeParameters(
     Point P1,
     Point P2,
     Color Color,
     double Thickness,
     Point[] ArrowHead) : ShapeParameters;
 
-public record RectShapeParameters(
+public sealed record RectShapeParameters(
     double Left,
     double Top,
     double Width,
@@ -21,7 +21,7 @@ public record RectShapeParameters(
     double Thickness,
     bool IsHighlight) : ShapeParameters;
 
-public record EllipseShapeParameters(
+public sealed record EllipseShapeParameters(
     double Left,
     double Top,
     double Width,
@@ -29,13 +29,13 @@ public record EllipseShapeParameters(
     Color Color,
     double Thickness) : ShapeParameters;
 
-public record LineShapeParameters(
+public sealed record LineShapeParameters(
     Point P1,
     Point P2,
     Color Color,
     double Thickness) : ShapeParameters;
 
-public record PenShapeParameters(
+public sealed record PenShapeParameters(
     Point StartPoint,
     Color Color,
     double Thickness) : ShapeParameters;

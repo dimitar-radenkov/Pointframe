@@ -218,6 +218,96 @@ public class AnnotationViewModelTests
         Assert.Null(vm.TryGetShapeParameters());
     }
 
+    // ── NumberCounter ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void IncrementNumberCounter_IncrementsEachCall()
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+
+        var first = vm.IncrementNumberCounter();
+        var second = vm.IncrementNumberCounter();
+
+        Assert.Equal(1, first);
+        Assert.Equal(2, second);
+    }
+
+    [Fact]
+    public void ResetNumberCounter_SetsValue()
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+        vm.IncrementNumberCounter();
+        vm.IncrementNumberCounter();
+
+        vm.ResetNumberCounter(0);
+
+        Assert.Equal(0, vm.NumberCounter);
+    }
+
+    // ── SetColorFromTag ────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("Red")]
+    [InlineData("Blue")]
+    [InlineData("Black")]
+    [InlineData("Green")]
+    [InlineData("Orange")]
+    [InlineData("Purple")]
+    [InlineData("White")]
+    [InlineData("Pink")]
+    public void SetColorFromTag_KnownTag_ChangesActiveColor(string tag)
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+        vm.ActiveColor = Colors.Transparent;
+
+        vm.SetColorFromTag(tag);
+
+        Assert.NotEqual(Colors.Transparent, vm.ActiveColor);
+    }
+
+    [Fact]
+    public void SetColorFromTag_UnknownTag_FallsBackToRed()
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+
+        vm.SetColorFromTag("NotAColor");
+
+        Assert.Equal(Colors.Red, vm.ActiveColor);
+    }
+
+    [Fact]
+    public void SetColorFromTag_Null_FallsBackToRed()
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+
+        vm.SetColorFromTag(null);
+
+        Assert.Equal(Colors.Red, vm.ActiveColor);
+    }
+
+    // ── SetStrokeThicknessFromText ─────────────────────────────────────────
+
+    [Fact]
+    public void SetStrokeThicknessFromText_ValidNumber_SetsThickness()
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+
+        vm.SetStrokeThicknessFromText("4");
+
+        Assert.Equal(4.0, vm.StrokeThickness);
+    }
+
+    [Fact]
+    public void SetStrokeThicknessFromText_InvalidText_NoOp()
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+        var original = vm.StrokeThickness;
+
+        vm.SetStrokeThicknessFromText("px");
+
+        Assert.Equal(original, vm.StrokeThickness);
+    }
+
     // Concrete subclass so we can instantiate the abstract-like partial base
     private sealed partial class TestAnnotationViewModel(AnnotationGeometryService geom) : AnnotationViewModel(geom) { }
 }

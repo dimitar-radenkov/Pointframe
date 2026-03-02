@@ -29,8 +29,6 @@ public partial class AnnotationViewModel : ObservableObject
 
     partial void OnActiveColorChanged(Color value) => OnPropertyChanged(nameof(ActiveBrush));
 
-    // ── Drawing state machine ──────────────────────────────────────────────
-
     public bool IsDragging { get; private set; }
     public Point DragStart { get; private set; }
     public Point DragCurrent { get; private set; }
@@ -55,6 +53,43 @@ public partial class AnnotationViewModel : ObservableObject
     public void CancelDrawing()
     {
         IsDragging = false;
+    }
+
+    public int NumberCounter { get; private set; }
+
+    public int IncrementNumberCounter()
+    {
+        NumberCounter++;
+        return NumberCounter;
+    }
+
+    public void ResetNumberCounter(int value)
+    {
+        NumberCounter = value;
+    }
+
+    public void SetColorFromTag(string? tag)
+    {
+        ActiveColor = tag switch
+        {
+            "Red" => Colors.Red,
+            "Blue" => Colors.DodgerBlue,
+            "Black" => Color.FromRgb(0x1A, 0x1A, 0x1A),
+            "Green" => Color.FromRgb(0x22, 0xA4, 0x22),
+            "Orange" => Colors.Orange,
+            "Purple" => Color.FromRgb(0x8B, 0x2B, 0xE2),
+            "White" => Colors.White,
+            "Pink" => Colors.HotPink,
+            _ => Colors.Red
+        };
+    }
+
+    public void SetStrokeThicknessFromText(string? text)
+    {
+        if (double.TryParse(text, out var t))
+        {
+            StrokeThickness = t;
+        }
     }
 
     public ShapeParameters? TryGetShapeParameters()
