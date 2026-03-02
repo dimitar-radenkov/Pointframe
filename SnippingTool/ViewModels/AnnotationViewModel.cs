@@ -1,5 +1,6 @@
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.Extensions.Logging;
 using SnippingTool.Models;
 using SnippingTool.Services;
 using Color = System.Windows.Media.Color;
@@ -10,10 +11,12 @@ namespace SnippingTool.ViewModels;
 public partial class AnnotationViewModel : ObservableObject
 {
     private readonly IAnnotationGeometryService _geometry;
+    protected readonly ILogger _logger;
 
-    public AnnotationViewModel(IAnnotationGeometryService geometry)
+    public AnnotationViewModel(IAnnotationGeometryService geometry, ILogger logger)
     {
         _geometry = geometry;
+        _logger = logger;
     }
 
     [ObservableProperty]
@@ -27,7 +30,14 @@ public partial class AnnotationViewModel : ObservableObject
 
     public SolidColorBrush ActiveBrush => new(ActiveColor);
 
-    partial void OnActiveColorChanged(Color value) => OnPropertyChanged(nameof(ActiveBrush));
+    partial void OnSelectedToolChanged(AnnotationTool value) =>
+        _logger.LogDebug("Tool selected: {Tool}", value);
+
+    partial void OnActiveColorChanged(Color value)
+    {
+        OnPropertyChanged(nameof(ActiveBrush));
+        _logger.LogDebug("Color changed: {Color}", value);
+    }
 
     public bool IsDragging { get; private set; }
     public Point DragStart { get; private set; }
@@ -38,6 +48,7 @@ public partial class AnnotationViewModel : ObservableObject
         DragStart = pt;
         DragCurrent = pt;
         IsDragging = true;
+        _logger.LogDebug("Drawing begun at ({X:F1},{Y:F1}) with {Tool}", pt.X, pt.Y, SelectedTool);
     }
 
     public void UpdateDrawing(Point pt)
@@ -48,11 +59,13 @@ public partial class AnnotationViewModel : ObservableObject
     public void CommitDrawing()
     {
         IsDragging = false;
+        _logger.LogDebug("Drawing committed");
     }
 
     public void CancelDrawing()
     {
         IsDragging = false;
+        _logger.LogDebug("Drawing cancelled");
     }
 
     public int NumberCounter { get; private set; }

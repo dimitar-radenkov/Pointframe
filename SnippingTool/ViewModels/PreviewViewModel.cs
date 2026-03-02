@@ -1,12 +1,14 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using SnippingTool.Services;
 
 namespace SnippingTool.ViewModels;
 
 public partial class PreviewViewModel : AnnotationViewModel
 {
-    public PreviewViewModel(IAnnotationGeometryService geometry) : base(geometry) { }
+    public PreviewViewModel(IAnnotationGeometryService geometry, ILogger<PreviewViewModel> logger)
+        : base(geometry, logger) { }
 
     private readonly List<List<object>> _undoStack = [];
     private readonly List<List<object>> _redoStack = [];
@@ -51,6 +53,7 @@ public partial class PreviewViewModel : AnnotationViewModel
         _redoStack.Add(group);
         UndoCount = _undoStack.Count;
         RedoCount = _redoStack.Count;
+        _logger.LogDebug("Undo applied: undoStack={UndoCount}, redoStack={RedoCount}", UndoCount, RedoCount);
         UndoApplied?.Invoke(group);
     }
 
@@ -64,6 +67,7 @@ public partial class PreviewViewModel : AnnotationViewModel
         _undoStack.Add(group);
         UndoCount = _undoStack.Count;
         RedoCount = _redoStack.Count;
+        _logger.LogDebug("Redo applied: undoStack={UndoCount}, redoStack={RedoCount}", UndoCount, RedoCount);
         RedoApplied?.Invoke(group);
     }
 
@@ -77,11 +81,23 @@ public partial class PreviewViewModel : AnnotationViewModel
     public event Action? CloseRequested;
 
     [RelayCommand]
-    private void Copy() => CopyRequested?.Invoke();
+    private void Copy()
+    {
+        _logger.LogInformation("Copy command invoked");
+        CopyRequested?.Invoke();
+    }
 
     [RelayCommand]
-    private void Save() => SaveRequested?.Invoke();
+    private void Save()
+    {
+        _logger.LogInformation("Save command invoked");
+        SaveRequested?.Invoke();
+    }
 
     [RelayCommand]
-    private void Close() => CloseRequested?.Invoke();
+    private void Close()
+    {
+        _logger.LogInformation("Close command invoked");
+        CloseRequested?.Invoke();
+    }
 }

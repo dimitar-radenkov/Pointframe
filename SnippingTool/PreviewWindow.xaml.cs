@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Microsoft.Extensions.Logging;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Clipboard = System.Windows.Clipboard;
@@ -21,7 +22,7 @@ public partial class PreviewWindow : Window
     private readonly PreviewViewModel _vm;
     private AnnotationCanvasRenderer _renderer = null!;
 
-    public PreviewWindow(PreviewViewModel vm, BitmapSource bitmap, System.Windows.Rect snipScreenRect = default)
+    public PreviewWindow(PreviewViewModel vm, BitmapSource bitmap, ILoggerFactory loggerFactory, System.Windows.Rect snipScreenRect = default)
     {
         _vm = vm;
         InitializeComponent();
@@ -53,7 +54,7 @@ public partial class PreviewWindow : Window
         _vm.SaveRequested += DoSave;
         _vm.CloseRequested += Close;
 
-        _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el));
+        _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
 
         SnipImage.Source = bitmap;
         AnnotationCanvas.Width = bitmap.PixelWidth;

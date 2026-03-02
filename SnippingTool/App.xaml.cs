@@ -4,6 +4,8 @@ using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using Hardcodet.Wpf.TaskbarNotification;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Serilog;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Application = System.Windows.Application;
@@ -15,6 +17,7 @@ public partial class App : Application
     private TaskbarIcon? _trayIcon;
     private HwndSource? _hotkeySource;
     private ServiceProvider _services = null!;
+    private ILogger<App>? _logger;
 
     private const int HotkeyId = 9000;
     private const uint VK_PRINTSCREEN = 0x2C;
@@ -32,27 +35,58 @@ public partial class App : Application
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+        var logPath = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "SnippingTool", "logs", "snipping-.log");
+
+        Log.Logger = new LoggerConfiguration()
+#if DEBUG
+            .MinimumLevel.Debug()
+#else
+            .MinimumLevel.Information()
+#endif
+            .WriteTo.File(
+                logPath,
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 7,
+                outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
+            .WriteTo.Debug()
+            .CreateLogger();
+
         var services = new ServiceCollection();
         ConfigureServices(services);
         _services = services.BuildServiceProvider();
 
+        _logger = _services.GetRequiredService<ILogger<App>>();
+        _logger.LogInformation("SnippingTool starting up");
+
+        Current.DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+
         _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
         RegisterGlobalHotkey();
+        _logger.LogInformation("Global hotkey (Print Screen) registered");
     }
 
     private static void ConfigureServices(IServiceCollection services)
     {
+        services.AddLogging(b => b.AddSerilog(dispose: false));
         services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
         services.AddSingleton<IAnnotationGeometryService, AnnotationGeometryService>();
         services.AddTransient<OverlayViewModel>();
         services.AddTransient<PreviewViewModel>();
         services.AddTransient<OverlayWindow>();
         services.AddTransient<Func<BitmapSource, Rect, PreviewWindow>>(
-            sp => (bitmap, rect) => new PreviewWindow(sp.GetRequiredService<PreviewViewModel>(), bitmap, rect));
+            sp => (bitmap, rect) => new PreviewWindow(
+                sp.GetRequiredService<PreviewViewModel>(),
+                bitmap,
+                sp.GetRequiredService<ILoggerFactory>(),
+                rect));
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _logger?.LogInformation("SnippingTool shutting down");
         if (_hotkeySource != null)
         {
             UnregisterHotKey(_hotkeySource.Handle, HotkeyId);
@@ -62,6 +96,7 @@ public partial class App : Application
         _trayIcon?.Dispose();
         _services.Dispose();
         base.OnExit(e);
+        Log.CloseAndFlush();
     }
 
     private void RegisterGlobalHotkey()
@@ -110,11 +145,13 @@ public partial class App : Application
 
     private void StartSnip()
     {
+        _logger?.LogDebug("Snip started");
         _services.GetRequiredService<OverlayWindow>().Show();
     }
 
     private void CaptureFullScreen()
     {
+        _logger?.LogInformation("Full screen capture initiated");
         var capture = _services.GetRequiredService<IScreenCaptureService>();
         var b = System.Windows.Forms.SystemInformation.VirtualScreen;
         OnSnipCompleted(capture.Capture(b.X, b.Y, b.Width, b.Height), System.Windows.Rect.Empty);
@@ -134,13 +171,26 @@ public partial class App : Application
             return;
         }
 
+        _logger?.LogInformation("Window capture: {W}\u00d7{H}", w, h);
         var capture = _services.GetRequiredService<IScreenCaptureService>();
         OnSnipCompleted(capture.Capture(r.Left, r.Top, w, h), System.Windows.Rect.Empty);
     }
 
     private void OnSnipCompleted(BitmapSource bitmap, System.Windows.Rect snipScreenRect)
     {
+        _logger?.LogInformation("Snip completed: {W}\u00d7{H}", bitmap.PixelWidth, bitmap.PixelHeight);
         var factory = _services.GetRequiredService<Func<BitmapSource, Rect, PreviewWindow>>();
         factory(bitmap, snipScreenRect).Show();
+    }
+
+    private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+    {
+        _logger?.LogError(e.Exception, "Unhandled dispatcher exception");
+        e.Handled = true;
+    }
+
+    private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        _logger?.LogCritical(e.ExceptionObject as Exception, "Unhandled AppDomain exception \u2014 application will terminate");
     }
 }
