@@ -20,7 +20,7 @@
 #define PublishDir   "..\SnippingTool\bin\publish\win-x64"
 
 [Setup]
-AppId={A3F2C1D0-8B4E-4F7A-9C6D-0E5B2A1F3E8C}
+AppId={{A3F2C1D0-8B4E-4F7A-9C6D-0E5B2A1F3E8C}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
