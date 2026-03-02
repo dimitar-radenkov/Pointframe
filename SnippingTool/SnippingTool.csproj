@@ -32,7 +32,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Assets\icon.ico" />
+    <Resource Include="Assets\icon.ico" />
   </ItemGroup>
 
 </Project>
