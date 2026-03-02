@@ -184,6 +184,40 @@ public class AnnotationViewModelTests
         Assert.IsType<SnippingTool.Models.EllipseShapeParameters>(result);
     }
 
+    // Every drag-producing tool must return a non-null ShapeParameters.
+    // If a new tool is added to the enum but forgotten in TryGetShapeParameters,
+    // this test will fail and catch the omission.
+    [Theory]
+    [InlineData(AnnotationTool.Arrow)]
+    [InlineData(AnnotationTool.Rectangle)]
+    [InlineData(AnnotationTool.Highlight)]
+    [InlineData(AnnotationTool.Pen)]
+    [InlineData(AnnotationTool.Line)]
+    [InlineData(AnnotationTool.Circle)]
+    public void TryGetShapeParameters_AllDragTools_ReturnNonNull(AnnotationTool tool)
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+        vm.SelectedTool = tool;
+        vm.BeginDrawing(new System.Windows.Point(0, 0));
+        vm.UpdateDrawing(new System.Windows.Point(100, 100));
+
+        Assert.NotNull(vm.TryGetShapeParameters());
+    }
+
+    // Click-only tools must NOT attempt to produce drag geometry.
+    [Theory]
+    [InlineData(AnnotationTool.Text)]
+    [InlineData(AnnotationTool.Number)]
+    public void TryGetShapeParameters_ClickOnlyTools_ReturnNull(AnnotationTool tool)
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+        vm.SelectedTool = tool;
+        vm.BeginDrawing(new System.Windows.Point(0, 0));
+        vm.UpdateDrawing(new System.Windows.Point(100, 100));
+
+        Assert.Null(vm.TryGetShapeParameters());
+    }
+
     // Concrete subclass so we can instantiate the abstract-like partial base
     private sealed partial class TestAnnotationViewModel(AnnotationGeometryService geom) : AnnotationViewModel(geom) { }
 }

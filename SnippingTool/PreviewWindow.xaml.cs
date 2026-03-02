@@ -46,6 +46,7 @@ public partial class PreviewWindow : Window
             {
                 AnnotationCanvas.Children.Remove(el);
             }
+
             _numberCounter = AnnotationCanvas.Children
                 .OfType<TextBlock>()
                 .Count(tb => tb.Tag is "number");
@@ -56,6 +57,7 @@ public partial class PreviewWindow : Window
             {
                 AnnotationCanvas.Children.Add(el);
             }
+
             _numberCounter = AnnotationCanvas.Children
                 .OfType<TextBlock>()
                 .Count(tb => tb.Tag is "number");
@@ -88,11 +90,13 @@ public partial class PreviewWindow : Window
         {
             left = workArea.Right - Width;
         }
+
         left = Math.Max(workArea.Left, left);
         if (top + Height > workArea.Bottom)
         {
             top = snip.Top - Height - gap;
         }
+
         top = Math.Max(workArea.Top, top);
         Left = left;
         Top = top;
@@ -280,6 +284,7 @@ public partial class PreviewWindow : Window
                 {
                     _arrowHead.Points.Add(pt);
                 }
+
                 break;
             case RectShapeParameters rect when _currentRect != null:
                 Canvas.SetLeft(_currentRect, rect.Left);

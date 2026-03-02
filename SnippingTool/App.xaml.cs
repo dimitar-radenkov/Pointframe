@@ -59,6 +59,7 @@ public partial class App : Application
             UnregisterHotKey(_hotkeySource.Handle, HotkeyId);
             _hotkeySource.Dispose();
         }
+
         _trayIcon?.Dispose();
         _services.Dispose();
         base.OnExit(e);
@@ -85,6 +86,7 @@ public partial class App : Application
             StartSnip();
             handled = true;
         }
+
         return IntPtr.Zero;
     }
 

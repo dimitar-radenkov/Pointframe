@@ -23,6 +23,8 @@ public partial class OverlayWindow : Window
     private readonly OverlayViewModel _vm;
     private readonly IScreenCaptureService _screenCapture;
 
+    private int _numberCounter;
+
     private Line? _arrowShaft;
     private Polyline? _arrowHead;
     private Line? _currentLine;
@@ -111,6 +113,7 @@ public partial class OverlayWindow : Window
         {
             ly = y + 4;
         }
+
         Canvas.SetLeft(SizeLabelBorder, x);
         Canvas.SetTop(SizeLabelBorder, ly);
     }
@@ -203,6 +206,7 @@ public partial class OverlayWindow : Window
         {
             left = sel.Left - sz.Width - 8;
         }
+
         top = Math.Max(0, Math.Min(top, Height - sz.Height));
 
         Canvas.SetLeft(AnnotToolbar, left);
@@ -221,6 +225,7 @@ public partial class OverlayWindow : Window
         {
             top = sel.Top - sz.Height - 8;
         }
+
         left = Math.Max(0, Math.Min(left, Width - sz.Width));
         top = Math.Max(0, top);
 
@@ -232,6 +237,8 @@ public partial class OverlayWindow : Window
     {
         var p = e.GetPosition(AnnotationCanvas);
         if (_vm.SelectedTool == AnnotationTool.Text) { PlaceTextBox(p); return; }
+        if (_vm.SelectedTool == AnnotationTool.Number) { PlaceNumberLabel(p); return; }
+
         _vm.BeginDrawing(p);
         AnnotationCanvas.CaptureMouse();
         BeginShape(p);
@@ -319,6 +326,7 @@ public partial class OverlayWindow : Window
                 {
                     _arrowHead.Points.Add(pt);
                 }
+
                 break;
             case LineShapeParameters line when _currentLine != null:
                 _currentLine.X2 = line.P2.X;
@@ -348,6 +356,22 @@ public partial class OverlayWindow : Window
         _arrowShaft = null; _arrowHead = null;
         _currentLine = null; _currentRect = null;
         _currentEllipse = null; _currentPen = null;
+    }
+
+    private void PlaceNumberLabel(Point p)
+    {
+        _numberCounter++;
+        var tb = new TextBlock
+        {
+            Text = $"({_numberCounter})",
+            FontSize = 18,
+            FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush(_vm.ActiveColor),
+            Tag = "number"
+        };
+        Canvas.SetLeft(tb, p.X);
+        Canvas.SetTop(tb, p.Y);
+        AnnotationCanvas.Children.Add(tb);
     }
 
     private void PlaceTextBox(Point p)
@@ -384,6 +408,7 @@ public partial class OverlayWindow : Window
             AnnotationCanvas.Children.Remove(tb);
             return;
         }
+
         var pos = new Point(Canvas.GetLeft(tb), Canvas.GetTop(tb));
         var text = tb.Text;
         var brush = tb.Foreground;
@@ -445,6 +470,7 @@ public partial class OverlayWindow : Window
             dc.DrawImage(screenBmp, r);
             dc.DrawImage(annotRtb, r);
         }
+
         var final = new RenderTargetBitmap(screenBmp.PixelWidth, screenBmp.PixelHeight, 96, 96, PixelFormats.Pbgra32);
         final.Render(dv);
         System.Windows.Clipboard.SetImage(final);

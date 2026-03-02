@@ -154,6 +154,17 @@
           <TextBlock Text="⬭" FontSize="14"/>
         </RadioButton>
 
+        <RadioButton Style="{StaticResource ToolBtn}"
+                     GroupName="AnnotTool"
+                     Tag="Number" Click="Tool_Click" ToolTip="Place numbered label">
+          <Border Width="18" Height="18" BorderBrush="#555" BorderThickness="1.5"
+                  CornerRadius="9" Background="Transparent">
+            <TextBlock Text="1" FontSize="9" FontWeight="Bold"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Foreground="#555"/>
+          </Border>
+        </RadioButton>
+
         <!-- Divider -->
         <Rectangle Height="1" Fill="#D0D0D0" Margin="4,5"/>
 
