@@ -1,0 +1,46 @@
+<Window x:Class="SnippingTool.RecordingHudWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        SizeToContent="WidthAndHeight"
+        ResizeMode="NoResize">
+
+  <Border Background="#CC1A1A1A" CornerRadius="8" Padding="12,8">
+    <StackPanel Orientation="Vertical">
+
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <Button x:Name="StopBtn"
+                Click="Stop_Click"
+                Cursor="Hand"
+                Margin="0,0,10,0"
+                Padding="8,3"
+                Background="#FF4444" Foreground="White"
+                BorderBrush="#CC2222" BorderThickness="1"
+                FontWeight="SemiBold" FontSize="12"
+                FontFamily="Segoe UI"
+                Content="⏹ Stop"/>
+        <TextBlock x:Name="ElapsedText"
+                   Text="00:00"
+                   Foreground="White"
+                   FontSize="13"
+                   FontFamily="Segoe UI"
+                   VerticalAlignment="Center"/>
+      </StackPanel>
+
+      <TextBlock x:Name="SavedText"
+                 Foreground="#99DDFF"
+                 FontSize="11"
+                 FontFamily="Segoe UI"
+                 Cursor="Hand"
+                 Margin="0,6,0,0"
+                 Visibility="Collapsed"
+                 MouseLeftButtonUp="SavedText_Click"/>
+
+    </StackPanel>
+  </Border>
+
+</Window>

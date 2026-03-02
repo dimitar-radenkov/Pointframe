@@ -101,6 +101,7 @@ internal sealed class AnnotationCanvasRenderer
                 {
                     _arrowHead.Points.Add(pt);
                 }
+
                 break;
             case LineShapeParameters line when _currentLine != null:
                 _currentLine.X2 = line.P2.X;

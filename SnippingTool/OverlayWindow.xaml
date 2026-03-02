@@ -190,6 +190,17 @@
       <StackPanel Orientation="Horizontal">
 
         <Button Style="{StaticResource ActionBtn}"
+                x:Name="RecordBtn"
+                Click="Record_Click" ToolTip="Record region to video">
+          <StackPanel>
+            <TextBlock Text="⏺" FontSize="13" Foreground="#FF4444" HorizontalAlignment="Center"/>
+            <TextBlock Text="Record" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
                 Command="{Binding UndoCommand}" ToolTip="Undo (Ctrl+Z)">
           <StackPanel>
             <TextBlock Text="↩" FontSize="13" HorizontalAlignment="Center"/>

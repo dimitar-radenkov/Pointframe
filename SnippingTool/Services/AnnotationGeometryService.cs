@@ -2,7 +2,7 @@ using Point = System.Windows.Point;
 
 namespace SnippingTool.Services;
 
-public class AnnotationGeometryService : IAnnotationGeometryService
+public sealed class AnnotationGeometryService : IAnnotationGeometryService
 {
     private const double HeadLength = 14.0;
     private const double HeadAngle = 25.0 * Math.PI / 180.0;

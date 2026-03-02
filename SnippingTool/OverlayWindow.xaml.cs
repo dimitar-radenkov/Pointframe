@@ -4,6 +4,8 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using SnippingTool.Models;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Color = System.Windows.Media.Color;
@@ -19,12 +21,25 @@ public partial class OverlayWindow : Window
 {
     private readonly OverlayViewModel _vm;
     private readonly IScreenCaptureService _screenCapture;
+    private readonly IScreenRecordingService _recorder;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly IOptions<RecordingOptions> _recordingOptions;
     private AnnotationCanvasRenderer _renderer = null!;
+    private RecordingBorderWindow? _recordingBorder;
+    private RecordingHudWindow? _recordingHud;
 
-    public OverlayWindow(OverlayViewModel vm, IScreenCaptureService screenCapture, ILoggerFactory loggerFactory)
+    public OverlayWindow(
+        OverlayViewModel vm,
+        IScreenCaptureService screenCapture,
+        IScreenRecordingService recorder,
+        ILoggerFactory loggerFactory,
+        IOptions<RecordingOptions> recordingOptions)
     {
         _vm = vm;
         _screenCapture = screenCapture;
+        _recorder = recorder;
+        _loggerFactory = loggerFactory;
+        _recordingOptions = recordingOptions;
         InitializeComponent();
         DataContext = _vm;
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
@@ -326,6 +341,53 @@ public partial class OverlayWindow : Window
 
     private void Copy_Click(object sender, RoutedEventArgs e) => DoCopy();
     private void CloseBtn_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void Record_Click(object sender, RoutedEventArgs e)
+    {
+        var sel = _vm.SelectionRect;
+        var screenX = (int)((Left + sel.X) * _vm.DpiX);
+        var screenY = (int)((Top + sel.Y) * _vm.DpiY);
+        var screenW = (int)(sel.Width * _vm.DpiX);
+        var screenH = (int)(sel.Height * _vm.DpiY);
+
+        var videosDir = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "SnippingTool", _recordingOptions.Value.OutputSubfolder);
+        System.IO.Directory.CreateDirectory(videosDir);
+        var path = System.IO.Path.Combine(videosDir, $"SnipRec-{DateTime.Now:yyyyMMdd-HHmmss}.avi");
+
+        _recorder.Start(screenX, screenY, screenW, screenH, path);
+        Visibility = Visibility.Hidden;
+
+        var regionRect = new Rect(Left + sel.X, Top + sel.Y, sel.Width, sel.Height);
+        _recordingBorder = new RecordingBorderWindow(regionRect.Left, regionRect.Top, regionRect.Width, regionRect.Height);
+        _recordingBorder.Show();
+
+        _recordingHud = new RecordingHudWindow(_recorder, path, _loggerFactory.CreateLogger<RecordingHudWindow>(), regionRect, _recordingOptions);
+        _recordingHud.StopCompleted += () => Dispatcher.Invoke(() =>
+        {
+            _recordingBorder?.Close();
+            _recordingBorder = null;
+            _recordingHud = null;
+            Close();
+        });
+        _recordingHud.Show();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        if (_recorder.IsRecording)
+        {
+            _recorder.Stop();
+        }
+
+        _recordingHud?.Close();
+        _recordingHud = null;
+        _recordingBorder?.Close();
+        _recordingBorder = null;
+
+        base.OnClosed(e);
+    }
 
     private void DoCopy()
     {
