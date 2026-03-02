@@ -1,7 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
-using System.Windows.Media.Imaging;
 using Hardcodet.Wpf.TaskbarNotification;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -74,14 +73,7 @@ public partial class App : Application
         services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
         services.AddSingleton<IAnnotationGeometryService, AnnotationGeometryService>();
         services.AddTransient<OverlayViewModel>();
-        services.AddTransient<PreviewViewModel>();
         services.AddTransient<OverlayWindow>();
-        services.AddTransient<Func<BitmapSource, Rect, PreviewWindow>>(
-            sp => (bitmap, rect) => new PreviewWindow(
-                sp.GetRequiredService<PreviewViewModel>(),
-                bitmap,
-                sp.GetRequiredService<ILoggerFactory>(),
-                rect));
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -154,7 +146,7 @@ public partial class App : Application
         _logger?.LogInformation("Full screen capture initiated");
         var capture = _services.GetRequiredService<IScreenCaptureService>();
         var b = System.Windows.Forms.SystemInformation.VirtualScreen;
-        OnSnipCompleted(capture.Capture(b.X, b.Y, b.Width, b.Height), System.Windows.Rect.Empty);
+        System.Windows.Clipboard.SetImage(capture.Capture(b.X, b.Y, b.Width, b.Height));
     }
 
     private void CaptureWindow(IntPtr hwnd)
@@ -173,14 +165,7 @@ public partial class App : Application
 
         _logger?.LogInformation("Window capture: {W}\u00d7{H}", w, h);
         var capture = _services.GetRequiredService<IScreenCaptureService>();
-        OnSnipCompleted(capture.Capture(r.Left, r.Top, w, h), System.Windows.Rect.Empty);
-    }
-
-    private void OnSnipCompleted(BitmapSource bitmap, System.Windows.Rect snipScreenRect)
-    {
-        _logger?.LogInformation("Snip completed: {W}\u00d7{H}", bitmap.PixelWidth, bitmap.PixelHeight);
-        var factory = _services.GetRequiredService<Func<BitmapSource, Rect, PreviewWindow>>();
-        factory(bitmap, snipScreenRect).Show();
+        System.Windows.Clipboard.SetImage(capture.Capture(r.Left, r.Top, w, h));
     }
 
     private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)

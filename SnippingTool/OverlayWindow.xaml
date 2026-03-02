@@ -190,6 +190,26 @@
       <StackPanel Orientation="Horizontal">
 
         <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding UndoCommand}" ToolTip="Undo (Ctrl+Z)">
+          <StackPanel>
+            <TextBlock Text="↩" FontSize="13" HorizontalAlignment="Center"/>
+            <TextBlock Text="Undo" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding RedoCommand}" ToolTip="Redo (Ctrl+Y)">
+          <StackPanel>
+            <TextBlock Text="↪" FontSize="13" HorizontalAlignment="Center"/>
+            <TextBlock Text="Redo" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
                 Click="Copy_Click" ToolTip="Copy to clipboard (Ctrl+C)">
           <StackPanel>
             <TextBlock Text="📋" FontSize="13" HorizontalAlignment="Center"/>
