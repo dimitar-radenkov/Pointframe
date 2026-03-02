@@ -14,50 +14,53 @@ public sealed class RecordingHudPositionTests
     [Fact]
     public void ComputePosition_NormalRegion_CenteredBelowWithGap()
     {
-        // Region at centre of screen, plenty of space all around
+        // Arrange
         var region = new Rect(600, 200, 400, 300);
 
+        // Act
         var (left, top) = RecordingHudWindow.ComputePosition(region, HudW, HudH, WorkArea);
 
-        // Expected horizontal centre: 600 + (400 - 140) / 2 = 730
+        // Assert
         Assert.Equal(730, left);
-        // Expected vertical: 200 + 300 + 8 = 508
         Assert.Equal(508, top);
     }
 
     [Fact]
     public void ComputePosition_RegionNearRightEdge_ClampsLeft()
     {
-        // Region so far right that centred HUD would exceed work area right
+        // Arrange
         var region = new Rect(1850, 200, 400, 300);
 
+        // Act
         var (left, _) = RecordingHudWindow.ComputePosition(region, HudW, HudH, WorkArea);
 
-        // Must not exceed workArea.Right - hudWidth = 1920 - 140 = 1780
+        // Assert
         Assert.Equal(1780, left);
     }
 
     [Fact]
     public void ComputePosition_RegionNearLeftEdge_ClampsLeft()
     {
-        // Region so far left that centred HUD would go negative
+        // Arrange
         var region = new Rect(-300, 200, 200, 300);
 
+        // Act
         var (left, _) = RecordingHudWindow.ComputePosition(region, HudW, HudH, WorkArea);
 
-        // Must not go below workArea.Left = 0
+        // Assert
         Assert.Equal(0, left);
     }
 
     [Fact]
     public void ComputePosition_RegionNearBottom_ClampsTop()
     {
-        // Region whose bottom + 8 + hudHeight would exceed work area bottom
+        // Arrange
         var region = new Rect(600, 1020, 400, 60);
 
+        // Act
         var (_, top) = RecordingHudWindow.ComputePosition(region, HudW, HudH, WorkArea);
 
-        // region.Bottom = 1080, 1080 + 8 = 1088 > 1040 − 44 = 996 → clamped to 996
+        // Assert
         Assert.Equal(WorkArea.Bottom - HudH, top);
     }
 }

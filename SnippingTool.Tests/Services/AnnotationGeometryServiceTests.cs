@@ -11,7 +11,14 @@ public sealed class AnnotationGeometryServiceTests
     [Fact]
     public void CalculateRect_TopLeftToBottomRight_ReturnsCorrectBounds()
     {
-        var (left, top, width, height) = _sut.CalculateRect(new Point(10, 20), new Point(110, 70));
+        // Arrange
+        var start = new Point(10, 20);
+        var end = new Point(110, 70);
+
+        // Act
+        var (left, top, width, height) = _sut.CalculateRect(start, end);
+
+        // Assert
         Assert.Equal(10, left);
         Assert.Equal(20, top);
         Assert.Equal(100, width);
@@ -21,7 +28,14 @@ public sealed class AnnotationGeometryServiceTests
     [Fact]
     public void CalculateRect_BottomRightToTopLeft_NormalizesCorrectly()
     {
-        var (left, top, width, height) = _sut.CalculateRect(new Point(110, 70), new Point(10, 20));
+        // Arrange
+        var start = new Point(110, 70);
+        var end = new Point(10, 20);
+
+        // Act
+        var (left, top, width, height) = _sut.CalculateRect(start, end);
+
+        // Assert
         Assert.Equal(10, left);
         Assert.Equal(20, top);
         Assert.Equal(100, width);
@@ -31,77 +45,146 @@ public sealed class AnnotationGeometryServiceTests
     [Fact]
     public void CalculateEllipse_SameLogicAsRect()
     {
-        var rect = _sut.CalculateRect(new Point(5, 5), new Point(55, 55));
-        var ellipse = _sut.CalculateEllipse(new Point(5, 5), new Point(55, 55));
+        // Arrange
+        var start = new Point(5, 5);
+        var end = new Point(55, 55);
+
+        // Act
+        var rect = _sut.CalculateRect(start, end);
+        var ellipse = _sut.CalculateEllipse(start, end);
+
+        // Assert
         Assert.Equal(rect, ellipse);
     }
 
     [Fact]
     public void IsValidShapeSize_LargeEnough_ReturnsTrue()
     {
-        Assert.True(_sut.IsValidShapeSize(new Point(0, 0), new Point(10, 10)));
+        // Arrange
+        var start = new Point(0, 0);
+        var end = new Point(10, 10);
+
+        // Act
+        var result = _sut.IsValidShapeSize(start, end);
+
+        // Assert
+        Assert.True(result);
     }
 
     [Fact]
     public void IsValidShapeSize_TooSmall_ReturnsFalse()
     {
-        Assert.False(_sut.IsValidShapeSize(new Point(0, 0), new Point(2, 2)));
+        // Arrange
+        var start = new Point(0, 0);
+        var end = new Point(2, 2);
+
+        // Act
+        var result = _sut.IsValidShapeSize(start, end);
+
+        // Assert
+        Assert.False(result);
     }
 
     [Fact]
     public void IsValidShapeSize_ExactlyMinSide_ReturnsTrue()
     {
-        Assert.True(_sut.IsValidShapeSize(new Point(0, 0), new Point(4, 4)));
+        // Arrange
+        var start = new Point(0, 0);
+        var end = new Point(4, 4);
+
+        // Act
+        var result = _sut.IsValidShapeSize(start, end);
+
+        // Assert
+        Assert.True(result);
     }
 
     [Fact]
     public void IsValidShapeSize_HorizontalLine_ValidByWidth()
     {
-        // Height=0 but width=100 — valid for line/arrow shapes
-        Assert.True(_sut.IsValidShapeSize(new Point(0, 0), new Point(100, 0)));
+        // Arrange
+        var start = new Point(0, 0);
+        var end = new Point(100, 0);
+
+        // Act
+        var result = _sut.IsValidShapeSize(start, end);
+
+        // Assert
+        Assert.True(result);
     }
 
     [Fact]
     public void IsValidShapeSize_CustomMinSide_RespectsThreshold()
     {
-        Assert.False(_sut.IsValidShapeSize(new Point(0, 0), new Point(5, 5), minSide: 10));
-        Assert.True(_sut.IsValidShapeSize(new Point(0, 0), new Point(10, 10), minSide: 10));
+        // Arrange
+        var start = new Point(0, 0);
+
+        // Act
+        var tooSmall = _sut.IsValidShapeSize(start, new Point(5, 5), minSide: 10);
+        var exactlyRight = _sut.IsValidShapeSize(start, new Point(10, 10), minSide: 10);
+
+        // Assert
+        Assert.False(tooSmall);
+        Assert.True(exactlyRight);
     }
 
     [Fact]
     public void CalculateArrowHead_ReturnsThreePoints()
     {
-        var pts = _sut.CalculateArrowHead(new Point(0, 0), new Point(100, 0));
+        // Arrange
+        var tail = new Point(0, 0);
+        var tip = new Point(100, 0);
+
+        // Act
+        var pts = _sut.CalculateArrowHead(tail, tip);
+
+        // Assert
         Assert.Equal(3, pts.Length);
     }
 
     [Fact]
     public void CalculateArrowHead_MiddlePointIsArrowTip()
     {
+        // Arrange
+        var tail = new Point(0, 0);
         var tip = new Point(100, 0);
-        var pts = _sut.CalculateArrowHead(new Point(0, 0), tip);
+
+        // Act
+        var pts = _sut.CalculateArrowHead(tail, tip);
+
+        // Assert
         Assert.Equal(tip, pts[1]);
     }
 
     [Fact]
     public void CalculateArrowHead_HeadPointsAreNearTip()
     {
+        // Arrange
+        var tail = new Point(0, 0);
         var tip = new Point(100, 0);
-        var pts = _sut.CalculateArrowHead(new Point(0, 0), tip);
+        const double MaxDist = 15.0;
 
-        // Both wing points must be within headLength distance of the tip
-        const double maxDist = 15.0;
-        Assert.True(Distance(pts[0], tip) <= maxDist);
-        Assert.True(Distance(pts[2], tip) <= maxDist);
+        // Act
+        var pts = _sut.CalculateArrowHead(tail, tip);
+
+        // Assert
+        Assert.True(Distance(pts[0], tip) <= MaxDist);
+        Assert.True(Distance(pts[2], tip) <= MaxDist);
     }
 
     [Fact]
     public void CalculateArrowHead_Symmetric_AroundShaftAxis()
     {
-        // Horizontal arrow → both wings should be equidistant from the shaft line (Y axis symmetry)
-        var pts = _sut.CalculateArrowHead(new Point(0, 0), new Point(100, 0));
+        // Arrange
+        var tail = new Point(0, 0);
+        var tip = new Point(100, 0);
+
+        // Act
+        var pts = _sut.CalculateArrowHead(tail, tip);
+
+        // Assert
         Assert.Equal(pts[0].X, pts[2].X, precision: 8);
-        Assert.Equal(-pts[0].Y, pts[2].Y, precision: 8); // symmetric above/below
+        Assert.Equal(-pts[0].Y, pts[2].Y, precision: 8);
     }
 
     private static double Distance(Point a, Point b)

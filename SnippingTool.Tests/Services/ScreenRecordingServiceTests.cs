@@ -14,33 +14,49 @@ public sealed class ScreenRecordingServiceTests
     [Fact]
     public void IsRecording_IsFalse_BeforeStart()
     {
+        // Arrange
         using var svc = CreateSut();
+
+        // Assert
         Assert.False(svc.IsRecording);
     }
 
     [Fact]
     public void Stop_WhenNotRecording_DoesNotThrow()
     {
+        // Arrange
         using var svc = CreateSut();
+
+        // Act
         var ex = Record.Exception(() => svc.Stop());
+
+        // Assert
         Assert.Null(ex);
     }
 
     [Fact]
     public void Dispose_WhenNotRecording_DoesNotThrow()
     {
+        // Arrange
         var svc = CreateSut();
+
+        // Act
         var ex = Record.Exception(() => svc.Dispose());
+
+        // Assert
         Assert.Null(ex);
     }
 
     [Fact]
     public void Start_WithOddDimensions_TruncatesToEven()
     {
-        var svc = CreateSut();
-        // Width/height of 1 → truncates to 0 → Start returns early → IsRecording stays false
+        // Arrange
+        using var svc = CreateSut();
+
+        // Act
         svc.Start(0, 0, 1, 1, System.IO.Path.GetTempFileName());
+
+        // Assert
         Assert.False(svc.IsRecording);
-        svc.Dispose();
     }
 }
