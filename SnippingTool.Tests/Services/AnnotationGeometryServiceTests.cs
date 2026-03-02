@@ -8,8 +8,6 @@ public class AnnotationGeometryServiceTests
 {
     private readonly AnnotationGeometryService _sut = new();
 
-    // ── CalculateRect ──────────────────────────────────────────────────────
-
     [Fact]
     public void CalculateRect_TopLeftToBottomRight_ReturnsCorrectBounds()
     {
@@ -30,8 +28,6 @@ public class AnnotationGeometryServiceTests
         Assert.Equal(50, height);
     }
 
-    // ── CalculateEllipse ───────────────────────────────────────────────────
-
     [Fact]
     public void CalculateEllipse_SameLogicAsRect()
     {
@@ -39,8 +35,6 @@ public class AnnotationGeometryServiceTests
         var ellipse = _sut.CalculateEllipse(new Point(5, 5), new Point(55, 55));
         Assert.Equal(rect, ellipse);
     }
-
-    // ── IsValidShapeSize ───────────────────────────────────────────────────
 
     [Fact]
     public void IsValidShapeSize_LargeEnough_ReturnsTrue()
@@ -73,8 +67,6 @@ public class AnnotationGeometryServiceTests
         Assert.False(_sut.IsValidShapeSize(new Point(0, 0), new Point(5, 5), minSide: 10));
         Assert.True(_sut.IsValidShapeSize(new Point(0, 0), new Point(10, 10), minSide: 10));
     }
-
-    // ── CalculateArrowHead ─────────────────────────────────────────────────
 
     [Fact]
     public void CalculateArrowHead_ReturnsThreePoints()

@@ -86,8 +86,6 @@ public class AnnotationViewModelTests
         Assert.True(raised);
     }
 
-    // ── Drawing state machine ──────────────────────────────────────────────
-
     [Fact]
     public void BeginDrawing_SetsIsDragging()
     {
@@ -130,8 +128,6 @@ public class AnnotationViewModelTests
 
         Assert.Equal(new System.Windows.Point(50, 80), vm.DragCurrent);
     }
-
-    // ── TryGetShapeParameters ──────────────────────────────────────────────
 
     [Fact]
     public void TryGetShapeParameters_TooSmall_ReturnsNull()
@@ -218,8 +214,6 @@ public class AnnotationViewModelTests
         Assert.Null(vm.TryGetShapeParameters());
     }
 
-    // ── NumberCounter ──────────────────────────────────────────────────────
-
     [Fact]
     public void IncrementNumberCounter_IncrementsEachCall()
     {
@@ -243,8 +237,6 @@ public class AnnotationViewModelTests
 
         Assert.Equal(0, vm.NumberCounter);
     }
-
-    // ── SetColorFromTag ────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("Red")]
@@ -284,8 +276,6 @@ public class AnnotationViewModelTests
 
         Assert.Equal(Colors.Red, vm.ActiveColor);
     }
-
-    // ── SetStrokeThicknessFromText ─────────────────────────────────────────
 
     [Fact]
     public void SetStrokeThicknessFromText_ValidNumber_SetsThickness()
