@@ -13,6 +13,8 @@
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
+*.md
+
 # Mono auto generated files
 mono_crash.*
 
@@ -364,3 +366,4 @@ FodyWeavers.xsd
 # Squad
 .squad/
 .squad-templates/
+
