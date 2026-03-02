@@ -23,3 +23,6 @@ jobs:
 
       - name: Build
         run: dotnet build SnippingTool/SnippingTool.csproj --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test SnippingTool.Tests/SnippingTool.Tests.csproj --configuration Release --verbosity normal
