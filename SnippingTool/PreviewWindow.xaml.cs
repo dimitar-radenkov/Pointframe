@@ -10,7 +10,6 @@ using Clipboard = System.Windows.Clipboard;
 using Color = System.Windows.Media.Color;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
-using Point = System.Windows.Point;
 using RadioButton = System.Windows.Controls.RadioButton;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using Size = System.Windows.Size;
@@ -73,9 +72,9 @@ public partial class PreviewWindow : Window
 
     private void PositionNearSnip(System.Windows.Rect snip, System.Windows.Rect workArea)
     {
-        const double gap = 8;
+        const double Gap = 8;
         var left = snip.Left;
-        var top = snip.Bottom + gap;
+        var top = snip.Bottom + Gap;
         if (left + Width > workArea.Right)
         {
             left = workArea.Right - Width;
@@ -84,7 +83,7 @@ public partial class PreviewWindow : Window
         left = Math.Max(workArea.Left, left);
         if (top + Height > workArea.Bottom)
         {
-            top = snip.Top - Height - gap;
+            top = snip.Top - Height - Gap;
         }
 
         top = Math.Max(workArea.Top, top);
@@ -133,7 +132,9 @@ public partial class PreviewWindow : Window
     private void Tool_Click(object sender, RoutedEventArgs e)
     {
         if (sender is RadioButton { Tag: string tag })
+        {
             _vm.SelectedTool = Enum.Parse<AnnotationTool>(tag);
+        }
     }
 
     private void Color_Click(object sender, MouseButtonEventArgs e)

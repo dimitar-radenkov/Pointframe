@@ -2,6 +2,8 @@ name: CD
 
 on:
   push:
+    branches:
+      - master
     tags:
       - "v*"
 
@@ -17,20 +19,64 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      # Strip the leading "v" from the tag to get a plain semver (e.g. v1.2.0 → 1.2.0)
-      - name: Extract version
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # Display version: 1.DDMMYYYY  (e.g. 1.02032026) — used for installer and artifact name.
+      # On a tag push the tag wins (e.g. v1.02032026 → 1.02032026).
+      # Dotnet version: must be numeric components ≤ 65535 each, so we use YYYY.MM.DD
+      # (e.g. 2026.3.2) which embeds the same date in a format the CLR accepts.
+      - name: Compute version
         id: version
         shell: pwsh
         run: |
-          $ver = "${{ github.ref_name }}" -replace '^v', ''
-          echo "value=$ver" >> $env:GITHUB_OUTPUT
+          $is_tag = "${{ github.ref }}" -match '^refs/tags/v'
+          if ($is_tag) {
+            $display = "${{ github.ref_name }}" -replace '^v', ''
+          } else {
+            $d = Get-Date
+            $display = "1.$($d.ToString('ddMMyyyy'))"
+          }
+          $d      = Get-Date
+          $dotnet = "$($d.Year).$($d.Month).$($d.Day)"
+          echo "display=$display"           >> $env:GITHUB_OUTPUT
+          echo "dotnet=$dotnet"             >> $env:GITHUB_OUTPUT
+          echo "is_tag=$($is_tag.ToString().ToLower())" >> $env:GITHUB_OUTPUT
 
       - name: Publish (self-contained single-file)
         run: >
           dotnet publish SnippingTool/SnippingTool.csproj
           /p:PublishProfile=win-x64
-          /p:Version=${{ steps.version.outputs.value }}
+          /p:Version=${{ steps.version.outputs.dotnet }}
+          /p:InformationalVersion=${{ steps.version.outputs.display }}
           --nologo
+
+      # Sign the published exe if a code-signing certificate is available.
+      # Store your PFX as a base64 secret: SIGNING_CERT_B64
+      # Store the PFX password as:          SIGNING_CERT_PASSWORD
+      - name: Sign executable
+        if: env.SIGNING_CERT_B64 != ''
+        env:
+          SIGNING_CERT_B64: ${{ secrets.SIGNING_CERT_B64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        shell: pwsh
+        run: |
+          $pfx = [System.Convert]::FromBase64String($env:SIGNING_CERT_B64)
+          $pfxPath = Join-Path $env:TEMP 'signing.pfx'
+          [IO.File]::WriteAllBytes($pfxPath, $pfx)
+          try {
+            $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
+              Sort-Object -Property FullName -Descending | Select-Object -First 1).FullName
+            $exePath = 'SnippingTool\bin\publish\win-x64\SnippingTool.exe'
+            & $signtool sign /fd SHA256 /p $env:SIGNING_CERT_PASSWORD /f $pfxPath /tr http://timestamp.digicert.com /td SHA256 $exePath
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Install Inno Setup 6
         run: choco install innosetup --yes --no-progress
@@ -40,7 +86,7 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           & $iscc `
-            /DAppVersion=${{ steps.version.outputs.value }} `
+            /DAppVersion=${{ steps.version.outputs.display }} `
             /O"installer\output" `
             installer\SnippingTool.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -48,11 +94,12 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SnippingTool-${{ github.ref_name }}-Setup
-          path: installer/output/SnippingTool-${{ steps.version.outputs.value }}-Setup.exe
+          name: SnippingTool-${{ steps.version.outputs.display }}-Setup
+          path: installer/output/SnippingTool-${{ steps.version.outputs.display }}-Setup.exe
 
       - name: Create GitHub Release
+        if: steps.version.outputs.is_tag == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          files: installer/output/SnippingTool-${{ steps.version.outputs.value }}-Setup.exe
+          files: installer/output/SnippingTool-${{ steps.version.outputs.display }}-Setup.exe
           generate_release_notes: true
