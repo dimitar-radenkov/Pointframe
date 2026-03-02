@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using Microsoft.Extensions.Logging;
 using SnippingTool.Models;
 using SnippingTool.ViewModels;
 using Brushes = System.Windows.Media.Brushes;
@@ -18,6 +19,7 @@ internal sealed class AnnotationCanvasRenderer
     private readonly Canvas _canvas;
     private readonly AnnotationViewModel _vm;
     private readonly Action<UIElement> _onAdd;
+    private readonly ILogger<AnnotationCanvasRenderer> _logger;
 
     private Line? _arrowShaft;
     private Polyline? _arrowHead;
@@ -26,17 +28,19 @@ internal sealed class AnnotationCanvasRenderer
     private Ellipse? _currentEllipse;
     private Polyline? _currentPen;
 
-    public AnnotationCanvasRenderer(Canvas canvas, AnnotationViewModel vm, Action<UIElement> onAdd)
+    public AnnotationCanvasRenderer(Canvas canvas, AnnotationViewModel vm, Action<UIElement> onAdd, ILogger<AnnotationCanvasRenderer> logger)
     {
         _canvas = canvas;
         _vm = vm;
         _onAdd = onAdd;
+        _logger = logger;
     }
 
     private SolidColorBrush ActiveBrush() => new(_vm.ActiveColor);
 
     public void BeginShape(Point p)
     {
+        _logger.LogDebug("Shape begin: {Tool}", _vm.SelectedTool);
         var brush = ActiveBrush();
         var thick = _vm.StrokeThickness;
 
@@ -122,6 +126,7 @@ internal sealed class AnnotationCanvasRenderer
 
     public void CommitShape(Point p)
     {
+        _logger.LogDebug("Shape committed: {Tool}", _vm.SelectedTool);
         UpdateShape(p);
         _arrowShaft = null;
         _arrowHead = null;
@@ -134,6 +139,7 @@ internal sealed class AnnotationCanvasRenderer
     public void PlaceNumberLabel(Point p)
     {
         var n = _vm.IncrementNumberCounter();
+        _logger.LogDebug("Number label ({N}) placed at ({X:F1},{Y:F1})", n, p.X, p.Y);
         var tb = new TextBlock
         {
             Text = $"({n})",
@@ -149,6 +155,7 @@ internal sealed class AnnotationCanvasRenderer
 
     public void PlaceTextBox(Point p)
     {
+        _logger.LogDebug("Text box placed at ({X:F1},{Y:F1})", p.X, p.Y);
         var tb = new TextBox
         {
             FontSize = 16,

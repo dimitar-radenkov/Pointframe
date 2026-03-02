@@ -1,4 +1,5 @@
 using System.Windows.Media;
+using Microsoft.Extensions.Logging.Abstractions;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Xunit;
@@ -299,5 +300,6 @@ public class AnnotationViewModelTests
     }
 
     // Concrete subclass so we can instantiate the abstract-like partial base
-    private sealed partial class TestAnnotationViewModel(AnnotationGeometryService geom) : AnnotationViewModel(geom) { }
+    private sealed partial class TestAnnotationViewModel(AnnotationGeometryService geom)
+        : AnnotationViewModel(geom, NullLogger<AnnotationViewModel>.Instance) { }
 }

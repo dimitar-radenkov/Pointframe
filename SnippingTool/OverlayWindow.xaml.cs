@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Microsoft.Extensions.Logging;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Color = System.Windows.Media.Color;
@@ -20,13 +21,13 @@ public partial class OverlayWindow : Window
     private readonly IScreenCaptureService _screenCapture;
     private AnnotationCanvasRenderer _renderer = null!;
 
-    public OverlayWindow(OverlayViewModel vm, IScreenCaptureService screenCapture)
+    public OverlayWindow(OverlayViewModel vm, IScreenCaptureService screenCapture, ILoggerFactory loggerFactory)
     {
         _vm = vm;
         _screenCapture = screenCapture;
         InitializeComponent();
         DataContext = _vm;
-        _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, _ => { });
+        _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, _ => { }, loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
 
         _vm.CopyRequested += DoCopy;
         _vm.CloseRequested += Close;

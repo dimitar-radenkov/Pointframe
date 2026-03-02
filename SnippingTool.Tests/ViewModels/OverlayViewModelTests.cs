@@ -1,4 +1,5 @@
 using System.Windows;
+using Microsoft.Extensions.Logging.Abstractions;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Xunit;
@@ -7,7 +8,7 @@ namespace SnippingTool.Tests.ViewModels;
 
 public class OverlayViewModelTests
 {
-    private static OverlayViewModel Vm() => new(new AnnotationGeometryService());
+    private static OverlayViewModel Vm() => new(new AnnotationGeometryService(), NullLogger<OverlayViewModel>.Instance);
 
     [Fact]
     public void InitialPhase_IsSelecting()

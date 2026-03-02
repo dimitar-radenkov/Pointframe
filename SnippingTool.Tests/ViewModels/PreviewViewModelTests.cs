@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Xunit;
@@ -6,7 +7,7 @@ namespace SnippingTool.Tests.ViewModels;
 
 public class PreviewViewModelTests
 {
-    private static PreviewViewModel Vm() => new(new AnnotationGeometryService());
+    private static PreviewViewModel Vm() => new(new AnnotationGeometryService(), NullLogger<PreviewViewModel>.Instance);
 
     [Fact]
     public void UndoCommand_CannotExecute_WhenStackEmpty()
