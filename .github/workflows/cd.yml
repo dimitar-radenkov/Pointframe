@@ -17,24 +17,42 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Publish
+      # Strip the leading "v" from the tag to get a plain semver (e.g. v1.2.0 → 1.2.0)
+      - name: Extract version
+        id: version
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}" -replace '^v', ''
+          echo "value=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Publish (self-contained single-file)
         run: >
           dotnet publish SnippingTool/SnippingTool.csproj
-          --configuration Release
-          --runtime win-x64
-          --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          --output ./publish
+          /p:PublishProfile=win-x64
+          /p:Version=${{ steps.version.outputs.value }}
+          --nologo
 
-      - name: Upload artifact
+      - name: Install Inno Setup 6
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc `
+            /DAppVersion=${{ steps.version.outputs.value }} `
+            /O"installer\output" `
+            installer\SnippingTool.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SnippingTool-${{ github.ref_name }}
-          path: ./publish/SnippingTool.exe
+          name: SnippingTool-${{ github.ref_name }}-Setup
+          path: installer/output/SnippingTool-${{ steps.version.outputs.value }}-Setup.exe
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ./publish/SnippingTool.exe
+          files: installer/output/SnippingTool-${{ steps.version.outputs.value }}-Setup.exe
           generate_release_notes: true
