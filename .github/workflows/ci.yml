@@ -18,11 +18,34 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
       - name: Restore
-        run: dotnet restore SnippingTool/SnippingTool.csproj
+        run: |
+          dotnet restore SnippingTool/SnippingTool.csproj
+          dotnet restore SnippingTool.Tests/SnippingTool.Tests.csproj
 
       - name: Build
         run: dotnet build SnippingTool/SnippingTool.csproj --no-restore --configuration Release
 
-      - name: Test
-        run: dotnet test SnippingTool.Tests/SnippingTool.Tests.csproj --configuration Release --verbosity normal
+      - name: Format check
+        run: dotnet format SnippingTool/SnippingTool.csproj --verify-no-changes
+
+      - name: Test with coverage
+        run: >
+          dotnet test SnippingTool.Tests/SnippingTool.Tests.csproj
+          --configuration Release
+          --verbosity normal
+          --collect:"XPlat Code Coverage"
+          --results-directory coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/**/coverage.cobertura.xml
+          token: ${{ secrets.CODECOV_TOKEN }}

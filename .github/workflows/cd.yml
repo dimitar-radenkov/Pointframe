@@ -19,6 +19,13 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
       # Display version: 1.DDMMYYYY  (e.g. 1.02032026) — used for installer and artifact name.
       # On a tag push the tag wins (e.g. v1.02032026 → 1.02032026).
       # Dotnet version: must be numeric components ≤ 65535 each, so we use YYYY.MM.DD
@@ -47,6 +54,29 @@ jobs:
           /p:Version=${{ steps.version.outputs.dotnet }}
           /p:InformationalVersion=${{ steps.version.outputs.display }}
           --nologo
+
+      # Sign the published exe if a code-signing certificate is available.
+      # Store your PFX as a base64 secret: SIGNING_CERT_B64
+      # Store the PFX password as:          SIGNING_CERT_PASSWORD
+      - name: Sign executable
+        if: env.SIGNING_CERT_B64 != ''
+        env:
+          SIGNING_CERT_B64: ${{ secrets.SIGNING_CERT_B64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        shell: pwsh
+        run: |
+          $pfx = [System.Convert]::FromBase64String($env:SIGNING_CERT_B64)
+          $pfxPath = Join-Path $env:TEMP 'signing.pfx'
+          [IO.File]::WriteAllBytes($pfxPath, $pfx)
+          try {
+            $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
+              Sort-Object -Property FullName -Descending | Select-Object -First 1).FullName
+            $exePath = 'SnippingTool\bin\publish\win-x64\SnippingTool.exe'
+            & $signtool sign /fd SHA256 /p $env:SIGNING_CERT_PASSWORD /f $pfxPath /tr http://timestamp.digicert.com /td SHA256 $exePath
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Install Inno Setup 6
         run: choco install innosetup --yes --no-progress
