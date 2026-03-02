@@ -120,10 +120,18 @@ public partial class App : Application
 
     private void CaptureWindow(IntPtr hwnd)
     {
-        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var r)) return;
+        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var r))
+        {
+            return;
+        }
+
         var w = r.Right - r.Left;
         var h = r.Bottom - r.Top;
-        if (w <= 0 || h <= 0) return;
+        if (w <= 0 || h <= 0)
+        {
+            return;
+        }
+
         var capture = _services.GetRequiredService<IScreenCaptureService>();
         OnSnipCompleted(capture.Capture(r.Left, r.Top, w, h), System.Windows.Rect.Empty);
     }

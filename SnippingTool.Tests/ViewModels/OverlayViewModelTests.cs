@@ -92,7 +92,10 @@ public class OverlayViewModelTests
         var raised = false;
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(vm.CurrentPhase)) raised = true;
+            if (e.PropertyName == nameof(vm.CurrentPhase))
+            {
+                raised = true;
+            }
         };
 
         vm.CommitSelection(new Rect(0, 0, 50, 50));

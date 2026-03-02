@@ -1,8 +1,6 @@
-using System.ComponentModel;
 using System.Windows.Media;
 using SnippingTool.ViewModels;
 using Xunit;
-using Color = System.Windows.Media.Color;
 
 namespace SnippingTool.Tests.ViewModels;
 
@@ -56,7 +54,10 @@ public class AnnotationViewModelTests
         var raised = false;
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(vm.SelectedTool)) raised = true;
+            if (e.PropertyName == nameof(vm.SelectedTool))
+            {
+                raised = true;
+            }
         };
 
         vm.SelectedTool = AnnotationTool.Pen;
@@ -71,7 +72,10 @@ public class AnnotationViewModelTests
         var raised = false;
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(vm.StrokeThickness)) raised = true;
+            if (e.PropertyName == nameof(vm.StrokeThickness))
+            {
+                raised = true;
+            }
         };
 
         vm.StrokeThickness = 5.0;

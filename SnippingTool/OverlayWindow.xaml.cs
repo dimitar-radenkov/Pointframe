@@ -69,7 +69,10 @@ public partial class OverlayWindow : Window
 
     private void Root_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (_vm.CurrentPhase != OverlayViewModel.Phase.Selecting) return;
+        if (_vm.CurrentPhase != OverlayViewModel.Phase.Selecting)
+        {
+            return;
+        }
 
         var start = e.GetPosition(Root);
         Root.Tag = start; // store drag origin on the element
@@ -84,7 +87,10 @@ public partial class OverlayWindow : Window
     private void Root_MouseMove(object sender, MouseEventArgs e)
     {
         if (_vm.CurrentPhase != OverlayViewModel.Phase.Selecting
-            || Root.Tag is not Point start) return;
+            || Root.Tag is not Point start)
+        {
+            return;
+        }
 
         var cur = e.GetPosition(Root);
         var x = Math.Min(cur.X, start.X);
@@ -102,7 +108,10 @@ public partial class OverlayWindow : Window
         SizeLabelBorder.Visibility = Visibility.Visible;
         SizeLabelBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var ly = y - SizeLabelBorder.DesiredSize.Height - 4;
-        if (ly < 0) ly = y + 4;
+        if (ly < 0)
+        {
+            ly = y + 4;
+        }
         Canvas.SetLeft(SizeLabelBorder, x);
         Canvas.SetTop(SizeLabelBorder, ly);
     }
@@ -110,7 +119,10 @@ public partial class OverlayWindow : Window
     private void Root_MouseUp(object sender, MouseButtonEventArgs e)
     {
         if (_vm.CurrentPhase != OverlayViewModel.Phase.Selecting
-            || Root.Tag is not Point start) return;
+            || Root.Tag is not Point start)
+        {
+            return;
+        }
 
         Root.Tag = null;
         Root.ReleaseMouseCapture();
@@ -188,7 +200,10 @@ public partial class OverlayWindow : Window
 
         var left = sel.Right + 8;
         var top = sel.Top;
-        if (left + sz.Width > Width) left = sel.Left - sz.Width - 8;
+        if (left + sz.Width > Width)
+        {
+            left = sel.Left - sz.Width - 8;
+        }
         top = Math.Max(0, Math.Min(top, Height - sz.Height));
 
         Canvas.SetLeft(AnnotToolbar, left);
@@ -203,7 +218,10 @@ public partial class OverlayWindow : Window
 
         var left = sel.Left + (sel.Width - sz.Width) / 2;
         var top = sel.Bottom + 8;
-        if (top + sz.Height > Height) top = sel.Top - sz.Height - 8;
+        if (top + sz.Height > Height)
+        {
+            top = sel.Top - sz.Height - 8;
+        }
         left = Math.Max(0, Math.Min(left, Width - sz.Width));
         top = Math.Max(0, top);
 
@@ -223,13 +241,21 @@ public partial class OverlayWindow : Window
 
     private void Annot_Move(object sender, MouseEventArgs e)
     {
-        if (!_annotDragging) return;
+        if (!_annotDragging)
+        {
+            return;
+        }
+
         UpdateShape(e.GetPosition(AnnotationCanvas));
     }
 
     private void Annot_Up(object sender, MouseButtonEventArgs e)
     {
-        if (!_annotDragging) return;
+        if (!_annotDragging)
+        {
+            return;
+        }
+
         _annotDragging = false;
         AnnotationCanvas.ReleaseMouseCapture();
         CommitShape(e.GetPosition(AnnotationCanvas));
@@ -345,8 +371,16 @@ public partial class OverlayWindow : Window
 
     private void FinalizeTextBox(TextBox tb)
     {
-        if (!AnnotationCanvas.Children.Contains(tb)) return;
-        if (string.IsNullOrWhiteSpace(tb.Text)) { AnnotationCanvas.Children.Remove(tb); return; }
+        if (!AnnotationCanvas.Children.Contains(tb))
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(tb.Text))
+        {
+            AnnotationCanvas.Children.Remove(tb);
+            return;
+        }
         var pos = new Point(Canvas.GetLeft(tb), Canvas.GetTop(tb));
         var text = tb.Text;
         var brush = tb.Foreground;

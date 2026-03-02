@@ -76,9 +76,15 @@ public partial class PreviewWindow : Window
         const double gap = 8;
         var left = snip.Left;
         var top = snip.Bottom + gap;
-        if (left + Width > workArea.Right) left = workArea.Right - Width;
+        if (left + Width > workArea.Right)
+        {
+            left = workArea.Right - Width;
+        }
         left = Math.Max(workArea.Left, left);
-        if (top + Height > workArea.Bottom) top = snip.Top - Height - gap;
+        if (top + Height > workArea.Bottom)
+        {
+            top = snip.Top - Height - gap;
+        }
         top = Math.Max(workArea.Top, top);
         Left = left;
         Top = top;
@@ -86,7 +92,10 @@ public partial class PreviewWindow : Window
 
     private void Toolbar_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.LeftButton == MouseButtonState.Pressed) DragMove();
+        if (e.LeftButton == MouseButtonState.Pressed)
+        {
+            DragMove();
+        }
     }
 
     private void CloseBtn_Click(object sender, RoutedEventArgs e) => Close();
@@ -115,7 +124,10 @@ public partial class PreviewWindow : Window
 
     private void Color_Click(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not Border border) return;
+        if (sender is not Border border)
+        {
+            return;
+        }
 
         _vm.ActiveColor = border.Tag switch
         {
@@ -228,7 +240,11 @@ public partial class PreviewWindow : Window
 
     private void Canvas_MouseMove(object sender, MouseEventArgs e)
     {
-        if (!_isDragging) return;
+        if (!_isDragging)
+        {
+            return;
+        }
+
         var current = e.GetPosition(AnnotationCanvas);
 
         switch (_vm.SelectedTool)
@@ -255,7 +271,11 @@ public partial class PreviewWindow : Window
 
     private void Canvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (!_isDragging) return;
+        if (!_isDragging)
+        {
+            return;
+        }
+
         _isDragging = false;
         AnnotationCanvas.ReleaseMouseCapture();
 
@@ -333,7 +353,10 @@ public partial class PreviewWindow : Window
             DefaultExt = ".png",
             FileName = $"screenshot_{DateTime.Now:yyyyMMdd_HHmmss}"
         };
-        if (dlg.ShowDialog() != true) return;
+        if (dlg.ShowDialog() != true)
+        {
+            return;
+        }
 
         var rtb = RenderComposite();
         BitmapEncoder encoder = dlg.FilterIndex == 2
