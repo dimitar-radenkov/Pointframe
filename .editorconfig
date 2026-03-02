@@ -76,10 +76,10 @@ csharp_preserve_single_line_blocks                                 = true
 csharp_preserve_single_line_statements                             = false
 
 # ── var usage ─────────────────────────────────────────────────────────────────
-# Use var only when the type is explicit/apparent on the right-hand side
-csharp_style_var_for_built_in_types                                = false:suggestion
-csharp_style_var_when_type_is_apparent                             = true:suggestion
-csharp_style_var_elsewhere                                         = false:suggestion
+# Always prefer var
+csharp_style_var_for_built_in_types = true:warning
+csharp_style_var_when_type_is_apparent = true:warning
+csharp_style_var_elsewhere = true:warning
 
 # ── Predefined types (use language keywords over BCL type names) ──────────────
 dotnet_style_predefined_type_for_locals_parameters_members         = true:suggestion
@@ -223,6 +223,12 @@ dotnet_naming_rule.type_parameters_must_be_prefixed_with_T.severity          = s
 
 # ─── Analyzer severities (IDE rules) ─────────────────────────────────────────
 dotnet_diagnostic.IDE0005.severity = warning   # Remove unnecessary using directive
-dotnet_diagnostic.IDE0055.severity = warning   # Fix formatting
+dotnet_diagnostic.IDE0055.severity = warning   # Fix formatting (enforces all spacing rules below)
 dotnet_diagnostic.IDE0051.severity = suggestion # Remove unused private member
 dotnet_diagnostic.IDE0052.severity = suggestion # Remove unread private member
+
+# ── No alignment spacing ──────────────────────────────────────────────────────
+# Prohibits padding identifiers with extra spaces to align = signs or arguments.
+# These are enforced by IDE0055 above; the explicit rules here make intent clear.
+dotnet_style_allow_multiple_blank_lines_experimental              = false:warning
+csharp_style_allow_embedded_statements_on_same_line_experimental  = false:warning

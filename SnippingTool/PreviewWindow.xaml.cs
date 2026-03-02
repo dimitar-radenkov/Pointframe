@@ -48,11 +48,11 @@ public partial class PreviewWindow : Window
         InitializeComponent();
 
         SnipImage.Source = bitmap;
-        AnnotationCanvas.Width  = bitmap.PixelWidth;
+        AnnotationCanvas.Width = bitmap.PixelWidth;
         AnnotationCanvas.Height = bitmap.PixelHeight;
 
         var workArea = SystemParameters.WorkArea;
-        Width  = Math.Min(bitmap.PixelWidth  + 16, workArea.Width  - 40);
+        Width = Math.Min(bitmap.PixelWidth  + 16, workArea.Width  - 40);
         Height = Math.Min(bitmap.PixelHeight + 64, workArea.Height - 40);
 
         if (!snipScreenRect.IsEmpty)
@@ -68,7 +68,7 @@ public partial class PreviewWindow : Window
         const double gap = 8;
 
         double left = snip.Left;
-        double top  = snip.Bottom + gap;
+        double top = snip.Bottom + gap;
 
         // Keep right edge inside work area
         if (left + Width > workArea.Right)
@@ -83,7 +83,7 @@ public partial class PreviewWindow : Window
         top = Math.Max(workArea.Top, top);
 
         Left = left;
-        Top  = top;
+        Top = top;
     }
 
     // ─── Window chrome ────────────────────────────────────────────────────
@@ -125,15 +125,7 @@ public partial class PreviewWindow : Window
 
         _activeColor = border.Tag switch
         {
-            "Red"    => Colors.Red,
-            "Blue"   => Colors.DodgerBlue,
-            "Black"  => Color.FromRgb(0x1A, 0x1A, 0x1A),
-            "Green"  => Color.FromRgb(0x22, 0xA4, 0x22),
-            "Orange" => Colors.Orange,
-            "Purple" => Color.FromRgb(0x8B, 0x2B, 0xE2),
-            "White"  => Colors.White,
-            "Pink"   => Colors.HotPink,
-            _        => Colors.Red
+            "Red"    => Colors.Red, "Blue"   => Colors.DodgerBlue, "Black"  => Color.FromRgb(0x1A, 0x1A, 0x1A), "Green"  => Color.FromRgb(0x22, 0xA4, 0x22), "Orange" => Colors.Orange, "Purple" => Color.FromRgb(0x8B, 0x2B, 0xE2), "White"  => Colors.White, "Pink"   => Colors.HotPink, _ => Colors.Red
         };
 
         ColorIndicator.Fill = new SolidColorBrush(_activeColor);
@@ -152,8 +144,7 @@ public partial class PreviewWindow : Window
         var dlg = new System.Windows.Forms.ColorDialog
         {
             Color = System.Drawing.Color.FromArgb(
-                _activeColor.A, _activeColor.R, _activeColor.G, _activeColor.B),
-            FullOpen = true
+                _activeColor.A, _activeColor.R, _activeColor.G, _activeColor.B), FullOpen = true
         };
 
         if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
@@ -240,18 +231,11 @@ public partial class PreviewWindow : Window
             case AnnotationTool.Arrow:
                 _arrowLine = new Line
                 {
-                    X1 = _dragStart.X, Y1 = _dragStart.Y,
-                    X2 = _dragStart.X, Y2 = _dragStart.Y,
-                    Stroke = brush,
-                    StrokeThickness = _strokeThickness,
-                    StrokeStartLineCap = PenLineCap.Round,
-                    StrokeEndLineCap   = PenLineCap.Round
+                    X1 = _dragStart.X, Y1 = _dragStart.Y, X2 = _dragStart.X, Y2 = _dragStart.Y, Stroke = brush, StrokeThickness = _strokeThickness, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round
                 };
                 _arrowHead = new Polyline
                 {
-                    Stroke = brush,
-                    StrokeThickness = _strokeThickness,
-                    StrokeLineJoin = PenLineJoin.Round
+                    Stroke = brush, StrokeThickness = _strokeThickness, StrokeLineJoin = PenLineJoin.Round
                 };
                 AddToCanvas(_arrowLine);
                 AddToCanvas(_arrowHead);
@@ -260,34 +244,27 @@ public partial class PreviewWindow : Window
             case AnnotationTool.Rectangle:
                 _currentRect = new System.Windows.Shapes.Rectangle
                 {
-                    Stroke = brush,
-                    StrokeThickness = _strokeThickness,
-                    Fill = Brushes.Transparent
+                    Stroke = brush, StrokeThickness = _strokeThickness, Fill = Brushes.Transparent
                 };
                 Canvas.SetLeft(_currentRect, _dragStart.X);
-                Canvas.SetTop(_currentRect,  _dragStart.Y);
+                Canvas.SetTop(_currentRect, _dragStart.Y);
                 AddToCanvas(_currentRect);
                 break;
 
             case AnnotationTool.Highlight:
                 _currentRect = new System.Windows.Shapes.Rectangle
                 {
-                    Fill = new SolidColorBrush(Color.FromArgb(80, 255, 255, 0)),
-                    Stroke = Brushes.Transparent
+                    Fill = new SolidColorBrush(Color.FromArgb(80, 255, 255, 0)), Stroke = Brushes.Transparent
                 };
                 Canvas.SetLeft(_currentRect, _dragStart.X);
-                Canvas.SetTop(_currentRect,  _dragStart.Y);
+                Canvas.SetTop(_currentRect, _dragStart.Y);
                 AddToCanvas(_currentRect);
                 break;
 
             case AnnotationTool.Pen:
                 _currentPen = new Polyline
                 {
-                    Stroke = brush,
-                    StrokeThickness = _strokeThickness,
-                    StrokeLineJoin  = PenLineJoin.Round,
-                    StrokeStartLineCap = PenLineCap.Round,
-                    StrokeEndLineCap   = PenLineCap.Round
+                    Stroke = brush, StrokeThickness = _strokeThickness, StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round
                 };
                 _currentPen.Points.Add(_dragStart);
                 AddToCanvas(_currentPen);
@@ -296,12 +273,7 @@ public partial class PreviewWindow : Window
             case AnnotationTool.Line:
                 _currentLine = new Line
                 {
-                    X1 = _dragStart.X, Y1 = _dragStart.Y,
-                    X2 = _dragStart.X, Y2 = _dragStart.Y,
-                    Stroke = brush,
-                    StrokeThickness = _strokeThickness,
-                    StrokeStartLineCap = PenLineCap.Round,
-                    StrokeEndLineCap   = PenLineCap.Round
+                    X1 = _dragStart.X, Y1 = _dragStart.Y, X2 = _dragStart.X, Y2 = _dragStart.Y, Stroke = brush, StrokeThickness = _strokeThickness, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round
                 };
                 AddToCanvas(_currentLine);
                 break;
@@ -309,12 +281,10 @@ public partial class PreviewWindow : Window
             case AnnotationTool.Circle:
                 _currentEllipse = new Ellipse
                 {
-                    Stroke = brush,
-                    StrokeThickness = _strokeThickness,
-                    Fill = Brushes.Transparent
+                    Stroke = brush, StrokeThickness = _strokeThickness, Fill = Brushes.Transparent
                 };
                 Canvas.SetLeft(_currentEllipse, _dragStart.X);
-                Canvas.SetTop(_currentEllipse,  _dragStart.Y);
+                Canvas.SetTop(_currentEllipse, _dragStart.Y);
                 AddToCanvas(_currentEllipse);
                 break;
         }
@@ -364,12 +334,12 @@ public partial class PreviewWindow : Window
         if (_activeTool == AnnotationTool.Arrow && _arrowLine != null)
             UpdateArrowHead(_arrowLine, _arrowHead!);
 
-        _arrowLine      = null;
-        _arrowHead      = null;
-        _currentRect    = null;
-        _currentLine    = null;
+        _arrowLine = null;
+        _arrowHead = null;
+        _currentRect = null;
+        _currentLine = null;
         _currentEllipse = null;
-        _currentPen     = null;
+        _currentPen = null;
 
         CommitGroup();
     }
@@ -380,34 +350,32 @@ public partial class PreviewWindow : Window
         System.Windows.Shapes.Rectangle rect, Point start, Point end)
     {
         Canvas.SetLeft(rect, Math.Min(start.X, end.X));
-        Canvas.SetTop(rect,  Math.Min(start.Y, end.Y));
-        rect.Width  = Math.Abs(end.X - start.X);
+        Canvas.SetTop(rect, Math.Min(start.Y, end.Y));
+        rect.Width = Math.Abs(end.X - start.X);
         rect.Height = Math.Abs(end.Y - start.Y);
     }
 
     private static void UpdateEllipse(Ellipse ellipse, Point start, Point end)
     {
         Canvas.SetLeft(ellipse, Math.Min(start.X, end.X));
-        Canvas.SetTop(ellipse,  Math.Min(start.Y, end.Y));
-        ellipse.Width  = Math.Abs(end.X - start.X);
+        Canvas.SetTop(ellipse, Math.Min(start.Y, end.Y));
+        ellipse.Width = Math.Abs(end.X - start.X);
         ellipse.Height = Math.Abs(end.Y - start.Y);
     }
 
     private static void UpdateArrowHead(Line line, Polyline head)
     {
         const double headLen = 14;
-        const double angle   = 25 * Math.PI / 180;
+        const double angle = 25 * Math.PI / 180;
 
-        double dx    = line.X2 - line.X1;
-        double dy    = line.Y2 - line.Y1;
+        double dx = line.X2 - line.X1;
+        double dy = line.Y2 - line.Y1;
         double theta = Math.Atan2(dy, dx);
 
         var p1 = new Point(
-            line.X2 - headLen * Math.Cos(theta - angle),
-            line.Y2 - headLen * Math.Sin(theta - angle));
+            line.X2 - headLen * Math.Cos(theta - angle), line.Y2 - headLen * Math.Sin(theta - angle));
         var p2 = new Point(
-            line.X2 - headLen * Math.Cos(theta + angle),
-            line.Y2 - headLen * Math.Sin(theta + angle));
+            line.X2 - headLen * Math.Cos(theta + angle), line.Y2 - headLen * Math.Sin(theta + angle));
 
         head.Points.Clear();
         head.Points.Add(p1);
@@ -419,13 +387,7 @@ public partial class PreviewWindow : Window
     {
         var tb = new TextBox
         {
-            FontSize = 16,
-            Foreground = new SolidColorBrush(_activeColor),
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(1),
-            BorderBrush = Brushes.Gray,
-            MinWidth = 80,
-            AcceptsReturn = false
+            FontSize = 16, Foreground = new SolidColorBrush(_activeColor), Background = Brushes.Transparent, BorderThickness = new Thickness(1), BorderBrush = Brushes.Gray, MinWidth = 80, AcceptsReturn = false
         };
 
         tb.LostFocus += (_, _) =>
@@ -436,7 +398,7 @@ public partial class PreviewWindow : Window
         };
 
         Canvas.SetLeft(tb, position.X);
-        Canvas.SetTop(tb,  position.Y);
+        Canvas.SetTop(tb, position.Y);
         AddToCanvas(tb);
         tb.Focus();
     }
@@ -452,10 +414,7 @@ public partial class PreviewWindow : Window
     {
         var dlg = new SaveFileDialog
         {
-            Title = "Save Screenshot",
-            Filter = "PNG Image|*.png|JPEG Image|*.jpg",
-            DefaultExt = ".png",
-            FileName = $"screenshot_{DateTime.Now:yyyyMMdd_HHmmss}"
+            Title = "Save Screenshot", Filter = "PNG Image|*.png|JPEG Image|*.jpg", DefaultExt = ".png", FileName = $"screenshot_{DateTime.Now:yyyyMMdd_HHmmss}"
         };
 
         if (dlg.ShowDialog() != true) return;
@@ -479,9 +438,7 @@ public partial class PreviewWindow : Window
         RootGrid.Arrange(new Rect(RootGrid.DesiredSize));
 
         var rtb = new RenderTargetBitmap(
-            (int)AnnotationCanvas.Width,
-            (int)AnnotationCanvas.Height,
-            96, 96, PixelFormats.Pbgra32);
+            (int)AnnotationCanvas.Width, (int)AnnotationCanvas.Height, 96, 96, PixelFormats.Pbgra32);
 
         rtb.Render(RootGrid);
         rtb.Freeze();
