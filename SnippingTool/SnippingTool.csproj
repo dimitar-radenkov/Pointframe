@@ -10,7 +10,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="Hardcodet.Wpf.TaskbarNotification" Version="1.0.5" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
     <PackageReference Include="System.Drawing.Common" Version="9.0.4" />
   </ItemGroup>
 

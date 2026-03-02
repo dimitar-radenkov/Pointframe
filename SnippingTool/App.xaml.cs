@@ -4,6 +4,9 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using Hardcodet.Wpf.TaskbarNotification;
+using Microsoft.Extensions.DependencyInjection;
+using SnippingTool.Services;
+using SnippingTool.ViewModels;
 using Application = System.Windows.Application;
 
 namespace SnippingTool;
@@ -12,6 +15,7 @@ public partial class App : Application
 {
     private TaskbarIcon? _trayIcon;
     private HwndSource? _hotkeySource;
+    private ServiceProvider _services = null!;
 
     private const int HotkeyId = 9000;
     private const uint VK_PRINTSCREEN = 0x2C;
@@ -28,8 +32,23 @@ public partial class App : Application
     {
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+        _services = services.BuildServiceProvider();
+
         _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
         RegisterGlobalHotkey();
+    }
+
+    private static void ConfigureServices(IServiceCollection services)
+    {
+        services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
+        services.AddTransient<OverlayViewModel>();
+        services.AddTransient<PreviewViewModel>();
+        services.AddTransient<OverlayWindow>();
+        services.AddTransient<Func<BitmapSource, Rect, PreviewWindow>>(
+            sp => (bitmap, rect) => new PreviewWindow(sp.GetRequiredService<PreviewViewModel>(), bitmap, rect));
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -40,6 +59,7 @@ public partial class App : Application
             _hotkeySource.Dispose();
         }
         _trayIcon?.Dispose();
+        _services.Dispose();
         base.OnExit(e);
     }
 
@@ -67,8 +87,6 @@ public partial class App : Application
         return IntPtr.Zero;
     }
 
-    // ─── Tray menu handlers ───────────────────────────────────────────────
-
     private void TrayIcon_LeftClick(object sender, RoutedEventArgs e) => StartSnip();
     private void NewSnip_Click(object sender, RoutedEventArgs e) => StartSnip();
     private void Exit_Click(object sender, RoutedEventArgs e) => Current.Shutdown();
@@ -88,20 +106,16 @@ public partial class App : Application
             _ => Dispatcher.Invoke(() => CaptureWindow(hwnd)));
     }
 
-    // ─── Capture implementations ──────────────────────────────────────────
-
     private void StartSnip()
     {
-        var overlay = new OverlayWindow();
-        overlay.Show();
+        _services.GetRequiredService<OverlayWindow>().Show();
     }
 
     private void CaptureFullScreen()
     {
-        // SystemInformation.VirtualScreen returns bounds in physical (device) pixels
+        var capture = _services.GetRequiredService<IScreenCaptureService>();
         var b = System.Windows.Forms.SystemInformation.VirtualScreen;
-        var bitmap = ScreenCapture.Capture(b.X, b.Y, b.Width, b.Height);
-        OnSnipCompleted(bitmap, System.Windows.Rect.Empty);
+        OnSnipCompleted(capture.Capture(b.X, b.Y, b.Width, b.Height), System.Windows.Rect.Empty);
     }
 
     private void CaptureWindow(IntPtr hwnd)
@@ -110,13 +124,13 @@ public partial class App : Application
         var w = r.Right - r.Left;
         var h = r.Bottom - r.Top;
         if (w <= 0 || h <= 0) return;
-        var bitmap = ScreenCapture.Capture(r.Left, r.Top, w, h);
-        OnSnipCompleted(bitmap, System.Windows.Rect.Empty);
+        var capture = _services.GetRequiredService<IScreenCaptureService>();
+        OnSnipCompleted(capture.Capture(r.Left, r.Top, w, h), System.Windows.Rect.Empty);
     }
 
     private void OnSnipCompleted(BitmapSource bitmap, System.Windows.Rect snipScreenRect)
     {
-        var preview = new PreviewWindow(bitmap, snipScreenRect);
-        preview.Show();
+        var factory = _services.GetRequiredService<Func<BitmapSource, Rect, PreviewWindow>>();
+        factory(bitmap, snipScreenRect).Show();
     }
 }

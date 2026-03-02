@@ -2,19 +2,16 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using SnippingTool.Services;
 
 namespace SnippingTool;
 
-internal static class ScreenCapture
+internal sealed class ScreenCaptureService : IScreenCaptureService
 {
     [DllImport("gdi32.dll")]
     private static extern bool DeleteObject(IntPtr hObject);
 
-    /// <summary>
-    /// Captures a rectangle of the screen at physical pixel coordinates.
-    /// The caller must convert WPF DIPs to physical pixels before calling this.
-    /// </summary>
-    public static BitmapSource Capture(int x, int y, int width, int height)
+    public BitmapSource Capture(int x, int y, int width, int height)
     {
         using var bmp = new System.Drawing.Bitmap(
             width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
