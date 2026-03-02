@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using SnippingTool.Models;
 using SnippingTool.Services;
 using Xunit;
 
@@ -6,7 +8,8 @@ namespace SnippingTool.Tests.Services;
 
 public class ScreenRecordingServiceTests
 {
-    private static ScreenRecordingService CreateSut() => new(NullLogger<ScreenRecordingService>.Instance);
+    private static ScreenRecordingService CreateSut() =>
+        new(NullLogger<ScreenRecordingService>.Instance, Options.Create(new RecordingOptions()));
 
     [Fact]
     public void IsRecording_IsFalse_BeforeStart()

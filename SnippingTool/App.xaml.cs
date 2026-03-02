@@ -2,9 +2,11 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using Hardcodet.Wpf.TaskbarNotification;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using SnippingTool.Models;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Application = System.Windows.Application;
@@ -34,6 +36,11 @@ public partial class App : Application
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+        var config = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+            .Build();
+
         var logPath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "SnippingTool", "logs", "snipping-.log");
@@ -47,13 +54,13 @@ public partial class App : Application
             .WriteTo.File(
                 logPath,
                 rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 7,
+                retainedFileCountLimit: config.GetValue<int>("Logging:RetainedFileCountLimit", 7),
                 outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
             .WriteTo.Debug()
             .CreateLogger();
 
         var services = new ServiceCollection();
-        ConfigureServices(services);
+        ConfigureServices(services, config);
         _services = services.BuildServiceProvider();
 
         _logger = _services.GetRequiredService<ILogger<App>>();
@@ -67,8 +74,9 @@ public partial class App : Application
         _logger.LogInformation("Global hotkey (Print Screen) registered");
     }
 
-    private static void ConfigureServices(IServiceCollection services)
+    private static void ConfigureServices(IServiceCollection services, IConfiguration config)
     {
+        services.Configure<RecordingOptions>(config.GetSection(RecordingOptions.Section));
         services.AddLogging(b => b.AddSerilog(dispose: false));
         services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
         services.AddTransient<IScreenRecordingService, ScreenRecordingService>();

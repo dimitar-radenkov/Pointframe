@@ -4,6 +4,8 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using SnippingTool.Models;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Color = System.Windows.Media.Color;
@@ -21,18 +23,21 @@ public partial class OverlayWindow : Window
     private readonly IScreenCaptureService _screenCapture;
     private readonly IScreenRecordingService _recorder;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly IOptions<RecordingOptions> _recordingOptions;
     private AnnotationCanvasRenderer _renderer = null!;
 
     public OverlayWindow(
         OverlayViewModel vm,
         IScreenCaptureService screenCapture,
         IScreenRecordingService recorder,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IOptions<RecordingOptions> recordingOptions)
     {
         _vm = vm;
         _screenCapture = screenCapture;
         _recorder = recorder;
         _loggerFactory = loggerFactory;
+        _recordingOptions = recordingOptions;
         InitializeComponent();
         DataContext = _vm;
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
@@ -345,7 +350,7 @@ public partial class OverlayWindow : Window
 
         var videosDir = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SnippingTool", "Videos");
+            "SnippingTool", _recordingOptions.Value.OutputSubfolder);
         System.IO.Directory.CreateDirectory(videosDir);
         var path = System.IO.Path.Combine(videosDir, $"SnipRec-{DateTime.Now:yyyyMMdd-HHmmss}.avi");
 
@@ -356,7 +361,7 @@ public partial class OverlayWindow : Window
         var border = new RecordingBorderWindow(regionRect.Left, regionRect.Top, regionRect.Width, regionRect.Height);
         border.Show();
 
-        var hud = new RecordingHudWindow(_recorder, path, _loggerFactory.CreateLogger<RecordingHudWindow>(), regionRect);
+        var hud = new RecordingHudWindow(_recorder, path, _loggerFactory.CreateLogger<RecordingHudWindow>(), regionRect, _recordingOptions);
         hud.StopCompleted += () => Dispatcher.Invoke(() =>
         {
             border.Close();
