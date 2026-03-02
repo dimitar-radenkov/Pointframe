@@ -361,6 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-# Squad AI team files
+# Squad
 .squad/
 .squad-templates/
