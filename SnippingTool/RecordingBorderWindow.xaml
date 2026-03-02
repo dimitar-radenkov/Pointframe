@@ -1,0 +1,52 @@
+<Window x:Class="SnippingTool.RecordingBorderWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize"
+        IsHitTestVisible="False">
+    <Grid>
+        <!-- White dashes -->
+        <Rectangle x:Name="WhiteRect"
+                   Margin="1"
+                   Fill="Transparent"
+                   Stroke="White"
+                   StrokeThickness="2">
+            <Rectangle.StrokeDashArray>
+                <DoubleCollection>6 6</DoubleCollection>
+            </Rectangle.StrokeDashArray>
+        </Rectangle>
+        <!-- Black dashes, offset by half period (6) to interleave with the white ones -->
+        <Rectangle x:Name="BlackRect"
+                   Margin="1"
+                   Fill="Transparent"
+                   Stroke="Black"
+                   StrokeThickness="2"
+                   StrokeDashOffset="6">
+            <Rectangle.StrokeDashArray>
+                <DoubleCollection>6 6</DoubleCollection>
+            </Rectangle.StrokeDashArray>
+        </Rectangle>
+        <Grid.Triggers>
+            <EventTrigger RoutedEvent="Loaded">
+                <BeginStoryboard>
+                    <!-- Both animations shift by one full period (-12) to loop seamlessly -->
+                    <Storyboard RepeatBehavior="Forever">
+                        <DoubleAnimation Storyboard.TargetName="WhiteRect"
+                                         Storyboard.TargetProperty="StrokeDashOffset"
+                                         From="0" To="-12"
+                                         Duration="0:0:0.5"/>
+                        <DoubleAnimation Storyboard.TargetName="BlackRect"
+                                         Storyboard.TargetProperty="StrokeDashOffset"
+                                         From="6" To="-6"
+                                         Duration="0:0:0.5"/>
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger>
+        </Grid.Triggers>
+    </Grid>
+</Window>

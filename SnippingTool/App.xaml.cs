@@ -71,6 +71,7 @@ public partial class App : Application
     {
         services.AddLogging(b => b.AddSerilog(dispose: false));
         services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
+        services.AddTransient<IScreenRecordingService, ScreenRecordingService>();
         services.AddSingleton<IAnnotationGeometryService, AnnotationGeometryService>();
         services.AddTransient<OverlayViewModel>();
         services.AddTransient<OverlayWindow>();

@@ -19,12 +19,16 @@ public partial class OverlayWindow : Window
 {
     private readonly OverlayViewModel _vm;
     private readonly IScreenCaptureService _screenCapture;
+    private readonly IScreenRecordingService _recorder;
+    private readonly ILoggerFactory _loggerFactory;
     private AnnotationCanvasRenderer _renderer = null!;
 
-    public OverlayWindow(OverlayViewModel vm, IScreenCaptureService screenCapture, ILoggerFactory loggerFactory)
+    public OverlayWindow(OverlayViewModel vm, IScreenCaptureService screenCapture, IScreenRecordingService recorder, ILoggerFactory loggerFactory)
     {
         _vm = vm;
         _screenCapture = screenCapture;
+        _recorder = recorder;
+        _loggerFactory = loggerFactory;
         InitializeComponent();
         DataContext = _vm;
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
@@ -326,6 +330,32 @@ public partial class OverlayWindow : Window
 
     private void Copy_Click(object sender, RoutedEventArgs e) => DoCopy();
     private void CloseBtn_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void Record_Click(object sender, RoutedEventArgs e)
+    {
+        var sel = _vm.SelectionRect;
+        var screenX = (int)((Left + sel.X) * _vm.DpiX);
+        var screenY = (int)((Top + sel.Y) * _vm.DpiY);
+        var screenW = (int)(sel.Width * _vm.DpiX);
+        var screenH = (int)(sel.Height * _vm.DpiY);
+
+        var videosDir = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "SnippingTool", "Videos");
+        System.IO.Directory.CreateDirectory(videosDir);
+        var path = System.IO.Path.Combine(videosDir, $"SnipRec-{DateTime.Now:yyyyMMdd-HHmmss}.avi");
+
+        _recorder.Start(screenX, screenY, screenW, screenH, path);
+        Visibility = Visibility.Hidden;
+
+        var border = new RecordingBorderWindow(Left + sel.X, Top + sel.Y, sel.Width, sel.Height);
+        border.Show();
+
+        var regionRect = new Rect(Left + sel.X, Top + sel.Y, sel.Width, sel.Height);
+        var hud = new RecordingHudWindow(_recorder, path, _loggerFactory.CreateLogger<RecordingHudWindow>(), regionRect);
+        hud.StopCompleted += () => Dispatcher.Invoke(() => { border.Close(); Close(); });
+        hud.Show();
+    }
 
     private void DoCopy()
     {
