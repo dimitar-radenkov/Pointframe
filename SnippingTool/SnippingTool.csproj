@@ -7,6 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
     <!-- Hardcodet.Wpf.TaskbarNotification v1.0.5 targets .NET Framework but works fine on net10.0-windows -->
     <NoWarn>$(NoWarn);NU1701</NoWarn>
   </PropertyGroup>
@@ -31,7 +32,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="Assets\icon.ico" />
+    <None Include="Assets\icon.ico" />
   </ItemGroup>
 
 </Project>
