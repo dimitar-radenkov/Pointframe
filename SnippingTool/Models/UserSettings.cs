@@ -21,4 +21,5 @@ public sealed class UserSettings
 
     public string DefaultAnnotationColor { get; set; } = "#FFFF0000";
     public double DefaultStrokeThickness { get; set; } = 2.5;
+    public int CaptureDelaySeconds { get; set; } = 0;
 }

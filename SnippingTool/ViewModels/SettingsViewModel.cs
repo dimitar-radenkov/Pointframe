@@ -22,6 +22,7 @@ public partial class SettingsViewModel : ObservableObject
         _recordingFps = s.RecordingFps;
         _recordingJpegQuality = s.RecordingJpegQuality;
         _hudCloseDelaySeconds = s.HudCloseDelaySeconds;
+        _captureDelaySeconds = s.CaptureDelaySeconds;
         _defaultStrokeThickness = s.DefaultStrokeThickness;
 
         try
@@ -51,6 +52,9 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private int _hudCloseDelaySeconds;
+
+    [ObservableProperty]
+    private int _captureDelaySeconds;
 
     [ObservableProperty]
     private Color _defaultAnnotationColor;
@@ -121,6 +125,7 @@ public partial class SettingsViewModel : ObservableObject
             RecordingFps = RecordingFps,
             RecordingJpegQuality = RecordingJpegQuality,
             HudCloseDelaySeconds = HudCloseDelaySeconds,
+            CaptureDelaySeconds = CaptureDelaySeconds,
             HudGapPixels = _settingsService.Current.HudGapPixels,
             DefaultAnnotationColor = $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}",
             DefaultStrokeThickness = DefaultStrokeThickness,

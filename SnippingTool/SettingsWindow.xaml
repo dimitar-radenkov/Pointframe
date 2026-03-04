@@ -1,8 +1,9 @@
 <Window x:Class="SnippingTool.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
         Title="Settings"
-        Width="500" Height="490"
+        Width="500" Height="520"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI"
@@ -73,9 +74,19 @@
                                 Command="{Binding BrowseScreenshotPathCommand}"
                                 Margin="6,0,0,0"/>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="Auto-save on copy" Style="{StaticResource RowLabel}"/>
                         <CheckBox IsChecked="{Binding AutoSaveScreenshots}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Capture delay (sec)" Style="{StaticResource RowLabel}"/>
+                        <ComboBox Width="70"
+                                  SelectedItem="{Binding CaptureDelaySeconds}">
+                            <sys:Int32>0</sys:Int32>
+                            <sys:Int32>3</sys:Int32>
+                            <sys:Int32>5</sys:Int32>
+                            <sys:Int32>10</sys:Int32>
+                        </ComboBox>
                     </StackPanel>
                 </StackPanel>
             </Border>

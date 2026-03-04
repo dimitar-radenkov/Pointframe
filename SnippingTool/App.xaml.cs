@@ -237,6 +237,13 @@ public partial class App : Application
     private void StartSnip()
     {
         _logger?.LogDebug("Snip started");
+        var delay = _services.GetRequiredService<IUserSettingsService>().Current.CaptureDelaySeconds;
+        if (delay > 0)
+        {
+            new CountdownWindow(delay, () => _services.GetRequiredService<OverlayWindow>().Show()).Show();
+            return;
+        }
+
         _services.GetRequiredService<OverlayWindow>().Show();
     }
 
