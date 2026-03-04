@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
-using System.Windows.Interop;
 using Hardcodet.Wpf.TaskbarNotification;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,21 +15,32 @@ namespace SnippingTool;
 public partial class App : Application
 {
     private TaskbarIcon? _trayIcon;
-    private HwndSource? _hotkeySource;
     private ServiceProvider _services = null!;
     private ILogger<App>? _logger;
     private SettingsWindow? _settingsWindow;
 
-    private const int HotkeyId = 9000;
+    private const int WH_KEYBOARD_LL = 13;
+    private const int WM_KEYDOWN = 0x0100;
     private const uint VK_PRINTSCREEN = 0x2C;
 
-    [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-    [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+    private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+    private LowLevelKeyboardProc? _keyboardProc; // keep delegate alive to prevent GC
+    private IntPtr _keyboardHook = IntPtr.Zero;
+
+    [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+    [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+    [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("kernel32.dll")] private static extern IntPtr GetModuleHandle(string? lpModuleName);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+#pragma warning disable IDE1006 // P/Invoke struct fields must match Windows API names exactly
+    private struct KBDLLHOOKSTRUCT { public uint vkCode, scanCode, flags, time; public IntPtr dwExtraInfo; }
+#pragma warning restore IDE1006
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -91,10 +102,10 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _logger?.LogInformation("SnippingTool shutting down");
-        if (_hotkeySource != null)
+        if (_keyboardHook != IntPtr.Zero)
         {
-            UnregisterHotKey(_hotkeySource.Handle, HotkeyId);
-            _hotkeySource.Dispose();
+            UnhookWindowsHookEx(_keyboardHook);
+            _keyboardHook = IntPtr.Zero;
         }
 
         _trayIcon?.Dispose();
@@ -105,27 +116,30 @@ public partial class App : Application
 
     private void RegisterGlobalHotkey()
     {
-        var p = new HwndSourceParameters("SnippingToolHotkey")
+        _keyboardProc = KeyboardHookCallback;
+        using var process = Process.GetCurrentProcess();
+        var hMod = GetModuleHandle(process.MainModule?.ModuleName);
+        _keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, hMod, 0);
+        if (_keyboardHook == IntPtr.Zero)
         {
-            Width = 0,
-            Height = 0,
-            WindowStyle = unchecked((int)0x80000000) // WS_POPUP
-        };
-        _hotkeySource = new HwndSource(p);
-        _hotkeySource.AddHook(HotkeyHook);
-        RegisterHotKey(_hotkeySource.Handle, HotkeyId, 0, VK_PRINTSCREEN);
+            _logger?.LogWarning("Failed to register low-level keyboard hook (error {Code}); Print Screen hotkey will not work",
+                Marshal.GetLastWin32Error());
+        }
     }
 
-    private IntPtr HotkeyHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        const int WM_HOTKEY = 0x0312;
-        if (msg == WM_HOTKEY && wParam.ToInt32() == HotkeyId)
+        if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
         {
-            StartSnip();
-            handled = true;
+            var kb = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+            if (kb.vkCode == VK_PRINTSCREEN)
+            {
+                Dispatcher.InvokeAsync(StartSnip);
+                return (IntPtr)1; // suppress — prevents Windows from handling Print Screen
+            }
         }
 
-        return IntPtr.Zero;
+        return CallNextHookEx(_keyboardHook, nCode, wParam, lParam);
     }
 
     private void TrayIcon_LeftClick(object sender, RoutedEventArgs e) => StartSnip();
