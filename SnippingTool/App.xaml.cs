@@ -97,6 +97,7 @@ public partial class App : Application
         services.AddTransient<OverlayWindow>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<SettingsWindow>();
+        services.AddSingleton<IUpdateService, GitHubUpdateService>();
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -145,6 +146,65 @@ public partial class App : Application
     private void TrayIcon_LeftClick(object sender, RoutedEventArgs e) => StartSnip();
     private void NewSnip_Click(object sender, RoutedEventArgs e) => StartSnip();
     private void Exit_Click(object sender, RoutedEventArgs e) => Current.Shutdown();
+
+    private async void CheckForUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        var menuItem = (System.Windows.Controls.MenuItem)sender;
+        menuItem.IsEnabled = false;
+
+        try
+        {
+            var updateService = _services.GetRequiredService<IUpdateService>();
+            var result = await updateService.CheckForUpdatesAsync();
+
+            if (!result.IsUpdateAvailable)
+            {
+                var current = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version ?? new Version(1, 0, 0);
+                System.Windows.MessageBox.Show(
+                    $"You're already on the latest version (v{current.Major}.{current.Minor}.{current.Build}).",
+                    "Check for Updates",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Information);
+                return;
+            }
+
+            var v = result.LatestVersion;
+            var answer = System.Windows.MessageBox.Show(
+                $"Version {v.Major}.{v.Minor}.{v.Build} is available. Download and install now?",
+                "Update Available",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Information);
+
+            if (answer != System.Windows.MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            var fileName = $"SnippingTool-Setup-{v.Major}.{v.Minor}.{v.Build}.exe";
+            var destPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
+
+            using var http = new System.Net.Http.HttpClient();
+            http.DefaultRequestHeaders.Add("User-Agent", "SnippingTool");
+            var bytes = await http.GetByteArrayAsync(result.DownloadUrl);
+            await System.IO.File.WriteAllBytesAsync(destPath, bytes);
+
+            Process.Start(new ProcessStartInfo(destPath) { UseShellExecute = true });
+            Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Update check failed");
+            System.Windows.MessageBox.Show(
+                "Could not check for updates. Please check your internet connection and try again.",
+                "Check for Updates",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Warning);
+        }
+        finally
+        {
+            menuItem.IsEnabled = true;
+        }
+    }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
