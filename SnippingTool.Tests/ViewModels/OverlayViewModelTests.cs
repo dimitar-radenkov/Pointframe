@@ -1,7 +1,7 @@
 using System.Windows;
 using Microsoft.Extensions.Logging.Abstractions;
-using SnippingTool.Models;
 using SnippingTool.Services;
+using SnippingTool.Tests;
 using SnippingTool.ViewModels;
 using Xunit;
 
@@ -9,12 +9,6 @@ namespace SnippingTool.Tests.ViewModels;
 
 public sealed class OverlayViewModelTests
 {
-    private sealed class FakeUserSettingsService : IUserSettingsService
-    {
-        public UserSettings Current { get; } = new UserSettings();
-        public void Save(UserSettings settings) { }
-    }
-
     private static OverlayViewModel Vm() => new(new AnnotationGeometryService(), NullLogger<OverlayViewModel>.Instance, new FakeUserSettingsService());
 
     [Fact]

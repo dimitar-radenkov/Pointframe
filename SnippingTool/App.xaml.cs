@@ -60,7 +60,7 @@ public partial class App : Application
             .CreateLogger();
 
         var services = new ServiceCollection();
-        ConfigureServices(services, config);
+        ConfigureServices(services);
         _services = services.BuildServiceProvider();
 
         _logger = _services.GetRequiredService<ILogger<App>>();
@@ -75,7 +75,7 @@ public partial class App : Application
         _logger.LogInformation("Global hotkey (Print Screen) registered");
     }
 
-    private static void ConfigureServices(IServiceCollection services, IConfiguration config)
+    private static void ConfigureServices(IServiceCollection services)
     {
         services.AddLogging(b => b.AddSerilog(dispose: false));
         services.AddSingleton<IUserSettingsService, UserSettingsService>();

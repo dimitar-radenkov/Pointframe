@@ -96,17 +96,23 @@
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="Frames per second" Style="{StaticResource RowLabel}"/>
                         <TextBox Width="60"
-                                 Text="{Binding RecordingFps, UpdateSourceTrigger=PropertyChanged}"/>
+                                 Text="{Binding RecordingFps, UpdateSourceTrigger=PropertyChanged}"
+                                 PreviewTextInput="IntInput_PreviewTextInput"
+                                 DataObject.Pasting="IntInput_Pasting"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="JPEG quality (1–100)" Style="{StaticResource RowLabel}"/>
                         <TextBox Width="60"
-                                 Text="{Binding RecordingJpegQuality, UpdateSourceTrigger=PropertyChanged}"/>
+                                 Text="{Binding RecordingJpegQuality, UpdateSourceTrigger=PropertyChanged}"
+                                 PreviewTextInput="IntInput_PreviewTextInput"
+                                 DataObject.Pasting="IntInput_Pasting"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="HUD close delay (sec)" Style="{StaticResource RowLabel}"/>
                         <TextBox Width="60"
-                                 Text="{Binding HudCloseDelaySeconds, UpdateSourceTrigger=PropertyChanged}"/>
+                                 Text="{Binding HudCloseDelaySeconds, UpdateSourceTrigger=PropertyChanged}"
+                                 PreviewTextInput="IntInput_PreviewTextInput"
+                                 DataObject.Pasting="IntInput_Pasting"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -128,7 +134,9 @@
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="Stroke thickness" Style="{StaticResource RowLabel}"/>
                         <TextBox Width="60"
-                                 Text="{Binding DefaultStrokeThickness, UpdateSourceTrigger=PropertyChanged}"/>
+                                 Text="{Binding DefaultStrokeThickness, UpdateSourceTrigger=PropertyChanged}"
+                                 PreviewTextInput="DoubleInput_PreviewTextInput"
+                                 DataObject.Pasting="DoubleInput_Pasting"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
