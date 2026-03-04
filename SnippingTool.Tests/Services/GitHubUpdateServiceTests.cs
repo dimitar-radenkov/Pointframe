@@ -8,9 +8,9 @@ namespace SnippingTool.Tests.Services;
 
 public sealed class GitHubUpdateServiceTests
 {
-    private static GitHubUpdateService CreateService(string responseJson)
+    private static GitHubUpdateService CreateService(string responseJson, HttpStatusCode statusCode = HttpStatusCode.OK)
     {
-        var handler = new FakeHttpMessageHandler(responseJson);
+        var handler = new FakeHttpMessageHandler(responseJson, statusCode);
         var http = new HttpClient(handler)
         {
             Timeout = TimeSpan.FromSeconds(5),
@@ -72,12 +72,100 @@ public sealed class GitHubUpdateServiceTests
         Assert.False(result.IsUpdateAvailable);
     }
 
-    private sealed class FakeHttpMessageHandler(string responseJson) : HttpMessageHandler
+    [Fact]
+    public async Task NoReleasesYet_404_ReturnsNoUpdate()
+    {
+        var result = await CreateService("{}", HttpStatusCode.NotFound).CheckForUpdatesAsync();
+
+        Assert.False(result.IsUpdateAvailable);
+        Assert.Empty(result.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task ServerError_500_Throws()
+    {
+        var service = CreateService("{}", HttpStatusCode.InternalServerError);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => service.CheckForUpdatesAsync());
+    }
+
+    [Fact]
+    public async Task UpdateAvailable_NoExeAsset_ReturnsEmptyDownloadUrl()
+    {
+        const string json = """
+            {
+              "tag_name": "v999.0.0",
+              "assets": [
+                {
+                  "name": "SnippingTool-999.0.0.zip",
+                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/SnippingTool-999.0.0.zip"
+                }
+              ]
+            }
+            """;
+
+        var result = await CreateService(json).CheckForUpdatesAsync();
+
+        Assert.True(result.IsUpdateAvailable);
+        Assert.Empty(result.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task DisallowedDownloadUrl_Throws()
+    {
+        const string json = """
+            {
+              "tag_name": "v999.0.0",
+              "assets": [
+                {
+                  "name": "malicious.exe",
+                  "browser_download_url": "https://evil.example.com/malicious.exe"
+                }
+              ]
+            }
+            """;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(json).CheckForUpdatesAsync());
+    }
+
+    [Fact(DisplayName = "Tag without 'v' prefix is parsed correctly")]
+    public async Task TagWithoutVPrefix_ParsedCorrectly()
+    {
+        const string json = """
+            {
+              "tag_name": "999.0.0",
+              "assets": []
+            }
+            """;
+
+        var result = await CreateService(json).CheckForUpdatesAsync();
+
+        Assert.Equal(new Version(999, 0, 0), result.LatestVersion);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Integration_GitHubApi_NoReleasesYet_ReturnsNoUpdate()
+    {
+        // Requires network access and the public repo to exist.
+        // Will return 404 (no releases) or a real release — either is valid.
+        var service = new GitHubUpdateService(Microsoft.Extensions.Logging.Abstractions.NullLogger<GitHubUpdateService>.Instance);
+
+        var result = await service.CheckForUpdatesAsync();
+
+        // Either state is acceptable; we just verify no exception is thrown
+        // and the result is well-formed.
+        Assert.NotNull(result);
+        Assert.True(result.LatestVersion >= new Version(0, 0, 0));
+    }
+
+    private sealed class FakeHttpMessageHandler(string responseJson, HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            Task.FromResult(new HttpResponseMessage(statusCode)
             {
                 Content = new StringContent(responseJson, System.Text.Encoding.UTF8, "application/json"),
             });
     }
 }
+
