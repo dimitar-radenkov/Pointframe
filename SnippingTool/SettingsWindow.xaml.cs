@@ -1,10 +1,9 @@
 using System.Globalization;
-using System.Linq;
 using System.Windows;
 using System.Windows.Input;
+using SnippingTool.ViewModels;
 using DataFormats = System.Windows.DataFormats;
 using TextBox = System.Windows.Controls.TextBox;
-using SnippingTool.ViewModels;
 
 namespace SnippingTool;
 
