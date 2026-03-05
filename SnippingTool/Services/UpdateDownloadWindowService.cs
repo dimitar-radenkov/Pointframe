@@ -20,7 +20,7 @@ public sealed class UpdateDownloadWindowService : IUpdateDownloadService
         var vm = _vmFactory();
         var window = _windowFactory(vm);
         window.Show();
-        await vm.DownloadAndInstallAsync(downloadUrl, destPath);
+        await vm.DownloadAndInstallAsync(downloadUrl, destPath).ConfigureAwait(false);
         return !vm.IsFailed;
     }
 }
