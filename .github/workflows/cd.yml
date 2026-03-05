@@ -13,6 +13,9 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
+    env:
+      SIGNING_CERT_B64: ${{ secrets.SIGNING_CERT_B64 }}
+      SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v4
@@ -54,10 +57,10 @@ jobs:
       # Store your PFX as a base64 secret: SIGNING_CERT_B64
       # Store the PFX password as:          SIGNING_CERT_PASSWORD
       - name: Sign executable
-        if: ${{ secrets.SIGNING_CERT_B64 != '' }}
+        if: ${{ env.SIGNING_CERT_B64 != '' }}
         env:
-          SIGNING_CERT_B64: ${{ secrets.SIGNING_CERT_B64 }}
-          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+          SIGNING_CERT_B64: ${{ env.SIGNING_CERT_B64 }}
+          SIGNING_CERT_PASSWORD: ${{ env.SIGNING_CERT_PASSWORD }}
         shell: pwsh
         run: |
           $pfx = [System.Convert]::FromBase64String($env:SIGNING_CERT_B64)
@@ -87,10 +90,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Sign installer
-        if: ${{ secrets.SIGNING_CERT_B64 != '' }}
+        if: ${{ env.SIGNING_CERT_B64 != '' }}
         env:
-          SIGNING_CERT_B64: ${{ secrets.SIGNING_CERT_B64 }}
-          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+          SIGNING_CERT_B64: ${{ env.SIGNING_CERT_B64 }}
+          SIGNING_CERT_PASSWORD: ${{ env.SIGNING_CERT_PASSWORD }}
         shell: pwsh
         run: |
           $pfx = [System.Convert]::FromBase64String($env:SIGNING_CERT_B64)
