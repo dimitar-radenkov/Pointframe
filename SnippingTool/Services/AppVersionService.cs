@@ -9,7 +9,8 @@ public sealed class AppVersionService : IAppVersionService
 
     private static Version GetCurrentVersion()
     {
-        var location = Assembly.GetEntryAssembly()?.Location;
+        // Assembly.Location is empty for single-file publishes; use Environment.ProcessPath instead.
+        var location = Environment.ProcessPath ?? Assembly.GetEntryAssembly()?.Location;
         if (!string.IsNullOrEmpty(location))
         {
             var fvi = FileVersionInfo.GetVersionInfo(location);
