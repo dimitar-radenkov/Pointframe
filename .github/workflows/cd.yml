@@ -51,7 +51,7 @@ jobs:
       # Store your PFX as a base64 secret: SIGNING_CERT_B64
       # Store the PFX password as:          SIGNING_CERT_PASSWORD
       - name: Sign executable
-        if: env.SIGNING_CERT_B64 != ''
+        if: ${{ secrets.SIGNING_CERT_B64 != '' }}
         env:
           SIGNING_CERT_B64: ${{ secrets.SIGNING_CERT_B64 }}
           SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
@@ -82,6 +82,26 @@ jobs:
             /O"installer\output" `
             installer\SnippingTool.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Sign installer
+        if: ${{ secrets.SIGNING_CERT_B64 != '' }}
+        env:
+          SIGNING_CERT_B64: ${{ secrets.SIGNING_CERT_B64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        shell: pwsh
+        run: |
+          $pfx = [System.Convert]::FromBase64String($env:SIGNING_CERT_B64)
+          $pfxPath = Join-Path $env:TEMP 'signing.pfx'
+          [IO.File]::WriteAllBytes($pfxPath, $pfx)
+          try {
+            $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
+              Sort-Object -Property FullName -Descending | Select-Object -First 1).FullName
+            $setupPath = "installer\output\SnippingTool-${{ steps.version.outputs.display }}-Setup.exe"
+            & $signtool sign /fd SHA256 /p $env:SIGNING_CERT_PASSWORD /f $pfxPath /tr http://timestamp.digicert.com /td SHA256 $setupPath
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v7
