@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using SnippingTool.Services;
-using SnippingTool.Tests;
 using Xunit;
 
 namespace SnippingTool.Tests.Services;

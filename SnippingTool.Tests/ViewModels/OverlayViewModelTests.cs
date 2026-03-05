@@ -1,7 +1,6 @@
 using System.Windows;
 using Microsoft.Extensions.Logging.Abstractions;
 using SnippingTool.Services;
-using SnippingTool.Tests;
 using SnippingTool.ViewModels;
 using Xunit;
 

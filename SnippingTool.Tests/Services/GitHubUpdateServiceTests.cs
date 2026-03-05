@@ -38,7 +38,7 @@ public sealed class GitHubUpdateServiceTests
     [Fact]
     public async Task NewerVersionAvailable_ReturnsUpdateWithDownloadUrl()
     {
-        const string json = """
+        const string Json = """
             {
               "tag_name": "v999.0.0",
               "assets": [
@@ -50,7 +50,7 @@ public sealed class GitHubUpdateServiceTests
             }
             """;
 
-        var result = await CreateService(json).CheckForUpdatesAsync();
+        var result = await CreateService(Json).CheckForUpdatesAsync();
 
         Assert.True(result.IsUpdateAvailable);
         Assert.Equal(new Version(999, 0, 0), result.LatestVersion);
@@ -60,14 +60,14 @@ public sealed class GitHubUpdateServiceTests
     [Fact]
     public async Task InvalidTagFormat_ReturnsNoUpdate()
     {
-        const string json = """
+        const string Json = """
             {
               "tag_name": "not-a-version",
               "assets": []
             }
             """;
 
-        var result = await CreateService(json).CheckForUpdatesAsync();
+        var result = await CreateService(Json).CheckForUpdatesAsync();
 
         Assert.False(result.IsUpdateAvailable);
     }
@@ -92,7 +92,7 @@ public sealed class GitHubUpdateServiceTests
     [Fact]
     public async Task UpdateAvailable_NoExeAsset_ReturnsEmptyDownloadUrl()
     {
-        const string json = """
+        const string Json = """
             {
               "tag_name": "v999.0.0",
               "assets": [
@@ -104,7 +104,7 @@ public sealed class GitHubUpdateServiceTests
             }
             """;
 
-        var result = await CreateService(json).CheckForUpdatesAsync();
+        var result = await CreateService(Json).CheckForUpdatesAsync();
 
         Assert.True(result.IsUpdateAvailable);
         Assert.Empty(result.DownloadUrl);
@@ -113,7 +113,7 @@ public sealed class GitHubUpdateServiceTests
     [Fact]
     public async Task DisallowedDownloadUrl_Throws()
     {
-        const string json = """
+        const string Json = """
             {
               "tag_name": "v999.0.0",
               "assets": [
@@ -125,20 +125,20 @@ public sealed class GitHubUpdateServiceTests
             }
             """;
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(json).CheckForUpdatesAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(Json).CheckForUpdatesAsync());
     }
 
     [Fact(DisplayName = "Tag without 'v' prefix is parsed correctly")]
     public async Task TagWithoutVPrefix_ParsedCorrectly()
     {
-        const string json = """
+        const string Json = """
             {
               "tag_name": "999.0.0",
               "assets": []
             }
             """;
 
-        var result = await CreateService(json).CheckForUpdatesAsync();
+        var result = await CreateService(Json).CheckForUpdatesAsync();
 
         Assert.Equal(new Version(999, 0, 0), result.LatestVersion);
     }

@@ -101,6 +101,8 @@ public partial class App : Application
         services.AddTransient<SettingsWindow>();
         services.AddTransient<AboutViewModel>();
         services.AddTransient<AboutWindow>();
+        services.AddTransient<UpdateDownloadViewModel>();
+        services.AddTransient<UpdateDownloadWindow>();
         services.AddSingleton<IUpdateService, GitHubUpdateService>();
     }
 
@@ -187,13 +189,15 @@ public partial class App : Application
             var fileName = $"SnippingTool-Setup-{v.Major}.{v.Minor}.{v.Build}.exe";
             var destPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
 
-            using var http = new System.Net.Http.HttpClient();
-            http.DefaultRequestHeaders.Add("User-Agent", "SnippingTool");
-            var bytes = await http.GetByteArrayAsync(result.DownloadUrl);
-            await System.IO.File.WriteAllBytesAsync(destPath, bytes);
+            var downloadVm = _services.GetRequiredService<UpdateDownloadViewModel>();
+            var downloadWindow = _services.GetRequiredService<UpdateDownloadWindow>();
+            downloadWindow.Show();
+            await downloadVm.DownloadAndInstallAsync(result.DownloadUrl, destPath);
 
-            Process.Start(new ProcessStartInfo(destPath) { UseShellExecute = true });
-            Current.Shutdown();
+            if (!downloadVm.IsFailed)
+            {
+                Current.Shutdown();
+            }
         }
         catch (Exception ex)
         {
