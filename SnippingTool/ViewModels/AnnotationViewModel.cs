@@ -14,7 +14,10 @@ public partial class AnnotationViewModel : ObservableObject
     private readonly IAnnotationGeometryService _geometry;
     protected readonly ILogger _logger;
 
-    public AnnotationViewModel(IAnnotationGeometryService geometry, ILogger logger, IUserSettingsService settings)
+    public AnnotationViewModel(
+        IAnnotationGeometryService geometry,
+        ILogger logger,
+        IUserSettingsService settings)
     {
         _geometry = geometry;
         _logger = logger;

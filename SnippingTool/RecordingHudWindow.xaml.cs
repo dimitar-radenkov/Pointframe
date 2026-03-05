@@ -11,6 +11,7 @@ public partial class RecordingHudWindow : Window
     private readonly string _outputPath;
     private readonly ILogger<RecordingHudWindow> _logger;
     private readonly IUserSettingsService _settings;
+    private readonly IProcessService _process;
     private CancellationTokenSource? _elapsedCts;
     private DateTime _startTime;
 
@@ -18,12 +19,19 @@ public partial class RecordingHudWindow : Window
 
     public event Action? StopCompleted;
 
-    public RecordingHudWindow(IScreenRecordingService svc, string outputPath, ILogger<RecordingHudWindow> logger, Rect regionRect, IUserSettingsService settings)
+    public RecordingHudWindow(
+        IScreenRecordingService svc,
+        string outputPath,
+        ILogger<RecordingHudWindow> logger,
+        Rect regionRect,
+        IUserSettingsService settings,
+        IProcessService process)
     {
         _svc = svc;
         _outputPath = outputPath;
         _logger = logger;
         _settings = settings;
+        _process = process;
         _regionRect = regionRect;
         InitializeComponent();
         _logger.LogDebug("RecordingHudWindow created for path={Path}", outputPath);
@@ -116,7 +124,7 @@ public partial class RecordingHudWindow : Window
         var dir = Path.GetDirectoryName(_outputPath);
         if (dir is not null)
         {
-            System.Diagnostics.Process.Start("explorer.exe", dir);
+            _process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", dir));
         }
     }
 }

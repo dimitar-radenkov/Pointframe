@@ -4,5 +4,9 @@ namespace SnippingTool.Services;
 
 public interface IScreenCaptureService
 {
-    BitmapSource Capture(int x, int y, int width, int height);
+    BitmapSource Capture(
+        int x,
+        int y,
+        int width,
+        int height);
 }

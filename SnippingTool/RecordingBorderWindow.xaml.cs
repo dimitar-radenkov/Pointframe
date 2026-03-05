@@ -16,7 +16,11 @@ public partial class RecordingBorderWindow : Window
     private const int WS_EX_TRANSPARENT = 0x00000020;
     private const int WS_EX_LAYERED = 0x00080000;
 
-    public RecordingBorderWindow(double left, double top, double width, double height)
+    public RecordingBorderWindow(
+        double left,
+        double top,
+        double width,
+        double height)
     {
         InitializeComponent();
         Left = left;

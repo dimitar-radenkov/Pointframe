@@ -3,6 +3,11 @@ namespace SnippingTool.Services;
 public interface IScreenRecordingService : IDisposable
 {
     bool IsRecording { get; }
-    void Start(int x, int y, int width, int height, string outputPath);
+    void Start(
+        int x,
+        int y,
+        int width,
+        int height,
+        string outputPath);
     void Stop();
 }

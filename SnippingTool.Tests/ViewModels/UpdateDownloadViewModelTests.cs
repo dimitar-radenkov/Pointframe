@@ -2,6 +2,8 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using Moq;
+using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Xunit;
 
@@ -23,7 +25,7 @@ public sealed class UpdateDownloadViewModelTests : IDisposable
     {
         var handler = new FakeHttpMessageHandler(responseBody, statusCode, contentLength);
         var http = new HttpClient(handler);
-        return UpdateDownloadViewModel.CreateForTesting(http);
+        return new UpdateDownloadViewModel(http, new Mock<IProcessService>().Object);
     }
 
     [Fact]
@@ -142,7 +144,7 @@ public sealed class UpdateDownloadViewModelTests : IDisposable
     {
         var cts = new CancellationTokenSource();
         var handler = new SlowHttpMessageHandler(onStart: () => cts.Cancel());
-        var vm = UpdateDownloadViewModel.CreateForTesting(new HttpClient(handler));
+        var vm = new UpdateDownloadViewModel(new HttpClient(handler), new Mock<IProcessService>().Object);
 
         await vm.DownloadAndInstallAsync("https://github.com/fake/asset.exe", _destPath, cts.Token);
 
@@ -155,7 +157,7 @@ public sealed class UpdateDownloadViewModelTests : IDisposable
     {
         var cts = new CancellationTokenSource();
         var handler = new SlowHttpMessageHandler(onStart: () => cts.Cancel());
-        var vm = UpdateDownloadViewModel.CreateForTesting(new HttpClient(handler));
+        var vm = new UpdateDownloadViewModel(new HttpClient(handler), new Mock<IProcessService>().Object);
 
         await vm.DownloadAndInstallAsync("https://github.com/fake/asset.exe", _destPath, cts.Token);
 
@@ -165,7 +167,7 @@ public sealed class UpdateDownloadViewModelTests : IDisposable
     [Fact]
     public void CancelCommand_RaisesRequestClose()
     {
-        var vm = UpdateDownloadViewModel.CreateForTesting(new HttpClient());
+        var vm = new UpdateDownloadViewModel(new HttpClient(), new Mock<IProcessService>().Object);
         var closed = false;
         vm.RequestClose += () => closed = true;
 
@@ -177,7 +179,7 @@ public sealed class UpdateDownloadViewModelTests : IDisposable
     [Fact]
     public void InitialState_IsDownloadingTrue()
     {
-        var vm = UpdateDownloadViewModel.CreateForTesting(new HttpClient());
+        var vm = new UpdateDownloadViewModel(new HttpClient(), new Mock<IProcessService>().Object);
 
         Assert.True(vm.IsDownloading);
         Assert.False(vm.IsFailed);

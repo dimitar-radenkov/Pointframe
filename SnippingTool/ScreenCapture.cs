@@ -19,7 +19,11 @@ internal sealed class ScreenCaptureService : IScreenCaptureService
         _logger = logger;
     }
 
-    public BitmapSource Capture(int x, int y, int width, int height)
+    public BitmapSource Capture(
+        int x,
+        int y,
+        int width,
+        int height)
     {
         _logger.LogInformation("Capture started: ({X},{Y}) {W}\u00d7{H}", x, y, width, height);
         try

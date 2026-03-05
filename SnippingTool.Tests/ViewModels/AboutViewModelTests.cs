@@ -1,3 +1,4 @@
+using Moq;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Xunit;
@@ -7,7 +8,7 @@ namespace SnippingTool.Tests.ViewModels;
 public sealed class AboutViewModelTests
 {
     private static AboutViewModel CreateVm(Version? version = null) =>
-        new(new FakeAppVersionService(version ?? new Version(1, 2, 3)));
+        new(new FakeAppVersionService(version ?? new Version(1, 2, 3)), new Mock<IProcessService>().Object);
 
     [Fact]
     public void Version_FormatsAsMajorMinorPatch()

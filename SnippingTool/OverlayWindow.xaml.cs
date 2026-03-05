@@ -22,6 +22,7 @@ public partial class OverlayWindow : Window
     private readonly IScreenRecordingService _recorder;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IUserSettingsService _userSettings;
+    private readonly IProcessService _processService;
     private AnnotationCanvasRenderer _renderer = null!;
     private RecordingBorderWindow? _recordingBorder;
     private RecordingHudWindow? _recordingHud;
@@ -31,13 +32,15 @@ public partial class OverlayWindow : Window
         IScreenCaptureService screenCapture,
         IScreenRecordingService recorder,
         ILoggerFactory loggerFactory,
-        IUserSettingsService userSettings)
+        IUserSettingsService userSettings,
+        IProcessService processService)
     {
         _vm = vm;
         _screenCapture = screenCapture;
         _recorder = recorder;
         _loggerFactory = loggerFactory;
         _userSettings = userSettings;
+        _processService = processService;
         InitializeComponent();
         DataContext = _vm;
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
@@ -359,7 +362,7 @@ public partial class OverlayWindow : Window
         _recordingBorder = new RecordingBorderWindow(regionRect.Left, regionRect.Top, regionRect.Width, regionRect.Height);
         _recordingBorder.Show();
 
-        _recordingHud = new RecordingHudWindow(_recorder, path, _loggerFactory.CreateLogger<RecordingHudWindow>(), regionRect, _userSettings);
+        _recordingHud = new RecordingHudWindow(_recorder, path, _loggerFactory.CreateLogger<RecordingHudWindow>(), regionRect, _userSettings, _processService);
         _recordingHud.StopCompleted += () => Dispatcher.Invoke(() =>
         {
             _recordingBorder?.Close();

@@ -17,6 +17,7 @@ public partial class App : Application
     private TaskbarIcon? _trayIcon;
     private ServiceProvider _services = null!;
     private ILogger<App>? _logger;
+    private IMessageBoxService _messageBox = null!;
     private SettingsWindow? _settingsWindow;
     private AboutWindow? _aboutWindow;
 
@@ -76,6 +77,7 @@ public partial class App : Application
         _services = services.BuildServiceProvider();
 
         _logger = _services.GetRequiredService<ILogger<App>>();
+        _messageBox = _services.GetRequiredService<IMessageBoxService>();
         _logger.LogInformation("SnippingTool starting up");
 
         Current.DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -91,6 +93,8 @@ public partial class App : Application
     {
         services.AddLogging(b => b.AddSerilog(dispose: false));
         services.AddSingleton<IAppVersionService, AppVersionService>();
+        services.AddSingleton<IProcessService, ProcessService>();
+        services.AddSingleton<IMessageBoxService, MessageBoxService>();
         services.AddSingleton<IUserSettingsService, UserSettingsService>();
         services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
         services.AddTransient<IScreenRecordingService, ScreenRecordingService>();
@@ -102,7 +106,9 @@ public partial class App : Application
         services.AddTransient<AboutViewModel>();
         services.AddTransient<AboutWindow>();
         services.AddTransient<UpdateDownloadViewModel>();
-        services.AddTransient<UpdateDownloadWindow>();
+        services.AddTransient<Func<UpdateDownloadViewModel>>(sp => () => sp.GetRequiredService<UpdateDownloadViewModel>());
+        services.AddTransient<Func<UpdateDownloadViewModel, UpdateDownloadWindow>>(_ => vm => new UpdateDownloadWindow(vm));
+        services.AddTransient<IUpdateDownloadService, UpdateDownloadWindowService>();
         services.AddSingleton<IUpdateService, GitHubUpdateService>();
     }
 
@@ -166,22 +172,16 @@ public partial class App : Application
             if (!result.IsUpdateAvailable)
             {
                 var current = _services.GetRequiredService<IAppVersionService>().Current;
-                System.Windows.MessageBox.Show(
+                _messageBox.ShowInformation(
                     $"You're already on the latest version (v{current.Major}.{current.Minor}.{current.Build}).",
-                    "Check for Updates",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Information);
+                    "Check for Updates");
                 return;
             }
 
             var v = result.LatestVersion;
-            var answer = System.Windows.MessageBox.Show(
-                $"Version {v.Major}.{v.Minor}.{v.Build} is available. Download and install now?",
-                "Update Available",
-                System.Windows.MessageBoxButton.YesNo,
-                System.Windows.MessageBoxImage.Information);
-
-            if (answer != System.Windows.MessageBoxResult.Yes)
+            if (!_messageBox.Confirm(
+                    $"Version {v.Major}.{v.Minor}.{v.Build} is available. Download and install now?",
+                    "Update Available"))
             {
                 return;
             }
@@ -189,12 +189,9 @@ public partial class App : Application
             var fileName = $"SnippingTool-Setup-{v.Major}.{v.Minor}.{v.Build}.exe";
             var destPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
 
-            var downloadVm = _services.GetRequiredService<UpdateDownloadViewModel>();
-            var downloadWindow = _services.GetRequiredService<UpdateDownloadWindow>();
-            downloadWindow.Show();
-            await downloadVm.DownloadAndInstallAsync(result.DownloadUrl, destPath);
+            var succeeded = await _services.GetRequiredService<IUpdateDownloadService>().ShowAsync(result.DownloadUrl, destPath);
 
-            if (!downloadVm.IsFailed)
+            if (succeeded)
             {
                 Current.Shutdown();
             }
@@ -202,11 +199,9 @@ public partial class App : Application
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Update check failed");
-            System.Windows.MessageBox.Show(
+            _messageBox.ShowWarning(
                 "Could not check for updates. Please check your internet connection and try again.",
-                "Check for Updates",
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Warning);
+                "Check for Updates");
         }
         finally
         {
@@ -299,11 +294,9 @@ public partial class App : Application
     {
         _logger?.LogError(e.Exception, "Unhandled dispatcher exception");
         e.Handled = true;
-        System.Windows.MessageBox.Show(
+        _messageBox.ShowError(
             $"An unexpected error occurred:\n\n{e.Exception.Message}\n\nDetails have been written to the log file.",
-            "SnippingTool — Unexpected Error",
-            System.Windows.MessageBoxButton.OK,
-            System.Windows.MessageBoxImage.Error);
+            "SnippingTool — Unexpected Error");
     }
 
     private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)

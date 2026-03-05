@@ -29,7 +29,12 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _settings = settings;
     }
 
-    public void Start(int x, int y, int width, int height, string outputPath)
+    public void Start(
+        int x,
+        int y,
+        int width,
+        int height,
+        string outputPath)
     {
         var fps = _settings.Current.RecordingFps;
         _logger.LogInformation("Recording Start requested: region=({X},{Y},{W},{H}), fps={Fps}, path={Path}",

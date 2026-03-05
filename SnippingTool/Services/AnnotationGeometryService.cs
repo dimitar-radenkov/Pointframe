@@ -30,7 +30,10 @@ public sealed class AnnotationGeometryService : IAnnotationGeometryService
     public (double left, double top, double width, double height) CalculateEllipse(Point start, Point end)
         => CalculateRect(start, end);
 
-    public bool IsValidShapeSize(Point start, Point end, double minSide = 4.0)
+    public bool IsValidShapeSize(
+        Point start,
+        Point end,
+        double minSide = 4.0)
     {
         var width = Math.Abs(end.X - start.X);
         var height = Math.Abs(end.Y - start.Y);

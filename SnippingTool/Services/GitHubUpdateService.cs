@@ -29,7 +29,10 @@ public sealed class GitHubUpdateService : IUpdateService
 
     public GitHubUpdateService(IAppVersionService appVersion, ILogger<GitHubUpdateService> logger) : this(Http, appVersion, logger) { }
 
-    private GitHubUpdateService(HttpClient http, IAppVersionService appVersion, ILogger<GitHubUpdateService>? logger)
+    private GitHubUpdateService(
+        HttpClient http,
+        IAppVersionService appVersion,
+        ILogger<GitHubUpdateService>? logger)
     {
         _http = http;
         _appVersion = appVersion;

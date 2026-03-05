@@ -28,7 +28,11 @@ internal sealed class AnnotationCanvasRenderer
     private Ellipse? _currentEllipse;
     private Polyline? _currentPen;
 
-    public AnnotationCanvasRenderer(Canvas canvas, AnnotationViewModel vm, Action<UIElement> onAdd, ILogger<AnnotationCanvasRenderer> logger)
+    public AnnotationCanvasRenderer(
+        Canvas canvas,
+        AnnotationViewModel vm,
+        Action<UIElement> onAdd,
+        ILogger<AnnotationCanvasRenderer> logger)
     {
         _canvas = canvas;
         _vm = vm;
