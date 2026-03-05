@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - master
-    tags:
-      - "v*"
 
 jobs:
   publish:
@@ -40,10 +38,8 @@ jobs:
         shell: pwsh
         run: |
           $json = dotnet nbgv get-version --format json | ConvertFrom-Json
-          $display = $json.NuGetPackageVersion   # e.g. "1.2.5" or "1.2.5-g1234abc"
-          $is_tag = "${{ github.ref }}" -match '^refs/tags/v'
-          echo "display=$display"                          >> $env:GITHUB_OUTPUT
-          echo "is_tag=$($is_tag.ToString().ToLower())"   >> $env:GITHUB_OUTPUT
+          $display = $json.NuGetPackageVersion   # e.g. "1.2.5"
+          echo "display=$display" >> $env:GITHUB_OUTPUT
 
       - name: Publish (self-contained single-file)
         run: >-
@@ -94,8 +90,8 @@ jobs:
           path: installer/output/SnippingTool-${{ steps.version.outputs.display }}-Setup.exe
 
       - name: Create GitHub Release
-        if: steps.version.outputs.is_tag == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.display }}
           files: installer/output/SnippingTool-${{ steps.version.outputs.display }}-Setup.exe
           generate_release_notes: true
