@@ -72,6 +72,22 @@ SnippingTool.Tests/     xUnit test project
   ViewModels/           ViewModel unit tests
 ```
 
+## Versioning
+
+Versions are managed automatically by [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning).
+
+- The base version (`major.minor`) is declared in [`version.json`](version.json).
+- The patch number is derived from the **commit height** — it increments automatically with every commit, so you never need to touch it manually.
+- On a tagged release (`v*`) the version has no pre-release suffix (e.g. `1.2.5`). On non-release builds a short commit hash is appended (e.g. `1.2.5-g1a2b3c4`).
+
+To bump the version:
+
+| Goal | Action |
+|---|---|
+| Bug-fix / patch | Nothing — commit height auto-increments |
+| New feature (minor) | Edit `version.json` → `"version": "1.3"` |
+| Breaking change (major) | Edit `version.json` → `"version": "2.0"` |
+
 ## Tech stack
 
 - **WPF / .NET 10**
@@ -80,4 +96,5 @@ SnippingTool.Tests/     xUnit test project
 - **Serilog** — file + debug logging (`%LOCALAPPDATA%\SnippingTool\logs\`)
 - **SharpAvi** — screen recording
 - **Hardcodet.Wpf.TaskbarNotification** — system tray icon
+- **Nerdbank.GitVersioning** — automatic semantic versioning from git history
 - **xUnit** — unit tests
