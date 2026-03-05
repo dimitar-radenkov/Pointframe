@@ -10,7 +10,7 @@ namespace SnippingTool.ViewModels;
 
 public partial class UpdateDownloadViewModel : ObservableObject
 {
-    private static readonly HttpClient SharedHttp = new()
+    internal static readonly HttpClient SharedHttp = new()
     {
         DefaultRequestHeaders = { { "User-Agent", "SnippingTool" } },
     };
@@ -34,10 +34,11 @@ public partial class UpdateDownloadViewModel : ObservableObject
     public event Action? RequestClose;
 
     public UpdateDownloadViewModel(
+        HttpClient http,
         IProcessService process,
         ILogger<UpdateDownloadViewModel>? logger = null)
     {
-        _http = SharedHttp;
+        _http = http;
         _process = process;
         _logger = logger;
     }
