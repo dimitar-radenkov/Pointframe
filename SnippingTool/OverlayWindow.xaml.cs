@@ -23,6 +23,8 @@ public partial class OverlayWindow : Window
     private readonly ILoggerFactory _loggerFactory;
     private readonly IUserSettingsService _userSettings;
     private readonly IProcessService _processService;
+    private readonly IMessageBoxService _messageBox;
+    private readonly IFileSystemService _fileSystem;
     private AnnotationCanvasRenderer _renderer = null!;
     private RecordingBorderWindow? _recordingBorder;
     private RecordingHudWindow? _recordingHud;
@@ -33,7 +35,9 @@ public partial class OverlayWindow : Window
         IScreenRecordingService recorder,
         ILoggerFactory loggerFactory,
         IUserSettingsService userSettings,
-        IProcessService processService)
+        IProcessService processService,
+        IMessageBoxService messageBox,
+        IFileSystemService fileSystem)
     {
         _vm = vm;
         _screenCapture = screenCapture;
@@ -41,6 +45,8 @@ public partial class OverlayWindow : Window
         _loggerFactory = loggerFactory;
         _userSettings = userSettings;
         _processService = processService;
+        _messageBox = messageBox;
+        _fileSystem = fileSystem;
         InitializeComponent();
         DataContext = _vm;
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
@@ -365,10 +371,20 @@ public partial class OverlayWindow : Window
         var screenH = (int)(sel.Height * _vm.DpiY);
 
         var videosDir = _userSettings.Current.RecordingOutputPath;
-        System.IO.Directory.CreateDirectory(videosDir);
-        var path = System.IO.Path.Combine(videosDir, $"SnipRec-{DateTime.Now:yyyyMMdd-HHmmss}.avi");
+        _fileSystem.CreateDirectory(videosDir);
+        var ext = _userSettings.Current.RecordingFormat == Models.RecordingFormat.Mp4 ? ".mp4" : ".avi";
+        var path = _fileSystem.CombinePath(videosDir, $"SnipRec-{DateTime.Now:yyyyMMdd-HHmmss}{ext}");
 
-        _recorder.Start(screenX, screenY, screenW, screenH, path);
+        try
+        {
+            _recorder.Start(screenX, screenY, screenW, screenH, path);
+        }
+        catch (System.IO.FileNotFoundException ex)
+        {
+            _messageBox.ShowWarning(ex.Message, "ffmpeg not found");
+            return;
+        }
+
         Visibility = Visibility.Hidden;
 
         var regionRect = new Rect(Left + sel.X, Top + sel.Y, sel.Width, sel.Height);
@@ -409,9 +425,9 @@ public partial class OverlayWindow : Window
         if (_userSettings.Current.AutoSaveScreenshots)
         {
             var saveDir = _userSettings.Current.ScreenshotSavePath;
-            System.IO.Directory.CreateDirectory(saveDir);
-            var savePath = System.IO.Path.Combine(saveDir, $"Snip_{DateTime.Now:yyyyMMdd_HHmmss}.png");
-            using var fs = System.IO.File.OpenWrite(savePath);
+            _fileSystem.CreateDirectory(saveDir);
+            var savePath = _fileSystem.CombinePath(saveDir, $"Snip_{DateTime.Now:yyyyMMdd_HHmmss}.png");
+            using var fs = _fileSystem.OpenWrite(savePath);
             var encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(final));
             encoder.Save(fs);

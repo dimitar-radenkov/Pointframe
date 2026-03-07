@@ -14,6 +14,7 @@ public sealed class UserSettings
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "SnippingTool", "Videos");
 
+    public RecordingFormat RecordingFormat { get; set; } = RecordingFormat.Mp4;
     public int RecordingFps { get; set; } = 20;
     public int RecordingJpegQuality { get; set; } = 85;
     public int HudCloseDelaySeconds { get; set; } = 2;

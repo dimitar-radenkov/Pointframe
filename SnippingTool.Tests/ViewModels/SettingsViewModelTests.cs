@@ -67,6 +67,65 @@ public sealed class SettingsViewModelTests
         Assert.Contains(nameof(vm.CaptureDelaySeconds), raised);
     }
 
+    [Fact]
+    public void UserSettings_Default_RecordingFormat_IsMp4()
+    {
+        // Arrange
+        var settings = new UserSettings();
+
+        // Assert
+        Assert.Equal(RecordingFormat.Mp4, settings.RecordingFormat);
+    }
+
+    [Fact]
+    public void LoadsFromSettings_RecordingFormat()
+    {
+        // Arrange
+        var vm = CreateVm(new UserSettings { RecordingFormat = RecordingFormat.Avi });
+
+        // Assert
+        Assert.Equal(RecordingFormat.Avi, vm.RecordingFormat);
+    }
+
+    [Fact]
+    public void Save_PersistsRecordingFormat()
+    {
+        // Arrange
+        var fake = new ConfigurableFakeSettingsService(new UserSettings());
+        var vm = new SettingsViewModel(fake);
+        vm.RecordingFormat = RecordingFormat.Avi;
+
+        // Act
+        vm.SaveCommand.Execute(null);
+
+        // Assert
+        Assert.Equal(RecordingFormat.Avi, fake.Saved?.RecordingFormat);
+    }
+
+    [Fact]
+    public void RecordingFormat_PropertyChanged_Fired()
+    {
+        // Arrange
+        var vm = CreateVm();
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        // Act
+        vm.RecordingFormat = RecordingFormat.Avi;
+
+        // Assert
+        Assert.Contains(nameof(vm.RecordingFormat), raised);
+    }
+
+    [Fact]
+    public void RecordingFormatValues_All_ContainsBothFormats()
+    {
+        // Assert
+        Assert.Contains(RecordingFormat.Mp4, RecordingFormatValues.All);
+        Assert.Contains(RecordingFormat.Avi, RecordingFormatValues.All);
+        Assert.Equal(2, RecordingFormatValues.All.Length);
+    }
+
     private sealed class ConfigurableFakeSettingsService(UserSettings settings) : IUserSettingsService
     {
         public UserSettings Current { get; } = settings;

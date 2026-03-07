@@ -95,8 +95,10 @@ public partial class App : Application
         services.AddSingleton<IAppVersionService, AppVersionService>();
         services.AddSingleton<IProcessService, ProcessService>();
         services.AddSingleton<IMessageBoxService, MessageBoxService>();
+        services.AddSingleton<IFileSystemService, FileSystemService>();
         services.AddSingleton<IUserSettingsService, UserSettingsService>();
         services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
+        services.AddTransient<IVideoWriterFactory, VideoWriterFactory>();
         services.AddTransient<IScreenRecordingService, ScreenRecordingService>();
         services.AddSingleton<IAnnotationGeometryService, AnnotationGeometryService>();
         services.AddTransient<OverlayViewModel>();

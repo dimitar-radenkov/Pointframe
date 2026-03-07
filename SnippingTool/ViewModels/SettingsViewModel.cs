@@ -19,6 +19,7 @@ public partial class SettingsViewModel : ObservableObject
         _screenshotSavePath = s.ScreenshotSavePath;
         _autoSaveScreenshots = s.AutoSaveScreenshots;
         _recordingOutputPath = s.RecordingOutputPath;
+        _recordingFormat = s.RecordingFormat;
         _recordingFps = s.RecordingFps;
         _recordingJpegQuality = s.RecordingJpegQuality;
         _hudCloseDelaySeconds = s.HudCloseDelaySeconds;
@@ -43,6 +44,9 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string _recordingOutputPath;
+
+    [ObservableProperty]
+    private RecordingFormat _recordingFormat;
 
     [ObservableProperty]
     private int _recordingFps;
@@ -122,6 +126,7 @@ public partial class SettingsViewModel : ObservableObject
             ScreenshotSavePath = ScreenshotSavePath,
             AutoSaveScreenshots = AutoSaveScreenshots,
             RecordingOutputPath = RecordingOutputPath,
+            RecordingFormat = RecordingFormat,
             RecordingFps = RecordingFps,
             RecordingJpegQuality = RecordingJpegQuality,
             HudCloseDelaySeconds = HudCloseDelaySeconds,

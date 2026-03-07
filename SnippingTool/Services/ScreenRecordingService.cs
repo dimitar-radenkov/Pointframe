@@ -1,8 +1,6 @@
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
-using SharpAvi.Codecs;
-using SharpAvi.Output;
 
 namespace SnippingTool.Services;
 
@@ -10,8 +8,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 {
     private readonly ILogger<ScreenRecordingService> _logger;
     private readonly IUserSettingsService _settings;
-    private AviWriter? _writer;
-    private IAviVideoStream? _stream;
+    private readonly IVideoWriterFactory _writerFactory;
+    private IVideoWriter? _writer;
     private CancellationTokenSource? _cts;
     private Task? _captureLoop;
     private byte[]? _buffer;
@@ -23,10 +21,14 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
     public bool IsRecording { get; private set; }
 
-    public ScreenRecordingService(ILogger<ScreenRecordingService> logger, IUserSettingsService settings)
+    public ScreenRecordingService(
+        ILogger<ScreenRecordingService> logger,
+        IUserSettingsService settings,
+        IVideoWriterFactory writerFactory)
     {
         _logger = logger;
         _settings = settings;
+        _writerFactory = writerFactory;
     }
 
     public void Start(
@@ -62,14 +64,13 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _fps = fps;
         _buffer = new byte[width * height * 4];
 
-        _writer = new AviWriter(outputPath) { FramesPerSecond = fps, EmitIndex1 = true };
-        var encoder = new MotionJpegVideoEncoderWpf(width, height, _settings.Current.RecordingJpegQuality);
-        _stream = _writer.AddEncodingVideoStream(encoder, ownsEncoder: true, width, height);
+        var format = _settings.Current.RecordingFormat;
+        _writer = _writerFactory.Create(format, width, height, fps, outputPath);
 
         _cts = new CancellationTokenSource();
         IsRecording = true;
         _captureLoop = Task.Run(() => CaptureLoopAsync(_cts.Token));
-        _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps → {Path}", width, height, fps, outputPath);
+        _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps ({Format}) → {Path}", width, height, fps, format, outputPath);
     }
 
     public void Stop()
@@ -93,9 +94,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         finally
         {
             _writer?.Close();
-            _logger.LogInformation("AVI writer closed — file finalised");
             _writer = null;
-            _stream = null;
+            _logger.LogInformation("Writer closed — file finalised");
             _cts?.Dispose();
             _cts = null;
             _captureLoop = null;
@@ -132,7 +132,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
     private void CaptureFrame()
     {
-        if (_stream is null || _buffer is null)
+        if (_writer is null || _buffer is null)
         {
             return;
         }
@@ -154,7 +154,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             bmp.UnlockBits(data);
         }
 
-        _stream.WriteFrame(true, _buffer, 0, _buffer.Length);
+        _writer.WriteFrame(_buffer);
     }
 
     public void Dispose() => Stop();
