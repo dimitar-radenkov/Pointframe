@@ -74,7 +74,7 @@ public partial class PinnedScreenshotWindow : Window
         int screenY = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
 
         // Use Win32 GetWindowRect for physical-pixel accuracy (DPI-safe).
-        GetWindowRect(hwnd, out RECT rc);
+        GetWindowRect(hwnd, out var rc);
         var w = rc.Right - rc.Left;
         var h = rc.Bottom - rc.Top;
         var relX = screenX - rc.Left;
