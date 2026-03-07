@@ -28,6 +28,15 @@ public sealed class VideoWriterFactoryTests
     }
 
     [Fact]
+    public void Create_Mp4_ThrowsFileNotFoundWhenFfmpegMissing()
+    {
+        var factory = CreateSut();
+
+        Assert.Throws<System.IO.FileNotFoundException>(() =>
+            factory.Create(RecordingFormat.Mp4, 100, 100, 10, "test.mp4"));
+    }
+
+    [Fact]
     public void Create_InvalidFormat_Throws()
     {
         var factory = CreateSut();
