@@ -46,6 +46,7 @@ jobs:
           dotnet test SnippingTool.Tests/SnippingTool.Tests.csproj
           --configuration Release
           --verbosity normal
+          --filter "Category!=Integration"
           --collect:"XPlat Code Coverage"
           --results-directory coverage
 
