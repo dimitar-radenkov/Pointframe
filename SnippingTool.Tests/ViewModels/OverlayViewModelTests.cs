@@ -116,6 +116,21 @@ public sealed class OverlayViewModelTests
     }
 
     [Fact]
+    public void PinCommand_FiresPinRequested()
+    {
+        // Arrange
+        var vm = Vm();
+        var fired = false;
+        vm.PinRequested += () => fired = true;
+
+        // Act
+        vm.PinCommand.Execute(null);
+
+        // Assert
+        Assert.True(fired);
+    }
+
+    [Fact]
     public void CurrentPhase_PropertyChanged_FiredOnCommit()
     {
         // Arrange

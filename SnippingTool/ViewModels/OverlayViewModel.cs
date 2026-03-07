@@ -44,10 +44,14 @@ public partial class OverlayViewModel : AnnotationViewModel
 
     public event Action? CopyRequested;
     public event Action? CloseRequested;
+    public event Action? PinRequested;
 
     [RelayCommand]
     private void Copy() => CopyRequested?.Invoke();
 
     [RelayCommand]
     private void Close() => CloseRequested?.Invoke();
+
+    [RelayCommand]
+    private void Pin() => PinRequested?.Invoke();
 }

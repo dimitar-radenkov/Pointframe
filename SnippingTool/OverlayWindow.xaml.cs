@@ -67,8 +67,9 @@ public partial class OverlayWindow : Window
                 .OfType<TextBlock>()
                 .Count(tb => tb.Tag is "number"));
         };
-        _vm.CopyRequested += DoCopy;
+        _vm.CopyRequested  += DoCopy;
         _vm.CloseRequested += Close;
+        _vm.PinRequested   += DoPin;
 
         Root.MouseLeftButtonDown += Root_MouseDown;
         Root.MouseMove += Root_MouseMove;
@@ -390,6 +391,38 @@ public partial class OverlayWindow : Window
 
     private void DoCopy()
     {
+        var final = ComposeBitmap();
+        System.Windows.Clipboard.SetImage(final);
+
+        if (_userSettings.Current.AutoSaveScreenshots)
+        {
+            var saveDir = _userSettings.Current.ScreenshotSavePath;
+            System.IO.Directory.CreateDirectory(saveDir);
+            var savePath = System.IO.Path.Combine(saveDir, $"Snip_{DateTime.Now:yyyyMMdd_HHmmss}.png");
+            using var fs = System.IO.File.OpenWrite(savePath);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(final));
+            encoder.Save(fs);
+        }
+
+        Close();
+    }
+
+    private void DoPin()
+    {
+        var bitmap = ComposeBitmap();
+        var pinned = new PinnedScreenshotWindow(bitmap);
+        pinned.Show();
+        Close();
+    }
+
+    /// <summary>
+    /// Captures the selected screen region, composites the annotation layer on top,
+    /// and returns the result as a <see cref="RenderTargetBitmap"/>.
+    /// Shared by <see cref="DoCopy"/> and <see cref="DoPin"/>.
+    /// </summary>
+    private RenderTargetBitmap ComposeBitmap()
+    {
         var sel = _vm.SelectionRect;
         var screenX = (int)((Left + sel.X) * _vm.DpiX);
         var screenY = (int)((Top + sel.Y) * _vm.DpiY);
@@ -414,20 +447,7 @@ public partial class OverlayWindow : Window
 
         var final = new RenderTargetBitmap(screenBmp.PixelWidth, screenBmp.PixelHeight, 96, 96, PixelFormats.Pbgra32);
         final.Render(dv);
-        System.Windows.Clipboard.SetImage(final);
-
-        if (_userSettings.Current.AutoSaveScreenshots)
-        {
-            var saveDir = _userSettings.Current.ScreenshotSavePath;
-            System.IO.Directory.CreateDirectory(saveDir);
-            var savePath = System.IO.Path.Combine(saveDir, $"Snip_{DateTime.Now:yyyyMMdd_HHmmss}.png");
-            using var fs = System.IO.File.OpenWrite(savePath);
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(final));
-            encoder.Save(fs);
-        }
-
-        Close();
+        return final;
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)

@@ -231,6 +231,16 @@
         <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding PinCommand}" ToolTip="Pin to screen">
+          <StackPanel>
+            <TextBlock Text="📌" FontSize="13" HorizontalAlignment="Center"/>
+            <TextBlock Text="Pin" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
                 Click="CloseBtn_Click" ToolTip="Close (Esc)">
           <StackPanel>
             <TextBlock Text="✕" FontSize="13" HorizontalAlignment="Center"/>
