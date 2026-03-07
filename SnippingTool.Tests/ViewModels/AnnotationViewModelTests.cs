@@ -230,6 +230,42 @@ public sealed class AnnotationViewModelTests
         Assert.IsType<SnippingTool.Models.EllipseShapeParameters>(result);
     }
 
+    [Fact]
+    public void TryGetShapeParameters_Blur_ReturnsBlurParams()
+    {
+        // Arrange
+        var vm = new TestAnnotationViewModel(Geom());
+        vm.SelectedTool = AnnotationTool.Blur;
+        vm.BeginDrawing(new System.Windows.Point(10, 20));
+        vm.UpdateDrawing(new System.Windows.Point(110, 120));
+
+        // Act
+        var result = vm.TryGetShapeParameters() as SnippingTool.Models.BlurShapeParameters;
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(10, result.Left);
+        Assert.Equal(20, result.Top);
+        Assert.Equal(100, result.Width);
+        Assert.Equal(100, result.Height);
+    }
+
+    [Fact]
+    public void TryGetShapeParameters_Blur_TooSmall_ReturnsNull()
+    {
+        // Arrange
+        var vm = new TestAnnotationViewModel(Geom());
+        vm.SelectedTool = AnnotationTool.Blur;
+        vm.BeginDrawing(new System.Windows.Point(0, 0));
+        vm.UpdateDrawing(new System.Windows.Point(1, 1));
+
+        // Act
+        var result = vm.TryGetShapeParameters();
+
+        // Assert
+        Assert.Null(result);
+    }
+
     // Every drag-producing tool must return a non-null ShapeParameters.
     // If a new tool is added to the enum but forgotten in TryGetShapeParameters,
     // this test will fail and catch the omission.
@@ -240,6 +276,7 @@ public sealed class AnnotationViewModelTests
     [InlineData(AnnotationTool.Pen)]
     [InlineData(AnnotationTool.Line)]
     [InlineData(AnnotationTool.Circle)]
+    [InlineData(AnnotationTool.Blur)]
     public void TryGetShapeParameters_AllDragTools_ReturnNonNull(AnnotationTool tool)
     {
         // Arrange
