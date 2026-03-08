@@ -32,12 +32,7 @@ public partial class App : Application
     [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
     [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hhk);
     [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
     [DllImport("kernel32.dll")] private static extern IntPtr GetModuleHandle(string? lpModuleName);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct RECT { public int Left, Top, Right, Bottom; }
 
     [StructLayout(LayoutKind.Sequential)]
 #pragma warning disable IDE1006 // P/Invoke struct fields must match Windows API names exactly
@@ -241,21 +236,6 @@ public partial class App : Application
         _aboutWindow.Show();
     }
 
-    private void FullScreen_Click(object sender, RoutedEventArgs e)
-    {
-        // Brief delay so the context menu closes before we capture
-        System.Threading.Tasks.Task.Delay(250).ContinueWith(
-            _ => Dispatcher.Invoke(CaptureFullScreen));
-    }
-
-    private void ActiveWindow_Click(object sender, RoutedEventArgs e)
-    {
-        // Capture the foreground window before the menu disappears
-        var hwnd = GetForegroundWindow();
-        System.Threading.Tasks.Task.Delay(350).ContinueWith(
-            _ => Dispatcher.Invoke(() => CaptureWindow(hwnd)));
-    }
-
     private void StartSnip()
     {
         _logger?.LogDebug("Snip started");
@@ -267,33 +247,6 @@ public partial class App : Application
         }
 
         _services.GetRequiredService<OverlayWindow>().Show();
-    }
-
-    private void CaptureFullScreen()
-    {
-        _logger?.LogInformation("Full screen capture initiated");
-        var capture = _services.GetRequiredService<IScreenCaptureService>();
-        var b = System.Windows.Forms.SystemInformation.VirtualScreen;
-        System.Windows.Clipboard.SetImage(capture.Capture(b.X, b.Y, b.Width, b.Height));
-    }
-
-    private void CaptureWindow(IntPtr hwnd)
-    {
-        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var r))
-        {
-            return;
-        }
-
-        var w = r.Right - r.Left;
-        var h = r.Bottom - r.Top;
-        if (w <= 0 || h <= 0)
-        {
-            return;
-        }
-
-        _logger?.LogInformation("Window capture: {W}\u00d7{H}", w, h);
-        var capture = _services.GetRequiredService<IScreenCaptureService>();
-        System.Windows.Clipboard.SetImage(capture.Capture(r.Left, r.Top, w, h));
     }
 
     private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
