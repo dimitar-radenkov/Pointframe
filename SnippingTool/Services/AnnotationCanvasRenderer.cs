@@ -109,7 +109,7 @@ internal sealed class AnnotationCanvasRenderer
                 };
                 Canvas.SetLeft(_blurDraft, p.X);
                 Canvas.SetTop(_blurDraft, p.Y);
-                Add(_blurDraft);
+                _canvas.Children.Add(_blurDraft);
                 break;
         }
     }
@@ -216,21 +216,39 @@ internal sealed class AnnotationCanvasRenderer
         var cropped = new CroppedBitmap(_backgroundCapture, new Int32Rect(pixelX, pixelY, pixelW, pixelH));
         cropped.Freeze();
 
-        // Pixelate by scaling down to block resolution and back up with nearest-neighbour
+        // Pixelate: render cropped region into a small bitmap, then scale back up — both steps use NearestNeighbor
         var smallW = Math.Max(1, pixelW / PixelateBlockSize);
         var smallH = Math.Max(1, pixelH / PixelateBlockSize);
-        var scaledDown = new TransformedBitmap(cropped,
-            new ScaleTransform((double)smallW / pixelW, (double)smallH / pixelH));
-        scaledDown.Freeze();
+
+        // Scale down to block resolution
+        var downscaled = new RenderTargetBitmap(smallW, smallH, 96, 96, PixelFormats.Pbgra32);
+        var downVisual = new DrawingVisual();
+        using (var dc = downVisual.RenderOpen())
+        {
+            dc.DrawImage(cropped, new Rect(0, 0, smallW, smallH));
+        }
+        RenderOptions.SetBitmapScalingMode(downVisual, BitmapScalingMode.NearestNeighbor);
+        downscaled.Render(downVisual);
+        downscaled.Freeze();
+
+        // Scale back up to original size
+        var upscaled = new RenderTargetBitmap(pixelW, pixelH, 96, 96, PixelFormats.Pbgra32);
+        var upVisual = new DrawingVisual();
+        using (var dc = upVisual.RenderOpen())
+        {
+            dc.DrawImage(downscaled, new Rect(0, 0, pixelW, pixelH));
+        }
+        RenderOptions.SetBitmapScalingMode(upVisual, BitmapScalingMode.NearestNeighbor);
+        upscaled.Render(upVisual);
+        upscaled.Freeze();
 
         var img = new System.Windows.Controls.Image
         {
             Width = @params.Width,
             Height = @params.Height,
-            Source = scaledDown,
+            Source = upscaled,
             Stretch = Stretch.Fill,
         };
-        RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.NearestNeighbor);
         Canvas.SetLeft(img, @params.Left);
         Canvas.SetTop(img, @params.Top);
         Add(img);
