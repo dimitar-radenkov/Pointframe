@@ -131,6 +131,21 @@ public sealed class OverlayViewModelTests
     }
 
     [Fact]
+    public void CopyTextCommand_FiresCopyTextRequested()
+    {
+        // Arrange
+        var vm = Vm();
+        var fired = false;
+        vm.CopyTextRequested += () => fired = true;
+
+        // Act
+        vm.CopyTextCommand.Execute(null);
+
+        // Assert
+        Assert.True(fired);
+    }
+
+    [Fact]
     public void CurrentPhase_PropertyChanged_FiredOnCommit()
     {
         // Arrange

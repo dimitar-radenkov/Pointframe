@@ -43,11 +43,15 @@ public partial class OverlayViewModel : AnnotationViewModel
         SizeLabel = $"{(int)(w * DpiX)}×{(int)(h * DpiY)}";
 
     public event Action? CopyRequested;
+    public event Action? CopyTextRequested;
     public event Action? CloseRequested;
     public event Action? PinRequested;
 
     [RelayCommand]
     private void Copy() => CopyRequested?.Invoke();
+
+    [RelayCommand]
+    private void CopyText() => CopyTextRequested?.Invoke();
 
     [RelayCommand]
     private void Close() => CloseRequested?.Invoke();

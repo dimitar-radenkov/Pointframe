@@ -25,6 +25,7 @@ public partial class OverlayWindow : Window
     private readonly IProcessService _processService;
     private readonly IMessageBoxService _messageBox;
     private readonly IFileSystemService _fileSystem;
+    private readonly IOcrService _ocrService;
     private AnnotationCanvasRenderer _renderer = null!;
     private RecordingBorderWindow? _recordingBorder;
     private RecordingHudWindow? _recordingHud;
@@ -37,7 +38,8 @@ public partial class OverlayWindow : Window
         IUserSettingsService userSettings,
         IProcessService processService,
         IMessageBoxService messageBox,
-        IFileSystemService fileSystem)
+        IFileSystemService fileSystem,
+        IOcrService ocrService)
     {
         _vm = vm;
         _screenCapture = screenCapture;
@@ -47,6 +49,7 @@ public partial class OverlayWindow : Window
         _processService = processService;
         _messageBox = messageBox;
         _fileSystem = fileSystem;
+        _ocrService = ocrService;
         InitializeComponent();
         DataContext = _vm;
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
@@ -74,6 +77,7 @@ public partial class OverlayWindow : Window
                 .Count(tb => tb.Tag is "number"));
         };
         _vm.CopyRequested += DoCopy;
+        _vm.CopyTextRequested += () => _ = DoCopyTextAsync();
         _vm.CloseRequested += Close;
         _vm.PinRequested += DoPin;
 
@@ -441,6 +445,21 @@ public partial class OverlayWindow : Window
         var bitmap = ComposeBitmap();
         var pinned = new PinnedScreenshotWindow(bitmap);
         pinned.Show();
+        Close();
+    }
+
+    private async Task DoCopyTextAsync()
+    {
+        var bitmap = ComposeBitmap();
+        var text = await _ocrService.RecognizeAsync(bitmap);
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            _messageBox.ShowWarning("No text detected in the screenshot.", "Copy Text");
+            return;
+        }
+
+        System.Windows.Clipboard.SetText(text);
         Close();
     }
 

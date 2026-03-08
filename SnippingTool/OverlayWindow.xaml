@@ -237,6 +237,16 @@
         <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding CopyTextCommand}" ToolTip="Copy text from screenshot (OCR)">
+          <StackPanel>
+            <TextBlock Text="🔤" FontSize="13" HorizontalAlignment="Center"/>
+            <TextBlock Text="Text" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
                 Command="{Binding PinCommand}" ToolTip="Pin to screen">
           <StackPanel>
             <TextBlock Text="📌" FontSize="13" HorizontalAlignment="Center"/>
