@@ -1,0 +1,12 @@
+coverage:
+  status:
+    # Overall project coverage must not drop more than 5% from the base commit.
+    project:
+      default:
+        target: auto
+        threshold: 5%
+    # New code added in a PR must be at least 50% covered.
+    patch:
+      default:
+        target: 50%
+        threshold: 5%

@@ -1,5 +1,7 @@
 # SnippingTool
 
+[![CI](https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml/badge.svg)](https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml)
+
 A lightweight Windows screen-capture and annotation tool built with WPF on .NET 10.
 
 ## Features
