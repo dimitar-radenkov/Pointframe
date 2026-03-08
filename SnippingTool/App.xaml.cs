@@ -96,6 +96,7 @@ public partial class App : Application
         services.AddTransient<IVideoWriterFactory, VideoWriterFactory>();
         services.AddTransient<IScreenRecordingService, ScreenRecordingService>();
         services.AddSingleton<IAnnotationGeometryService, AnnotationGeometryService>();
+        services.AddSingleton<IOcrService, WindowsOcrService>();
         services.AddTransient<OverlayViewModel>();
         services.AddTransient<OverlayWindow>();
         services.AddTransient<SettingsViewModel>();

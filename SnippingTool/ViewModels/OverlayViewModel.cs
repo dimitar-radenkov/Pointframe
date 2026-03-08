@@ -31,6 +31,9 @@ public partial class OverlayViewModel : AnnotationViewModel
     [ObservableProperty]
     private string _sizeLabel = string.Empty;
 
+    [ObservableProperty]
+    private bool _isTextLassoActive;
+
     public void CommitSelection(Rect selection)
     {
         SelectionRect = selection;
@@ -48,6 +51,9 @@ public partial class OverlayViewModel : AnnotationViewModel
 
     [RelayCommand]
     private void Copy() => CopyRequested?.Invoke();
+
+    [RelayCommand]
+    private void CopyText() => IsTextLassoActive = !IsTextLassoActive;
 
     [RelayCommand]
     private void Close() => CloseRequested?.Invoke();
