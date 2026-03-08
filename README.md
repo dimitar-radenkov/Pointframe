@@ -108,3 +108,4 @@ To bump the version:
 If you find this tool useful, consider buying me a beer 🍺
 
 [![PayPal](https://img.shields.io/badge/PayPal-donate-blue?logo=paypal)](https://paypal.me/DimitarRadenkov)
+[![Revolut](https://img.shields.io/badge/Revolut-donate-black?logo=revolut)](https://revolut.me/dimitarradenkov)
