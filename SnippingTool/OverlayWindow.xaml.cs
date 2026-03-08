@@ -25,9 +25,11 @@ public partial class OverlayWindow : Window
     private readonly IProcessService _processService;
     private readonly IMessageBoxService _messageBox;
     private readonly IFileSystemService _fileSystem;
+    private readonly IOcrService _ocrService;
     private AnnotationCanvasRenderer _renderer = null!;
     private RecordingBorderWindow? _recordingBorder;
     private RecordingHudWindow? _recordingHud;
+    private Point? _lassoStart;
 
     public OverlayWindow(
         OverlayViewModel vm,
@@ -37,7 +39,8 @@ public partial class OverlayWindow : Window
         IUserSettingsService userSettings,
         IProcessService processService,
         IMessageBoxService messageBox,
-        IFileSystemService fileSystem)
+        IFileSystemService fileSystem,
+        IOcrService ocrService)
     {
         _vm = vm;
         _screenCapture = screenCapture;
@@ -47,6 +50,7 @@ public partial class OverlayWindow : Window
         _processService = processService;
         _messageBox = messageBox;
         _fileSystem = fileSystem;
+        _ocrService = ocrService;
         InitializeComponent();
         DataContext = _vm;
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
@@ -81,6 +85,19 @@ public partial class OverlayWindow : Window
         Root.MouseMove += Root_MouseMove;
         Root.MouseLeftButtonUp += Root_MouseUp;
         KeyDown += Window_KeyDown;
+
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(OverlayViewModel.IsTextLassoActive))
+            {
+                if (_vm.CurrentPhase == OverlayViewModel.Phase.Annotating)
+                {
+                    AnnotationCanvas.Cursor = _vm.IsTextLassoActive
+                        ? Cursors.Cross
+                        : _vm.SelectedTool == AnnotationTool.Text ? Cursors.IBeam : Cursors.Cross;
+                }
+            }
+        };
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -286,6 +303,19 @@ public partial class OverlayWindow : Window
 
     private void Annot_Down(object sender, MouseButtonEventArgs e)
     {
+        if (_vm.IsTextLassoActive)
+        {
+            _lassoStart = e.GetPosition(AnnotationCanvas);
+            var sel = _vm.SelectionRect;
+            Canvas.SetLeft(OcrLassoRect, sel.X + _lassoStart.Value.X);
+            Canvas.SetTop(OcrLassoRect, sel.Y + _lassoStart.Value.Y);
+            OcrLassoRect.Width = 0;
+            OcrLassoRect.Height = 0;
+            OcrLassoRect.Visibility = Visibility.Visible;
+            AnnotationCanvas.CaptureMouse();
+            return;
+        }
+
         var p = e.GetPosition(AnnotationCanvas);
         _vm.BeginGroup();
         if (_vm.SelectedTool == AnnotationTool.Text)
@@ -309,6 +339,21 @@ public partial class OverlayWindow : Window
 
     private void Annot_Move(object sender, MouseEventArgs e)
     {
+        if (_vm.IsTextLassoActive && _lassoStart.HasValue)
+        {
+            var cur = e.GetPosition(AnnotationCanvas);
+            var sel = _vm.SelectionRect;
+            var x = Math.Min(cur.X, _lassoStart.Value.X);
+            var y = Math.Min(cur.Y, _lassoStart.Value.Y);
+            var w = Math.Abs(cur.X - _lassoStart.Value.X);
+            var h = Math.Abs(cur.Y - _lassoStart.Value.Y);
+            Canvas.SetLeft(OcrLassoRect, sel.X + x);
+            Canvas.SetTop(OcrLassoRect, sel.Y + y);
+            OcrLassoRect.Width = w;
+            OcrLassoRect.Height = h;
+            return;
+        }
+
         if (!_vm.IsDragging)
         {
             return;
@@ -321,6 +366,25 @@ public partial class OverlayWindow : Window
 
     private void Annot_Up(object sender, MouseButtonEventArgs e)
     {
+        if (_vm.IsTextLassoActive && _lassoStart.HasValue)
+        {
+            var cur = e.GetPosition(AnnotationCanvas);
+            AnnotationCanvas.ReleaseMouseCapture();
+            var x = Math.Min(cur.X, _lassoStart.Value.X);
+            var y = Math.Min(cur.Y, _lassoStart.Value.Y);
+            var w = Math.Abs(cur.X - _lassoStart.Value.X);
+            var h = Math.Abs(cur.Y - _lassoStart.Value.Y);
+            OcrLassoRect.Visibility = Visibility.Collapsed;
+            _lassoStart = null;
+
+            if (w >= 4 && h >= 4)
+            {
+                _ = DoLassoOcrAsync(new Rect(x, y, w, h));
+            }
+
+            return;
+        }
+
         if (!_vm.IsDragging)
         {
             return;
@@ -338,6 +402,7 @@ public partial class OverlayWindow : Window
     {
         if (sender is System.Windows.Controls.RadioButton { Tag: string tag })
         {
+            _vm.IsTextLassoActive = false;
             _vm.SelectedTool = Enum.Parse<AnnotationTool>(tag);
             AnnotationCanvas.Cursor = _vm.SelectedTool == AnnotationTool.Text ? Cursors.IBeam : Cursors.Cross;
         }
@@ -444,6 +509,56 @@ public partial class OverlayWindow : Window
         Close();
     }
 
+    private async Task DoLassoOcrAsync(Rect lassoRect)
+    {
+        var background = _renderer.BackgroundCapture;
+        if (background == null)
+        {
+            return;
+        }
+
+        var pixelX = (int)(lassoRect.X * _vm.DpiX);
+        var pixelY = (int)(lassoRect.Y * _vm.DpiY);
+        var pixelW = (int)(lassoRect.Width * _vm.DpiX);
+        var pixelH = (int)(lassoRect.Height * _vm.DpiY);
+
+        pixelX = Math.Max(0, Math.Min(pixelX, background.PixelWidth - 1));
+        pixelY = Math.Max(0, Math.Min(pixelY, background.PixelHeight - 1));
+        pixelW = Math.Min(pixelW, background.PixelWidth - pixelX);
+        pixelH = Math.Min(pixelH, background.PixelHeight - pixelY);
+
+        if (pixelW < 1 || pixelH < 1)
+        {
+            return;
+        }
+
+        var cropped = new CroppedBitmap(background, new Int32Rect(pixelX, pixelY, pixelW, pixelH));
+        var text = await _ocrService.RecognizeAsync(cropped);
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            ShowOcrToast("No text detected \u2014 try a larger area");
+            return;
+        }
+
+        System.Windows.Clipboard.SetText(text);
+        ShowOcrToast("\u2713 Text copied to clipboard");
+    }
+
+    private async void ShowOcrToast(string message)
+    {
+        OcrToastText.Text = message;
+        var sel = _vm.SelectionRect;
+        OcrToast.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var sz = OcrToast.DesiredSize;
+        Canvas.SetLeft(OcrToast, sel.X + (sel.Width - sz.Width) / 2);
+        Canvas.SetTop(OcrToast, sel.Y + (sel.Height - sz.Height) / 2);
+        OcrToast.Visibility = Visibility.Visible;
+
+        await Task.Delay(1500);
+        OcrToast.Visibility = Visibility.Collapsed;
+    }
+
     /// <summary>
     /// Captures the selected screen region, composites the annotation layer on top,
     /// and returns the result as a <see cref="RenderTargetBitmap"/>.
@@ -483,7 +598,16 @@ public partial class OverlayWindow : Window
         switch (e.Key)
         {
             case Key.Escape:
-                Close();
+                if (_vm.IsTextLassoActive)
+                {
+                    _vm.IsTextLassoActive = false;
+                    OcrLassoRect.Visibility = Visibility.Collapsed;
+                    _lassoStart = null;
+                }
+                else
+                {
+                    Close();
+                }
                 break;
             case Key.C when e.KeyboardDevice.Modifiers == ModifierKeys.Control
                          && _vm.CurrentPhase == OverlayViewModel.Phase.Annotating:

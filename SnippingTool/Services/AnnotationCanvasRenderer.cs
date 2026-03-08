@@ -36,6 +36,8 @@ internal sealed class AnnotationCanvasRenderer
     private double _dpiX = 1.0;
     private double _dpiY = 1.0;
 
+    public BitmapSource? BackgroundCapture => _backgroundCapture;
+
     public void SetBackground(BitmapSource background, double dpiX, double dpiY)
     {
         _backgroundCapture = background;

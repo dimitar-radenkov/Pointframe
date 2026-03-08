@@ -93,6 +93,13 @@
                Fill="Transparent"
                Visibility="Hidden"/>
 
+    <!-- OCR text lasso rectangle (visible during text lasso drag) -->
+    <Rectangle x:Name="OcrLassoRect"
+               Stroke="#0078D4" StrokeThickness="1.5"
+               StrokeDashArray="4,3"
+               Fill="#100078D4"
+               Visibility="Collapsed"/>
+
     <!-- Size label shown while dragging -->
     <Border x:Name="SizeLabelBorder"
             Background="#CC000000" CornerRadius="3" Padding="5,2"
@@ -237,6 +244,16 @@
         <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding CopyTextCommand}" ToolTip="Copy text from screenshot (OCR)">
+          <StackPanel>
+            <TextBlock Text="🔤" FontSize="13" HorizontalAlignment="Center"/>
+            <TextBlock Text="Text" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
                 Command="{Binding PinCommand}" ToolTip="Pin to screen">
           <StackPanel>
             <TextBlock Text="📌" FontSize="13" HorizontalAlignment="Center"/>
@@ -255,6 +272,15 @@
         </Button>
 
       </StackPanel>
+    </Border>
+
+    <!-- OCR toast notification -->
+    <Border x:Name="OcrToast"
+            Background="#DD333333" CornerRadius="6"
+            Padding="12,6" Visibility="Collapsed">
+      <TextBlock x:Name="OcrToastText"
+                 Foreground="White" FontSize="12"
+                 FontFamily="Segoe UI" FontWeight="SemiBold"/>
     </Border>
 
   </Canvas>
