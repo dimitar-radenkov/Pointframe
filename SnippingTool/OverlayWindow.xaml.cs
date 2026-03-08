@@ -30,6 +30,7 @@ public partial class OverlayWindow : Window
     private RecordingBorderWindow? _recordingBorder;
     private RecordingHudWindow? _recordingHud;
     private Point? _lassoStart;
+    private BitmapSource? _screenSnapshot;
 
     public OverlayWindow(
         OverlayViewModel vm,
@@ -118,6 +119,13 @@ public partial class OverlayWindow : Window
             _vm.DpiX = src.CompositionTarget.TransformToDevice.M11;
             _vm.DpiY = src.CompositionTarget.TransformToDevice.M22;
         }
+
+        Visibility = Visibility.Hidden;
+        System.Threading.Thread.Sleep(50);
+        _screenSnapshot = _screenCapture.Capture(
+            (int)(Left * _vm.DpiX), (int)(Top * _vm.DpiY),
+            (int)(Width * _vm.DpiX), (int)(Height * _vm.DpiY));
+        Visibility = Visibility.Visible;
     }
 
     private void Root_MouseDown(object sender, MouseButtonEventArgs e)
@@ -168,6 +176,8 @@ public partial class OverlayWindow : Window
 
         Canvas.SetLeft(SizeLabelBorder, x);
         Canvas.SetTop(SizeLabelBorder, ly);
+
+        UpdateLoupe(cur);
     }
 
     private void Root_MouseUp(object sender, MouseButtonEventArgs e)
@@ -178,6 +188,7 @@ public partial class OverlayWindow : Window
             return;
         }
 
+        LoupeBorder.Visibility = Visibility.Collapsed;
         Root.Tag = null;
         Root.ReleaseMouseCapture();
 
@@ -197,6 +208,45 @@ public partial class OverlayWindow : Window
         TransitionToAnnotating();
     }
 
+    private const int LoupeSize   = 120;
+    private const int LoupeZoom   = 4;
+    private const int LoupeOffset = 20;
+
+    private void UpdateLoupe(Point cursor)
+    {
+        if (_screenSnapshot == null)
+        {
+            return;
+        }
+
+        int srcSize = LoupeSize / LoupeZoom;
+        int px = (int)(cursor.X * _vm.DpiX) - srcSize / 2;
+        int py = (int)(cursor.Y * _vm.DpiY) - srcSize / 2;
+        int snapW = _screenSnapshot.PixelWidth;
+        int snapH = _screenSnapshot.PixelHeight;
+        px = Math.Clamp(px, 0, Math.Max(0, snapW - srcSize));
+        py = Math.Clamp(py, 0, Math.Max(0, snapH - srcSize));
+        int actualW = Math.Min(srcSize, snapW - px);
+        int actualH = Math.Min(srcSize, snapH - py);
+
+        if (actualW <= 0 || actualH <= 0)
+        {
+            LoupeBorder.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        LoupeImage.Source = new CroppedBitmap(_screenSnapshot, new Int32Rect(px, py, actualW, actualH));
+        LoupeBorder.Visibility = Visibility.Visible;
+
+        double lx = cursor.X + LoupeOffset;
+        double ly = cursor.Y + LoupeOffset;
+        if (lx + LoupeSize > Width)  { lx = cursor.X - LoupeSize - LoupeOffset; }
+        if (ly + LoupeSize > Height) { ly = cursor.Y - LoupeSize - LoupeOffset; }
+
+        Canvas.SetLeft(LoupeBorder, lx);
+        Canvas.SetTop(LoupeBorder, ly);
+    }
+
     private void TransitionToAnnotating()
     {
         var sel = _vm.SelectionRect;
@@ -214,6 +264,7 @@ public partial class OverlayWindow : Window
         var backgroundCapture = _screenCapture.Capture(screenX, screenY, screenW, screenH);
         Visibility = Visibility.Visible;
         _renderer.SetBackground(backgroundCapture, _vm.DpiX, _vm.DpiY);
+        _screenSnapshot = null;
 
         LayoutDimStrips(sel);
 

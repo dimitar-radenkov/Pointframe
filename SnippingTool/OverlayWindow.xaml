@@ -109,6 +109,21 @@
                  FontFamily="Segoe UI" FontWeight="SemiBold"/>
     </Border>
 
+    <!-- Magnifier loupe (shown during selection drag) -->
+    <Border x:Name="LoupeBorder"
+            Width="120" Height="120"
+            BorderBrush="White" BorderThickness="1.5"
+            CornerRadius="4"
+            Visibility="Collapsed"
+            IsHitTestVisible="False">
+      <Border.Effect>
+        <DropShadowEffect Color="#000" BlurRadius="8" ShadowDepth="0" Opacity="0.5"/>
+      </Border.Effect>
+      <Image x:Name="LoupeImage"
+             RenderOptions.BitmapScalingMode="NearestNeighbor"
+             Stretch="Fill"/>
+    </Border>
+
     <!-- Annotation drawing surface (phase 2, sized over the selection) -->
     <Canvas x:Name="AnnotationCanvas"
             Background="#01000000"
