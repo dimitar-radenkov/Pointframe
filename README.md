@@ -5,12 +5,13 @@ A lightweight Windows screen-capture and annotation tool built with WPF on .NET 
 ## Features
 
 - **Region capture** — Press `Print Screen` to draw a selection on screen
-- **Annotation tools** — Arrow, line, rectangle, ellipse, pen, highlighter, text, numbered steps
+- **Annotation tools** — Arrow, line, rectangle, ellipse, pen, highlighter, text, numbered steps, blur
+- **Blur tool** — Drag over sensitive content (faces, emails, passwords) to apply a Gaussian blur before sharing
+- **OCR — Copy Text** — Draw a lasso around text in the screenshot to extract it via OCR and copy to clipboard (uses Windows.Media.Ocr, no external dependencies)
+- **Pin screenshot** — Pin the captured screenshot as a floating, always-on-top, resizable window for quick reference while you work
 - **Undo / redo** — Full undo/redo stack during annotation
 - **Copy & auto-save** — Copy to clipboard; optional auto-save to a configurable folder
-- **Full-screen capture** — One-click capture of the entire virtual screen via the tray menu
-- **Active window capture** — Capture the currently focused window via the tray menu
-- **Screen recording** — Record a selected region to a video file (AVI)
+- **Screen recording** — Record a selected region to MP4 (H.264 via FFmpeg) or AVI (MJPEG via SharpAvi)
 - **Capture delay** — Configurable countdown (0 / 3 / 5 / 10 s) before the selection overlay appears, useful for capturing menus and hover states
 - **Check for updates** — Checks GitHub Releases and downloads the latest installer
 - **System tray** — Runs silently in the background; all actions accessible from the tray icon
@@ -50,6 +51,7 @@ Open **Settings** from the tray icon to configure:
 | Auto-save on copy | Automatically save every screenshot when copied |
 | Capture delay | Countdown (sec) before the selection overlay opens |
 | Recording output folder | Where recorded videos are saved |
+| Recording format | Output format: MP4 (H.264) or AVI (MJPEG) |
 | Frames per second | Recording frame rate |
 | JPEG quality | Compression quality for recording frames |
 | Default annotation colour | Pre-selected colour when the overlay opens |
@@ -94,7 +96,9 @@ To bump the version:
 - **CommunityToolkit.Mvvm** — `[ObservableProperty]`, `[RelayCommand]`
 - **Microsoft.Extensions.DependencyInjection** — constructor injection throughout
 - **Serilog** — file + debug logging (`%LOCALAPPDATA%\SnippingTool\logs\`)
-- **SharpAvi** — screen recording
+- **SharpAvi** — AVI screen recording
+- **FFMpegCore** — MP4 screen recording (wraps ffmpeg)
+- **Windows.Media.Ocr** — built-in Windows OCR for text extraction
 - **Hardcodet.Wpf.TaskbarNotification** — system tray icon
 - **Nerdbank.GitVersioning** — automatic semantic versioning from git history
 - **xUnit** — unit tests
