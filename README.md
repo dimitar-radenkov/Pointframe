@@ -3,6 +3,7 @@
 [![CI](https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml/badge.svg)](https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/dimitar-radenkov/SnippingTool/total?label=downloads&color=blue)](https://github.com/dimitar-radenkov/SnippingTool/releases)
 [![Latest release](https://img.shields.io/github/v/release/dimitar-radenkov/SnippingTool)](https://github.com/dimitar-radenkov/SnippingTool/releases/latest)
+[![winget](https://img.shields.io/winget/v/DimitarRadenkov.SnippingTool?label=winget)](https://github.com/microsoft/winget-pkgs/tree/master/manifests/d/DimitarRadenkov/SnippingTool)
 
 The open-source Windows snipping tool with OCR, screen recording, and annotation — no subscription, no telemetry.
 
