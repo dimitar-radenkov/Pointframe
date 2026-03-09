@@ -13,8 +13,6 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
-    outputs:
-      version: ${{ steps.version.outputs.display }}
     env:
       SIGNING_CERT_B64: ${{ secrets.SIGNING_CERT_B64 }}
       SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
@@ -118,24 +116,8 @@ jobs:
           path: installer/output/SnippingTool-${{ steps.version.outputs.display }}-Setup.exe
 
       - name: Create GitHub Release
-        id: release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.display }}
           files: installer/output/SnippingTool-${{ steps.version.outputs.display }}-Setup.exe
           generate_release_notes: true
-
-  winget:
-    needs: publish
-    runs-on: windows-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Submit to winget
-        uses: vedantmgoyal9/winget-releaser@v2
-        with:
-          identifier: DimitarRadenkov.SnippingTool
-          version: ${{ needs.publish.outputs.version }}
-          release-tag: v${{ needs.publish.outputs.version }}
-          installers-regex: 'Setup\.exe$'
-          token: ${{ secrets.WINGET_TOKEN }}
