@@ -1,0 +1,54 @@
+name: Winget Release
+
+# Submits a new package version to microsoft/winget-pkgs only when
+# version.json is changed (i.e. a minor or major version bump).
+# Patch releases (commit-height increments) are intentionally excluded.
+
+on:
+  workflow_run:
+    workflows: ["CD"]
+    types: [completed]
+    branches:
+      - master
+
+jobs:
+  submit:
+    runs-on: windows-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if version.json changed
+        id: check
+        shell: pwsh
+        run: |
+          $changed = git diff HEAD~1 HEAD --name-only | Where-Object { $_ -eq "version.json" }
+          $result = if ($changed) { "true" } else { "false" }
+          "changed=$result" | Out-File -Append $env:GITHUB_OUTPUT
+
+      - name: Restore tools
+        if: steps.check.outputs.changed == 'true'
+        run: dotnet tool restore
+
+      - name: Get version
+        id: version
+        if: steps.check.outputs.changed == 'true'
+        shell: pwsh
+        run: |
+          $json = dotnet nbgv get-version --format json | ConvertFrom-Json
+          "display=$($json.NuGetPackageVersion)" | Out-File -Append $env:GITHUB_OUTPUT
+
+      - name: Submit to winget
+        if: steps.check.outputs.changed == 'true'
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: DimitarRadenkov.SnippingTool
+          version: ${{ steps.version.outputs.display }}
+          release-tag: v${{ steps.version.outputs.display }}
+          installers-regex: 'Setup\.exe$'
+          token: ${{ secrets.WINGET_TOKEN }}
