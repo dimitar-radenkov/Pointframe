@@ -7,6 +7,10 @@
 
 The open-source Windows snipping tool with OCR, screen recording, and annotation — no subscription, no telemetry.
 
+## Demo
+
+<!-- Demo video: drag and drop your MP4 here on github.com to upload it -->
+
 ## Features
 
 - **Region capture** — Press `Print Screen` to draw a selection on screen
