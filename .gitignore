@@ -4,8 +4,6 @@
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
 
-.github/
-
 # User-specific files
 *.rsuser
 *.suo
@@ -18,6 +16,9 @@
 
 *.md
 !README.md
+!CONTRIBUTING.md
+!SECURITY.md
+!CHANGELOG.md
 
 # Mono auto generated files
 mono_crash.*
