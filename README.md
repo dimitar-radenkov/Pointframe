@@ -9,7 +9,7 @@ The open-source Windows snipping tool with OCR, screen recording, and annotation
 
 ## Demo
 
-<!-- Demo video: drag and drop your MP4 here on github.com to upload it -->
+https://github.com/user-attachments/assets/d4e0c937-a845-4266-9454-2b816934f949
 
 ## Features
 
