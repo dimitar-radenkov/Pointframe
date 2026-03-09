@@ -18,6 +18,22 @@ A lightweight Windows screen-capture and annotation tool built with WPF on .NET 
 - **Check for updates** — Checks GitHub Releases and downloads the latest installer
 - **System tray** — Runs silently in the background; all actions accessible from the tray icon
 
+## How does it compare?
+
+| Feature | SnippingTool | Windows Snipping Tool | Greenshot | ShareX |
+|---|:---:|:---:|:---:|:---:|
+| Region capture | ✅ | ✅ | ✅ | ✅ |
+| Annotation (arrows, shapes, text) | ✅ | ✅ | ✅ | ✅ |
+| Numbered steps annotation | ✅ | ❌ | ❌ | ❌ |
+| Blur / redact sensitive content | ✅ | ❌ | ❌ | ✅ |
+| OCR — copy text from screenshot | ✅ | ❌ | ❌ | ✅ |
+| Pin screenshot as floating window | ✅ | ❌ | ❌ | ❌ |
+| Undo / redo during annotation | ✅ | ❌ | ❌ | ❌ |
+| Screen recording (MP4) | ✅ | ✅ | ❌ | ✅ |
+| Capture delay / countdown | ✅ | ✅ | ✅ | ✅ |
+| Auto-save to folder | ✅ | ✅ | ✅ | ✅ |
+| Open source | ✅ | ❌ | ✅ | ✅ |
+
 ## Requirements
 
 - Windows 10 or later
