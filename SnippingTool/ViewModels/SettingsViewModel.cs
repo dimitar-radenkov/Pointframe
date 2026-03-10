@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -25,6 +26,7 @@ public partial class SettingsViewModel : ObservableObject
         _hudCloseDelaySeconds = s.HudCloseDelaySeconds;
         _captureDelaySeconds = s.CaptureDelaySeconds;
         _defaultStrokeThickness = s.DefaultStrokeThickness;
+        _regionCaptureHotkey = s.RegionCaptureHotkey;
 
         try
         {
@@ -65,6 +67,15 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private double _defaultStrokeThickness;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RegionCaptureHotkeyDisplayName))]
+    private uint _regionCaptureHotkey;
+
+    [ObservableProperty]
+    private bool _isRecordingHotkey;
+
+    public string RegionCaptureHotkeyDisplayName => VkToDisplayName(RegionCaptureHotkey);
 
     partial void OnDefaultAnnotationColorChanged(Color value) =>
         OnPropertyChanged(nameof(ColorPreviewBrush));
@@ -134,10 +145,28 @@ public partial class SettingsViewModel : ObservableObject
             HudGapPixels = _settingsService.Current.HudGapPixels,
             DefaultAnnotationColor = $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}",
             DefaultStrokeThickness = DefaultStrokeThickness,
+            RegionCaptureHotkey = RegionCaptureHotkey,
         });
         RequestClose?.Invoke();
     }
 
     [RelayCommand]
+    private void StartRecordingHotkey() => IsRecordingHotkey = true;
+
+    [RelayCommand]
+    private void ResetHotkey()
+    {
+        RegionCaptureHotkey = 0x2C; // VK_SNAPSHOT (Print Screen)
+        IsRecordingHotkey = false;
+    }
+
+    [RelayCommand]
     private void Cancel() => RequestClose?.Invoke();
+
+    private static string VkToDisplayName(uint vk) =>
+        vk switch
+        {
+            0x2C => "Print Screen",
+            _ => KeyInterop.KeyFromVirtualKey((int)vk).ToString(),
+        };
 }

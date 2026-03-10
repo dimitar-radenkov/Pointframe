@@ -18,6 +18,7 @@ public partial class App : Application
     private ServiceProvider _services = null!;
     private ILogger<App>? _logger;
     private IMessageBoxService _messageBox = null!;
+    private IUserSettingsService _userSettings = null!;
     private SettingsWindow? _settingsWindow;
     private AboutWindow? _aboutWindow;
 
@@ -73,6 +74,7 @@ public partial class App : Application
 
         _logger = _services.GetRequiredService<ILogger<App>>();
         _messageBox = _services.GetRequiredService<IMessageBoxService>();
+        _userSettings = _services.GetRequiredService<IUserSettingsService>();
         _logger.LogInformation("SnippingTool starting up");
 
         Current.DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -147,7 +149,7 @@ public partial class App : Application
         if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
         {
             var kb = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-            if (kb.vkCode == VK_PRINTSCREEN)
+            if (kb.vkCode == _userSettings.Current.RegionCaptureHotkey)
             {
                 Dispatcher.InvokeAsync(StartSnip);
                 return (IntPtr)1; // suppress — prevents Windows from handling Print Screen

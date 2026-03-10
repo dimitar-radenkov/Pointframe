@@ -23,4 +23,6 @@ public sealed class UserSettings
     public string DefaultAnnotationColor { get; set; } = "#FFFF0000";
     public double DefaultStrokeThickness { get; set; } = 2.5;
     public int CaptureDelaySeconds { get; set; } = 0;
+
+    public uint RegionCaptureHotkey { get; set; } = 0x2C; // VK_SNAPSHOT (Print Screen)
 }

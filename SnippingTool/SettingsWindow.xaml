@@ -4,7 +4,7 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:models="clr-namespace:SnippingTool.Models"
         Title="Settings"
-        Width="500" Height="550"
+        Width="540" Height="650"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI"
@@ -60,7 +60,8 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0">
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
 
             <!-- Screenshot section -->
             <TextBlock Text="Screenshot" Style="{StaticResource SectionHeader}"/>
@@ -159,7 +160,67 @@
                 </StackPanel>
             </Border>
 
-        </StackPanel>
+            <!-- Hotkeys section -->
+            <TextBlock Text="Hotkeys" Style="{StaticResource SectionHeader}" Margin="0,14,0,6"/>
+            <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1"
+                    CornerRadius="4" Padding="12,10">
+                <StackPanel>
+
+                    <!-- Idle state: kbd badge + Change + Reset -->
+                    <StackPanel Orientation="Horizontal">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsRecordingHotkey}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Region capture key" Style="{StaticResource RowLabel}"/>
+                        <Border Background="#F0F0F0" BorderBrush="#AAAAAA" BorderThickness="1,1,1,3"
+                                CornerRadius="4" Padding="8,3" Margin="0,0,8,0">
+                            <TextBlock Text="{Binding RegionCaptureHotkeyDisplayName}"
+                                       FontFamily="Consolas" FontSize="12" VerticalAlignment="Center"/>
+                        </Border>
+                        <Button Content="Change" Style="{StaticResource BrowseBtn}"
+                                Command="{Binding StartRecordingHotkeyCommand}"
+                                Margin="0,0,6,0"/>
+                        <Button Content="Reset" Style="{StaticResource BrowseBtn}"
+                                Command="{Binding ResetHotkeyCommand}"/>
+                    </StackPanel>
+
+                    <!-- Recording state: press-a-key prompt -->
+                    <StackPanel x:Name="HotkeyRecordingPanel"
+                                Orientation="Horizontal"
+                                Focusable="True"
+                                PreviewKeyDown="HotkeyCapture_PreviewKeyDown"
+                                IsVisibleChanged="HotkeyRecordingPanel_IsVisibleChanged">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsRecordingHotkey}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Region capture key" Style="{StaticResource RowLabel}"/>
+                        <Border BorderBrush="#0078D4" BorderThickness="2" CornerRadius="4"
+                                Padding="10,5" Background="#EFF6FC" Width="200">
+                            <TextBlock Text="Press a key…  Esc to cancel"
+                                       Foreground="#0078D4" FontStyle="Italic" FontSize="12"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+                    </StackPanel>
+
+                </StackPanel>
+            </Border>
+
+            </StackPanel>
+        </ScrollViewer>
 
         <!-- Action buttons -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right"

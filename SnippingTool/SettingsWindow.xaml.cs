@@ -9,9 +9,12 @@ namespace SnippingTool;
 
 public partial class SettingsWindow : Window
 {
+    private readonly SettingsViewModel _vm;
+
     public SettingsWindow(SettingsViewModel vm)
     {
         InitializeComponent();
+        _vm = vm;
         DataContext = vm;
         vm.RequestClose += Close;
     }
@@ -56,6 +59,38 @@ public partial class SettingsWindow : Window
         else
         {
             e.CancelCommand();
+        }
+    }
+
+    private void HotkeyCapture_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        e.Handled = true;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.Escape)
+        {
+            _vm.IsRecordingHotkey = false;
+            return;
+        }
+
+        if (key is Key.Enter or Key.Tab
+                or Key.LeftShift or Key.RightShift
+                or Key.LeftCtrl or Key.RightCtrl
+                or Key.LeftAlt or Key.RightAlt
+                or Key.LWin or Key.RWin)
+        {
+            return;
+        }
+
+        var vk = (uint)KeyInterop.VirtualKeyFromKey(key);
+        _vm.RegionCaptureHotkey = vk;
+        _vm.IsRecordingHotkey = false;
+    }
+
+    private void HotkeyRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if ((bool)e.NewValue)
+        {
+            HotkeyRecordingPanel.Focus();
         }
     }
 }

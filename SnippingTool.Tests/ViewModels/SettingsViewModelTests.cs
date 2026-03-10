@@ -126,6 +126,108 @@ public sealed class SettingsViewModelTests
         Assert.Equal(2, RecordingFormatValues.All.Length);
     }
 
+    [Fact]
+    public void UserSettings_Default_RegionCaptureHotkey_IsPrintScreen()
+    {
+        // Arrange
+        var settings = new UserSettings();
+
+        // Assert
+        Assert.Equal(0x2Cu, settings.RegionCaptureHotkey);
+    }
+
+    [Fact]
+    public void LoadsFromSettings_RegionCaptureHotkey()
+    {
+        // Arrange
+        var vm = CreateVm(new UserSettings { RegionCaptureHotkey = 0x41 }); // 'A'
+
+        // Assert
+        Assert.Equal(0x41u, vm.RegionCaptureHotkey);
+    }
+
+    [Fact]
+    public void Save_PersistsRegionCaptureHotkey()
+    {
+        // Arrange
+        var fake = new ConfigurableFakeSettingsService(new UserSettings());
+        var vm = new SettingsViewModel(fake);
+        vm.RegionCaptureHotkey = 0x42u; // 'B'
+
+        // Act
+        vm.SaveCommand.Execute(null);
+
+        // Assert
+        Assert.Equal(0x42u, fake.Saved?.RegionCaptureHotkey);
+    }
+
+    [Fact]
+    public void RegionCaptureHotkey_PropertyChanged_Fired()
+    {
+        // Arrange
+        var vm = CreateVm();
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        // Act
+        vm.RegionCaptureHotkey = 0x43u; // 'C'
+
+        // Assert
+        Assert.Contains(nameof(vm.RegionCaptureHotkey), raised);
+    }
+
+    [Fact]
+    public void IsRecordingHotkey_DefaultsFalse()
+    {
+        var vm = CreateVm();
+        Assert.False(vm.IsRecordingHotkey);
+    }
+
+    [Fact]
+    public void StartRecordingHotkeyCommand_SetsIsRecordingHotkeyTrue()
+    {
+        var vm = CreateVm();
+        vm.StartRecordingHotkeyCommand.Execute(null);
+        Assert.True(vm.IsRecordingHotkey);
+    }
+
+    [Fact]
+    public void ResetHotkeyCommand_RestoresPrintScreenAndCancelsRecording()
+    {
+        var vm = CreateVm(new UserSettings { RegionCaptureHotkey = 0x41 });
+        vm.StartRecordingHotkeyCommand.Execute(null);
+
+        vm.ResetHotkeyCommand.Execute(null);
+
+        Assert.Equal(0x2Cu, vm.RegionCaptureHotkey);
+        Assert.False(vm.IsRecordingHotkey);
+    }
+
+    [Fact]
+    public void IsRecordingHotkey_PropertyChanged_Fired()
+    {
+        var vm = CreateVm();
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        vm.StartRecordingHotkeyCommand.Execute(null);
+
+        Assert.Contains(nameof(vm.IsRecordingHotkey), raised);
+    }
+
+    [Fact]
+    public void SetRegionCaptureHotkey_UpdatesDisplayName()
+    {
+        var vm = CreateVm();
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        vm.RegionCaptureHotkey = 0x41u; // 'A'
+
+        Assert.Contains(nameof(vm.RegionCaptureHotkeyDisplayName), raised);
+        Assert.NotEmpty(vm.RegionCaptureHotkeyDisplayName);
+    }
+
     private sealed class ConfigurableFakeSettingsService(UserSettings settings) : IUserSettingsService
     {
         public UserSettings Current { get; } = settings;
