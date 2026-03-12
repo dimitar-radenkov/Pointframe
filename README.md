@@ -13,7 +13,9 @@ https://github.com/user-attachments/assets/d4e0c937-a845-4266-9454-2b816934f949
 
 ## Features
 
-- **Region capture** — Press `Print Screen` to draw a selection on screen
+- **Region capture** — Press the configured hotkey (default: `Print Screen`) to draw a selection on screen
+- **Frozen screen snapshot** — The screen is captured instantly when the hotkey is pressed, freezing menus, tooltips, and popups exactly as they appear
+- **Configurable capture hotkey** — Change the capture hotkey to any key you prefer from Settings
 - **Annotation tools** — Arrow, line, rectangle, ellipse, pen, highlighter, text, numbered steps, blur
 - **Blur tool** — Drag over sensitive content (faces, emails, passwords) to apply a Gaussian blur before sharing
 - **OCR — Copy Text** — Draw a lasso around text in the screenshot to extract it via OCR and copy to clipboard (uses Windows.Media.Ocr, no external dependencies)
@@ -32,6 +34,8 @@ https://github.com/user-attachments/assets/d4e0c937-a845-4266-9454-2b816934f949
 | Region capture | ✅ | ✅ | ✅ | ✅ |
 | Annotation (arrows, shapes, text) | ✅ | ✅ | ✅ | ✅ |
 | Numbered steps annotation | ✅ | ❌ | ❌ | ❌ |
+| Configurable capture hotkey | ✅ | ❌ | ✅ | ✅ |
+| Frozen snapshot (menus & popups) | ✅ | ❌ | ❌ | ❌ |
 | Blur / redact sensitive content | ✅ | ❌ | ❌ | ✅ |
 | OCR — copy text from screenshot | ✅ | ❌ | ❌ | ✅ |
 | Pin screenshot as floating window | ✅ | ❌ | ❌ | ❌ |
@@ -75,6 +79,7 @@ Open **Settings** from the tray icon to configure:
 | Screenshot save folder | Where auto-saved screenshots are written |
 | Auto-save on copy | Automatically save every screenshot when copied |
 | Capture delay | Countdown (sec) before the selection overlay opens |
+| Capture hotkey | The key that triggers the capture overlay (default: Print Screen) |
 | Recording output folder | Where recorded videos are saved |
 | Recording format | Output format: MP4 (H.264) or AVI (MJPEG) |
 | Frames per second | Recording frame rate |
