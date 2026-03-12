@@ -14,6 +14,9 @@ public partial class RecordingHudWindow : Window
     private readonly IProcessService _process;
     private CancellationTokenSource? _elapsedCts;
     private DateTime _startTime;
+    private bool _isPaused;
+    private DateTime _pausedAt;
+    private TimeSpan _totalPausedDuration;
 
     private readonly Rect _regionRect;
 
@@ -72,7 +75,12 @@ public partial class RecordingHudWindow : Window
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
             while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
             {
-                var elapsed = DateTime.UtcNow - _startTime;
+                if (_isPaused)
+                {
+                    continue;
+                }
+
+                var elapsed = DateTime.UtcNow - _startTime - _totalPausedDuration;
                 await Dispatcher.InvokeAsync(() => ElapsedText.Text = elapsed.ToString(@"mm\:ss"));
             }
         }
@@ -92,6 +100,7 @@ public partial class RecordingHudWindow : Window
         _logger.LogInformation("Stop button clicked");
         _elapsedCts?.Cancel();
         StopBtn.IsEnabled = false;
+        PauseBtn.IsEnabled = false;
 
         _svc.Stop();
 
@@ -117,6 +126,26 @@ public partial class RecordingHudWindow : Window
             StopCompleted?.Invoke();
             Close();
         });
+    }
+
+    private void PauseResume_Click(object sender, RoutedEventArgs e)
+    {
+        if (_svc.IsPaused)
+        {
+            _totalPausedDuration += DateTime.UtcNow - _pausedAt;
+            _svc.Resume();
+            _isPaused = false;
+            PauseBtn.Content = "⏸ Pause";
+            _logger.LogInformation("Recording resumed from HUD");
+        }
+        else
+        {
+            _pausedAt = DateTime.UtcNow;
+            _svc.Pause();
+            _isPaused = true;
+            PauseBtn.Content = "▶ Resume";
+            _logger.LogInformation("Recording paused from HUD");
+        }
     }
 
     private void SavedText_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)

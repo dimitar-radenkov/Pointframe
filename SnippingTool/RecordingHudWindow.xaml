@@ -13,6 +13,16 @@
     <StackPanel Orientation="Vertical">
 
       <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <Button x:Name="PauseBtn"
+                Click="PauseResume_Click"
+                Cursor="Hand"
+                Margin="0,0,6,0"
+                Padding="8,3"
+                Background="#444444" Foreground="White"
+                BorderBrush="#666666" BorderThickness="1"
+                FontWeight="SemiBold" FontSize="12"
+                FontFamily="Segoe UI"
+                Content="⏸ Pause"/>
         <Button x:Name="StopBtn"
                 Click="Stop_Click"
                 Cursor="Hand"

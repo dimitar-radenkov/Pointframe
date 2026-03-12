@@ -18,8 +18,10 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private int _captureWidth;
     private int _captureHeight;
     private int _fps;
+    private readonly SemaphoreSlim _pauseGate = new SemaphoreSlim(1, 1);
 
     public bool IsRecording { get; private set; }
+    public bool IsPaused { get; private set; }
 
     public ScreenRecordingService(
         ILogger<ScreenRecordingService> logger,
@@ -83,6 +85,12 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
         _logger.LogInformation("Stopping recording");
         IsRecording = false;
+        if (IsPaused)
+        {
+            IsPaused = false;
+            _pauseGate.Release();
+        }
+
         _cts?.Cancel();
         try
         {
@@ -113,6 +121,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         {
             while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
             {
+                await _pauseGate.WaitAsync(ct).ConfigureAwait(false);
+                _pauseGate.Release();
                 CaptureFrame();
                 frameCount++;
                 if (frameCount % 100 == 0)
@@ -155,6 +165,30 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         }
 
         _writer.WriteFrame(_buffer);
+    }
+
+    public void Pause()
+    {
+        if (!IsRecording || IsPaused)
+        {
+            return;
+        }
+
+        _pauseGate.Wait();
+        IsPaused = true;
+        _logger.LogInformation("Recording paused");
+    }
+
+    public void Resume()
+    {
+        if (!IsRecording || !IsPaused)
+        {
+            return;
+        }
+
+        IsPaused = false;
+        _pauseGate.Release();
+        _logger.LogInformation("Recording resumed");
     }
 
     public void Dispose() => Stop();
