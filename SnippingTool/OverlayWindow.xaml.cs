@@ -516,14 +516,15 @@ public partial class OverlayWindow : Window
         _recordingBorder = new RecordingBorderWindow(regionRect.Left, regionRect.Top, regionRect.Width, regionRect.Height);
         _recordingBorder.Show();
 
-        _recordingHud = new RecordingHudWindow(_recorder, path, _loggerFactory.CreateLogger<RecordingHudWindow>(), regionRect, _userSettings, _processService);
-        _recordingHud.StopCompleted += () => Dispatcher.Invoke(() =>
+        var hudVm = new RecordingHudViewModel(_recorder, path, _userSettings, _processService, _loggerFactory.CreateLogger<RecordingHudViewModel>());
+        hudVm.StopCompleted += () => Dispatcher.Invoke(() =>
         {
             _recordingBorder?.Close();
             _recordingBorder = null;
             _recordingHud = null;
             Close();
         });
+        _recordingHud = new RecordingHudWindow(hudVm, regionRect, _userSettings);
         _recordingHud.Show();
     }
 

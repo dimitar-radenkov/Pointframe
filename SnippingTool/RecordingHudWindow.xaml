@@ -9,12 +9,27 @@
         SizeToContent="WidthAndHeight"
         ResizeMode="NoResize">
 
+  <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+  </Window.Resources>
+
   <Border Background="#CC1A1A1A" CornerRadius="8" Padding="12,8">
     <StackPanel Orientation="Vertical">
 
       <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <Button x:Name="PauseBtn"
+                Command="{Binding PauseResumeCommand}"
+                IsEnabled="{Binding CanPauseResume}"
+                Content="{Binding PauseResumeLabel}"
+                Cursor="Hand"
+                Margin="0,0,6,0"
+                Padding="8,3"
+                Background="#444444" Foreground="White"
+                BorderBrush="#666666" BorderThickness="1"
+                FontWeight="SemiBold" FontSize="12"
+                FontFamily="Segoe UI"/>
         <Button x:Name="StopBtn"
-                Click="Stop_Click"
+                Command="{Binding StopCommand}"
                 Cursor="Hand"
                 Margin="0,0,10,0"
                 Padding="8,3"
@@ -23,21 +38,20 @@
                 FontWeight="SemiBold" FontSize="12"
                 FontFamily="Segoe UI"
                 Content="⏹ Stop"/>
-        <TextBlock x:Name="ElapsedText"
-                   Text="00:00"
+        <TextBlock Text="{Binding ElapsedText}"
                    Foreground="White"
                    FontSize="13"
                    FontFamily="Segoe UI"
                    VerticalAlignment="Center"/>
       </StackPanel>
 
-      <TextBlock x:Name="SavedText"
+      <TextBlock Text="{Binding SavedFileName}"
                  Foreground="#99DDFF"
                  FontSize="11"
                  FontFamily="Segoe UI"
                  Cursor="Hand"
                  Margin="0,6,0,0"
-                 Visibility="Collapsed"
+                 Visibility="{Binding IsStopped, Converter={StaticResource BoolToVisibility}}"
                  MouseLeftButtonUp="SavedText_Click"/>
 
     </StackPanel>

@@ -1,49 +1,38 @@
-using System.IO;
 using System.Windows;
-using Microsoft.Extensions.Logging;
 using SnippingTool.Services;
+using SnippingTool.ViewModels;
 
 namespace SnippingTool;
 
 public partial class RecordingHudWindow : Window
 {
-    private readonly IScreenRecordingService _svc;
-    private readonly string _outputPath;
-    private readonly ILogger<RecordingHudWindow> _logger;
-    private readonly IUserSettingsService _settings;
-    private readonly IProcessService _process;
-    private CancellationTokenSource? _elapsedCts;
-    private DateTime _startTime;
-
+    private readonly RecordingHudViewModel _vm;
     private readonly Rect _regionRect;
-
-    public event Action? StopCompleted;
+    private readonly IUserSettingsService _settings;
 
     public RecordingHudWindow(
-        IScreenRecordingService svc,
-        string outputPath,
-        ILogger<RecordingHudWindow> logger,
+        RecordingHudViewModel vm,
         Rect regionRect,
-        IUserSettingsService settings,
-        IProcessService process)
+        IUserSettingsService settings)
     {
-        _svc = svc;
-        _outputPath = outputPath;
-        _logger = logger;
-        _settings = settings;
-        _process = process;
+        _vm = vm;
         _regionRect = regionRect;
+        _settings = settings;
+        DataContext = vm;
         InitializeComponent();
-        _logger.LogDebug("RecordingHudWindow created for path={Path}", outputPath);
+        _vm.StopCompleted += () => Dispatcher.Invoke(() =>
+        {
+            if (IsLoaded)
+            {
+                Close();
+            }
+        });
     }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        _logger.LogDebug("RecordingHudWindow.OnSourceInitialized — starting elapsed timer");
-        _startTime = DateTime.UtcNow;
-        _elapsedCts = new CancellationTokenSource();
-        _ = RunElapsedTimerAsync(_elapsedCts.Token);
+        _vm.StartElapsedTimer();
     }
 
     protected override void OnContentRendered(EventArgs e)
@@ -52,8 +41,6 @@ public partial class RecordingHudWindow : Window
         var (left, top) = ComputePosition(_regionRect, ActualWidth, ActualHeight, SystemParameters.WorkArea, _settings.Current.HudGapPixels);
         Left = left;
         Top = top;
-        _logger.LogInformation("RecordingHudWindow rendered: ActualSize={W}x{H}, Position=({Left},{Top})",
-            ActualWidth, ActualHeight, Left, Top);
     }
 
     // Extracted for unit testability.
@@ -65,66 +52,14 @@ public partial class RecordingHudWindow : Window
         return (left, top);
     }
 
-    private async Task RunElapsedTimerAsync(CancellationToken ct)
-    {
-        try
-        {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
-            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
-            {
-                var elapsed = DateTime.UtcNow - _startTime;
-                await Dispatcher.InvokeAsync(() => ElapsedText.Text = elapsed.ToString(@"mm\:ss"));
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
     protected override void OnClosed(EventArgs e)
     {
-        _elapsedCts?.Cancel();
+        _vm.CancelElapsedTimer();
         base.OnClosed(e);
-    }
-
-    private void Stop_Click(object sender, RoutedEventArgs e)
-    {
-        _logger.LogInformation("Stop button clicked");
-        _elapsedCts?.Cancel();
-        StopBtn.IsEnabled = false;
-
-        _svc.Stop();
-
-        var fileName = Path.GetFileName(_outputPath);
-        SavedText.Text = $"Saved \u2192 {fileName}";
-        SavedText.Visibility = Visibility.Visible;
-        _logger.LogInformation("Recording saved to {Path}", _outputPath);
-
-        _ = CloseAfterDelayAsync();
-    }
-
-    private async Task CloseAfterDelayAsync()
-    {
-        await Task.Delay(TimeSpan.FromSeconds(_settings.Current.HudCloseDelaySeconds));
-        await Dispatcher.InvokeAsync(() =>
-        {
-            if (!IsLoaded)
-            {
-                return;
-            }
-
-            _logger.LogDebug("RecordingHudWindow closing");
-            StopCompleted?.Invoke();
-            Close();
-        });
     }
 
     private void SavedText_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        var dir = Path.GetDirectoryName(_outputPath);
-        if (dir is not null)
-        {
-            _process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", dir));
-        }
+        _vm.OpenOutputFolderCommand.Execute(null);
     }
 }
