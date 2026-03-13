@@ -21,8 +21,6 @@ public partial class SettingsViewModel : ObservableObject
         _autoSaveScreenshots = s.AutoSaveScreenshots;
         _recordingOutputPath = s.RecordingOutputPath;
         _recordingFormat = s.RecordingFormat;
-        _recordingFps = s.RecordingFps;
-        _recordingJpegQuality = s.RecordingJpegQuality;
         _hudCloseDelaySeconds = s.HudCloseDelaySeconds;
         _captureDelaySeconds = s.CaptureDelaySeconds;
         _defaultStrokeThickness = s.DefaultStrokeThickness;
@@ -50,12 +48,6 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private RecordingFormat _recordingFormat;
-
-    [ObservableProperty]
-    private int _recordingFps;
-
-    [ObservableProperty]
-    private int _recordingJpegQuality;
 
     [ObservableProperty]
     private int _hudCloseDelaySeconds;
@@ -142,8 +134,6 @@ public partial class SettingsViewModel : ObservableObject
             AutoSaveScreenshots = AutoSaveScreenshots,
             RecordingOutputPath = RecordingOutputPath,
             RecordingFormat = RecordingFormat,
-            RecordingFps = RecordingFps,
-            RecordingJpegQuality = RecordingJpegQuality,
             HudCloseDelaySeconds = HudCloseDelaySeconds,
             CaptureDelaySeconds = CaptureDelaySeconds,
             HudGapPixels = _settingsService.Current.HudGapPixels,
