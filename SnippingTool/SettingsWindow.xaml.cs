@@ -27,24 +27,6 @@ public partial class SettingsWindow : Window
 #endif
     }
 
-    private void IntInput_PreviewTextInput(object sender, TextCompositionEventArgs e) =>
-        e.Handled = !e.Text.All(char.IsDigit);
-
-    private void IntInput_Pasting(object sender, DataObjectPastingEventArgs e)
-    {
-        if (e.DataObject.GetDataPresent(DataFormats.Text))
-        {
-            if (!int.TryParse((string)e.DataObject.GetData(DataFormats.Text), out _))
-            {
-                e.CancelCommand();
-            }
-        }
-        else
-        {
-            e.CancelCommand();
-        }
-    }
-
     private void DoubleInput_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
         if (sender is TextBox tb)

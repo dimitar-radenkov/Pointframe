@@ -116,10 +116,15 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="HUD close delay (sec)" Style="{StaticResource RowLabel}"/>
-                        <TextBox Width="60"
-                                 Text="{Binding HudCloseDelaySeconds, UpdateSourceTrigger=PropertyChanged}"
-                                 PreviewTextInput="IntInput_PreviewTextInput"
-                                 DataObject.Pasting="IntInput_Pasting"/>
+                        <ComboBox Width="70"
+                                  SelectedItem="{Binding HudCloseDelaySeconds}">
+                            <sys:Int32>0</sys:Int32>
+                            <sys:Int32>3</sys:Int32>
+                            <sys:Int32>5</sys:Int32>
+                            <sys:Int32>10</sys:Int32>
+                            <sys:Int32>15</sys:Int32>
+                            <sys:Int32>30</sys:Int32>
+                        </ComboBox>
                     </StackPanel>
                 </StackPanel>
             </Border>
