@@ -4,8 +4,10 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:models="clr-namespace:SnippingTool.Models"
         Title="Settings"
-        Width="540" Height="650"
+        Width="540"
+        SizeToContent="Height"
         ResizeMode="NoResize"
+        MaxHeight="750"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI"
         Background="White">
@@ -66,7 +68,7 @@
             <!-- Screenshot section -->
             <TextBlock Text="Screenshot" Style="{StaticResource SectionHeader}"/>
             <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1"
-                    CornerRadius="4" Padding="12,10" Margin="0,0,0,14">
+                    CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="Save folder" Style="{StaticResource RowLabel}"/>
@@ -96,7 +98,7 @@
             <!-- Recording section -->
             <TextBlock Text="Recording" Style="{StaticResource SectionHeader}"/>
             <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1"
-                    CornerRadius="4" Padding="12,10" Margin="0,0,0,14">
+                    CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="Output folder" Style="{StaticResource RowLabel}"/>
@@ -112,26 +114,17 @@
                                   SelectedItem="{Binding RecordingFormat}"
                                   ItemsSource="{Binding Source={x:Static models:RecordingFormatValues.All}}"/>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <TextBlock Text="Frames per second" Style="{StaticResource RowLabel}"/>
-                        <TextBox Width="60"
-                                 Text="{Binding RecordingFps, UpdateSourceTrigger=PropertyChanged}"
-                                 PreviewTextInput="IntInput_PreviewTextInput"
-                                 DataObject.Pasting="IntInput_Pasting"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <TextBlock Text="JPEG quality (1–100)" Style="{StaticResource RowLabel}"/>
-                        <TextBox Width="60"
-                                 Text="{Binding RecordingJpegQuality, UpdateSourceTrigger=PropertyChanged}"
-                                 PreviewTextInput="IntInput_PreviewTextInput"
-                                 DataObject.Pasting="IntInput_Pasting"/>
-                    </StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="HUD close delay (sec)" Style="{StaticResource RowLabel}"/>
-                        <TextBox Width="60"
-                                 Text="{Binding HudCloseDelaySeconds, UpdateSourceTrigger=PropertyChanged}"
-                                 PreviewTextInput="IntInput_PreviewTextInput"
-                                 DataObject.Pasting="IntInput_Pasting"/>
+                        <ComboBox Width="70"
+                                  SelectedItem="{Binding HudCloseDelaySeconds}">
+                            <sys:Int32>0</sys:Int32>
+                            <sys:Int32>3</sys:Int32>
+                            <sys:Int32>5</sys:Int32>
+                            <sys:Int32>10</sys:Int32>
+                            <sys:Int32>15</sys:Int32>
+                            <sys:Int32>30</sys:Int32>
+                        </ComboBox>
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -139,7 +132,7 @@
             <!-- Annotation defaults section -->
             <TextBlock Text="Annotation defaults" Style="{StaticResource SectionHeader}"/>
             <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1"
-                    CornerRadius="4" Padding="12,10">
+                    CornerRadius="4" Padding="10,8">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="Default color" Style="{StaticResource RowLabel}"/>
@@ -161,9 +154,9 @@
             </Border>
 
             <!-- Hotkeys section -->
-            <TextBlock Text="Hotkeys" Style="{StaticResource SectionHeader}" Margin="0,14,0,6"/>
+            <TextBlock Text="Hotkeys" Style="{StaticResource SectionHeader}" Margin="0,10,0,6"/>
             <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1"
-                    CornerRadius="4" Padding="12,10">
+                    CornerRadius="4" Padding="10,8">
                 <StackPanel>
 
                     <!-- Idle state: kbd badge + Change + Reset -->
@@ -216,6 +209,39 @@
                         </Border>
                     </StackPanel>
 
+                </StackPanel>
+            </Border>
+
+            <!-- Updates section -->
+            <TextBlock Text="Updates" Style="{StaticResource SectionHeader}" Margin="0,10,0,6"/>
+            <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1"
+                    CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Auto-check interval" Style="{StaticResource RowLabel}"/>
+                        <ComboBox x:Name="UpdateIntervalComboBox" Width="170"
+                                  SelectedValue="{Binding AutoUpdateCheckInterval}"
+                                  SelectedValuePath="Tag">
+                            <ComboBoxItem Content="Never" Tag="{x:Static models:UpdateCheckInterval.Never}"/>
+                            <ComboBoxItem Content="Every day" Tag="{x:Static models:UpdateCheckInterval.EveryDay}"/>
+                            <ComboBoxItem Content="Every 2 days" Tag="{x:Static models:UpdateCheckInterval.EveryTwoDays}"/>
+                            <ComboBoxItem Content="Every 3 days" Tag="{x:Static models:UpdateCheckInterval.EveryThreeDays}"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <TextBlock Text="&#x26A0;&#xFE0F;  Automatic updates are disabled. You may miss important fixes."
+                               Foreground="#C05000" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding AutoUpdateCheckInterval}"
+                                                 Value="{x:Static models:UpdateCheckInterval.Never}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </StackPanel>
             </Border>
 

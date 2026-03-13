@@ -4,8 +4,10 @@ using System.Windows;
 using Hardcodet.Wpf.TaskbarNotification;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using SnippingTool.Models;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Application = System.Windows.Application;
@@ -15,13 +17,16 @@ namespace SnippingTool;
 public partial class App : Application
 {
     private TaskbarIcon? _trayIcon;
-    private ServiceProvider _services = null!;
+    private IHost _host = null!;
     private ILogger<App>? _logger;
     private IMessageBoxService _messageBox = null!;
     private IUserSettingsService _userSettings = null!;
+    private IAutoUpdateService _autoUpdate = null!;
     private SettingsWindow? _settingsWindow;
     private AboutWindow? _aboutWindow;
+    private UpdateCheckResult? _pendingUpdate;
 
+    private const string TrayIconResourceKey = "TrayIcon";
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
     private const uint VK_PRINTSCREEN = 0x2C;
@@ -68,27 +73,41 @@ public partial class App : Application
             .WriteTo.Debug()
             .CreateLogger();
 
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        _services = services.BuildServiceProvider();
+        _host = Host.CreateDefaultBuilder()
+            .UseContentRoot(AppContext.BaseDirectory)
+            .ConfigureLogging(logging =>
+            {
+                logging.ClearProviders();
+                logging.AddSerilog(dispose: false);
+            })
+            .ConfigureServices((_, services) => ConfigureServices(services))
+            .Build();
 
-        _logger = _services.GetRequiredService<ILogger<App>>();
-        _messageBox = _services.GetRequiredService<IMessageBoxService>();
-        _userSettings = _services.GetRequiredService<IUserSettingsService>();
+        _logger = _host.Services.GetRequiredService<ILogger<App>>();
+        _messageBox = _host.Services.GetRequiredService<IMessageBoxService>();
+        _userSettings = _host.Services.GetRequiredService<IUserSettingsService>();
+        _autoUpdate = _host.Services.GetRequiredService<IAutoUpdateService>();
+        _autoUpdate.UpdateAvailable += result =>
+        {
+            _pendingUpdate = result;
+            ShowUpdateBalloon(result);
+        };
         _logger.LogInformation("SnippingTool starting up");
 
         Current.DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-        _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
+        _trayIcon = (TaskbarIcon)FindResource(TrayIconResourceKey);
+        _trayIcon.TrayBalloonTipClicked += OnUpdateBalloonClicked;
+
         RegisterGlobalHotkey();
         _logger.LogInformation("Global hotkey (Print Screen) registered");
+        _host.StartAsync().GetAwaiter().GetResult();
     }
 
     private static void ConfigureServices(IServiceCollection services)
     {
-        services.AddLogging(b => b.AddSerilog(dispose: false));
         services.AddSingleton<IAppVersionService, AppVersionService>();
         services.AddSingleton<IProcessService, ProcessService>();
         services.AddSingleton<IMessageBoxService, MessageBoxService>();
@@ -114,6 +133,9 @@ public partial class App : Application
         services.AddTransient<Func<UpdateDownloadViewModel, UpdateDownloadWindow>>(_ => vm => new UpdateDownloadWindow(vm));
         services.AddTransient<IUpdateDownloadService, UpdateDownloadWindowService>();
         services.AddSingleton<IUpdateService, GitHubUpdateService>();
+        services.AddSingleton<AutoUpdateService>();
+        services.AddSingleton<IAutoUpdateService>(sp => sp.GetRequiredService<AutoUpdateService>());
+        services.AddHostedService(sp => sp.GetRequiredService<AutoUpdateService>());
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -126,7 +148,8 @@ public partial class App : Application
         }
 
         _trayIcon?.Dispose();
-        _services.Dispose();
+        _host.StopAsync().GetAwaiter().GetResult();
+        _host.Dispose();
         base.OnExit(e);
         Log.CloseAndFlush();
     }
@@ -170,35 +193,19 @@ public partial class App : Application
 
         try
         {
-            var updateService = _services.GetRequiredService<IUpdateService>();
+            var updateService = _host.Services.GetRequiredService<IUpdateService>();
             var result = await updateService.CheckForUpdatesAsync();
 
             if (!result.IsUpdateAvailable)
             {
-                var current = _services.GetRequiredService<IAppVersionService>().Current;
+                var current = _host.Services.GetRequiredService<IAppVersionService>().Current;
                 _messageBox.ShowInformation(
                     $"You're already on the latest version (v{current.Major}.{current.Minor}.{current.Build}).",
                     "Check for Updates");
                 return;
             }
 
-            var v = result.LatestVersion;
-            if (!_messageBox.Confirm(
-                    $"Version {v.Major}.{v.Minor}.{v.Build} is available. Download and install now?",
-                    "Update Available"))
-            {
-                return;
-            }
-
-            var fileName = $"SnippingTool-Setup-{v.Major}.{v.Minor}.{v.Build}.exe";
-            var destPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
-
-            var succeeded = await _services.GetRequiredService<IUpdateDownloadService>().ShowAsync(result.DownloadUrl, destPath);
-
-            if (succeeded)
-            {
-                Current.Shutdown();
-            }
+            await _autoUpdate.ConfirmAndInstallAsync(result);
         }
         catch (Exception ex)
         {
@@ -221,7 +228,7 @@ public partial class App : Application
             return;
         }
 
-        _settingsWindow = _services.GetRequiredService<SettingsWindow>();
+        _settingsWindow = _host.Services.GetRequiredService<SettingsWindow>();
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
     }
@@ -234,7 +241,7 @@ public partial class App : Application
             return;
         }
 
-        _aboutWindow = _services.GetRequiredService<AboutWindow>();
+        _aboutWindow = _host.Services.GetRequiredService<AboutWindow>();
         _aboutWindow.Closed += (_, _) => _aboutWindow = null;
         _aboutWindow.Show();
     }
@@ -242,14 +249,35 @@ public partial class App : Application
     private void StartSnip()
     {
         _logger?.LogDebug("Snip started");
-        var delay = _services.GetRequiredService<IUserSettingsService>().Current.CaptureDelaySeconds;
+        var delay = _host.Services.GetRequiredService<IUserSettingsService>().Current.CaptureDelaySeconds;
         if (delay > 0)
         {
-            new CountdownWindow(delay, () => _services.GetRequiredService<OverlayWindow>().Show()).Show();
+            new CountdownWindow(delay, () => _host.Services.GetRequiredService<OverlayWindow>().Show()).Show();
             return;
         }
 
-        _services.GetRequiredService<OverlayWindow>().Show();
+        _host.Services.GetRequiredService<OverlayWindow>().Show();
+    }
+
+    private void ShowUpdateBalloon(UpdateCheckResult result)
+    {
+        var v = result.LatestVersion;
+        _trayIcon?.ShowBalloonTip(
+            "Update Available",
+            $"Version {v.Major}.{v.Minor}.{v.Build} is ready to download.",
+            BalloonIcon.Info);
+    }
+
+    private async void OnUpdateBalloonClicked(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (_pendingUpdate is null)
+        {
+            return;
+        }
+
+        var update = _pendingUpdate;
+        _pendingUpdate = null;
+        await _autoUpdate.ConfirmAndInstallAsync(update);
     }
 
     private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)

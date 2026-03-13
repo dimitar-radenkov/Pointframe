@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
+using SnippingTool.Models;
 using SnippingTool.ViewModels;
 using DataFormats = System.Windows.DataFormats;
 using TextBox = System.Windows.Controls.TextBox;
@@ -17,24 +18,13 @@ public partial class SettingsWindow : Window
         _vm = vm;
         DataContext = vm;
         vm.RequestClose += Close;
-    }
-
-    private void IntInput_PreviewTextInput(object sender, TextCompositionEventArgs e) =>
-        e.Handled = !e.Text.All(char.IsDigit);
-
-    private void IntInput_Pasting(object sender, DataObjectPastingEventArgs e)
-    {
-        if (e.DataObject.GetDataPresent(DataFormats.Text))
+#if DEBUG
+        UpdateIntervalComboBox.Items.Add(new System.Windows.Controls.ComboBoxItem
         {
-            if (!int.TryParse((string)e.DataObject.GetData(DataFormats.Text), out _))
-            {
-                e.CancelCommand();
-            }
-        }
-        else
-        {
-            e.CancelCommand();
-        }
+            Content = "Every 30 seconds (Debug)",
+            Tag = UpdateCheckInterval.EveryThirtySeconds,
+        });
+#endif
     }
 
     private void DoubleInput_PreviewTextInput(object sender, TextCompositionEventArgs e)

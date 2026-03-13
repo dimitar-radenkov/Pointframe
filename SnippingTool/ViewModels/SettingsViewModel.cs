@@ -21,12 +21,11 @@ public partial class SettingsViewModel : ObservableObject
         _autoSaveScreenshots = s.AutoSaveScreenshots;
         _recordingOutputPath = s.RecordingOutputPath;
         _recordingFormat = s.RecordingFormat;
-        _recordingFps = s.RecordingFps;
-        _recordingJpegQuality = s.RecordingJpegQuality;
         _hudCloseDelaySeconds = s.HudCloseDelaySeconds;
         _captureDelaySeconds = s.CaptureDelaySeconds;
         _defaultStrokeThickness = s.DefaultStrokeThickness;
         _regionCaptureHotkey = s.RegionCaptureHotkey;
+        _autoUpdateCheckInterval = s.AutoUpdateCheckInterval;
 
         try
         {
@@ -51,12 +50,6 @@ public partial class SettingsViewModel : ObservableObject
     private RecordingFormat _recordingFormat;
 
     [ObservableProperty]
-    private int _recordingFps;
-
-    [ObservableProperty]
-    private int _recordingJpegQuality;
-
-    [ObservableProperty]
     private int _hudCloseDelaySeconds;
 
     [ObservableProperty]
@@ -74,6 +67,9 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isRecordingHotkey;
+
+    [ObservableProperty]
+    private UpdateCheckInterval _autoUpdateCheckInterval;
 
     public string RegionCaptureHotkeyDisplayName => VkToDisplayName(RegionCaptureHotkey);
 
@@ -138,14 +134,16 @@ public partial class SettingsViewModel : ObservableObject
             AutoSaveScreenshots = AutoSaveScreenshots,
             RecordingOutputPath = RecordingOutputPath,
             RecordingFormat = RecordingFormat,
-            RecordingFps = RecordingFps,
-            RecordingJpegQuality = RecordingJpegQuality,
+            RecordingFps = _settingsService.Current.RecordingFps,
+            RecordingJpegQuality = _settingsService.Current.RecordingJpegQuality,
             HudCloseDelaySeconds = HudCloseDelaySeconds,
             CaptureDelaySeconds = CaptureDelaySeconds,
             HudGapPixels = _settingsService.Current.HudGapPixels,
             DefaultAnnotationColor = $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}",
             DefaultStrokeThickness = DefaultStrokeThickness,
             RegionCaptureHotkey = RegionCaptureHotkey,
+            AutoUpdateCheckInterval = AutoUpdateCheckInterval,
+            LastAutoUpdateCheckUtc = _settingsService.Current.LastAutoUpdateCheckUtc,
         });
         RequestClose?.Invoke();
     }

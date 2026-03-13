@@ -25,4 +25,7 @@ public sealed class UserSettings
     public int CaptureDelaySeconds { get; set; } = 0;
 
     public uint RegionCaptureHotkey { get; set; } = 0x2C; // VK_SNAPSHOT (Print Screen)
+
+    public UpdateCheckInterval AutoUpdateCheckInterval { get; set; } = UpdateCheckInterval.EveryDay;
+    public DateTime? LastAutoUpdateCheckUtc { get; set; } = null;
 }
