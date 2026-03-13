@@ -24,7 +24,7 @@ https://github.com/user-attachments/assets/d4e0c937-a845-4266-9454-2b816934f949
 - **Copy & auto-save** — Copy to clipboard; optional auto-save to a configurable folder
 - **Screen recording** — Record a selected region to MP4 (H.264 via FFmpeg) or AVI (MJPEG via SharpAvi)
 - **Capture delay** — Configurable countdown (0 / 3 / 5 / 10 s) before the selection overlay appears, useful for capturing menus and hover states
-- **Check for updates** — Checks GitHub Releases and downloads the latest installer
+- **Auto-updates** — A background service checks GitHub Releases on every launch and on a configurable schedule (every day / 2 days / 3 days). When a new version is found a tray balloon appears; click it to confirm, watch the progress bar, and the installer runs automatically — no browser, no manual downloads
 - **System tray** — Runs silently in the background; all actions accessible from the tray icon
 
 ## How does it compare?
@@ -43,6 +43,7 @@ https://github.com/user-attachments/assets/d4e0c937-a845-4266-9454-2b816934f949
 | Screen recording (MP4) | ✅ | ✅ | ❌ | ✅ |
 | Capture delay / countdown | ✅ | ✅ | ✅ | ✅ |
 | Auto-save to folder | ✅ | ✅ | ✅ | ✅ |
+| Auto-updates (background, in-app install) | ✅ | ✅ | ❌ | ❌ |
 | Open source | ✅ | ❌ | ✅ | ✅ |
 
 ## Requirements
@@ -82,10 +83,10 @@ Open **Settings** from the tray icon to configure:
 | Capture hotkey | The key that triggers the capture overlay (default: Print Screen) |
 | Recording output folder | Where recorded videos are saved |
 | Recording format | Output format: MP4 (H.264) or AVI (MJPEG) |
-| Frames per second | Recording frame rate |
-| JPEG quality | Compression quality for recording frames |
+| HUD close delay | How long the recording HUD stays visible after stopping (0 / 3 / 5 / 10 / 15 / 30 s) |
 | Default annotation colour | Pre-selected colour when the overlay opens |
 | Stroke thickness | Default pen/shape width |
+| Auto-update check interval | How often to check for new releases: Every day / Every 2 days / Every 3 days / Never |
 
 ## Project structure
 
@@ -128,6 +129,7 @@ To bump the version:
 - **Serilog** — file + debug logging (`%LOCALAPPDATA%\SnippingTool\logs\`)
 - **SharpAvi** — AVI screen recording
 - **FFMpegCore** — MP4 screen recording (wraps ffmpeg)
+- **Microsoft.Extensions.Hosting** — Generic Host + `BackgroundService` for the auto-update background loop
 - **Windows.Media.Ocr** — built-in Windows OCR for text extraction
 - **Hardcodet.Wpf.TaskbarNotification** — system tray icon
 - **Nerdbank.GitVersioning** — automatic semantic versioning from git history
