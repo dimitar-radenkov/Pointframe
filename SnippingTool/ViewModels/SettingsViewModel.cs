@@ -11,10 +11,13 @@ namespace SnippingTool.ViewModels;
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly IUserSettingsService _settingsService;
+    private readonly IThemeService _themeService;
+    private readonly AppTheme _originalTheme;
 
-    public SettingsViewModel(IUserSettingsService settingsService)
+    public SettingsViewModel(IUserSettingsService settingsService, IThemeService themeService)
     {
         _settingsService = settingsService;
+        _themeService = themeService;
 
         var s = settingsService.Current;
         _screenshotSavePath = s.ScreenshotSavePath;
@@ -26,6 +29,8 @@ public partial class SettingsViewModel : ObservableObject
         _defaultStrokeThickness = s.DefaultStrokeThickness;
         _regionCaptureHotkey = s.RegionCaptureHotkey;
         _autoUpdateCheckInterval = s.AutoUpdateCheckInterval;
+        _appTheme = s.Theme;
+        _originalTheme = s.Theme;
 
         try
         {
@@ -71,10 +76,15 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private UpdateCheckInterval _autoUpdateCheckInterval;
 
+    [ObservableProperty]
+    private AppTheme _appTheme;
+
     public string RegionCaptureHotkeyDisplayName => VkToDisplayName(RegionCaptureHotkey);
 
     partial void OnDefaultAnnotationColorChanged(Color value) =>
         OnPropertyChanged(nameof(ColorPreviewBrush));
+
+    partial void OnAppThemeChanged(AppTheme value) => _themeService.Apply(value);
 
     public SolidColorBrush ColorPreviewBrush => new(DefaultAnnotationColor);
 
@@ -144,6 +154,7 @@ public partial class SettingsViewModel : ObservableObject
             RegionCaptureHotkey = RegionCaptureHotkey,
             AutoUpdateCheckInterval = AutoUpdateCheckInterval,
             LastAutoUpdateCheckUtc = _settingsService.Current.LastAutoUpdateCheckUtc,
+            Theme = AppTheme,
         });
         RequestClose?.Invoke();
     }
@@ -159,7 +170,13 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Cancel() => RequestClose?.Invoke();
+    private void Cancel()
+    {
+        _themeService.Apply(_originalTheme);
+        RequestClose?.Invoke();
+    }
+
+    internal void RevertThemePreview() => _themeService.Apply(_originalTheme);
 
     private static string VkToDisplayName(uint vk) =>
         vk switch

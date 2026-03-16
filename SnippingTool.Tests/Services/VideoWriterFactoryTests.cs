@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using SnippingTool.Models;
 using SnippingTool.Services;
 using Xunit;
@@ -8,7 +9,7 @@ namespace SnippingTool.Tests.Services;
 public sealed class VideoWriterFactoryTests
 {
     private static VideoWriterFactory CreateSut() =>
-        new(new FakeUserSettingsService(), NullLogger<FFMpegVideoWriter>.Instance);
+        new(Mock.Of<IUserSettingsService>(s => s.Current == new UserSettings()), NullLogger<FFMpegVideoWriter>.Instance);
 
     [Fact]
     public void Create_Avi_ReturnsSharpAviVideoWriter()

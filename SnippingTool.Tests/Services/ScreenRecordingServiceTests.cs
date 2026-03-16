@@ -10,18 +10,15 @@ public sealed class ScreenRecordingServiceTests
 {
     private static ScreenRecordingService CreateSut() =>
         new(NullLogger<ScreenRecordingService>.Instance,
-            new FakeUserSettingsService(),
+            Mock.Of<IUserSettingsService>(s => s.Current == new UserSettings()),
             new Mock<IVideoWriterFactory>().Object);
 
     private static ScreenRecordingService CreateSut(
         IVideoWriterFactory factory,
-        UserSettings? settings = null)
-    {
-        var settingsService = settings is not null
-            ? new ConfigurableFakeSettingsService(settings)
-            : (IUserSettingsService)new FakeUserSettingsService();
-        return new(NullLogger<ScreenRecordingService>.Instance, settingsService, factory);
-    }
+        UserSettings? settings = null) =>
+        new(NullLogger<ScreenRecordingService>.Instance,
+            Mock.Of<IUserSettingsService>(s => s.Current == (settings ?? new UserSettings())),
+            factory);
 
     [Fact]
     public void IsRecording_IsFalse_BeforeStart()
@@ -136,7 +133,11 @@ public sealed class ScreenRecordingServiceTests
         using var svc = CreateSut(mockFactory.Object);
 
         // Act
-        try { svc.Start(0, 0, 100, 100, "test.mp4"); } catch { }
+        try
+        {
+            svc.Start(0, 0, 100, 100, "test.mp4");
+        }
+        catch { }
 
         // Assert
         Assert.False(svc.IsRecording);
@@ -194,11 +195,5 @@ public sealed class ScreenRecordingServiceTests
 
         // Assert — dimensions truncated to 100×150
         mockFactory.Verify(f => f.Create(It.IsAny<RecordingFormat>(), 100, 150, It.IsAny<int>(), It.IsAny<string>()), Times.Once);
-    }
-
-    private sealed class ConfigurableFakeSettingsService(UserSettings settings) : IUserSettingsService
-    {
-        public UserSettings Current { get; } = settings;
-        public void Save(UserSettings s) { }
     }
 }

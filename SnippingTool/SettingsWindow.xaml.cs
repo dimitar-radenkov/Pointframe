@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
@@ -11,13 +12,18 @@ namespace SnippingTool;
 public partial class SettingsWindow : Window
 {
     private readonly SettingsViewModel _vm;
+    private bool _closedByVm;
 
     public SettingsWindow(SettingsViewModel vm)
     {
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        vm.RequestClose += Close;
+        vm.RequestClose += () =>
+        {
+            _closedByVm = true;
+            Close();
+        };
 #if DEBUG
         UpdateIntervalComboBox.Items.Add(new System.Windows.Controls.ComboBoxItem
         {
@@ -25,6 +31,15 @@ public partial class SettingsWindow : Window
             Tag = UpdateCheckInterval.EveryThirtySeconds,
         });
 #endif
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        if (!_closedByVm)
+        {
+            _vm.RevertThemePreview();
+        }
     }
 
     private void DoubleInput_PreviewTextInput(object sender, TextCompositionEventArgs e)

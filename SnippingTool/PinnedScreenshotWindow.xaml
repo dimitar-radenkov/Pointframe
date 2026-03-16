@@ -10,13 +10,13 @@
         MouseEnter="Window_MouseEnter"
         MouseLeave="Window_MouseLeave">
 
-  <Border BorderBrush="#0078D4" BorderThickness="1">
+  <Border BorderBrush="{DynamicResource AccentColor}" BorderThickness="1">
     <Grid>
 
       <!-- 8 px drag strip at top — doubles as the visible title-bar substitute -->
       <Rectangle x:Name="DragStrip"
                  Height="8" VerticalAlignment="Top"
-                 Fill="#990078D4"/>
+                 Fill="{DynamicResource AccentBackground}"/>
 
       <!-- Screenshot fills the remaining space below the drag strip -->
       <Image x:Name="ScreenshotImage"

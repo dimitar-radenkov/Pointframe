@@ -5,7 +5,8 @@
         Width="420" SizeToContent="Height"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
-        WindowStyle="ToolWindow">
+        WindowStyle="ToolWindow"
+        Background="{DynamicResource WindowBackground}">
 
     <StackPanel Margin="24">
 

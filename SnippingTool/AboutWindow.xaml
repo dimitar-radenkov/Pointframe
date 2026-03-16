@@ -6,7 +6,7 @@
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI"
-        Background="White"
+        Background="{DynamicResource WindowBackground}"
         Icon="/Assets/icon.ico">
 
     <Grid Margin="24,20,24,20">
@@ -23,19 +23,19 @@
                    VerticalAlignment="Center" Margin="0,0,14,0"/>
             <StackPanel VerticalAlignment="Center">
                 <TextBlock Text="SnippingTool"
-                           FontSize="20" FontWeight="SemiBold" Foreground="#1A1A1A"/>
+                           FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}"/>
                 <TextBlock Text="{Binding Version}"
-                           FontSize="12" Foreground="#666666" Margin="0,2,0,0"/>
+                           FontSize="12" Foreground="{DynamicResource MutedText}" Margin="0,2,0,0"/>
             </StackPanel>
         </StackPanel>
 
         <!-- Body -->
         <StackPanel Grid.Row="1">
             <TextBlock Text="A lightweight screen capture and annotation tool."
-                       FontSize="12" Foreground="#444444" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                       FontSize="12" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,12"/>
 
             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                <TextBlock Text="Changelog: " FontSize="12" Foreground="#444444" VerticalAlignment="Center"/>
+                <TextBlock Text="Changelog: " FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
                 <TextBlock FontSize="12" VerticalAlignment="Center">
                     <Hyperlink Command="{Binding OpenUrlCommand}"
                                CommandParameter="https://github.com/dimitar-radenkov/SnippingTool/releases">
@@ -45,7 +45,7 @@
             </StackPanel>
 
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Source: " FontSize="12" Foreground="#444444" VerticalAlignment="Center"/>
+                <TextBlock Text="Source: " FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
                 <TextBlock FontSize="12" VerticalAlignment="Center">
                     <Hyperlink Command="{Binding OpenUrlCommand}"
                                CommandParameter="https://github.com/dimitar-radenkov/SnippingTool">
@@ -60,7 +60,7 @@
                 Content="Close"
                 HorizontalAlignment="Right"
                 Padding="22,6"
-                Background="#0078D4"
+                Background="{DynamicResource AccentColor}"
                 Foreground="White"
                 BorderThickness="0"
                 FontSize="13"

@@ -33,4 +33,4 @@
 
 ## Earlier Releases
 
-See the [GitHub Releases page](https://github.com/dimitrietataru/SnippingTool/releases) for versions prior to 2.2.
+See the [GitHub Releases page](https://github.com/dimitar-radenkov/SnippingTool/releases) for versions prior to 2.2.

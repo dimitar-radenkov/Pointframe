@@ -1,3 +1,4 @@
+using Moq;
 using SnippingTool.Models;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
@@ -9,8 +10,9 @@ public sealed class SettingsViewModelTests
 {
     private static SettingsViewModel CreateVm(UserSettings? settings = null)
     {
-        var fake = new ConfigurableFakeSettingsService(settings ?? new UserSettings());
-        return new SettingsViewModel(fake);
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(settings ?? new UserSettings());
+        return new SettingsViewModel(mock.Object, Mock.Of<IThemeService>());
     }
 
     [Fact]
@@ -41,15 +43,18 @@ public sealed class SettingsViewModelTests
     public void Save_PersistsCaptureDelaySeconds()
     {
         // Arrange
-        var fake = new ConfigurableFakeSettingsService(new UserSettings());
-        var vm = new SettingsViewModel(fake);
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(new UserSettings());
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>());
         vm.CaptureDelaySeconds = 10;
 
         // Act
         vm.SaveCommand.Execute(null);
 
         // Assert
-        Assert.Equal(10, fake.Saved?.CaptureDelaySeconds);
+        Assert.Equal(10, saved?.CaptureDelaySeconds);
     }
 
     [Fact]
@@ -91,15 +96,18 @@ public sealed class SettingsViewModelTests
     public void Save_PersistsRecordingFormat()
     {
         // Arrange
-        var fake = new ConfigurableFakeSettingsService(new UserSettings());
-        var vm = new SettingsViewModel(fake);
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(new UserSettings());
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>());
         vm.RecordingFormat = RecordingFormat.Avi;
 
         // Act
         vm.SaveCommand.Execute(null);
 
         // Assert
-        Assert.Equal(RecordingFormat.Avi, fake.Saved?.RecordingFormat);
+        Assert.Equal(RecordingFormat.Avi, saved?.RecordingFormat);
     }
 
     [Fact]
@@ -150,15 +158,18 @@ public sealed class SettingsViewModelTests
     public void Save_PersistsRegionCaptureHotkey()
     {
         // Arrange
-        var fake = new ConfigurableFakeSettingsService(new UserSettings());
-        var vm = new SettingsViewModel(fake);
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(new UserSettings());
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>());
         vm.RegionCaptureHotkey = 0x42u; // 'B'
 
         // Act
         vm.SaveCommand.Execute(null);
 
         // Assert
-        Assert.Equal(0x42u, fake.Saved?.RegionCaptureHotkey);
+        Assert.Equal(0x42u, saved?.RegionCaptureHotkey);
     }
 
     [Fact]
@@ -226,12 +237,5 @@ public sealed class SettingsViewModelTests
 
         Assert.Contains(nameof(vm.RegionCaptureHotkeyDisplayName), raised);
         Assert.NotEmpty(vm.RegionCaptureHotkeyDisplayName);
-    }
-
-    private sealed class ConfigurableFakeSettingsService(UserSettings settings) : IUserSettingsService
-    {
-        public UserSettings Current { get; } = settings;
-        public UserSettings? Saved { get; private set; }
-        public void Save(UserSettings s) => Saved = s;
     }
 }
