@@ -12,6 +12,7 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly IUserSettingsService _settingsService;
     private readonly IThemeService _themeService;
+    private readonly AppTheme _originalTheme;
 
     public SettingsViewModel(IUserSettingsService settingsService, IThemeService themeService)
     {
@@ -29,6 +30,7 @@ public partial class SettingsViewModel : ObservableObject
         _regionCaptureHotkey = s.RegionCaptureHotkey;
         _autoUpdateCheckInterval = s.AutoUpdateCheckInterval;
         _appTheme = s.Theme;
+        _originalTheme = s.Theme;
 
         try
         {
@@ -81,6 +83,8 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnDefaultAnnotationColorChanged(Color value) =>
         OnPropertyChanged(nameof(ColorPreviewBrush));
+
+    partial void OnAppThemeChanged(AppTheme value) => _themeService.Apply(value);
 
     public SolidColorBrush ColorPreviewBrush => new(DefaultAnnotationColor);
 
@@ -152,7 +156,6 @@ public partial class SettingsViewModel : ObservableObject
             LastAutoUpdateCheckUtc = _settingsService.Current.LastAutoUpdateCheckUtc,
             Theme = AppTheme,
         });
-        _themeService.Apply(AppTheme);
         RequestClose?.Invoke();
     }
 
@@ -167,7 +170,11 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Cancel() => RequestClose?.Invoke();
+    private void Cancel()
+    {
+        _themeService.Apply(_originalTheme);
+        RequestClose?.Invoke();
+    }
 
     private static string VkToDisplayName(uint vk) =>
         vk switch
