@@ -28,4 +28,6 @@ public sealed class UserSettings
 
     public UpdateCheckInterval AutoUpdateCheckInterval { get; set; } = UpdateCheckInterval.EveryDay;
     public DateTime? LastAutoUpdateCheckUtc { get; set; } = null;
+
+    public AppTheme Theme { get; set; } = AppTheme.System;
 }

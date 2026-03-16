@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ── Window / surface ── -->
+    <SolidColorBrush x:Key="WindowBackground" Color="White"/>
+    <SolidColorBrush x:Key="SurfaceBackground" Color="#F8F8F8"/>
+    <SolidColorBrush x:Key="SurfaceBorder" Color="#E0E0E0"/>
+    <SolidColorBrush x:Key="InputBackground" Color="White"/>
+
+    <!-- ── Controls ── -->
+    <SolidColorBrush x:Key="ControlBackground" Color="#F2F2F2"/>
+    <SolidColorBrush x:Key="ControlBorder" Color="#C0C0C0"/>
+    <SolidColorBrush x:Key="HoverBackground" Color="#E4E4E4"/>
+    <SolidColorBrush x:Key="PressedBackground" Color="#C8DEFA"/>
+    <SolidColorBrush x:Key="BtnSecondaryBackground" Color="#F2F2F2"/>
+    <SolidColorBrush x:Key="DividerColor" Color="#D0D0D0"/>
+
+    <!-- ── Text ── -->
+    <SolidColorBrush x:Key="PrimaryText" Color="#1A1A1A"/>
+    <SolidColorBrush x:Key="SecondaryText" Color="#444444"/>
+    <SolidColorBrush x:Key="MutedText" Color="#666666"/>
+    <SolidColorBrush x:Key="SubLabelText" Color="#555555"/>
+    <SolidColorBrush x:Key="WarningText" Color="#C05000"/>
+
+    <!-- ── Accent ── -->
+    <SolidColorBrush x:Key="AccentColor" Color="#0078D4"/>
+    <SolidColorBrush x:Key="AccentBackground" Color="#DCE9F9"/>
+
+    <!-- ── Keyboard badge (hotkey display) ── -->
+    <SolidColorBrush x:Key="KbdBadgeBackground" Color="#F0F0F0"/>
+    <SolidColorBrush x:Key="KbdBadgeBorder" Color="#AAAAAA"/>
+
+    <!-- ── Hotkey recording prompt ── -->
+    <SolidColorBrush x:Key="HotkeyRecordingBorder" Color="#0078D4"/>
+    <SolidColorBrush x:Key="HotkeyRecordingBackground" Color="#EFF6FC"/>
+    <SolidColorBrush x:Key="HotkeyRecordingText" Color="#0078D4"/>
+
+    <!-- ── Annotation overlay toolbar ── -->
+    <SolidColorBrush x:Key="ToolbarBackground" Color="#F2F2F2"/>
+    <SolidColorBrush x:Key="ToolbarBorder" Color="#C0C0C0"/>
+    <SolidColorBrush x:Key="ToolBtnCheckedBackground" Color="#DCE9F9"/>
+    <SolidColorBrush x:Key="ToolBtnCheckedBorder" Color="#0078D4"/>
+    <SolidColorBrush x:Key="ToolBtnHoverBackground" Color="#E4E4E4"/>
+    <SolidColorBrush x:Key="ActionBtnHoverBackground" Color="#E0E0E0"/>
+    <SolidColorBrush x:Key="ActionBtnPressedBackground" Color="#C8DEFA"/>
+    <SolidColorBrush x:Key="OcrLassoFill" Color="#100078D4"/>
+
+</ResourceDictionary>

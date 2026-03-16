@@ -11,10 +11,12 @@ namespace SnippingTool.ViewModels;
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly IUserSettingsService _settingsService;
+    private readonly IThemeService _themeService;
 
-    public SettingsViewModel(IUserSettingsService settingsService)
+    public SettingsViewModel(IUserSettingsService settingsService, IThemeService themeService)
     {
         _settingsService = settingsService;
+        _themeService = themeService;
 
         var s = settingsService.Current;
         _screenshotSavePath = s.ScreenshotSavePath;
@@ -26,6 +28,7 @@ public partial class SettingsViewModel : ObservableObject
         _defaultStrokeThickness = s.DefaultStrokeThickness;
         _regionCaptureHotkey = s.RegionCaptureHotkey;
         _autoUpdateCheckInterval = s.AutoUpdateCheckInterval;
+        _appTheme = s.Theme;
 
         try
         {
@@ -70,6 +73,9 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private UpdateCheckInterval _autoUpdateCheckInterval;
+
+    [ObservableProperty]
+    private AppTheme _appTheme;
 
     public string RegionCaptureHotkeyDisplayName => VkToDisplayName(RegionCaptureHotkey);
 
@@ -144,7 +150,9 @@ public partial class SettingsViewModel : ObservableObject
             RegionCaptureHotkey = RegionCaptureHotkey,
             AutoUpdateCheckInterval = AutoUpdateCheckInterval,
             LastAutoUpdateCheckUtc = _settingsService.Current.LastAutoUpdateCheckUtc,
+            Theme = AppTheme,
         });
+        _themeService.Apply(AppTheme);
         RequestClose?.Invoke();
     }
 

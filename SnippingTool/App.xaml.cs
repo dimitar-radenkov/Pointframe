@@ -21,6 +21,7 @@ public partial class App : Application
     private ILogger<App>? _logger;
     private IMessageBoxService _messageBox = null!;
     private IUserSettingsService _userSettings = null!;
+    private IThemeService _themeService = null!;
     private IAutoUpdateService _autoUpdate = null!;
     private SettingsWindow? _settingsWindow;
     private AboutWindow? _aboutWindow;
@@ -86,6 +87,8 @@ public partial class App : Application
         _logger = _host.Services.GetRequiredService<ILogger<App>>();
         _messageBox = _host.Services.GetRequiredService<IMessageBoxService>();
         _userSettings = _host.Services.GetRequiredService<IUserSettingsService>();
+        _themeService = _host.Services.GetRequiredService<IThemeService>();
+        _themeService.Apply(_userSettings.Current.Theme);
         _autoUpdate = _host.Services.GetRequiredService<IAutoUpdateService>();
         _autoUpdate.UpdateAvailable += result =>
         {
@@ -108,6 +111,7 @@ public partial class App : Application
 
     private static void ConfigureServices(IServiceCollection services)
     {
+        services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<IAppVersionService, AppVersionService>();
         services.AddSingleton<IProcessService, ProcessService>();
         services.AddSingleton<IMessageBoxService, MessageBoxService>();

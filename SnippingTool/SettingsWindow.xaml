@@ -10,35 +10,39 @@
         MaxHeight="750"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI"
-        Background="White">
+        Background="{DynamicResource WindowBackground}">
     <Window.Resources>
         <Style x:Key="SectionHeader" TargetType="TextBlock">
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#0078D4"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentColor}"/>
             <Setter Property="Margin" Value="0,0,0,6"/>
         </Style>
         <Style x:Key="RowLabel" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Width" Value="155"/>
             <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
         </Style>
         <Style TargetType="TextBox">
             <Setter Property="Padding" Value="4,3"/>
-            <Setter Property="BorderBrush" Value="#C0C0C0"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
+            <Setter Property="Background" Value="{DynamicResource InputBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="FontSize" Value="12"/>
         </Style>
         <Style x:Key="BrowseBtn" TargetType="Button">
             <Setter Property="Padding" Value="10,3"/>
-            <Setter Property="Background" Value="#F2F2F2"/>
-            <Setter Property="BorderBrush" Value="#C0C0C0"/>
+            <Setter Property="Background" Value="{DynamicResource BtnSecondaryBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontSize" Value="12"/>
         </Style>
         <Style x:Key="PrimaryBtn" TargetType="Button">
             <Setter Property="Padding" Value="22,6"/>
-            <Setter Property="Background" Value="#0078D4"/>
+            <Setter Property="Background" Value="{DynamicResource AccentColor}"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="FontSize" Value="13"/>
@@ -46,13 +50,17 @@
         </Style>
         <Style x:Key="SecondaryBtn" TargetType="Button">
             <Setter Property="Padding" Value="22,6"/>
-            <Setter Property="Background" Value="#F2F2F2"/>
-            <Setter Property="BorderBrush" Value="#C0C0C0"/>
+            <Setter Property="Background" Value="{DynamicResource BtnSecondaryBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
-        <Style TargetType="CheckBox">
+        <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
             <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="FontSize" Value="12"/>
         </Style>
     </Window.Resources>
 
@@ -67,7 +75,7 @@
 
             <!-- Screenshot section -->
             <TextBlock Text="Screenshot" Style="{StaticResource SectionHeader}"/>
-            <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1"
+            <Border Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource SurfaceBorder}" BorderThickness="1"
                     CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
@@ -97,7 +105,7 @@
 
             <!-- Recording section -->
             <TextBlock Text="Recording" Style="{StaticResource SectionHeader}"/>
-            <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1"
+            <Border Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource SurfaceBorder}" BorderThickness="1"
                     CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
@@ -131,12 +139,12 @@
 
             <!-- Annotation defaults section -->
             <TextBlock Text="Annotation defaults" Style="{StaticResource SectionHeader}"/>
-            <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1"
+            <Border Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource SurfaceBorder}" BorderThickness="1"
                     CornerRadius="4" Padding="10,8">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="Default color" Style="{StaticResource RowLabel}"/>
-                        <Border Width="32" Height="24" BorderBrush="#C0C0C0" BorderThickness="1"
+                        <Border Width="32" Height="24" BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1"
                                 CornerRadius="3"
                                 Background="{Binding ColorPreviewBrush}"/>
                         <Button Content="Change…" Style="{StaticResource BrowseBtn}"
@@ -155,7 +163,7 @@
 
             <!-- Hotkeys section -->
             <TextBlock Text="Hotkeys" Style="{StaticResource SectionHeader}" Margin="0,10,0,6"/>
-            <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1"
+            <Border Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource SurfaceBorder}" BorderThickness="1"
                     CornerRadius="4" Padding="10,8">
                 <StackPanel>
 
@@ -172,10 +180,11 @@
                             </Style>
                         </StackPanel.Style>
                         <TextBlock Text="Region capture key" Style="{StaticResource RowLabel}"/>
-                        <Border Background="#F0F0F0" BorderBrush="#AAAAAA" BorderThickness="1,1,1,3"
+                        <Border Background="{DynamicResource KbdBadgeBackground}" BorderBrush="{DynamicResource KbdBadgeBorder}" BorderThickness="1,1,1,3"
                                 CornerRadius="4" Padding="8,3" Margin="0,0,8,0">
                             <TextBlock Text="{Binding RegionCaptureHotkeyDisplayName}"
-                                       FontFamily="Consolas" FontSize="12" VerticalAlignment="Center"/>
+                                       FontFamily="Consolas" FontSize="12" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource PrimaryText}"/>
                         </Border>
                         <Button Content="Change" Style="{StaticResource BrowseBtn}"
                                 Command="{Binding StartRecordingHotkeyCommand}"
@@ -201,10 +210,10 @@
                             </Style>
                         </StackPanel.Style>
                         <TextBlock Text="Region capture key" Style="{StaticResource RowLabel}"/>
-                        <Border BorderBrush="#0078D4" BorderThickness="2" CornerRadius="4"
-                                Padding="10,5" Background="#EFF6FC" Width="200">
+                        <Border BorderBrush="{DynamicResource HotkeyRecordingBorder}" BorderThickness="2" CornerRadius="4"
+                                Padding="10,5" Background="{DynamicResource HotkeyRecordingBackground}" Width="200">
                             <TextBlock Text="Press a key…  Esc to cancel"
-                                       Foreground="#0078D4" FontStyle="Italic" FontSize="12"
+                                       Foreground="{DynamicResource HotkeyRecordingText}" FontStyle="Italic" FontSize="12"
                                        VerticalAlignment="Center"/>
                         </Border>
                     </StackPanel>
@@ -212,9 +221,27 @@
                 </StackPanel>
             </Border>
 
+            <!-- Theme section -->
+            <TextBlock Text="Appearance" Style="{StaticResource SectionHeader}" Margin="0,10,0,6"/>
+            <Border Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource SurfaceBorder}" BorderThickness="1"
+                    CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Theme" Style="{StaticResource RowLabel}"/>
+                        <ComboBox Width="170"
+                                  SelectedValue="{Binding AppTheme}"
+                                  SelectedValuePath="Tag">
+                            <ComboBoxItem Content="Follow system" Tag="{x:Static models:AppTheme.System}"/>
+                            <ComboBoxItem Content="Light"         Tag="{x:Static models:AppTheme.Light}"/>
+                            <ComboBoxItem Content="Dark"          Tag="{x:Static models:AppTheme.Dark}"/>
+                        </ComboBox>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Updates section -->
             <TextBlock Text="Updates" Style="{StaticResource SectionHeader}" Margin="0,10,0,6"/>
-            <Border Background="#F8F8F8" BorderBrush="#E0E0E0" BorderThickness="1"
+            <Border Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource SurfaceBorder}" BorderThickness="1"
                     CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal">
@@ -229,7 +256,7 @@
                         </ComboBox>
                     </StackPanel>
                     <TextBlock Text="&#x26A0;&#xFE0F;  Automatic updates are disabled. You may miss important fixes."
-                               Foreground="#C05000" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap">
+                               Foreground="{DynamicResource WarningText}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed"/>

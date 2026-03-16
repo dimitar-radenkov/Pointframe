@@ -26,18 +26,18 @@
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Bd" Property="Background" Value="#DCE9F9"/>
-                <Setter TargetName="Bd" Property="BorderBrush" Value="#0078D4"/>
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolBtnCheckedBackground}"/>
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ToolBtnCheckedBorder}"/>
               </Trigger>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Bd" Property="Background" Value="#E4E4E4"/>
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolBtnHoverBackground}"/>
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
                   <Condition Property="IsChecked" Value="True"/>
                   <Condition Property="IsMouseOver" Value="True"/>
                 </MultiTrigger.Conditions>
-                <Setter TargetName="Bd" Property="Background" Value="#C5DEFA"/>
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PressedBackground}"/>
               </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -61,10 +61,10 @@
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Bd" Property="Background" Value="#E0E0E0"/>
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ActionBtnHoverBackground}"/>
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="Bd" Property="Background" Value="#C8DEFA"/>
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ActionBtnPressedBackground}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -100,7 +100,7 @@
     <Rectangle x:Name="OcrLassoRect"
                Stroke="#0078D4" StrokeThickness="1.5"
                StrokeDashArray="4,3"
-               Fill="#100078D4"
+               Fill="{DynamicResource OcrLassoFill}"
                Visibility="Collapsed"/>
 
     <!-- Size label shown while dragging -->
@@ -134,8 +134,8 @@
 
     <!-- Vertical annotation toolbar (phase 2, floats right of selection) -->
     <Border x:Name="AnnotToolbar"
-            Background="#F2F2F2" CornerRadius="6"
-            BorderBrush="#C0C0C0" BorderThickness="1"
+            Background="{DynamicResource ToolbarBackground}" CornerRadius="6"
+            BorderBrush="{DynamicResource ToolbarBorder}" BorderThickness="1"
             Padding="4,6" Visibility="Collapsed">
       <Border.Effect>
         <DropShadowEffect Color="#444444" BlurRadius="10" ShadowDepth="0" Opacity="0.4"/>
@@ -145,31 +145,31 @@
         <RadioButton Style="{StaticResource ToolBtn}"
                      GroupName="AnnotTool" IsChecked="True"
                      Tag="Arrow" Click="Tool_Click" ToolTip="Arrow">
-          <TextBlock Text="➤" FontSize="14"/>
+          <TextBlock Text="➤" FontSize="14" Foreground="{DynamicResource PrimaryText}"/>
         </RadioButton>
 
         <RadioButton Style="{StaticResource ToolBtn}"
                      GroupName="AnnotTool"
                      Tag="Line" Click="Tool_Click" ToolTip="Line">
-          <TextBlock Text="╱" FontSize="14"/>
+          <TextBlock Text="╱" FontSize="14" Foreground="{DynamicResource PrimaryText}"/>
         </RadioButton>
 
         <RadioButton Style="{StaticResource ToolBtn}"
                      GroupName="AnnotTool"
                      Tag="Rectangle" Click="Tool_Click" ToolTip="Rectangle">
-          <Border Width="16" Height="12" BorderBrush="#555" BorderThickness="1.5" Background="Transparent"/>
+          <Border Width="16" Height="12" BorderBrush="{DynamicResource SubLabelText}" BorderThickness="1.5" Background="Transparent"/>
         </RadioButton>
 
         <RadioButton Style="{StaticResource ToolBtn}"
                      GroupName="AnnotTool"
                      Tag="Circle" Click="Tool_Click" ToolTip="Circle">
-          <TextBlock Text="⬭" FontSize="14"/>
+          <TextBlock Text="⬭" FontSize="14" Foreground="{DynamicResource PrimaryText}"/>
         </RadioButton>
 
         <RadioButton Style="{StaticResource ToolBtn}"
                      GroupName="AnnotTool"
                      Tag="Pen" Click="Tool_Click" ToolTip="Pen">
-          <TextBlock Text="✏" FontSize="14"/>
+          <TextBlock Text="✏" FontSize="14" Foreground="{DynamicResource PrimaryText}"/>
         </RadioButton>
 
         <RadioButton Style="{StaticResource ToolBtn}"
@@ -182,23 +182,23 @@
         <RadioButton Style="{StaticResource ToolBtn}"
                      GroupName="AnnotTool"
                      Tag="Text" Click="Tool_Click" ToolTip="Text">
-          <TextBlock Text="T" FontSize="15" FontWeight="Bold"/>
+          <TextBlock Text="T" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
         </RadioButton>
 
         <RadioButton Style="{StaticResource ToolBtn}"
                      GroupName="AnnotTool"
                      Tag="Number" Click="Tool_Click" ToolTip="Place numbered label">
-          <TextBlock Text="①" FontSize="15"/>
+          <TextBlock Text="①" FontSize="15" Foreground="{DynamicResource PrimaryText}"/>
         </RadioButton>
 
         <RadioButton Style="{StaticResource ToolBtn}"
                      GroupName="AnnotTool"
                      Tag="Blur" Click="Tool_Click" ToolTip="Blur / Pixelate">
-          <TextBlock Text="▒" FontSize="16"/>
+          <TextBlock Text="▒" FontSize="16" Foreground="{DynamicResource PrimaryText}"/>
         </RadioButton>
 
         <!-- Divider -->
-        <Rectangle Height="1" Fill="#D0D0D0" Margin="4,5"/>
+        <Rectangle Height="1" Fill="{DynamicResource DividerColor}" Margin="4,5"/>
 
         <!-- Color swatch -->
         <Button Width="34" Height="34" Cursor="Hand"
@@ -212,8 +212,8 @@
 
     <!-- Horizontal action bar (phase 2, floats below selection) -->
     <Border x:Name="ActionBar"
-            Background="#F2F2F2" CornerRadius="6"
-            BorderBrush="#C0C0C0" BorderThickness="1"
+            Background="{DynamicResource ToolbarBackground}" CornerRadius="6"
+            BorderBrush="{DynamicResource ToolbarBorder}" BorderThickness="1"
             Padding="6,4" Visibility="Collapsed">
       <Border.Effect>
         <DropShadowEffect Color="#444444" BlurRadius="10" ShadowDepth="0" Opacity="0.4"/>
@@ -225,67 +225,67 @@
                 Click="Record_Click" ToolTip="Record region to video">
           <StackPanel>
             <TextBlock Text="⏺" FontSize="13" Foreground="#FF4444" HorizontalAlignment="Center"/>
-            <TextBlock Text="Record" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+            <TextBlock Text="Record" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
           </StackPanel>
         </Button>
 
-        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
                 Command="{Binding UndoCommand}" ToolTip="Undo (Ctrl+Z)">
           <StackPanel>
-            <TextBlock Text="↩" FontSize="13" HorizontalAlignment="Center"/>
-            <TextBlock Text="Undo" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+            <TextBlock Text="↩" FontSize="13" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
+            <TextBlock Text="Undo" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
           </StackPanel>
         </Button>
 
-        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
                 Command="{Binding RedoCommand}" ToolTip="Redo (Ctrl+Y)">
           <StackPanel>
-            <TextBlock Text="↪" FontSize="13" HorizontalAlignment="Center"/>
-            <TextBlock Text="Redo" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+            <TextBlock Text="↪" FontSize="13" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
+            <TextBlock Text="Redo" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
           </StackPanel>
         </Button>
 
-        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
                 Click="Copy_Click" ToolTip="Copy to clipboard (Ctrl+C)">
           <StackPanel>
             <TextBlock Text="📋" FontSize="13" HorizontalAlignment="Center"/>
-            <TextBlock Text="Copy" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+            <TextBlock Text="Copy" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
           </StackPanel>
         </Button>
 
-        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
                 Command="{Binding CopyTextCommand}" ToolTip="Copy text from screenshot (OCR)">
           <StackPanel>
             <TextBlock Text="🔤" FontSize="13" HorizontalAlignment="Center"/>
-            <TextBlock Text="Text" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+            <TextBlock Text="Text" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
           </StackPanel>
         </Button>
 
-        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
                 Command="{Binding PinCommand}" ToolTip="Pin to screen">
           <StackPanel>
             <TextBlock Text="📌" FontSize="13" HorizontalAlignment="Center"/>
-            <TextBlock Text="Pin" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+            <TextBlock Text="Pin" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
           </StackPanel>
         </Button>
 
-        <Rectangle Width="1" Fill="#D0D0D0" Margin="3,7" VerticalAlignment="Stretch"/>
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
                 Click="CloseBtn_Click" ToolTip="Close (Esc)">
           <StackPanel>
-            <TextBlock Text="✕" FontSize="13" HorizontalAlignment="Center"/>
-            <TextBlock Text="Close" FontSize="8" Foreground="#555" HorizontalAlignment="Center"/>
+            <TextBlock Text="✕" FontSize="13" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
+            <TextBlock Text="Close" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
           </StackPanel>
         </Button>
 
