@@ -26,7 +26,18 @@ public sealed class ThemeService : IThemeService
 
     private static void SwapThemeDictionary(Uri uri)
     {
-        var merged = System.Windows.Application.Current.Resources.MergedDictionaries;
+        if (System.Windows.Application.Current is not { } app)
+        {
+            return;
+        }
+
+        if (!app.Dispatcher.CheckAccess())
+        {
+            app.Dispatcher.Invoke(() => SwapThemeDictionary(uri));
+            return;
+        }
+
+        var merged = app.Resources.MergedDictionaries;
 
         // Remove any previously loaded theme dictionary.
         var existing = merged.FirstOrDefault(d => d.Source != null &&

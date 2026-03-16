@@ -176,6 +176,8 @@ public partial class SettingsViewModel : ObservableObject
         RequestClose?.Invoke();
     }
 
+    internal void RevertThemePreview() => _themeService.Apply(_originalTheme);
+
     private static string VkToDisplayName(uint vk) =>
         vk switch
         {

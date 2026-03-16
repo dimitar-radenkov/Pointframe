@@ -37,6 +37,9 @@
             <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentColor}"/>
             </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
+            </Trigger>
         </ControlTemplate.Triggers>
     </ControlTemplate>
 
@@ -152,6 +155,10 @@
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="CheckBorder" Property="BorderBrush" Value="{DynamicResource AccentColor}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
