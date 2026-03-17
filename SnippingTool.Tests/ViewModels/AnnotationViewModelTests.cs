@@ -279,6 +279,7 @@ public sealed class AnnotationViewModelTests
     [InlineData(AnnotationTool.Line)]
     [InlineData(AnnotationTool.Circle)]
     [InlineData(AnnotationTool.Blur)]
+    [InlineData(AnnotationTool.Callout)]
     public void TryGetShapeParameters_AllDragTools_ReturnNonNull(AnnotationTool tool)
     {
         // Arrange
@@ -311,6 +312,27 @@ public sealed class AnnotationViewModelTests
 
         // Assert
         Assert.Null(result);
+    }
+
+    [Fact]
+    public void TryGetShapeParameters_Callout_ReturnsCalloutParamsWithCorrectGeometry()
+    {
+        // Arrange
+        var vm = new TestAnnotationViewModel(Geom());
+        vm.SelectedTool = AnnotationTool.Callout;
+        vm.BeginDrawing(new System.Windows.Point(10, 20));
+        vm.UpdateDrawing(new System.Windows.Point(110, 120));
+
+        // Act
+        var result = vm.TryGetShapeParameters() as CalloutShapeParameters;
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(10, result.Left);
+        Assert.Equal(20, result.Top);
+        Assert.Equal(100, result.Width);
+        Assert.Equal(100, result.Height);
+        Assert.Equal(string.Empty, result.Text);
     }
 
     [Fact]
