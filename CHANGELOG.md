@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.2] – 2026-03-17
+
+### Features
+- **Callout annotation tool** – new speech-bubble shape with a triangular tail; drag to size the bubble, then type text inside it. Added 💬 toolbar button.
+- **Number badge redesign** – numbered labels are now circular filled badges (disc + white numeral) instead of plain `(n)` text, making them more visible on any background.
+
+### Fixes
+- **Release build crash** – corrected a `size` → `Size` casing bug in `AnnotationCanvasRenderer` that caused a build failure in Release configuration.
+- **Flaky CI test** – replaced `Task.Delay(50)` timing guard in `AutoUpdateServiceTests` with a `TaskCompletionSource`-based wait, eliminating a race condition on loaded CI runners.
+
+### Code quality
+- Replaced `== null` / `!= null` comparisons with `is null` / `is not null` across `AnnotationCanvasRenderer`, `OverlayWindow.xaml.cs`, `ThemeService`, and `WindowsOcrService`.
+- Fixed number-counter undo/redo recount to use `FrameworkElement` instead of `TextBlock` (required after the badge redesign).
+
+---
+
 ## [2.2.9] – 2026-03-05
 
 ### Features
