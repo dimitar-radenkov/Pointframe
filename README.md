@@ -56,6 +56,14 @@ https://github.com/user-attachments/assets/d4e0c937-a845-4266-9454-2b816934f949
 
 ## Installation
 
+**Via winget (recommended)**
+
+```powershell
+winget install DimitarRadenkov.SnippingTool
+```
+
+**Manual installer**
+
 Download the latest `SnippingTool-Setup-*.exe` from the [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases) page and run it.
 
 ## Building from source
