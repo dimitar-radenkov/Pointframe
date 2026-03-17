@@ -40,11 +40,11 @@ public sealed class ThemeService : IThemeService
         var merged = app.Resources.MergedDictionaries;
 
         // Remove any previously loaded theme dictionary.
-        var existing = merged.FirstOrDefault(d => d.Source != null &&
+        var existing = merged.FirstOrDefault(d => d.Source is not null &&
             (d.Source.AbsoluteUri == LightThemeUri ||
              d.Source.AbsoluteUri == DarkThemeUri));
 
-        if (existing != null)
+        if (existing is not null)
         {
             merged.Remove(existing);
         }

@@ -10,7 +10,7 @@ internal sealed class WindowsOcrService : IOcrService
     public async Task<string?> RecognizeAsync(BitmapSource bitmap)
     {
         var engine = OcrEngine.TryCreateFromUserProfileLanguages();
-        if (engine == null)
+        if (engine is null)
         {
             return null;
         }

@@ -88,11 +88,15 @@ public sealed class AutoUpdateServiceTests
             .ReturnsAsync(NoUpdate);
 
         var settingsMock = SettingsMock();
+        var saveCalled = new TaskCompletionSource();
+        settingsMock
+            .Setup(s => s.Save(It.IsAny<UserSettings>()))
+            .Callback(() => saveCalled.TrySetResult());
 
         var sut = CreateService(updateService, settingsMock, new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
 
         await sut.StartAsync(CancellationToken.None);
-        await Task.Delay(50);
+        await saveCalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await sut.StopAsync(CancellationToken.None);
 
         settingsMock.Verify(

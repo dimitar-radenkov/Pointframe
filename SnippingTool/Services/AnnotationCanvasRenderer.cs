@@ -31,6 +31,8 @@ internal sealed class AnnotationCanvasRenderer
     private Ellipse? _currentEllipse;
     private Polyline? _currentPen;
     private System.Windows.Shapes.Rectangle? _blurDraft;
+    private System.Windows.Shapes.Rectangle? _calloutBubble;
+    private Polygon? _calloutTail;
 
     private BitmapSource? _backgroundCapture;
     private double _dpiX = 1.0;
@@ -113,20 +115,41 @@ internal sealed class AnnotationCanvasRenderer
                 Canvas.SetTop(_blurDraft, p.Y);
                 _canvas.Children.Add(_blurDraft);
                 break;
+            case AnnotationTool.Callout:
+                _calloutBubble = new System.Windows.Shapes.Rectangle
+                {
+                    RadiusX = 6,
+                    RadiusY = 6,
+                    Stroke = brush,
+                    StrokeThickness = thick,
+                    Fill = Brushes.White
+                };
+                Canvas.SetLeft(_calloutBubble, p.X);
+                Canvas.SetTop(_calloutBubble, p.Y);
+                _calloutTail = new Polygon
+                {
+                    Stroke = brush,
+                    StrokeThickness = thick,
+                    Fill = Brushes.White,
+                    StrokeLineJoin = PenLineJoin.Round
+                };
+                Add(_calloutBubble);
+                Add(_calloutTail);
+                break;
         }
     }
 
     public void UpdateShape(Point p)
     {
         var @params = _vm.TryGetShapeParameters();
-        if (@params == null)
+        if (@params is null)
         {
             return;
         }
 
         switch (@params)
         {
-            case ArrowShapeParameters arr when _arrowShaft != null && _arrowHead != null:
+            case ArrowShapeParameters arr when _arrowShaft is not null && _arrowHead is not null:
                 _arrowShaft.X2 = arr.P2.X;
                 _arrowShaft.Y2 = arr.P2.Y;
                 _arrowHead.Points.Clear();
@@ -136,30 +159,40 @@ internal sealed class AnnotationCanvasRenderer
                 }
 
                 break;
-            case LineShapeParameters line when _currentLine != null:
+            case LineShapeParameters line when _currentLine is not null:
                 _currentLine.X2 = line.P2.X;
                 _currentLine.Y2 = line.P2.Y;
                 break;
-            case RectShapeParameters rect when _currentRect != null:
+            case RectShapeParameters rect when _currentRect is not null:
                 Canvas.SetLeft(_currentRect, rect.Left);
                 Canvas.SetTop(_currentRect, rect.Top);
                 _currentRect.Width = rect.Width;
                 _currentRect.Height = rect.Height;
                 break;
-            case EllipseShapeParameters ellipse when _currentEllipse != null:
+            case EllipseShapeParameters ellipse when _currentEllipse is not null:
                 Canvas.SetLeft(_currentEllipse, ellipse.Left);
                 Canvas.SetTop(_currentEllipse, ellipse.Top);
                 _currentEllipse.Width = ellipse.Width;
                 _currentEllipse.Height = ellipse.Height;
                 break;
-            case PenShapeParameters when _currentPen != null:
+            case PenShapeParameters when _currentPen is not null:
                 _currentPen.Points.Add(p);
                 break;
-            case BlurShapeParameters blur when _blurDraft != null:
+            case BlurShapeParameters blur when _blurDraft is not null:
                 Canvas.SetLeft(_blurDraft, blur.Left);
                 Canvas.SetTop(_blurDraft, blur.Top);
                 _blurDraft.Width = blur.Width;
                 _blurDraft.Height = blur.Height;
+                break;
+            case CalloutShapeParameters c when _calloutBubble is not null && _calloutTail is not null:
+                Canvas.SetLeft(_calloutBubble, c.Left);
+                Canvas.SetTop(_calloutBubble, c.Top);
+                _calloutBubble.Width = c.Width;
+                _calloutBubble.Height = c.Height;
+                _calloutTail.Points.Clear();
+                _calloutTail.Points.Add(new Point(c.Left + c.Width * 0.15, c.Top + c.Height));
+                _calloutTail.Points.Add(new Point(c.Left + c.Width * 0.35, c.Top + c.Height));
+                _calloutTail.Points.Add(c.Tail);
                 break;
         }
     }
@@ -184,17 +217,19 @@ internal sealed class AnnotationCanvasRenderer
         _currentEllipse = null;
         _currentPen = null;
         _blurDraft = null;
+        _calloutBubble = null;
+        _calloutTail = null;
     }
 
     private void CommitBlur()
     {
         var @params = _vm.TryGetShapeParameters() as BlurShapeParameters;
-        if (_blurDraft != null)
+        if (_blurDraft is not null)
         {
             _canvas.Children.Remove(_blurDraft);
         }
 
-        if (@params == null || _backgroundCapture == null)
+        if (@params is null || _backgroundCapture is null)
         {
             return;
         }
@@ -235,17 +270,27 @@ internal sealed class AnnotationCanvasRenderer
     {
         var n = _vm.IncrementNumberCounter();
         _logger.LogDebug("Number label ({N}) placed at ({X:F1},{Y:F1})", n, p.X, p.Y);
-        var tb = new TextBlock
+        const double Size = 28;
+        var fill = ActiveBrush();
+        var badge = new Grid
         {
-            Text = $"({n})",
-            FontSize = 18,
-            FontWeight = FontWeights.Bold,
-            Foreground = ActiveBrush(),
+            Width = Size,
+            Height = Size,
             Tag = "number"
         };
-        Canvas.SetLeft(tb, p.X);
-        Canvas.SetTop(tb, p.Y);
-        Add(tb);
+        badge.Children.Add(new Ellipse { Fill = fill });
+        badge.Children.Add(new TextBlock
+        {
+            Text = n.ToString(),
+            FontSize = 13,
+            FontWeight = FontWeights.Bold,
+            Foreground = Brushes.White,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        Canvas.SetLeft(badge, p.X - Size / 2);
+        Canvas.SetTop(badge, p.Y - Size / 2);
+        Add(badge);
     }
 
     public void PlaceTextBox(Point p)
@@ -302,6 +347,67 @@ internal sealed class AnnotationCanvasRenderer
         var block = new TextBlock { Text = text, Foreground = brush, FontSize = 16, FontWeight = FontWeights.SemiBold };
         Canvas.SetLeft(block, pos.X);
         Canvas.SetTop(block, pos.Y);
+        Add(block);
+    }
+
+    public void PlaceCalloutTextBox(double left, double top, double width, double height)
+    {
+        _logger.LogDebug("Callout text box placed at ({X:F1},{Y:F1})", left, top);
+        var tb = new TextBox
+        {
+            FontSize = 14,
+            Foreground = ActiveBrush(),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            Width = Math.Max(width - 16, 40),
+            Padding = new Thickness(2)
+        };
+        tb.LostFocus += (_, _) => FinalizeCalloutTextBox(tb);
+        tb.KeyDown += (_, ke) =>
+        {
+            if (ke.Key == Key.Escape)
+            {
+                FinalizeCalloutTextBox(tb);
+                ke.Handled = true;
+            }
+        };
+        Canvas.SetLeft(tb, left + 8);
+        Canvas.SetTop(tb, top + 8);
+        Add(tb);
+        tb.Focus();
+    }
+
+    private void FinalizeCalloutTextBox(TextBox tb)
+    {
+        if (!_canvas.Children.Contains(tb))
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(tb.Text))
+        {
+            _canvas.Children.Remove(tb);
+            return;
+        }
+
+        var left = Canvas.GetLeft(tb);
+        var top = Canvas.GetTop(tb);
+        var width = tb.Width;
+        var text = tb.Text;
+        var brush = tb.Foreground;
+        _canvas.Children.Remove(tb);
+        var block = new TextBlock
+        {
+            Text = text,
+            Foreground = brush,
+            FontSize = 14,
+            TextWrapping = TextWrapping.Wrap,
+            Width = width
+        };
+        Canvas.SetLeft(block, left);
+        Canvas.SetTop(block, top);
         Add(block);
     }
 

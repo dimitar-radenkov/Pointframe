@@ -45,3 +45,14 @@ public sealed record BlurShapeParameters(
     double Top,
     double Width,
     double Height) : ShapeParameters;
+
+public sealed record CalloutShapeParameters(
+    double Left,
+    double Top,
+    double Width,
+    double Height,
+    Point Tail,
+    string Text,
+    Color Fill,
+    Color Stroke,
+    double Thickness) : ShapeParameters;

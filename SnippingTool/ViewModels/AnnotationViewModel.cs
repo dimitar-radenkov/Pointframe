@@ -158,6 +158,8 @@ public partial class AnnotationViewModel : ObservableObject
 
             AnnotationTool.Blur => BuildBlurParams(DragStart, DragCurrent),
 
+            AnnotationTool.Callout => BuildCalloutParams(DragStart, DragCurrent, color, thick),
+
             _ => null
         };
     }
@@ -178,6 +180,13 @@ public partial class AnnotationViewModel : ObservableObject
     {
         var (left, top, width, height) = _geometry.CalculateRect(start, end);
         return new BlurShapeParameters(left, top, width, height);
+    }
+
+    private CalloutShapeParameters BuildCalloutParams(Point start, Point end, Color stroke, double thick)
+    {
+        var (left, top, width, height) = _geometry.CalculateRect(start, end);
+        var tail = new Point(left - width * 0.15, top + height + height * 0.25);
+        return new CalloutShapeParameters(left, top, width, height, tail, string.Empty, Colors.White, stroke, thick);
     }
 
     private readonly List<List<object>> _undoStack = [];

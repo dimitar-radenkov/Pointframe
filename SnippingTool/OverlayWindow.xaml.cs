@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Extensions.Logging;
+using SnippingTool.Models;
 using SnippingTool.Services;
 using SnippingTool.ViewModels;
 using Color = System.Windows.Media.Color;
@@ -64,8 +65,8 @@ public partial class OverlayWindow : Window
             }
 
             _vm.ResetNumberCounter(AnnotationCanvas.Children
-                .OfType<TextBlock>()
-                .Count(tb => tb.Tag is "number"));
+                .OfType<FrameworkElement>()
+                .Count(fe => fe.Tag is "number"));
         };
         _vm.RedoApplied += group =>
         {
@@ -75,8 +76,8 @@ public partial class OverlayWindow : Window
             }
 
             _vm.ResetNumberCounter(AnnotationCanvas.Children
-                .OfType<TextBlock>()
-                .Count(tb => tb.Tag is "number"));
+                .OfType<FrameworkElement>()
+                .Count(fe => fe.Tag is "number"));
         };
         _vm.CopyRequested += DoCopy;
         _vm.CloseRequested += Close;
@@ -116,7 +117,7 @@ public partial class OverlayWindow : Window
         ScreenSnapshot.Height = Height;
 
         var src = PresentationSource.FromVisual(this);
-        if (src?.CompositionTarget != null)
+        if (src?.CompositionTarget is not null)
         {
             _vm.DpiX = src.CompositionTarget.TransformToDevice.M11;
             _vm.DpiY = src.CompositionTarget.TransformToDevice.M22;
@@ -217,7 +218,7 @@ public partial class OverlayWindow : Window
 
     private void UpdateLoupe(Point cursor)
     {
-        if (_screenSnapshot == null)
+        if (_screenSnapshot is null)
         {
             return;
         }
@@ -454,6 +455,15 @@ public partial class OverlayWindow : Window
         _vm.UpdateDrawing(p);
         AnnotationCanvas.ReleaseMouseCapture();
         _renderer.CommitShape(p);
+
+        if (_vm.SelectedTool == AnnotationTool.Callout)
+        {
+            if (_vm.TryGetShapeParameters() is CalloutShapeParameters cp)
+            {
+                _renderer.PlaceCalloutTextBox(cp.Left, cp.Top, cp.Width, cp.Height);
+            }
+        }
+
         _vm.CommitDrawing();
         _vm.CommitGroup();
     }
@@ -573,7 +583,7 @@ public partial class OverlayWindow : Window
     private async Task DoLassoOcrAsync(Rect lassoRect)
     {
         var background = _renderer.BackgroundCapture;
-        if (background == null)
+        if (background is null)
         {
             return;
         }
@@ -669,6 +679,7 @@ public partial class OverlayWindow : Window
                 {
                     Close();
                 }
+
                 break;
             case Key.C when e.KeyboardDevice.Modifiers == ModifierKeys.Control
                          && _vm.CurrentPhase == OverlayViewModel.Phase.Annotating:

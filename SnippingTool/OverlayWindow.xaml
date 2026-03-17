@@ -197,6 +197,12 @@
           <TextBlock Text="▒" FontSize="16" Foreground="{DynamicResource PrimaryText}"/>
         </RadioButton>
 
+        <RadioButton Style="{StaticResource ToolBtn}"
+                     GroupName="AnnotTool"
+                     Tag="Callout" Click="Tool_Click" ToolTip="Callout / Speech bubble">
+          <TextBlock Text="💬" FontSize="14" Foreground="{DynamicResource PrimaryText}"/>
+        </RadioButton>
+
         <!-- Divider -->
         <Rectangle Height="1" Fill="{DynamicResource DividerColor}" Margin="4,5"/>
 
