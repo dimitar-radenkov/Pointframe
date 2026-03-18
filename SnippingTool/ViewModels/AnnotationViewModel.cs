@@ -139,9 +139,9 @@ public partial class AnnotationViewModel : ObservableObject
                 Thickness: thick,
                 ArrowHead: _geometry.CalculateArrowHead(DragStart, DragCurrent)),
 
-            AnnotationTool.Rectangle => BuildRectParams(DragStart, DragCurrent, color, thick, isHighlight: false),
+            AnnotationTool.Rectangle => BuildRectParams(DragStart, DragCurrent, color, thick),
 
-            AnnotationTool.Highlight => BuildRectParams(DragStart, DragCurrent, color, thick, isHighlight: true),
+            AnnotationTool.Highlight => BuildHighlightParams(DragStart, DragCurrent, color),
 
             AnnotationTool.Circle => BuildEllipseParams(DragStart, DragCurrent, color, thick),
 
@@ -164,10 +164,16 @@ public partial class AnnotationViewModel : ObservableObject
         };
     }
 
-    private RectShapeParameters BuildRectParams(Point start, Point end, Color color, double thick, bool isHighlight)
+    private RectShapeParameters BuildRectParams(Point start, Point end, Color color, double thick)
     {
         var (left, top, width, height) = _geometry.CalculateRect(start, end);
-        return new RectShapeParameters(left, top, width, height, color, thick, isHighlight);
+        return new RectShapeParameters(left, top, width, height, color, thick);
+    }
+
+    private HighlightShapeParameters BuildHighlightParams(Point start, Point end, Color baseColor)
+    {
+        var (left, top, width, height) = _geometry.CalculateRect(start, end);
+        return new HighlightShapeParameters(left, top, width, height, baseColor);
     }
 
     private EllipseShapeParameters BuildEllipseParams(Point start, Point end, Color color, double thick)

@@ -200,6 +200,22 @@ public sealed class AnnotationViewModelTests
     }
 
     [Fact]
+    public void TryGetShapeParameters_Highlight_ReturnsHighlightParams()
+    {
+        // Arrange
+        var vm = new TestAnnotationViewModel(Geom());
+        vm.SelectedTool = AnnotationTool.Highlight;
+        vm.BeginDrawing(new System.Windows.Point(10, 10));
+        vm.UpdateDrawing(new System.Windows.Point(60, 60));
+
+        // Act
+        var result = vm.TryGetShapeParameters();
+
+        // Assert
+        Assert.IsType<HighlightShapeParameters>(result);
+    }
+
+    [Fact]
     public void TryGetShapeParameters_Arrow_ReturnsArrowParamsWithHead()
     {
         // Arrange
