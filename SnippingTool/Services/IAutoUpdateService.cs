@@ -5,6 +5,5 @@ namespace SnippingTool.Services;
 
 public interface IAutoUpdateService : IHostedService
 {
-    event Action<UpdateCheckResult>? UpdateAvailable;
     Task ConfirmAndInstallAsync(UpdateCheckResult result);
 }

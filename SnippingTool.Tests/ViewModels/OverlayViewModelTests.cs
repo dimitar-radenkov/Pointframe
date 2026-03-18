@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using SnippingTool.Models;
 using SnippingTool.Services;
+using SnippingTool.Services.Messaging;
 using SnippingTool.ViewModels;
 using Xunit;
 using Colors = System.Windows.Media.Colors;
@@ -33,7 +34,8 @@ public sealed class OverlayViewModelTests
             settingsMock.Object,
             dialogService ?? Mock.Of<IDialogService>(),
             Mock.Of<IClipboardService>(),
-            Mock.Of<IFileSystemService>());
+            Mock.Of<IFileSystemService>(),
+            Mock.Of<IEventAggregator>());
     }
 
     private static OverlayViewModel Vm(
@@ -48,7 +50,8 @@ public sealed class OverlayViewModelTests
             settingsMock.Object,
             dialogMock?.Object ?? Mock.Of<IDialogService>(),
             clipboardMock?.Object ?? Mock.Of<IClipboardService>(),
-            fileSystemMock?.Object ?? Mock.Of<IFileSystemService>());
+            fileSystemMock?.Object ?? Mock.Of<IFileSystemService>(),
+            Mock.Of<IEventAggregator>());
     }
 
     [Fact]

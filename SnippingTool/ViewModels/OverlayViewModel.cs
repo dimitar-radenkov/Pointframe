@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using SnippingTool.Services;
+using SnippingTool.Services.Messaging;
 
 namespace SnippingTool.ViewModels;
 
@@ -21,8 +22,9 @@ public partial class OverlayViewModel : AnnotationViewModel
         IUserSettingsService settings,
         IDialogService dialogService,
         IClipboardService clipboardService,
-        IFileSystemService fileSystemService)
-        : base(geometry, logger, settings)
+        IFileSystemService fileSystemService,
+        IEventAggregator eventAggregator)
+        : base(geometry, logger, settings, eventAggregator)
     {
         _clipboardService = clipboardService;
         _dialogService = dialogService;

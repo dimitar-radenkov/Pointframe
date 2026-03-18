@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using Microsoft.Extensions.Logging;
 using SnippingTool.Services;
+using SnippingTool.Services.Messaging;
 using SnippingTool.ViewModels;
 using Cursors = System.Windows.Input.Cursors;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
@@ -19,11 +20,14 @@ public partial class OverlayWindow : Window
     private readonly IScreenCaptureService _screenCapture;
     private readonly IScreenRecordingService _recorder;
     private readonly Func<IScreenRecordingService, string, RecordingHudViewModel> _recordingHudViewModelFactory;
+    private readonly IEventAggregator _eventAggregator;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IUserSettingsService _userSettings;
     private readonly IMessageBoxService _messageBox;
     private readonly IFileSystemService _fileSystem;
     private readonly IOcrService _ocrService;
+    private readonly IEventSubscription _redoSubscription;
+    private readonly IEventSubscription _undoSubscription;
     private AnnotationCanvasRenderer _renderer = null!;
     private RecordingBorderWindow? _recordingBorder;
     private RecordingHudWindow? _recordingHud;
@@ -35,6 +39,7 @@ public partial class OverlayWindow : Window
         IScreenCaptureService screenCapture,
         IScreenRecordingService recorder,
         Func<IScreenRecordingService, string, RecordingHudViewModel> recordingHudViewModelFactory,
+        IEventAggregator eventAggregator,
         ILoggerFactory loggerFactory,
         IUserSettingsService userSettings,
         IMessageBoxService messageBox,
@@ -45,6 +50,7 @@ public partial class OverlayWindow : Window
         _screenCapture = screenCapture;
         _recorder = recorder;
         _recordingHudViewModelFactory = recordingHudViewModelFactory;
+        _eventAggregator = eventAggregator;
         _loggerFactory = loggerFactory;
         _userSettings = userSettings;
         _messageBox = messageBox;
@@ -60,29 +66,8 @@ public partial class OverlayWindow : Window
             () => _vm.DpiX,
             () => _vm.DpiY));
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
-
-        _vm.UndoApplied += group =>
-        {
-            foreach (var el in group.Cast<UIElement>())
-            {
-                AnnotationCanvas.Children.Remove(el);
-            }
-
-            _vm.ResetNumberCounter(AnnotationCanvas.Children
-                .OfType<FrameworkElement>()
-                .Count(fe => fe.Tag is "number"));
-        };
-        _vm.RedoApplied += group =>
-        {
-            foreach (var el in group.Cast<UIElement>())
-            {
-                AnnotationCanvas.Children.Add(el);
-            }
-
-            _vm.ResetNumberCounter(AnnotationCanvas.Children
-                .OfType<FrameworkElement>()
-                .Count(fe => fe.Tag is "number"));
-        };
+        _undoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleUndoGroupAsync);
+        _redoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRedoGroupAsync);
         _vm.CloseRequested += Close;
         _vm.PinRequested += DoPin;
 
@@ -512,6 +497,9 @@ public partial class OverlayWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _undoSubscription.Dispose();
+        _redoSubscription.Dispose();
+
         if (_recorder.IsRecording)
         {
             _recorder.Stop();
@@ -523,6 +511,35 @@ public partial class OverlayWindow : Window
         _recordingBorder = null;
 
         base.OnClosed(e);
+    }
+
+    private ValueTask HandleUndoGroupAsync(UndoGroupMessage message)
+    {
+        foreach (var element in message.Elements.OfType<UIElement>())
+        {
+            AnnotationCanvas.Children.Remove(element);
+        }
+
+        ResetNumberCounter();
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask HandleRedoGroupAsync(RedoGroupMessage message)
+    {
+        foreach (var element in message.Elements.OfType<UIElement>())
+        {
+            AnnotationCanvas.Children.Add(element);
+        }
+
+        ResetNumberCounter();
+        return ValueTask.CompletedTask;
+    }
+
+    private void ResetNumberCounter()
+    {
+        _vm.ResetNumberCounter(AnnotationCanvas.Children
+            .OfType<FrameworkElement>()
+            .Count(fe => fe.Tag is "number"));
     }
 
     private void DoPin(BitmapSource bitmap)

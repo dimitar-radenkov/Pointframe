@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using SnippingTool.Models;
 using SnippingTool.Services;
+using SnippingTool.Services.Messaging;
 using SnippingTool.ViewModels;
 using Application = System.Windows.Application;
 
@@ -23,6 +24,7 @@ public partial class App : Application
     private IUserSettingsService _userSettings = null!;
     private IThemeService _themeService = null!;
     private IAutoUpdateService _autoUpdate = null!;
+    private IEventSubscription? _updateAvailableSubscription;
     private SettingsWindow? _settingsWindow;
     private AboutWindow? _aboutWindow;
     private UpdateCheckResult? _pendingUpdate;
@@ -89,12 +91,9 @@ public partial class App : Application
         _userSettings = _host.Services.GetRequiredService<IUserSettingsService>();
         _themeService = _host.Services.GetRequiredService<IThemeService>();
         _themeService.Apply(_userSettings.Current.Theme);
+        var eventAggregator = _host.Services.GetRequiredService<IEventAggregator>();
+        _updateAvailableSubscription = eventAggregator.Subscribe<UpdateAvailableMessage>(HandleUpdateAvailableAsync);
         _autoUpdate = _host.Services.GetRequiredService<IAutoUpdateService>();
-        _autoUpdate.UpdateAvailable += result =>
-        {
-            _pendingUpdate = result;
-            ShowUpdateBalloon(result);
-        };
         _logger.LogInformation("SnippingTool starting up");
 
         Current.DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -115,6 +114,7 @@ public partial class App : Application
         services.AddSingleton<IAppVersionService, AppVersionService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
         services.AddSingleton<IDialogService, DialogService>();
+        services.AddSingleton<IEventAggregator, DefaultEventAggregator>();
         services.AddSingleton<IProcessService, ProcessService>();
         services.AddSingleton<IMessageBoxService, MessageBoxService>();
         services.AddSingleton<IFileSystemService, FileSystemService>();
@@ -154,6 +154,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _logger?.LogInformation("SnippingTool shutting down");
+        _updateAvailableSubscription?.Dispose();
         if (_keyboardHook != IntPtr.Zero)
         {
             UnhookWindowsHookEx(_keyboardHook);
@@ -279,6 +280,13 @@ public partial class App : Application
             "Update Available",
             $"Version {v.Major}.{v.Minor}.{v.Build} is ready to download.",
             BalloonIcon.Info);
+    }
+
+    private ValueTask HandleUpdateAvailableAsync(UpdateAvailableMessage message)
+    {
+        _pendingUpdate = message.Result;
+        ShowUpdateBalloon(message.Result);
+        return ValueTask.CompletedTask;
     }
 
     private async void OnUpdateBalloonClicked(object sender, System.Windows.RoutedEventArgs e)

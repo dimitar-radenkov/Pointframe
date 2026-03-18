@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using SnippingTool.Models;
 using SnippingTool.Services;
+using SnippingTool.Services.Messaging;
 using Color = System.Windows.Media.Color;
 using Point = System.Windows.Point;
 
@@ -11,14 +12,17 @@ namespace SnippingTool.ViewModels;
 
 public partial class AnnotationViewModel : ObservableObject
 {
+    private readonly IEventAggregator _eventAggregator;
     private readonly IAnnotationGeometryService _geometry;
     protected readonly ILogger _logger;
 
     public AnnotationViewModel(
         IAnnotationGeometryService geometry,
         ILogger logger,
-        IUserSettingsService settings)
+        IUserSettingsService settings,
+        IEventAggregator eventAggregator)
     {
+        _eventAggregator = eventAggregator;
         _geometry = geometry;
         _logger = logger;
 
@@ -233,7 +237,7 @@ public partial class AnnotationViewModel : ObservableObject
         UndoCount = _undoStack.Count;
         RedoCount = _redoStack.Count;
         _logger.LogDebug("Undo applied: undoStack={UndoCount}, redoStack={RedoCount}", UndoCount, RedoCount);
-        UndoApplied?.Invoke(group);
+        PublishSync(new UndoGroupMessage(group));
     }
 
     private bool CanUndo() => _undoStack.Count > 0;
@@ -247,11 +251,17 @@ public partial class AnnotationViewModel : ObservableObject
         UndoCount = _undoStack.Count;
         RedoCount = _redoStack.Count;
         _logger.LogDebug("Redo applied: undoStack={UndoCount}, redoStack={RedoCount}", UndoCount, RedoCount);
-        RedoApplied?.Invoke(group);
+        PublishSync(new RedoGroupMessage(group));
     }
 
     private bool CanRedo() => _redoStack.Count > 0;
 
-    public event Action<List<object>>? UndoApplied;
-    public event Action<List<object>>? RedoApplied;
+    private void PublishSync(object message)
+    {
+        var publishTask = _eventAggregator.PublishAsync(message);
+        if (!publishTask.IsCompletedSuccessfully)
+        {
+            publishTask.AsTask().GetAwaiter().GetResult();
+        }
+    }
 }

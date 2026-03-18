@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using SnippingTool.Models;
 using SnippingTool.Services;
+using SnippingTool.Services.Messaging;
 using Xunit;
 
 namespace SnippingTool.Tests.Services;
@@ -16,12 +17,14 @@ public sealed class AutoUpdateServiceTests
         new(IsUpdateAvailable: true, LatestVersion: new Version(9, 9, 0), DownloadUrl: "https://example.com/setup.exe");
 
     private static AutoUpdateService CreateService(
+        IEventAggregator eventAggregator,
         Mock<IUpdateService> updateService,
         Mock<IUserSettingsService> userSettings,
         Mock<IUpdateDownloadService> downloadService,
         Mock<IMessageBoxService> messageBox)
     {
         return new AutoUpdateService(
+            eventAggregator,
             updateService.Object,
             userSettings.Object,
             downloadService.Object,
@@ -41,44 +44,43 @@ public sealed class AutoUpdateServiceTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_NoUpdateAvailable_DoesNotRaiseEvent()
+    public async Task ExecuteAsync_NoUpdateAvailable_DoesNotPublishMessage()
     {
+        var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
         var updateService = new Mock<IUpdateService>();
         updateService
             .Setup(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(NoUpdate);
 
-        var sut = CreateService(updateService, SettingsMock(), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
-
-        UpdateCheckResult? raised = null;
-        sut.UpdateAvailable += r => raised = r;
-
-        await sut.StartAsync(CancellationToken.None);
-        await Task.Delay(50); // let ExecuteAsync run
-        await sut.StopAsync(CancellationToken.None);
-
-        Assert.Null(raised);
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_UpdateAvailable_RaisesEvent()
-    {
-        var updateService = new Mock<IUpdateService>();
-        updateService
-            .Setup(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(UpdateAvailable);
-
-        var sut = CreateService(updateService, SettingsMock(), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
-
-        UpdateCheckResult? raised = null;
-        sut.UpdateAvailable += r => raised = r;
+        var sut = CreateService(eventAggregator, updateService, SettingsMock(), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
+        var recorder = new UpdateAvailableRecorder();
+        using var subscription = eventAggregator.Subscribe<UpdateAvailableMessage>(recorder.HandleAsync);
 
         await sut.StartAsync(CancellationToken.None);
         await Task.Delay(50);
         await sut.StopAsync(CancellationToken.None);
 
-        Assert.NotNull(raised);
-        Assert.Equal(new Version(9, 9, 0), raised!.LatestVersion);
+        Assert.Null(recorder.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_UpdateAvailable_PublishesMessage()
+    {
+        var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
+        var updateService = new Mock<IUpdateService>();
+        updateService
+            .Setup(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateAvailable);
+
+        var sut = CreateService(eventAggregator, updateService, SettingsMock(), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
+        var recorder = new UpdateAvailableRecorder();
+        using var subscription = eventAggregator.Subscribe<UpdateAvailableMessage>(recorder.HandleAsync);
+
+        await sut.StartAsync(CancellationToken.None);
+        var message = await recorder.Received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await sut.StopAsync(CancellationToken.None);
+
+        Assert.Equal(new Version(9, 9, 0), message.Result.LatestVersion);
     }
 
     [Fact]
@@ -99,7 +101,7 @@ public sealed class AutoUpdateServiceTests
                 saveCalled.TrySetResult();
             });
 
-        var sut = CreateService(updateService, settingsMock, new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
+        var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, settingsMock, new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
 
         await sut.StartAsync(CancellationToken.None);
         await saveCalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -120,7 +122,7 @@ public sealed class AutoUpdateServiceTests
             .Setup(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("network error"));
 
-        var sut = CreateService(updateService, SettingsMock(), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
+        var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
 
         var ex = await Record.ExceptionAsync(async () =>
         {
@@ -140,7 +142,7 @@ public sealed class AutoUpdateServiceTests
         var messageBox = new Mock<IMessageBoxService>();
         messageBox.Setup(m => m.Confirm(It.IsAny<string>(), It.IsAny<string>())).Returns(false);
 
-        var sut = CreateService(updateService, SettingsMock(), downloadService, messageBox);
+        var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), downloadService, messageBox);
 
         await sut.ConfirmAndInstallAsync(UpdateAvailable);
 
@@ -156,7 +158,7 @@ public sealed class AutoUpdateServiceTests
         var messageBox = new Mock<IMessageBoxService>();
         messageBox.Setup(m => m.Confirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
 
-        var sut = CreateService(updateService, SettingsMock(), downloadService, messageBox);
+        var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), downloadService, messageBox);
 
         await sut.ConfirmAndInstallAsync(UpdateAvailable);
 
@@ -175,7 +177,7 @@ public sealed class AutoUpdateServiceTests
         var messageBox = new Mock<IMessageBoxService>();
         messageBox.Setup(m => m.Confirm(It.IsAny<string>(), It.IsAny<string>())).Returns(false);
 
-        var sut = CreateService(updateService, SettingsMock(), downloadService, messageBox);
+        var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), downloadService, messageBox);
 
         await sut.ConfirmAndInstallAsync(UpdateAvailable);
 
@@ -194,7 +196,7 @@ public sealed class AutoUpdateServiceTests
             .Setup(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(NoUpdate);
 
-        var sut = CreateService(updateService, SettingsMock(UpdateCheckInterval.Never), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
+        var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(UpdateCheckInterval.Never), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
 
         await sut.StartAsync(CancellationToken.None);
         await Task.Delay(50);
@@ -202,5 +204,19 @@ public sealed class AutoUpdateServiceTests
 
         // Only the startup check — no periodic ticks
         updateService.Verify(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private sealed class UpdateAvailableRecorder
+    {
+        public TaskCompletionSource<UpdateAvailableMessage> Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public UpdateAvailableMessage? Message { get; private set; }
+
+        public ValueTask HandleAsync(UpdateAvailableMessage message)
+        {
+            Message = message;
+            Received.TrySetResult(message);
+            return ValueTask.CompletedTask;
+        }
     }
 }

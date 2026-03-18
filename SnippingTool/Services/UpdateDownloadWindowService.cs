@@ -18,9 +18,48 @@ public sealed class UpdateDownloadWindowService : IUpdateDownloadService
     public async Task<bool> ShowAsync(string downloadUrl, string destPath)
     {
         var vm = _vmFactory();
+        using var downloadCancellation = new CancellationTokenSource();
+        vm.AttachCancellation(downloadCancellation);
+
         var window = _windowFactory(vm);
-        window.Show();
-        await vm.DownloadAndInstallAsync(downloadUrl, destPath).ConfigureAwait(false);
-        return !vm.IsFailed;
+        var downloadCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var downloadStarted = false;
+
+        async void StartDownload(object? sender, EventArgs e)
+        {
+            window.ContentRendered -= StartDownload;
+            downloadStarted = true;
+
+            try
+            {
+                await vm.DownloadAndInstallAsync(downloadUrl, destPath, downloadCancellation.Token);
+            }
+            finally
+            {
+                downloadCompleted.TrySetResult();
+            }
+        }
+
+        void HandleWindowClosed(object? sender, EventArgs e)
+        {
+            if (!downloadStarted || (vm.IsDownloading && !downloadCancellation.IsCancellationRequested))
+            {
+                downloadCancellation.Cancel();
+            }
+
+            if (!downloadStarted)
+            {
+                downloadCompleted.TrySetResult();
+            }
+
+            window.Closed -= HandleWindowClosed;
+        }
+
+        window.ContentRendered += StartDownload;
+        window.Closed += HandleWindowClosed;
+        window.ShowDialog();
+
+        await downloadCompleted.Task;
+        return !vm.IsFailed && !downloadCancellation.IsCancellationRequested;
     }
 }

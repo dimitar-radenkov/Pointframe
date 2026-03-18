@@ -165,6 +165,20 @@ public sealed class UpdateDownloadViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Download_Cancellation_RaisesRequestClose()
+    {
+        var cts = new CancellationTokenSource();
+        var handler = new SlowHttpMessageHandler(onStart: () => cts.Cancel());
+        var vm = new UpdateDownloadViewModel(new HttpClient(handler), new Mock<IProcessService>().Object);
+        var closed = false;
+        vm.RequestClose += () => closed = true;
+
+        await vm.DownloadAndInstallAsync("https://github.com/fake/asset.exe", _destPath, cts.Token);
+
+        Assert.True(closed);
+    }
+
+    [Fact]
     public void CancelCommand_RaisesRequestClose()
     {
         var vm = new UpdateDownloadViewModel(new HttpClient(), new Mock<IProcessService>().Object);
@@ -174,6 +188,21 @@ public sealed class UpdateDownloadViewModelTests : IDisposable
         vm.CancelCommand.Execute(null);
 
         Assert.True(closed);
+    }
+
+    [Fact]
+    public void CancelCommand_WithAttachedCancellation_CancelsToken_WithoutClosingImmediately()
+    {
+        var vm = new UpdateDownloadViewModel(new HttpClient(), new Mock<IProcessService>().Object);
+        using var cts = new CancellationTokenSource();
+        var closed = false;
+        vm.RequestClose += () => closed = true;
+        vm.AttachCancellation(cts);
+
+        vm.CancelCommand.Execute(null);
+
+        Assert.True(cts.IsCancellationRequested);
+        Assert.False(closed);
     }
 
     [Fact]
