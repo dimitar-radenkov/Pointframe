@@ -102,6 +102,9 @@ public partial class App : Application
 
         _trayIcon = (TaskbarIcon)FindResource(TrayIconResourceKey);
         _trayIcon.TrayBalloonTipClicked += OnUpdateBalloonClicked;
+#if DEBUG
+        AddDebugMenuItems();
+#endif
 
         RegisterGlobalHotkey();
         _logger.LogInformation("Global hotkey (Print Screen) registered");
@@ -199,6 +202,31 @@ public partial class App : Application
     private void TrayIcon_LeftClick(object sender, RoutedEventArgs e) => StartSnip();
     private void NewSnip_Click(object sender, RoutedEventArgs e) => StartSnip();
     private void Exit_Click(object sender, RoutedEventArgs e) => Current.Shutdown();
+
+#if DEBUG
+    private void AddDebugMenuItems()
+    {
+        if (_trayIcon?.ContextMenu is not { } contextMenu)
+        {
+            return;
+        }
+
+        var simulateUiErrorMenuItem = new System.Windows.Controls.MenuItem
+        {
+            Header = "Simulate UI Error",
+            InputGestureText = "Ctrl+Shift+F12"
+        };
+        simulateUiErrorMenuItem.Click += SimulateUiError_Click;
+
+        contextMenu.Items.Insert(Math.Max(0, contextMenu.Items.Count - 1), simulateUiErrorMenuItem);
+    }
+
+    private void SimulateUiError_Click(object sender, RoutedEventArgs e)
+    {
+        _logger?.LogDebug("Simulating UI recovery smoke test from tray menu");
+        throw new InvalidOperationException("Debug-only UI recovery smoke test.");
+    }
+#endif
 
     private async void CheckForUpdates_Click(object sender, RoutedEventArgs e)
     {
@@ -305,9 +333,75 @@ public partial class App : Application
     {
         _logger?.LogError(e.Exception, "Unhandled dispatcher exception");
         e.Handled = true;
+
+        var closedWindowName = TryRecoverFromActiveWindow();
+        var recoveryMessage = closedWindowName is null
+            ? "You can continue using SnippingTool. Details have been written to the log file."
+            : $"{closedWindowName} was closed so SnippingTool can recover. You can continue using the app. Details have been written to the log file.";
+
         _messageBox.ShowError(
-            $"An unexpected error occurred:\n\n{e.Exception.Message}\n\nDetails have been written to the log file.",
-            "SnippingTool — Unexpected Error");
+            $"Something went wrong while processing your last action.\n\n{e.Exception.Message}\n\n{recoveryMessage}",
+            "SnippingTool — Recovered From Error");
+    }
+
+    private string? TryRecoverFromActiveWindow()
+    {
+        try
+        {
+            var window = GetRecoveryWindow();
+            if (window is null)
+            {
+                return null;
+            }
+
+            var windowName = string.IsNullOrWhiteSpace(window.Title)
+                ? window.GetType().Name
+                : window.Title;
+
+            CloseWindowTree(window);
+            _logger?.LogWarning(
+                "Closed window {WindowType} during dispatcher exception recovery",
+                window.GetType().Name);
+
+            return windowName;
+        }
+        catch (Exception recoveryException)
+        {
+            _logger?.LogError(recoveryException, "Failed to recover active window after dispatcher exception");
+            return null;
+        }
+    }
+
+    private Window? GetRecoveryWindow()
+    {
+        var visibleWindows = Current.Windows
+            .OfType<Window>()
+            .Where(window => window.IsVisible)
+            .ToList();
+
+        return visibleWindows.FirstOrDefault(window => window.IsActive)
+            ?? visibleWindows.FirstOrDefault(window => window is OverlayWindow
+                or RecordingHudWindow
+                or RecordingBorderWindow
+                or CountdownWindow
+                or UpdateDownloadWindow
+                or SettingsWindow
+                or AboutWindow
+                or PinnedScreenshotWindow)
+            ?? visibleWindows.FirstOrDefault();
+    }
+
+    private static void CloseWindowTree(Window rootWindow)
+    {
+        foreach (var ownedWindow in rootWindow.OwnedWindows.OfType<Window>().ToList())
+        {
+            CloseWindowTree(ownedWindow);
+        }
+
+        if (rootWindow.IsVisible)
+        {
+            rootWindow.Close();
+        }
     }
 
     private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)

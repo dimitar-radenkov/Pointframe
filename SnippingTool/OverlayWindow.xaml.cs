@@ -616,6 +616,10 @@ public partial class OverlayWindow : Window
                 }
 
                 break;
+#if DEBUG
+            case Key.F12 when e.KeyboardDevice.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift):
+                throw new InvalidOperationException("Debug-only UI recovery smoke test.");
+#endif
             case Key.C when e.KeyboardDevice.Modifiers == ModifierKeys.Control
                          && _vm.CurrentPhase == OverlayViewModel.Phase.Annotating:
                 if (_vm.CopyCommand.CanExecute(null))
