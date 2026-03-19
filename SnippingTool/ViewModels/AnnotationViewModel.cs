@@ -228,16 +228,42 @@ public partial class AnnotationViewModel : ObservableObject
 
     public void TrackElement(object element) => _currentGroup?.Add(element);
 
+    internal void ReplaceTrackedElement(object originalElement, object replacementElement)
+    {
+        ArgumentNullException.ThrowIfNull(originalElement);
+        ArgumentNullException.ThrowIfNull(replacementElement);
+
+        if (ReferenceEquals(originalElement, replacementElement))
+        {
+            return;
+        }
+
+        ReplaceTrackedElement(_currentGroup, originalElement, replacementElement);
+        ReplaceTrackedElement(_undoStack, originalElement, replacementElement);
+        ReplaceTrackedElement(_redoStack, originalElement, replacementElement);
+    }
+
+    internal void RemoveTrackedElement(object element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        RemoveTrackedElement(_currentGroup, element);
+        RemoveTrackedElement(_undoStack, element);
+        RemoveTrackedElement(_redoStack, element);
+        UndoCount = _undoStack.Count;
+        RedoCount = _redoStack.Count;
+    }
+
     [RelayCommand(CanExecute = nameof(CanUndo))]
     private void Undo()
     {
         var group = _undoStack[^1];
+        PublishSync(new UndoGroupMessage(group));
         _undoStack.RemoveAt(_undoStack.Count - 1);
         _redoStack.Add(group);
         UndoCount = _undoStack.Count;
         RedoCount = _redoStack.Count;
         _logger.LogDebug("Undo applied: undoStack={UndoCount}, redoStack={RedoCount}", UndoCount, RedoCount);
-        PublishSync(new UndoGroupMessage(group));
     }
 
     private bool CanUndo() => _undoStack.Count > 0;
@@ -246,15 +272,56 @@ public partial class AnnotationViewModel : ObservableObject
     private void Redo()
     {
         var group = _redoStack[^1];
+        PublishSync(new RedoGroupMessage(group));
         _redoStack.RemoveAt(_redoStack.Count - 1);
         _undoStack.Add(group);
         UndoCount = _undoStack.Count;
         RedoCount = _redoStack.Count;
         _logger.LogDebug("Redo applied: undoStack={UndoCount}, redoStack={RedoCount}", UndoCount, RedoCount);
-        PublishSync(new RedoGroupMessage(group));
     }
 
     private bool CanRedo() => _redoStack.Count > 0;
+
+    private static void ReplaceTrackedElement(List<object>? group, object originalElement, object replacementElement)
+    {
+        if (group is null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < group.Count; i++)
+        {
+            if (ReferenceEquals(group[i], originalElement))
+            {
+                group[i] = replacementElement;
+            }
+        }
+    }
+
+    private static void ReplaceTrackedElement(List<List<object>> stack, object originalElement, object replacementElement)
+    {
+        foreach (var group in stack)
+        {
+            ReplaceTrackedElement(group, originalElement, replacementElement);
+        }
+    }
+
+    private static void RemoveTrackedElement(List<object>? group, object element)
+    {
+        group?.RemoveAll(candidate => ReferenceEquals(candidate, element));
+    }
+
+    private static void RemoveTrackedElement(List<List<object>> stack, object element)
+    {
+        for (var i = stack.Count - 1; i >= 0; i--)
+        {
+            stack[i].RemoveAll(candidate => ReferenceEquals(candidate, element));
+            if (stack[i].Count == 0)
+            {
+                stack.RemoveAt(i);
+            }
+        }
+    }
 
     private void PublishSync(object message)
     {

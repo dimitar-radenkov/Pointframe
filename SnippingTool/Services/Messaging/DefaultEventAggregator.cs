@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 
 namespace SnippingTool.Services.Messaging;
@@ -54,6 +55,7 @@ public sealed class DefaultEventAggregator : IEventAggregator, IDisposable
 
         List<Task>? pendingTasks = null;
         List<IEventSubscription>? deadSubscriptions = null;
+        List<Exception>? failures = null;
 
         foreach (var subscription in snapshot)
         {
@@ -65,6 +67,8 @@ public sealed class DefaultEventAggregator : IEventAggregator, IDisposable
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error invoking event handler for {EventType}", eventType.Name);
+                failures ??= [];
+                failures.Add(ex);
                 continue;
             }
 
@@ -79,23 +83,46 @@ public sealed class DefaultEventAggregator : IEventAggregator, IDisposable
             {
                 if (task.Value.IsCompletedSuccessfully)
                 {
-                    task.Value.GetAwaiter().GetResult();
+                    continue;
                 }
-                else
-                {
-                    pendingTasks ??= [];
-                    pendingTasks.Add(SafeInvokeAsync(task.Value, eventType));
-                }
+                pendingTasks ??= [];
+                pendingTasks.Add(task.Value.AsTask());
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in event handler for {EventType}", eventType.Name);
+                failures ??= [];
+                failures.Add(ex);
             }
         }
 
         if (pendingTasks is not null)
         {
-            await Task.WhenAll(pendingTasks).ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(pendingTasks).ConfigureAwait(false);
+            }
+            catch
+            {
+                failures ??= [];
+                foreach (var task in pendingTasks)
+                {
+                    if (task.Exception is not null)
+                    {
+                        foreach (var exception in task.Exception.InnerExceptions)
+                        {
+                            _logger.LogError(exception, "Error in asynchronous event handler for {EventType}", eventType.Name);
+                            failures.Add(exception);
+                        }
+                    }
+                    else if (task.IsCanceled)
+                    {
+                        var exception = new TaskCanceledException(task);
+                        _logger.LogError(exception, "Event handler for {EventType} was cancelled", eventType.Name);
+                        failures.Add(exception);
+                    }
+                }
+            }
         }
 
         if (deadSubscriptions is not null)
@@ -117,6 +144,16 @@ public sealed class DefaultEventAggregator : IEventAggregator, IDisposable
             }
 
             _logger.LogDebug("Pruned {Count} dead subscriptions for event {EventType}", deadSubscriptions.Count, eventType.Name);
+        }
+
+        if (failures is { Count: > 0 })
+        {
+            if (failures.Count == 1)
+            {
+                ExceptionDispatchInfo.Capture(failures[0]).Throw();
+            }
+
+            throw new AggregateException($"One or more handlers failed while publishing {eventType.Name}.", failures);
         }
     }
 
@@ -163,16 +200,4 @@ public sealed class DefaultEventAggregator : IEventAggregator, IDisposable
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
-
-    private async Task SafeInvokeAsync(ValueTask task, Type eventType)
-    {
-        try
-        {
-            await task.ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in asynchronous event handler for {EventType}", eventType.Name);
-        }
-    }
 }

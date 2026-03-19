@@ -575,6 +575,62 @@ public sealed class AnnotationViewModelTests
     }
 
     [Fact]
+    public void ReplaceTrackedElement_AfterCommitGroup_UndoPublishesReplacement()
+    {
+        var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
+        var vm = new TestAnnotationViewModel(Geom(), eventAggregator);
+        var original = new object();
+        var replacement = new object();
+        vm.BeginGroup();
+        vm.TrackElement(original);
+        vm.CommitGroup();
+        vm.ReplaceTrackedElement(original, replacement);
+
+        var recorder = new GroupMessageRecorder();
+        using var subscription = eventAggregator.Subscribe<UndoGroupMessage>(recorder.HandleUndoAsync);
+
+        vm.UndoCommand.Execute(null);
+
+        Assert.NotNull(recorder.UndoElements);
+        Assert.Contains(replacement, recorder.UndoElements!);
+        Assert.DoesNotContain(original, recorder.UndoElements!);
+    }
+
+    [Fact]
+    public void RemoveTrackedElement_WhenGroupBecomesEmpty_DisablesUndo()
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+        var original = new object();
+        vm.BeginGroup();
+        vm.TrackElement(original);
+        vm.CommitGroup();
+
+        vm.RemoveTrackedElement(original);
+
+        Assert.False(vm.UndoCommand.CanExecute(null));
+        Assert.Equal(0, vm.UndoCount);
+    }
+
+    [Fact]
+    public void Undo_WhenSubscriberThrows_DoesNotMutateStacks()
+    {
+        var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
+        var vm = new TestAnnotationViewModel(Geom(), eventAggregator);
+        vm.BeginGroup();
+        vm.TrackElement(new object());
+        vm.CommitGroup();
+        using var subscription = eventAggregator.Subscribe<UndoGroupMessage>(_ => throw new InvalidOperationException("boom"));
+
+        var exception = Assert.Throws<InvalidOperationException>(() => vm.UndoCommand.Execute(null));
+
+        Assert.Equal("boom", exception.Message);
+        Assert.True(vm.UndoCommand.CanExecute(null));
+        Assert.False(vm.RedoCommand.CanExecute(null));
+        Assert.Equal(1, vm.UndoCount);
+        Assert.Equal(0, vm.RedoCount);
+    }
+
+    [Fact]
     public void UndoCount_TracksStackDepth()
     {
         var vm = new TestAnnotationViewModel(Geom());

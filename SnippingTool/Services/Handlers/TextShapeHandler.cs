@@ -10,8 +10,15 @@ namespace SnippingTool.Services.Handlers;
 
 internal sealed class TextShapeHandler : IAnnotationShapeHandler
 {
+    private readonly Action<UIElement, UIElement> _replaceTrackedElement;
+    private readonly Action<UIElement> _removeTrackedElement;
     private TextBox? _textBox;
-    private Action<UIElement>? _trackElement;
+
+    public TextShapeHandler(Action<UIElement, UIElement> replaceTrackedElement, Action<UIElement> removeTrackedElement)
+    {
+        _replaceTrackedElement = replaceTrackedElement;
+        _removeTrackedElement = removeTrackedElement;
+    }
 
     public void Begin(Point point, SolidColorBrush brush, double thickness, Canvas canvas)
     {
@@ -48,7 +55,6 @@ internal sealed class TextShapeHandler : IAnnotationShapeHandler
 
     public void Commit(Canvas canvas, Action<UIElement> trackElement)
     {
-        _trackElement = trackElement;
         if (_textBox is not null && canvas.Children.Contains(_textBox))
         {
             trackElement(_textBox);
@@ -77,6 +83,7 @@ internal sealed class TextShapeHandler : IAnnotationShapeHandler
         if (string.IsNullOrWhiteSpace(textBox.Text))
         {
             canvas.Children.Remove(textBox);
+            _removeTrackedElement(textBox);
             return;
         }
 
@@ -95,6 +102,6 @@ internal sealed class TextShapeHandler : IAnnotationShapeHandler
         Canvas.SetLeft(block, position.X);
         Canvas.SetTop(block, position.Y);
         canvas.Children.Add(block);
-        _trackElement?.Invoke(block);
+        _replaceTrackedElement(textBox, block);
     }
 }

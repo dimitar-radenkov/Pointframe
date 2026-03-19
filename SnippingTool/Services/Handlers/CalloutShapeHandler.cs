@@ -15,15 +15,21 @@ namespace SnippingTool.Services.Handlers;
 internal sealed class CalloutShapeHandler : IAnnotationShapeHandler
 {
     private readonly Func<ShapeParameters?> _getShapeParameters;
+    private readonly Action<UIElement, UIElement> _replaceTrackedElement;
+    private readonly Action<UIElement> _removeTrackedElement;
 
     private Rectangle? _bubble;
     private Polygon? _tail;
     private Color _textColor;
-    private Action<UIElement>? _trackElement;
 
-    public CalloutShapeHandler(Func<ShapeParameters?> getShapeParameters)
+    public CalloutShapeHandler(
+        Func<ShapeParameters?> getShapeParameters,
+        Action<UIElement, UIElement> replaceTrackedElement,
+        Action<UIElement> removeTrackedElement)
     {
         _getShapeParameters = getShapeParameters;
+        _replaceTrackedElement = replaceTrackedElement;
+        _removeTrackedElement = removeTrackedElement;
     }
 
     public void Begin(Point point, SolidColorBrush brush, double thickness, Canvas canvas)
@@ -66,7 +72,6 @@ internal sealed class CalloutShapeHandler : IAnnotationShapeHandler
 
     public void Commit(Canvas canvas, Action<UIElement> trackElement)
     {
-        _trackElement = trackElement;
         if (_bubble is null
             || _tail is null
             || _getShapeParameters() is not CalloutShapeParameters parameters)
@@ -156,6 +161,7 @@ internal sealed class CalloutShapeHandler : IAnnotationShapeHandler
         if (string.IsNullOrWhiteSpace(textBox.Text))
         {
             canvas.Children.Remove(textBox);
+            _removeTrackedElement(textBox);
             return;
         }
 
@@ -177,6 +183,6 @@ internal sealed class CalloutShapeHandler : IAnnotationShapeHandler
         Canvas.SetLeft(block, left);
         Canvas.SetTop(block, top);
         canvas.Children.Add(block);
-        _trackElement?.Invoke(block);
+        _replaceTrackedElement(textBox, block);
     }
 }
