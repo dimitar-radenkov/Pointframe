@@ -1,5 +1,3 @@
-using Point = System.Windows.Point;
-
 namespace SnippingTool.Services;
 
 public interface IAnnotationGeometryService

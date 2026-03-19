@@ -8,7 +8,6 @@ using SnippingTool.Services;
 using SnippingTool.Services.Messaging;
 using SnippingTool.ViewModels;
 using Xunit;
-using Colors = System.Windows.Media.Colors;
 
 namespace SnippingTool.Tests.ViewModels;
 

@@ -4,10 +4,7 @@ using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using SnippingTool.Models;
-using Brushes = System.Windows.Media.Brushes;
-using Color = System.Windows.Media.Color;
 using Image = System.Windows.Controls.Image;
-using Point = System.Windows.Point;
 using Rectangle = System.Windows.Shapes.Rectangle;
 
 namespace SnippingTool.Services.Handlers;

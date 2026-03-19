@@ -1,6 +1,3 @@
-using Color = System.Windows.Media.Color;
-using Point = System.Windows.Point;
-
 namespace SnippingTool.Models;
 
 public abstract record ShapeParameters;

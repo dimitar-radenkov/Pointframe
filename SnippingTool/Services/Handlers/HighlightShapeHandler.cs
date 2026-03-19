@@ -2,8 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using SnippingTool.Models;
-using Color = System.Windows.Media.Color;
-using Point = System.Windows.Point;
 using Rectangle = System.Windows.Shapes.Rectangle;
 
 namespace SnippingTool.Services.Handlers;

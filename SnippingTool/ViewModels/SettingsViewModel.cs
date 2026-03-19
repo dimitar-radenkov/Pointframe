@@ -4,7 +4,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SnippingTool.Models;
 using SnippingTool.Services;
-using Color = System.Windows.Media.Color;
 
 namespace SnippingTool.ViewModels;
 

@@ -1,4 +1,3 @@
-using Color = System.Windows.Media.Color;
 using Forms = System.Windows.Forms;
 
 namespace SnippingTool.Services;

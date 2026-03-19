@@ -5,7 +5,6 @@ using System.Windows.Input;
 using SnippingTool.Models;
 using SnippingTool.ViewModels;
 using DataFormats = System.Windows.DataFormats;
-using TextBox = System.Windows.Controls.TextBox;
 
 namespace SnippingTool;
 

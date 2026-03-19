@@ -1,5 +1,3 @@
-using Color = System.Windows.Media.Color;
-
 namespace SnippingTool.Services;
 
 public interface IDialogService

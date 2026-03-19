@@ -5,8 +5,6 @@ using Microsoft.Extensions.Logging;
 using SnippingTool.Models;
 using SnippingTool.Services;
 using SnippingTool.Services.Messaging;
-using Color = System.Windows.Media.Color;
-using Point = System.Windows.Point;
 
 namespace SnippingTool.ViewModels;
 

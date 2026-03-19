@@ -6,7 +6,6 @@ using Microsoft.Extensions.Logging;
 using SnippingTool.Models;
 using SnippingTool.Services.Handlers;
 using SnippingTool.ViewModels;
-using Point = System.Windows.Point;
 
 namespace SnippingTool.Services;
 

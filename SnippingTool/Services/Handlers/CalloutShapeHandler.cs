@@ -4,11 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using SnippingTool.Models;
-using Brushes = System.Windows.Media.Brushes;
-using Color = System.Windows.Media.Color;
-using Point = System.Windows.Point;
 using Rectangle = System.Windows.Shapes.Rectangle;
-using TextBox = System.Windows.Controls.TextBox;
 
 namespace SnippingTool.Services.Handlers;
 

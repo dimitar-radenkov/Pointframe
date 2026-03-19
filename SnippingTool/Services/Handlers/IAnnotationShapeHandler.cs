@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using Point = System.Windows.Point;
 
 namespace SnippingTool.Services.Handlers;
 
