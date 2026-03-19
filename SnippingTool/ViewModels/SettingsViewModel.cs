@@ -4,18 +4,19 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SnippingTool.Models;
 using SnippingTool.Services;
-using Color = System.Windows.Media.Color;
 
 namespace SnippingTool.ViewModels;
 
 public partial class SettingsViewModel : ObservableObject
 {
+    private readonly IDialogService _dialogService;
     private readonly IUserSettingsService _settingsService;
     private readonly IThemeService _themeService;
     private readonly AppTheme _originalTheme;
 
-    public SettingsViewModel(IUserSettingsService settingsService, IThemeService themeService)
+    public SettingsViewModel(IUserSettingsService settingsService, IThemeService themeService, IDialogService dialogService)
     {
+        _dialogService = dialogService;
         _settingsService = settingsService;
         _themeService = themeService;
 
@@ -93,44 +94,30 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void BrowseScreenshotPath()
     {
-        var dlg = new System.Windows.Forms.FolderBrowserDialog
+        var selectedPath = _dialogService.PickFolder(ScreenshotSavePath, "Select screenshot save folder");
+        if (!string.IsNullOrWhiteSpace(selectedPath))
         {
-            Description = "Select screenshot save folder",
-            SelectedPath = ScreenshotSavePath
-        };
-        if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-        {
-            ScreenshotSavePath = dlg.SelectedPath;
+            ScreenshotSavePath = selectedPath;
         }
     }
 
     [RelayCommand]
     private void BrowseRecordingPath()
     {
-        var dlg = new System.Windows.Forms.FolderBrowserDialog
+        var selectedPath = _dialogService.PickFolder(RecordingOutputPath, "Select recording output folder");
+        if (!string.IsNullOrWhiteSpace(selectedPath))
         {
-            Description = "Select recording output folder",
-            SelectedPath = RecordingOutputPath
-        };
-        if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-        {
-            RecordingOutputPath = dlg.SelectedPath;
+            RecordingOutputPath = selectedPath;
         }
     }
 
     [RelayCommand]
     private void PickAnnotationColor()
     {
-        var cur = DefaultAnnotationColor;
-        var dlg = new System.Windows.Forms.ColorDialog
+        var selectedColor = _dialogService.PickColor(DefaultAnnotationColor);
+        if (selectedColor.HasValue)
         {
-            Color = System.Drawing.Color.FromArgb(cur.A, cur.R, cur.G, cur.B),
-            FullOpen = true
-        };
-        if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-        {
-            var c = dlg.Color;
-            DefaultAnnotationColor = Color.FromArgb(c.A, c.R, c.G, c.B);
+            DefaultAnnotationColor = selectedColor.Value;
         }
     }
 

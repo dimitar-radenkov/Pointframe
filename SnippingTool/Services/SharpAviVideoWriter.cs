@@ -18,7 +18,5 @@ public sealed class SharpAviVideoWriter : IVideoWriter
     public void WriteFrame(byte[] frameData) =>
         _stream.WriteFrame(true, frameData, 0, frameData.Length);
 
-    public void Close() => _writer.Close();
-
-    public void Dispose() => Close();
+    public void Dispose() => _writer.Close();
 }

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using SnippingTool.Models;
 using SnippingTool.Services;
+using SnippingTool.Services.Messaging;
 using SnippingTool.ViewModels;
 using Xunit;
 
@@ -197,6 +198,22 @@ public sealed class AnnotationViewModelTests
 
         // Assert
         Assert.IsType<SnippingTool.Models.RectShapeParameters>(result);
+    }
+
+    [Fact]
+    public void TryGetShapeParameters_Highlight_ReturnsHighlightParams()
+    {
+        // Arrange
+        var vm = new TestAnnotationViewModel(Geom());
+        vm.SelectedTool = AnnotationTool.Highlight;
+        vm.BeginDrawing(new System.Windows.Point(10, 10));
+        vm.UpdateDrawing(new System.Windows.Point(60, 60));
+
+        // Act
+        var result = vm.TryGetShapeParameters();
+
+        // Assert
+        Assert.IsType<HighlightShapeParameters>(result);
     }
 
     [Fact]
@@ -448,9 +465,33 @@ public sealed class AnnotationViewModelTests
     }
 
     [Fact]
+    public void UndoCommand_Execute_WhenStackEmpty_DoesNotThrow()
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+
+        var exception = Record.Exception(() => vm.UndoCommand.Execute(null));
+
+        Assert.Null(exception);
+        Assert.False(vm.UndoCommand.CanExecute(null));
+        Assert.False(vm.RedoCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void RedoCommand_CannotExecute_WhenStackEmpty()
     {
         var vm = new TestAnnotationViewModel(Geom());
+        Assert.False(vm.RedoCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void RedoCommand_Execute_WhenStackEmpty_DoesNotThrow()
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+
+        var exception = Record.Exception(() => vm.RedoCommand.Execute(null));
+
+        Assert.Null(exception);
+        Assert.False(vm.UndoCommand.CanExecute(null));
         Assert.False(vm.RedoCommand.CanExecute(null));
     }
 
@@ -490,20 +531,21 @@ public sealed class AnnotationViewModelTests
     }
 
     [Fact]
-    public void Undo_FiresUndoApplied_WithCorrectGroup()
+    public void Undo_PublishesUndoGroupMessage_WithCorrectGroup()
     {
-        var vm = new TestAnnotationViewModel(Geom());
+        var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
+        var vm = new TestAnnotationViewModel(Geom(), eventAggregator);
         var element = new object();
         vm.BeginGroup();
         vm.TrackElement(element);
         vm.CommitGroup();
 
-        List<object>? received = null;
-        vm.UndoApplied += g => received = g;
+        var recorder = new GroupMessageRecorder();
+        using var subscription = eventAggregator.Subscribe<UndoGroupMessage>(recorder.HandleUndoAsync);
         vm.UndoCommand.Execute(null);
 
-        Assert.NotNull(received);
-        Assert.Contains(element, received);
+        Assert.NotNull(recorder.UndoElements);
+        Assert.Contains(element, recorder.UndoElements!);
     }
 
     [Fact]
@@ -522,21 +564,22 @@ public sealed class AnnotationViewModelTests
     }
 
     [Fact]
-    public void Redo_FiresRedoApplied_WithCorrectGroup()
+    public void Redo_PublishesRedoGroupMessage_WithCorrectGroup()
     {
-        var vm = new TestAnnotationViewModel(Geom());
+        var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
+        var vm = new TestAnnotationViewModel(Geom(), eventAggregator);
         var element = new object();
         vm.BeginGroup();
         vm.TrackElement(element);
         vm.CommitGroup();
         vm.UndoCommand.Execute(null);
 
-        List<object>? received = null;
-        vm.RedoApplied += g => received = g;
+        var recorder = new GroupMessageRecorder();
+        using var subscription = eventAggregator.Subscribe<RedoGroupMessage>(recorder.HandleRedoAsync);
         vm.RedoCommand.Execute(null);
 
-        Assert.NotNull(received);
-        Assert.Contains(element, received);
+        Assert.NotNull(recorder.RedoElements);
+        Assert.Contains(element, recorder.RedoElements!);
     }
 
     [Fact]
@@ -553,6 +596,62 @@ public sealed class AnnotationViewModelTests
         vm.CommitGroup();
 
         Assert.False(vm.RedoCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void ReplaceTrackedElement_AfterCommitGroup_UndoPublishesReplacement()
+    {
+        var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
+        var vm = new TestAnnotationViewModel(Geom(), eventAggregator);
+        var original = new object();
+        var replacement = new object();
+        vm.BeginGroup();
+        vm.TrackElement(original);
+        vm.CommitGroup();
+        vm.ReplaceTrackedElement(original, replacement);
+
+        var recorder = new GroupMessageRecorder();
+        using var subscription = eventAggregator.Subscribe<UndoGroupMessage>(recorder.HandleUndoAsync);
+
+        vm.UndoCommand.Execute(null);
+
+        Assert.NotNull(recorder.UndoElements);
+        Assert.Contains(replacement, recorder.UndoElements!);
+        Assert.DoesNotContain(original, recorder.UndoElements!);
+    }
+
+    [Fact]
+    public void RemoveTrackedElement_WhenGroupBecomesEmpty_DisablesUndo()
+    {
+        var vm = new TestAnnotationViewModel(Geom());
+        var original = new object();
+        vm.BeginGroup();
+        vm.TrackElement(original);
+        vm.CommitGroup();
+
+        vm.RemoveTrackedElement(original);
+
+        Assert.False(vm.UndoCommand.CanExecute(null));
+        Assert.Equal(0, vm.UndoCount);
+    }
+
+    [Fact]
+    public void Undo_WhenSubscriberThrows_DoesNotMutateStacks()
+    {
+        var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
+        var vm = new TestAnnotationViewModel(Geom(), eventAggregator);
+        vm.BeginGroup();
+        vm.TrackElement(new object());
+        vm.CommitGroup();
+        using var subscription = eventAggregator.Subscribe<UndoGroupMessage>(_ => throw new InvalidOperationException("boom"));
+
+        var exception = Assert.Throws<InvalidOperationException>(() => vm.UndoCommand.Execute(null));
+
+        Assert.Equal("boom", exception.Message);
+        Assert.True(vm.UndoCommand.CanExecute(null));
+        Assert.False(vm.RedoCommand.CanExecute(null));
+        Assert.Equal(1, vm.UndoCount);
+        Assert.Equal(0, vm.RedoCount);
     }
 
     [Fact]
@@ -587,7 +686,30 @@ public sealed class AnnotationViewModelTests
     }
 
     // Concrete subclass so we can instantiate the abstract-like partial base
-    private sealed partial class TestAnnotationViewModel(AnnotationGeometryService geom)
-        : AnnotationViewModel(geom, NullLogger<AnnotationViewModel>.Instance, Mock.Of<IUserSettingsService>(s => s.Current == new UserSettings()))
+    private sealed partial class TestAnnotationViewModel(AnnotationGeometryService geom, IEventAggregator? eventAggregator = null)
+        : AnnotationViewModel(
+            geom,
+            NullLogger<AnnotationViewModel>.Instance,
+            Mock.Of<IUserSettingsService>(s => s.Current == new UserSettings()),
+            eventAggregator ?? new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance))
     { }
+
+    private sealed class GroupMessageRecorder
+    {
+        public IReadOnlyList<object>? UndoElements { get; private set; }
+
+        public IReadOnlyList<object>? RedoElements { get; private set; }
+
+        public ValueTask HandleUndoAsync(UndoGroupMessage message)
+        {
+            UndoElements = message.Elements;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask HandleRedoAsync(RedoGroupMessage message)
+        {
+            RedoElements = message.Elements;
+            return ValueTask.CompletedTask;
+        }
+    }
 }

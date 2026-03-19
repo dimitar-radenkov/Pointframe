@@ -161,6 +161,26 @@ public sealed class ScreenRecordingServiceTests
     }
 
     [Fact]
+    public void Stop_WhenRecording_DisposesWriter()
+    {
+        // Arrange
+        var writerMock = new Mock<IVideoWriter>();
+        var mockFactory = new Mock<IVideoWriterFactory>();
+        mockFactory
+            .Setup(f => f.Create(It.IsAny<RecordingFormat>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>()))
+            .Returns(writerMock.Object);
+        using var svc = CreateSut(mockFactory.Object);
+        svc.Start(0, 0, 100, 100, "test.avi");
+
+        // Act
+        svc.Stop();
+
+        // Assert
+        Assert.False(svc.IsRecording);
+        writerMock.Verify(w => w.Dispose(), Times.Once);
+    }
+
+    [Fact]
     public void Start_TwiceConcurrently_IgnoresSecondCall()
     {
         // Arrange

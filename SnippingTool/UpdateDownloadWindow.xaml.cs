@@ -9,6 +9,16 @@ public partial class UpdateDownloadWindow : Window
     {
         InitializeComponent();
         DataContext = vm;
-        vm.RequestClose += Close;
+        vm.RequestClose += () =>
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                Close();
+            }
+            else
+            {
+                Dispatcher.Invoke(Close);
+            }
+        };
     }
 }

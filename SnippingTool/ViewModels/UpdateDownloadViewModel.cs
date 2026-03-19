@@ -18,6 +18,7 @@ public partial class UpdateDownloadViewModel : ObservableObject
     private readonly HttpClient _http;
     private readonly IProcessService _process;
     private readonly ILogger<UpdateDownloadViewModel>? _logger;
+    private CancellationTokenSource? _downloadCancellation;
 
     [ObservableProperty]
     private double _progressPercent;
@@ -43,29 +44,32 @@ public partial class UpdateDownloadViewModel : ObservableObject
         _logger = logger;
     }
 
+    internal void AttachCancellation(CancellationTokenSource downloadCancellation)
+    {
+        _downloadCancellation = downloadCancellation;
+    }
+
     public async Task DownloadAndInstallAsync(
         string downloadUrl,
         string destPath,
         CancellationToken cancellationToken = default)
     {
-        // Capture the UI SynchronizationContext so we can dispatch window-close back to the UI thread.
-        var uiContext = SynchronizationContext.Current;
         try
         {
-            using var response = await _http.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            using var response = await _http.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var totalBytes = response.Content.Headers.ContentLength ?? -1;
             var buffer = new byte[81920];
             var downloaded = 0L;
 
-            await using (var src = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
+            await using (var src = await response.Content.ReadAsStreamAsync(cancellationToken))
             await using (var dest = File.Create(destPath))
             {
                 int read;
-                while ((read = await src.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+                while ((read = await src.ReadAsync(buffer, cancellationToken)) > 0)
                 {
-                    await dest.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                    await dest.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                     downloaded += read;
 
                     if (totalBytes > 0)
@@ -85,22 +89,16 @@ public partial class UpdateDownloadViewModel : ObservableObject
             IsDownloading = false;
 
             _logger?.LogInformation("Update downloaded to {Path}", destPath);
+            _logger?.LogInformation("Launching update installer from {Path}", destPath);
 
             _process.Start(new ProcessStartInfo(destPath) { UseShellExecute = true });
-
-            if (uiContext is not null)
-            {
-                uiContext.Post(_ => RequestClose?.Invoke(), null);
-            }
-            else
-            {
-                RequestClose?.Invoke();
-            }
+            RequestClose?.Invoke();
         }
         catch (OperationCanceledException)
         {
             StatusText = "Download cancelled.";
             IsDownloading = false;
+            RequestClose?.Invoke();
         }
         catch (Exception ex)
         {
@@ -112,5 +110,14 @@ public partial class UpdateDownloadViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Cancel() => RequestClose?.Invoke();
+    private void Cancel()
+    {
+        if (_downloadCancellation is not null && !_downloadCancellation.IsCancellationRequested)
+        {
+            _downloadCancellation.Cancel();
+            return;
+        }
+
+        RequestClose?.Invoke();
+    }
 }

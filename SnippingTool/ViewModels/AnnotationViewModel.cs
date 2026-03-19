@@ -4,21 +4,23 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using SnippingTool.Models;
 using SnippingTool.Services;
-using Color = System.Windows.Media.Color;
-using Point = System.Windows.Point;
+using SnippingTool.Services.Messaging;
 
 namespace SnippingTool.ViewModels;
 
 public partial class AnnotationViewModel : ObservableObject
 {
+    private readonly IEventAggregator _eventAggregator;
     private readonly IAnnotationGeometryService _geometry;
     protected readonly ILogger _logger;
 
     public AnnotationViewModel(
         IAnnotationGeometryService geometry,
         ILogger logger,
-        IUserSettingsService settings)
+        IUserSettingsService settings,
+        IEventAggregator eventAggregator)
     {
+        _eventAggregator = eventAggregator;
         _geometry = geometry;
         _logger = logger;
 
@@ -139,9 +141,9 @@ public partial class AnnotationViewModel : ObservableObject
                 Thickness: thick,
                 ArrowHead: _geometry.CalculateArrowHead(DragStart, DragCurrent)),
 
-            AnnotationTool.Rectangle => BuildRectParams(DragStart, DragCurrent, color, thick, isHighlight: false),
+            AnnotationTool.Rectangle => BuildRectParams(DragStart, DragCurrent, color, thick),
 
-            AnnotationTool.Highlight => BuildRectParams(DragStart, DragCurrent, color, thick, isHighlight: true),
+            AnnotationTool.Highlight => BuildHighlightParams(DragStart, DragCurrent, color),
 
             AnnotationTool.Circle => BuildEllipseParams(DragStart, DragCurrent, color, thick),
 
@@ -164,10 +166,16 @@ public partial class AnnotationViewModel : ObservableObject
         };
     }
 
-    private RectShapeParameters BuildRectParams(Point start, Point end, Color color, double thick, bool isHighlight)
+    private RectShapeParameters BuildRectParams(Point start, Point end, Color color, double thick)
     {
         var (left, top, width, height) = _geometry.CalculateRect(start, end);
-        return new RectShapeParameters(left, top, width, height, color, thick, isHighlight);
+        return new RectShapeParameters(left, top, width, height, color, thick);
+    }
+
+    private HighlightShapeParameters BuildHighlightParams(Point start, Point end, Color baseColor)
+    {
+        var (left, top, width, height) = _geometry.CalculateRect(start, end);
+        return new HighlightShapeParameters(left, top, width, height, baseColor);
     }
 
     private EllipseShapeParameters BuildEllipseParams(Point start, Point end, Color color, double thick)
@@ -218,16 +226,48 @@ public partial class AnnotationViewModel : ObservableObject
 
     public void TrackElement(object element) => _currentGroup?.Add(element);
 
+    internal void ReplaceTrackedElement(object originalElement, object replacementElement)
+    {
+        ArgumentNullException.ThrowIfNull(originalElement);
+        ArgumentNullException.ThrowIfNull(replacementElement);
+
+        if (ReferenceEquals(originalElement, replacementElement))
+        {
+            return;
+        }
+
+        ReplaceTrackedElement(_currentGroup, originalElement, replacementElement);
+        ReplaceTrackedElement(_undoStack, originalElement, replacementElement);
+        ReplaceTrackedElement(_redoStack, originalElement, replacementElement);
+    }
+
+    internal void RemoveTrackedElement(object element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        RemoveTrackedElement(_currentGroup, element);
+        RemoveTrackedElement(_undoStack, element);
+        RemoveTrackedElement(_redoStack, element);
+        UndoCount = _undoStack.Count;
+        RedoCount = _redoStack.Count;
+    }
+
     [RelayCommand(CanExecute = nameof(CanUndo))]
     private void Undo()
     {
+        if (_undoStack.Count == 0)
+        {
+            _logger.LogDebug("Undo requested with empty stack");
+            return;
+        }
+
         var group = _undoStack[^1];
+        PublishSync(new UndoGroupMessage(group));
         _undoStack.RemoveAt(_undoStack.Count - 1);
         _redoStack.Add(group);
         UndoCount = _undoStack.Count;
         RedoCount = _redoStack.Count;
         _logger.LogDebug("Undo applied: undoStack={UndoCount}, redoStack={RedoCount}", UndoCount, RedoCount);
-        UndoApplied?.Invoke(group);
     }
 
     private bool CanUndo() => _undoStack.Count > 0;
@@ -235,17 +275,70 @@ public partial class AnnotationViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRedo))]
     private void Redo()
     {
+        if (_redoStack.Count == 0)
+        {
+            _logger.LogDebug("Redo requested with empty stack");
+            return;
+        }
+
         var group = _redoStack[^1];
+        PublishSync(new RedoGroupMessage(group));
         _redoStack.RemoveAt(_redoStack.Count - 1);
         _undoStack.Add(group);
         UndoCount = _undoStack.Count;
         RedoCount = _redoStack.Count;
         _logger.LogDebug("Redo applied: undoStack={UndoCount}, redoStack={RedoCount}", UndoCount, RedoCount);
-        RedoApplied?.Invoke(group);
     }
 
     private bool CanRedo() => _redoStack.Count > 0;
 
-    public event Action<List<object>>? UndoApplied;
-    public event Action<List<object>>? RedoApplied;
+    private static void ReplaceTrackedElement(List<object>? group, object originalElement, object replacementElement)
+    {
+        if (group is null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < group.Count; i++)
+        {
+            if (ReferenceEquals(group[i], originalElement))
+            {
+                group[i] = replacementElement;
+            }
+        }
+    }
+
+    private static void ReplaceTrackedElement(List<List<object>> stack, object originalElement, object replacementElement)
+    {
+        foreach (var group in stack)
+        {
+            ReplaceTrackedElement(group, originalElement, replacementElement);
+        }
+    }
+
+    private static void RemoveTrackedElement(List<object>? group, object element)
+    {
+        group?.RemoveAll(candidate => ReferenceEquals(candidate, element));
+    }
+
+    private static void RemoveTrackedElement(List<List<object>> stack, object element)
+    {
+        for (var i = stack.Count - 1; i >= 0; i--)
+        {
+            stack[i].RemoveAll(candidate => ReferenceEquals(candidate, element));
+            if (stack[i].Count == 0)
+            {
+                stack.RemoveAt(i);
+            }
+        }
+    }
+
+    private void PublishSync(object message)
+    {
+        var publishTask = _eventAggregator.PublishAsync(message);
+        if (!publishTask.IsCompletedSuccessfully)
+        {
+            publishTask.AsTask().GetAwaiter().GetResult();
+        }
+    }
 }

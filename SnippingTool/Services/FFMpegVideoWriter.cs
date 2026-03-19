@@ -63,7 +63,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter
 
     public void WriteFrame(byte[] frameData) => _stdin.Write(frameData, 0, frameData.Length);
 
-    public void Close()
+    public void Dispose()
     {
         if (_closed)
         {
@@ -90,8 +90,6 @@ public sealed class FFMpegVideoWriter : IVideoWriter
 
         _ffmpeg.Dispose();
     }
-
-    public void Dispose() => Close();
 
     private async Task ConsumeStderrAsync(Process process)
     {

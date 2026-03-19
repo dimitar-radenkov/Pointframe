@@ -1,39 +1,33 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SnippingTool.Models;
+using SnippingTool.Services.Messaging;
 
 namespace SnippingTool.Services;
 
 public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
 {
+    private readonly IEventAggregator _eventAggregator;
     private readonly IUpdateService _updateService;
     private readonly IUserSettingsService _userSettings;
     private readonly IUpdateDownloadService _downloadService;
     private readonly IMessageBoxService _messageBox;
     private readonly ILogger<AutoUpdateService> _logger;
 
-    private SynchronizationContext? _uiContext;
-
-    public event Action<UpdateCheckResult>? UpdateAvailable;
-
     public AutoUpdateService(
+        IEventAggregator eventAggregator,
         IUpdateService updateService,
         IUserSettingsService userSettings,
         IUpdateDownloadService downloadService,
         IMessageBoxService messageBox,
         ILogger<AutoUpdateService> logger)
     {
+        _eventAggregator = eventAggregator;
         _updateService = updateService;
         _userSettings = userSettings;
         _downloadService = downloadService;
         _messageBox = messageBox;
         _logger = logger;
-    }
-
-    public override Task StartAsync(CancellationToken cancellationToken)
-    {
-        _uiContext = SynchronizationContext.Current;
-        return base.StartAsync(cancellationToken);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -48,8 +42,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
             _logger.LogError(ex, "Auto-update: startup check failed");
         }
 
-        _userSettings.Current.LastAutoUpdateCheckUtc = DateTime.UtcNow;
-        _userSettings.Save(_userSettings.Current);
+        UpdateLastCheckedUtc();
 
         var interval = _userSettings.Current.AutoUpdateCheckInterval;
         if (interval == UpdateCheckInterval.Never)
@@ -85,8 +78,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
                     _logger.LogError(ex, "Auto-update: periodic check failed");
                 }
 
-                _userSettings.Current.LastAutoUpdateCheckUtc = DateTime.UtcNow;
-                _userSettings.Save(_userSettings.Current);
+                UpdateLastCheckedUtc();
             }
         }
         catch (OperationCanceledException)
@@ -110,7 +102,9 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         var succeeded = await _downloadService.ShowAsync(result.DownloadUrl, destPath);
         if (succeeded)
         {
-            System.Windows.Application.Current.Shutdown();
+            _logger.LogInformation(
+                "Update installer launched from {Path}; leaving application running for installer handoff",
+                destPath);
         }
     }
 
@@ -121,19 +115,20 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         if (result.IsUpdateAvailable)
         {
             _logger.LogInformation("Auto-update: update available ({Version})", result.LatestVersion);
-            if (_uiContext is not null)
-            {
-                _uiContext.Post(_ => UpdateAvailable?.Invoke(result), null);
-            }
-            else
-            {
-                UpdateAvailable?.Invoke(result);
-            }
+            await _eventAggregator.PublishAsync(new UpdateAvailableMessage(result));
         }
         else
         {
             _logger.LogDebug("Auto-update: already up to date");
         }
+    }
+
+    private void UpdateLastCheckedUtc()
+    {
+        _userSettings.Update(settings =>
+        {
+            settings.LastAutoUpdateCheckUtc = DateTime.UtcNow;
+        });
     }
 
     private static TimeSpan GetTimerInterval(UpdateCheckInterval interval) =>

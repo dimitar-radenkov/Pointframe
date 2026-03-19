@@ -208,9 +208,9 @@
 
         <!-- Color swatch -->
         <Button Width="34" Height="34" Cursor="Hand"
-                Style="{StaticResource ActionBtn}"
-                Click="ColorBtn_Click" ToolTip="Colour">
-          <Ellipse x:Name="ColorDot" Width="20" Height="20" Fill="Red"/>
+          Style="{StaticResource ActionBtn}"
+          Command="{Binding PickColorCommand}" ToolTip="Colour">
+          <Ellipse Width="20" Height="20" Fill="{Binding ActiveBrush}"/>
         </Button>
 
       </StackPanel>
@@ -258,7 +258,7 @@
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
-                Click="Copy_Click" ToolTip="Copy to clipboard (Ctrl+C)">
+          Command="{Binding CopyCommand}" ToolTip="Copy to clipboard (Ctrl+C)">
           <StackPanel>
             <TextBlock Text="📋" FontSize="13" HorizontalAlignment="Center"/>
             <TextBlock Text="Copy" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>

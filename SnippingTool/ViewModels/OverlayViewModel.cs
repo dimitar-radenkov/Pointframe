@@ -1,18 +1,36 @@
 using System.Windows;
+using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using SnippingTool.Services;
+using SnippingTool.Services.Messaging;
 
 namespace SnippingTool.ViewModels;
 
 public partial class OverlayViewModel : AnnotationViewModel
 {
+    private readonly IClipboardService _clipboardService;
+    private readonly IDialogService _dialogService;
+    private readonly IFileSystemService _fileSystemService;
+    private readonly IUserSettingsService _settings;
+    private IOverlayBitmapCapture? _bitmapCapture;
+
     public OverlayViewModel(
         IAnnotationGeometryService geometry,
         ILogger<OverlayViewModel> logger,
-        IUserSettingsService settings)
-        : base(geometry, logger, settings) { }
+        IUserSettingsService settings,
+        IDialogService dialogService,
+        IClipboardService clipboardService,
+        IFileSystemService fileSystemService,
+        IEventAggregator eventAggregator)
+        : base(geometry, logger, settings, eventAggregator)
+    {
+        _clipboardService = clipboardService;
+        _dialogService = dialogService;
+        _fileSystemService = fileSystemService;
+        _settings = settings;
+    }
 
     public enum Phase { Selecting, Annotating }
 
@@ -45,12 +63,50 @@ public partial class OverlayViewModel : AnnotationViewModel
     public void UpdateSizeLabel(double w, double h) =>
         SizeLabel = $"{(int)(w * DpiX)}×{(int)(h * DpiY)}";
 
-    public event Action? CopyRequested;
     public event Action? CloseRequested;
-    public event Action? PinRequested;
+    public event Action<BitmapSource>? PinRequested;
+
+    internal void SetBitmapCapture(IOverlayBitmapCapture bitmapCapture)
+    {
+        _bitmapCapture = bitmapCapture;
+    }
 
     [RelayCommand]
-    private void Copy() => CopyRequested?.Invoke();
+    private void Copy()
+    {
+        var bitmapCapture = _bitmapCapture;
+        if (bitmapCapture is null)
+        {
+            _logger.LogWarning("Copy requested before overlay bitmap capture was attached");
+            return;
+        }
+
+        var finalBitmap = bitmapCapture.ComposeBitmap();
+        _clipboardService.SetImage(finalBitmap);
+
+        if (_settings.Current.AutoSaveScreenshots)
+        {
+            var saveDirectory = _settings.Current.ScreenshotSavePath;
+            _fileSystemService.CreateDirectory(saveDirectory);
+            var savePath = _fileSystemService.CombinePath(saveDirectory, $"Snip_{DateTime.Now:yyyyMMdd_HHmmss}.png");
+            using var outputStream = _fileSystemService.OpenWrite(savePath);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(finalBitmap));
+            encoder.Save(outputStream);
+        }
+
+        CloseRequested?.Invoke();
+    }
+
+    [RelayCommand]
+    private void PickColor()
+    {
+        var selectedColor = _dialogService.PickColor(ActiveColor);
+        if (selectedColor.HasValue)
+        {
+            ActiveColor = selectedColor.Value;
+        }
+    }
 
     [RelayCommand]
     private void CopyText() => IsTextLassoActive = !IsTextLassoActive;
@@ -59,5 +115,15 @@ public partial class OverlayViewModel : AnnotationViewModel
     private void Close() => CloseRequested?.Invoke();
 
     [RelayCommand]
-    private void Pin() => PinRequested?.Invoke();
+    private void Pin()
+    {
+        var bitmapCapture = _bitmapCapture;
+        if (bitmapCapture is null)
+        {
+            _logger.LogWarning("Pin requested before overlay bitmap capture was attached");
+            return;
+        }
+
+        PinRequested?.Invoke(bitmapCapture.ComposeBitmap());
+    }
 }

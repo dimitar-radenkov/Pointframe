@@ -1,6 +1,3 @@
-using Color = System.Windows.Media.Color;
-using Point = System.Windows.Point;
-
 namespace SnippingTool.Models;
 
 public abstract record ShapeParameters;
@@ -18,8 +15,14 @@ public sealed record RectShapeParameters(
     double Width,
     double Height,
     Color Color,
-    double Thickness,
-    bool IsHighlight) : ShapeParameters;
+    double Thickness) : ShapeParameters;
+
+public sealed record HighlightShapeParameters(
+    double Left,
+    double Top,
+    double Width,
+    double Height,
+    Color BaseColor) : ShapeParameters;
 
 public sealed record EllipseShapeParameters(
     double Left,

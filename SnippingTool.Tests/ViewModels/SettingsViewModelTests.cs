@@ -8,11 +8,11 @@ namespace SnippingTool.Tests.ViewModels;
 
 public sealed class SettingsViewModelTests
 {
-    private static SettingsViewModel CreateVm(UserSettings? settings = null)
+    private static SettingsViewModel CreateVm(UserSettings? settings = null, IDialogService? dialogService = null)
     {
         var mock = new Mock<IUserSettingsService>();
         mock.SetupGet(s => s.Current).Returns(settings ?? new UserSettings());
-        return new SettingsViewModel(mock.Object, Mock.Of<IThemeService>());
+        return new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), dialogService ?? Mock.Of<IDialogService>());
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public sealed class SettingsViewModelTests
         mock.SetupGet(s => s.Current).Returns(new UserSettings());
         UserSettings? saved = null;
         mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
-        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>());
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>());
         vm.CaptureDelaySeconds = 10;
 
         // Act
@@ -100,7 +100,7 @@ public sealed class SettingsViewModelTests
         mock.SetupGet(s => s.Current).Returns(new UserSettings());
         UserSettings? saved = null;
         mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
-        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>());
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>());
         vm.RecordingFormat = RecordingFormat.Avi;
 
         // Act
@@ -162,7 +162,7 @@ public sealed class SettingsViewModelTests
         mock.SetupGet(s => s.Current).Returns(new UserSettings());
         UserSettings? saved = null;
         mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
-        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>());
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>());
         vm.RegionCaptureHotkey = 0x42u; // 'B'
 
         // Act
@@ -237,5 +237,50 @@ public sealed class SettingsViewModelTests
 
         Assert.Contains(nameof(vm.RegionCaptureHotkeyDisplayName), raised);
         Assert.NotEmpty(vm.RegionCaptureHotkeyDisplayName);
+    }
+
+    [Fact]
+    public void BrowseScreenshotPathCommand_UsesDialogSelection()
+    {
+        var dialogMock = new Mock<IDialogService>();
+        dialogMock
+            .Setup(d => d.PickFolder(@"C:\Shots", "Select screenshot save folder"))
+            .Returns(@"D:\Captures");
+        var vm = CreateVm(new UserSettings { ScreenshotSavePath = @"C:\Shots" }, dialogMock.Object);
+
+        vm.BrowseScreenshotPathCommand.Execute(null);
+
+        Assert.Equal(@"D:\Captures", vm.ScreenshotSavePath);
+        dialogMock.VerifyAll();
+    }
+
+    [Fact]
+    public void BrowseRecordingPathCommand_WhenCancelled_KeepsExistingPath()
+    {
+        var dialogMock = new Mock<IDialogService>();
+        dialogMock
+            .Setup(d => d.PickFolder(@"C:\Videos", "Select recording output folder"))
+            .Returns((string?)null);
+        var vm = CreateVm(new UserSettings { RecordingOutputPath = @"C:\Videos" }, dialogMock.Object);
+
+        vm.BrowseRecordingPathCommand.Execute(null);
+
+        Assert.Equal(@"C:\Videos", vm.RecordingOutputPath);
+        dialogMock.VerifyAll();
+    }
+
+    [Fact]
+    public void PickAnnotationColorCommand_UsesDialogSelection()
+    {
+        var dialogMock = new Mock<IDialogService>();
+        dialogMock
+            .Setup(d => d.PickColor(Colors.Red))
+            .Returns(Colors.DodgerBlue);
+        var vm = CreateVm(new UserSettings { DefaultAnnotationColor = "#FFFF0000" }, dialogMock.Object);
+
+        vm.PickAnnotationColorCommand.Execute(null);
+
+        Assert.Equal(Colors.DodgerBlue, vm.DefaultAnnotationColor);
+        dialogMock.VerifyAll();
     }
 }

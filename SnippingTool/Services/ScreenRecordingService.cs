@@ -101,7 +101,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         }
         finally
         {
-            _writer?.Close();
+            _writer?.Dispose();
             _writer = null;
             _logger.LogInformation("Writer closed — file finalised");
             _cts?.Dispose();
