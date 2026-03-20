@@ -17,7 +17,7 @@ internal sealed class OpenedImageBitmapCapture : IOverlayBitmapCapture
         _annotationCanvas = annotationCanvas;
     }
 
-    public BitmapSource ComposeBitmap()
+    public BitmapSource ComposeBitmap(bool restoreOverlayVisibilityAfterCapture = true)
     {
         var displayWidth = GetDisplayDimension(_annotationCanvas.Width, _annotationCanvas.ActualWidth);
         var displayHeight = GetDisplayDimension(_annotationCanvas.Height, _annotationCanvas.ActualHeight);

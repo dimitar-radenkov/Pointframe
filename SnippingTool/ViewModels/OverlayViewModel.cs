@@ -131,6 +131,6 @@ public partial class OverlayViewModel : AnnotationViewModel
             return;
         }
 
-        PinRequested?.Invoke(bitmapCapture.ComposeBitmap());
+        PinRequested?.Invoke(bitmapCapture.ComposeBitmap(restoreOverlayVisibilityAfterCapture: false));
     }
 }

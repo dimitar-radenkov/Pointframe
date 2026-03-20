@@ -32,7 +32,7 @@ internal sealed class OverlayBitmapCapture : IOverlayBitmapCapture
         _getDpiY = getDpiY;
     }
 
-    public BitmapSource ComposeBitmap()
+    public BitmapSource ComposeBitmap(bool restoreOverlayVisibilityAfterCapture = true)
     {
         var selectionRect = _getSelectionRect();
         var dpiX = _getDpiX();
@@ -53,7 +53,10 @@ internal sealed class OverlayBitmapCapture : IOverlayBitmapCapture
         }
         finally
         {
-            _overlayWindow.Visibility = originalVisibility;
+            if (restoreOverlayVisibilityAfterCapture)
+            {
+                _overlayWindow.Visibility = originalVisibility;
+            }
         }
 
         var annotationBitmap = new RenderTargetBitmap(screenWidth, screenHeight, 96 * dpiX, 96 * dpiY, PixelFormats.Pbgra32);

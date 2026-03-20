@@ -213,7 +213,7 @@ public sealed class OverlayViewModelTests
     {
         var captureMock = new Mock<IOverlayBitmapCapture>();
         var bitmap = CreateBitmap();
-        captureMock.Setup(c => c.ComposeBitmap()).Returns(bitmap);
+        captureMock.Setup(c => c.ComposeBitmap(false)).Returns(bitmap);
         var vm = Vm();
         BitmapSource? pinnedBitmap = null;
         vm.PinRequested += b => pinnedBitmap = b;
@@ -223,7 +223,7 @@ public sealed class OverlayViewModelTests
         vm.PinCommand.Execute(null);
 
         Assert.Same(bitmap, pinnedBitmap);
-        captureMock.Verify(c => c.ComposeBitmap(), Times.Once);
+        captureMock.Verify(c => c.ComposeBitmap(false), Times.Once);
     }
 
     [Fact]

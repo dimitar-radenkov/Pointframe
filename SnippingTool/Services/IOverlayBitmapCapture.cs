@@ -4,5 +4,5 @@ namespace SnippingTool.Services;
 
 internal interface IOverlayBitmapCapture
 {
-    BitmapSource ComposeBitmap();
+    BitmapSource ComposeBitmap(bool restoreOverlayVisibilityAfterCapture = true);
 }
