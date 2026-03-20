@@ -7,6 +7,7 @@ using SnippingTool.Services;
 using SnippingTool.Services.Messaging;
 using SnippingTool.ViewModels;
 using Cursors = System.Windows.Input.Cursors;
+using Forms = System.Windows.Forms;
 
 namespace SnippingTool;
 
@@ -302,17 +303,42 @@ public partial class OverlayWindow : Window
 
     private Rect CalculateOpenedImageDisplayRect(BitmapSource openedImage)
     {
-        var maxWidth = Math.Max(1d, Width - (ImageViewportMargin * 2d));
-        var maxHeight = Math.Max(1d, Height - (ImageViewportMargin * 2d));
-        var scale = Math.Min(maxWidth / openedImage.PixelWidth, maxHeight / openedImage.PixelHeight);
+        return CalculateOpenedImageDisplayRect(
+            openedImage.PixelWidth,
+            openedImage.PixelHeight,
+            GetOpenedImageTargetArea(),
+            ImageViewportMargin);
+    }
+
+    internal static Rect CalculateOpenedImageDisplayRect(
+        double imagePixelWidth,
+        double imagePixelHeight,
+        Rect targetArea,
+        double viewportMargin)
+    {
+        var maxWidth = Math.Max(1d, targetArea.Width - (viewportMargin * 2d));
+        var maxHeight = Math.Max(1d, targetArea.Height - (viewportMargin * 2d));
+        var scale = Math.Min(maxWidth / imagePixelWidth, maxHeight / imagePixelHeight);
         scale = Math.Min(1d, scale);
 
-        var displayWidth = Math.Max(1d, openedImage.PixelWidth * scale);
-        var displayHeight = Math.Max(1d, openedImage.PixelHeight * scale);
-        var left = (Width - displayWidth) / 2d;
-        var top = (Height - displayHeight) / 2d;
+        var displayWidth = Math.Max(1d, imagePixelWidth * scale);
+        var displayHeight = Math.Max(1d, imagePixelHeight * scale);
+        var left = targetArea.Left + ((targetArea.Width - displayWidth) / 2d);
+        var top = targetArea.Top + ((targetArea.Height - displayHeight) / 2d);
 
         return new Rect(left, top, displayWidth, displayHeight);
+    }
+
+    private Rect GetOpenedImageTargetArea()
+    {
+        var targetScreen = Forms.Screen.FromPoint(Forms.Cursor.Position);
+        var workingArea = targetScreen.WorkingArea;
+
+        return new Rect(
+            (workingArea.Left / _vm.DpiX) - Left,
+            (workingArea.Top / _vm.DpiY) - Top,
+            workingArea.Width / _vm.DpiX,
+            workingArea.Height / _vm.DpiY);
     }
 
     private void EnterAnnotatingSession(Rect selectionRect, BitmapSource backgroundBitmap, double pixelScaleX, double pixelScaleY, bool allowRecording)
