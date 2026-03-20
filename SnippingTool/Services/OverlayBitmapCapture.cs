@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace SnippingTool.Services;
 
@@ -48,6 +49,7 @@ internal sealed class OverlayBitmapCapture : IOverlayBitmapCapture
         try
         {
             _overlayWindow.Visibility = Visibility.Hidden;
+            FlushDispatcher(_overlayWindow.Dispatcher, DispatcherPriority.Render);
             System.Threading.Thread.Sleep(CaptureHideDelayMs);
             screenBitmap = _screenCapture.Capture(screenX, screenY, screenWidth, screenHeight);
         }
@@ -59,20 +61,64 @@ internal sealed class OverlayBitmapCapture : IOverlayBitmapCapture
             }
         }
 
-        var annotationBitmap = new RenderTargetBitmap(screenWidth, screenHeight, 96 * dpiX, 96 * dpiY, PixelFormats.Pbgra32);
-        annotationBitmap.Render(_annotationCanvas);
+        var displayWidth = GetDisplayDimension(_annotationCanvas.Width, _annotationCanvas.ActualWidth);
+        var displayHeight = GetDisplayDimension(_annotationCanvas.Height, _annotationCanvas.ActualHeight);
+        _annotationCanvas.Measure(new Size(displayWidth, displayHeight));
+        _annotationCanvas.Arrange(new Rect(0, 0, displayWidth, displayHeight));
+        _annotationCanvas.UpdateLayout();
 
         var drawingVisual = new DrawingVisual();
         using (var drawingContext = drawingVisual.RenderOpen())
         {
             var targetRect = new Rect(0, 0, screenBitmap.PixelWidth, screenBitmap.PixelHeight);
             drawingContext.DrawImage(screenBitmap, targetRect);
-            drawingContext.DrawImage(annotationBitmap, targetRect);
+
+            var annotationBrush = new VisualBrush(_annotationCanvas)
+            {
+                Stretch = Stretch.Fill,
+                AlignmentX = AlignmentX.Left,
+                AlignmentY = AlignmentY.Top
+            };
+            drawingContext.DrawRectangle(annotationBrush, null, targetRect);
         }
 
         var finalBitmap = new RenderTargetBitmap(screenBitmap.PixelWidth, screenBitmap.PixelHeight, 96, 96, PixelFormats.Pbgra32);
         finalBitmap.Render(drawingVisual);
         finalBitmap.Freeze();
         return finalBitmap;
+    }
+
+    private static double GetDisplayDimension(double preferredValue, double actualValue)
+    {
+        if (preferredValue > 0)
+        {
+            return preferredValue;
+        }
+
+        if (actualValue > 0)
+        {
+            return actualValue;
+        }
+
+        return 1d;
+    }
+
+    private static void FlushDispatcher(Dispatcher dispatcher, DispatcherPriority priority)
+    {
+        if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        var frame = new DispatcherFrame();
+        dispatcher.BeginInvoke(
+            priority,
+            new DispatcherOperationCallback(static state =>
+            {
+                ((DispatcherFrame)state!).Continue = false;
+                return null;
+            }),
+            frame);
+        Dispatcher.PushFrame(frame);
     }
 }

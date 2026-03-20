@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
 using SnippingTool.Services;
 using SnippingTool.Services.Messaging;
@@ -36,6 +37,7 @@ public partial class OverlayWindow : Window
     private double _openedImageScaleX = 1.0;
     private double _openedImageScaleY = 1.0;
     private BitmapSource? _screenSnapshot;
+    private BitmapSource? _pendingPinnedBitmap;
 
     public OverlayWindow(
         OverlayViewModel vm,
@@ -593,6 +595,9 @@ public partial class OverlayWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        var pendingPinnedBitmap = _pendingPinnedBitmap;
+        _pendingPinnedBitmap = null;
+
         _undoSubscription.Dispose();
         _redoSubscription.Dispose();
 
@@ -607,6 +612,17 @@ public partial class OverlayWindow : Window
         _recordingBorder = null;
 
         base.OnClosed(e);
+
+        if (pendingPinnedBitmap is not null)
+        {
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.ApplicationIdle,
+                new Action(() =>
+                {
+                    var pinned = new PinnedScreenshotWindow(pendingPinnedBitmap);
+                    pinned.Show();
+                }));
+        }
     }
 
     private ValueTask HandleUndoGroupAsync(UndoGroupMessage message)
@@ -640,9 +656,9 @@ public partial class OverlayWindow : Window
 
     private void DoPin(BitmapSource bitmap)
     {
-        var pinned = new PinnedScreenshotWindow(bitmap);
-        pinned.Show();
-        Close();
+        _pendingPinnedBitmap = bitmap;
+        Visibility = Visibility.Hidden;
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(Close));
     }
 
     private async Task DoLassoOcrAsync(Rect lassoRect)
