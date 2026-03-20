@@ -6,7 +6,6 @@ using System.Windows.Media.Imaging;
 namespace SnippingTool.Services;
 
 internal sealed class OpenedImageBitmapCapture : IOverlayBitmapCapture
-
 {
     private readonly BitmapSource _sourceBitmap;
     private readonly Canvas _annotationCanvas;
