@@ -21,6 +21,7 @@ https://github.com/user-attachments/assets/d4e0c937-a845-4266-9454-2b816934f949
 - **Annotation tools** — Arrow, line, rectangle, circle, pen, highlighter, text, numbered steps, blur
 - **Blur tool** — Drag over sensitive content (faces, emails, passwords) to apply a Gaussian blur before sharing
 - **OCR — Copy Text** — Draw a lasso around text in the screenshot to extract it via OCR and copy to clipboard (uses Windows.Media.Ocr, no external dependencies)
+- **Open existing image** — Load a PNG, JPG/JPEG, or BMP from the tray menu and annotate it without taking a new screenshot
 - **Pin screenshot** — Pin the captured screenshot as a floating, always-on-top, resizable window for quick reference while you work
 - **Undo / redo** — Full undo/redo stack during annotation
 - **Copy & auto-save** — Copy to clipboard; optional auto-save to a configurable folder

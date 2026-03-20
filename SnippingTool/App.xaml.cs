@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Threading;
 using Hardcodet.Wpf.TaskbarNotification;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -117,6 +119,7 @@ public partial class App : Application
         services.AddSingleton<IAppVersionService, AppVersionService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
         services.AddSingleton<IDialogService, DialogService>();
+        services.AddSingleton<IImageFileService, ImageFileService>();
         services.AddSingleton<IEventAggregator, DefaultEventAggregator>();
         services.AddSingleton<IProcessService, ProcessService>();
         services.AddSingleton<IMessageBoxService, MessageBoxService>();
@@ -201,6 +204,43 @@ public partial class App : Application
 
     private void TrayIcon_LeftClick(object sender, RoutedEventArgs e) => StartSnip();
     private void NewSnip_Click(object sender, RoutedEventArgs e) => StartSnip();
+
+    private void OpenImage_Click(object sender, RoutedEventArgs e)
+    {
+        Dispatcher.InvokeAsync(OpenImage, DispatcherPriority.ApplicationIdle);
+    }
+
+    private void OpenImage()
+    {
+        var dialogService = _host.Services.GetRequiredService<IDialogService>();
+        var selectedPath = dialogService.PickOpenImageFile();
+        if (string.IsNullOrWhiteSpace(selectedPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var imageFileService = _host.Services.GetRequiredService<IImageFileService>();
+            var bitmap = imageFileService.LoadForAnnotation(selectedPath);
+            var overlay = _host.Services.GetRequiredService<OverlayWindow>();
+            overlay.InitializeFromImage(bitmap, selectedPath);
+            overlay.Show();
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException or NotSupportedException or IOException or UnauthorizedAccessException)
+        {
+            _logger?.LogWarning(ex, "Failed to open image '{Path}'", selectedPath);
+            _messageBox.ShowWarning(ex.Message, "Open Image");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Unexpected failure while opening image '{Path}'", selectedPath);
+            _messageBox.ShowError(
+                "The selected image could not be opened. Please try a different file.",
+                "Open Image");
+        }
+    }
+
     private void Exit_Click(object sender, RoutedEventArgs e) => Current.Shutdown();
 
 #if DEBUG

@@ -101,6 +101,23 @@ public sealed class OverlayViewModelTests
     }
 
     [Fact]
+    public void InitializeAnnotatingSession_SetsSelectionPhaseAndPixelScale()
+    {
+        // Arrange
+        var vm = Vm();
+        var rect = new Rect(50, 60, 400, 300);
+
+        // Act
+        vm.InitializeAnnotatingSession(rect, 2.5, 1.75);
+
+        // Assert
+        Assert.Equal(rect, vm.SelectionRect);
+        Assert.Equal(OverlayViewModel.Phase.Annotating, vm.CurrentPhase);
+        Assert.Equal(2.5, vm.DpiX);
+        Assert.Equal(1.75, vm.DpiY);
+    }
+
+    [Fact]
     public void UpdateSizeLabel_FormatsWithDpi()
     {
         // Arrange

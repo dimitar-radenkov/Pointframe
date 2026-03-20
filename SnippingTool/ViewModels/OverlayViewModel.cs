@@ -52,10 +52,17 @@ public partial class OverlayViewModel : AnnotationViewModel
     [ObservableProperty]
     private bool _isTextLassoActive;
 
-    public void CommitSelection(Rect selection)
+    public void InitializeAnnotatingSession(Rect selection, double pixelScaleX, double pixelScaleY)
     {
         SelectionRect = selection;
+        DpiX = pixelScaleX;
+        DpiY = pixelScaleY;
         CurrentPhase = Phase.Annotating;
+    }
+
+    public void CommitSelection(Rect selection)
+    {
+        InitializeAnnotatingSession(selection, DpiX, DpiY);
         _logger.LogInformation("Selection committed: {W:F0}\u00d7{H:F0} at ({X:F0},{Y:F0})",
             selection.Width, selection.Height, selection.X, selection.Y);
     }

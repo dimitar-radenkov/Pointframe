@@ -18,6 +18,7 @@
                 <tb:TaskbarIcon.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="New Snip" Click="NewSnip_Click" />
+                        <MenuItem Header="Open image..." Click="OpenImage_Click" />
                         <Separator />
                         <MenuItem Header="Settings" Click="Settings_Click" />
                         <MenuItem Header="Check for Updates" Click="CheckForUpdates_Click" />

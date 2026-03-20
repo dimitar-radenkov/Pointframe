@@ -12,6 +12,7 @@ namespace SnippingTool;
 
 public partial class OverlayWindow : Window
 {
+    private const int ImageViewportMargin = 140;
     private readonly OverlayViewModel _vm;
     private readonly IScreenCaptureService _screenCapture;
     private readonly IScreenRecordingService _recorder;
@@ -28,6 +29,11 @@ public partial class OverlayWindow : Window
     private RecordingBorderWindow? _recordingBorder;
     private RecordingHudWindow? _recordingHud;
     private Point? _lassoStart;
+    private BitmapSource? _openedImage;
+    private string? _openedImagePath;
+    private Rect _openedImageDisplayRect;
+    private double _openedImageScaleX = 1.0;
+    private double _openedImageScaleY = 1.0;
     private BitmapSource? _screenSnapshot;
 
     public OverlayWindow(
@@ -86,6 +92,15 @@ public partial class OverlayWindow : Window
         };
     }
 
+    public void InitializeFromImage(BitmapSource bitmap, string sourcePath)
+    {
+        ArgumentNullException.ThrowIfNull(bitmap);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+
+        _openedImage = bitmap;
+        _openedImagePath = sourcePath;
+    }
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -105,6 +120,12 @@ public partial class OverlayWindow : Window
         {
             _vm.DpiX = src.CompositionTarget.TransformToDevice.M11;
             _vm.DpiY = src.CompositionTarget.TransformToDevice.M22;
+        }
+
+        if (_openedImage is not null)
+        {
+            InitializeFromOpenedImage(_openedImage);
+            return;
         }
 
         Visibility = Visibility.Hidden;
@@ -244,11 +265,6 @@ public partial class OverlayWindow : Window
     private void TransitionToAnnotating()
     {
         var sel = _vm.SelectionRect;
-        Cursor = Cursors.Arrow;
-        SizeLabelBorder.Visibility = Visibility.Collapsed;
-        DimFull.Visibility = Visibility.Collapsed;
-
-        // Capture clean background pixels for the pixelate tool
         var screenX = (int)((Left + sel.X) * _vm.DpiX);
         var screenY = (int)((Top + sel.Y) * _vm.DpiY);
         var screenW = Math.Max(1, (int)(sel.Width * _vm.DpiX));
@@ -257,15 +273,71 @@ public partial class OverlayWindow : Window
         System.Threading.Thread.Sleep(60);
         var backgroundCapture = _screenCapture.Capture(screenX, screenY, screenW, screenH);
         Visibility = Visibility.Visible;
-        _renderer.SetBackground(backgroundCapture, _vm.DpiX, _vm.DpiY);
         _screenSnapshot = null;
 
-        LayoutDimStrips(sel);
+        EnterAnnotatingSession(sel, backgroundCapture, _vm.DpiX, _vm.DpiY, allowRecording: true);
+    }
 
-        AnnotationCanvas.Width = sel.Width;
-        AnnotationCanvas.Height = sel.Height;
-        Canvas.SetLeft(AnnotationCanvas, sel.X);
-        Canvas.SetTop(AnnotationCanvas, sel.Y);
+    private void InitializeFromOpenedImage(BitmapSource openedImage)
+    {
+        _openedImageDisplayRect = CalculateOpenedImageDisplayRect(openedImage);
+        _openedImageScaleX = openedImage.PixelWidth / _openedImageDisplayRect.Width;
+        _openedImageScaleY = openedImage.PixelHeight / _openedImageDisplayRect.Height;
+
+        _vm.SetBitmapCapture(new OpenedImageBitmapCapture(openedImage, AnnotationCanvas));
+
+        ScreenSnapshot.Source = openedImage;
+        ScreenSnapshot.Width = _openedImageDisplayRect.Width;
+        ScreenSnapshot.Height = _openedImageDisplayRect.Height;
+        Canvas.SetLeft(ScreenSnapshot, _openedImageDisplayRect.X);
+        Canvas.SetTop(ScreenSnapshot, _openedImageDisplayRect.Y);
+
+        EnterAnnotatingSession(
+            _openedImageDisplayRect,
+            openedImage,
+            _openedImageScaleX,
+            _openedImageScaleY,
+            allowRecording: false);
+    }
+
+    private Rect CalculateOpenedImageDisplayRect(BitmapSource openedImage)
+    {
+        var maxWidth = Math.Max(1d, Width - (ImageViewportMargin * 2d));
+        var maxHeight = Math.Max(1d, Height - (ImageViewportMargin * 2d));
+        var scale = Math.Min(maxWidth / openedImage.PixelWidth, maxHeight / openedImage.PixelHeight);
+        scale = Math.Min(1d, scale);
+
+        var displayWidth = Math.Max(1d, openedImage.PixelWidth * scale);
+        var displayHeight = Math.Max(1d, openedImage.PixelHeight * scale);
+        var left = (Width - displayWidth) / 2d;
+        var top = (Height - displayHeight) / 2d;
+
+        return new Rect(left, top, displayWidth, displayHeight);
+    }
+
+    private void EnterAnnotatingSession(Rect selectionRect, BitmapSource backgroundBitmap, double pixelScaleX, double pixelScaleY, bool allowRecording)
+    {
+        _vm.InitializeAnnotatingSession(selectionRect, pixelScaleX, pixelScaleY);
+
+        Cursor = Cursors.Arrow;
+        SizeLabelBorder.Visibility = Visibility.Collapsed;
+        LoupeBorder.Visibility = Visibility.Collapsed;
+        DimFull.Visibility = Visibility.Collapsed;
+
+        Canvas.SetLeft(SelectionBorder, selectionRect.X);
+        Canvas.SetTop(SelectionBorder, selectionRect.Y);
+        SelectionBorder.Width = selectionRect.Width;
+        SelectionBorder.Height = selectionRect.Height;
+        SelectionBorder.Visibility = Visibility.Visible;
+
+        _renderer.SetBackground(backgroundBitmap, pixelScaleX, pixelScaleY);
+
+        LayoutDimStrips(selectionRect);
+
+        AnnotationCanvas.Width = selectionRect.Width;
+        AnnotationCanvas.Height = selectionRect.Height;
+        Canvas.SetLeft(AnnotationCanvas, selectionRect.X);
+        Canvas.SetTop(AnnotationCanvas, selectionRect.Y);
         AnnotationCanvas.Visibility = Visibility.Visible;
         AnnotationCanvas.Cursor = Cursors.Cross;
 
@@ -273,8 +345,10 @@ public partial class OverlayWindow : Window
         AnnotationCanvas.MouseMove += Annot_Move;
         AnnotationCanvas.MouseLeftButtonUp += Annot_Up;
 
-        PositionToolbar(sel);
-        PositionActionBar(sel);
+        RecordBtn.Visibility = allowRecording ? Visibility.Visible : Visibility.Collapsed;
+
+        PositionToolbar(selectionRect);
+        PositionActionBar(selectionRect);
     }
 
     private void LayoutDimStrips(Rect s)
