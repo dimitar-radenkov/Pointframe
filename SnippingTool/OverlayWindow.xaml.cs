@@ -372,9 +372,9 @@ public partial class OverlayWindow : Window
         AnnotationCanvas.MouseLeftButtonUp += Annot_Up;
 
         RecordBtn.Visibility = allowRecording ? Visibility.Visible : Visibility.Collapsed;
+        CompactRecordBtn.Visibility = allowRecording ? Visibility.Visible : Visibility.Collapsed;
 
-        PositionToolbar(selectionRect);
-        PositionActionBar(selectionRect);
+        PositionToolbars(selectionRect);
     }
 
     private void LayoutDimStrips(Rect s)
@@ -407,43 +407,43 @@ public partial class OverlayWindow : Window
         DimRight.Visibility = Visibility.Visible;
     }
 
-    private void PositionToolbar(Rect sel)
+    private void PositionToolbars(Rect sel)
     {
+        var toolSize = MeasureFloatingElement(AnnotToolbar);
+        var fullActionSize = MeasureFloatingElement(ActionBar);
+        var compactActionSize = MeasureFloatingElement(CompactActionBar);
+        var layout = OverlayToolbarLayoutHelper.Calculate(
+            sel,
+            new Size(Width, Height),
+            toolSize,
+            fullActionSize,
+            compactActionSize);
+
         AnnotToolbar.Visibility = Visibility.Visible;
-        AnnotToolbar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var sz = AnnotToolbar.DesiredSize;
+        Canvas.SetLeft(AnnotToolbar, layout.ToolBounds.Left);
+        Canvas.SetTop(AnnotToolbar, layout.ToolBounds.Top);
 
-        var left = sel.Right + 8;
-        var top = sel.Top;
-        if (left + sz.Width > Width)
-        {
-            left = sel.Left - sz.Width - 8;
-        }
+        var useFullActionBar = layout.ActionBarMode == OverlayActionBarMode.Full;
+        ActionBar.Visibility = useFullActionBar ? Visibility.Visible : Visibility.Collapsed;
+        CompactActionBar.Visibility = useFullActionBar ? Visibility.Collapsed : Visibility.Visible;
 
-        top = Math.Max(0, Math.Min(top, Height - sz.Height));
-
-        Canvas.SetLeft(AnnotToolbar, left);
-        Canvas.SetTop(AnnotToolbar, top);
+        var actionBar = useFullActionBar ? ActionBar : CompactActionBar;
+        Canvas.SetLeft(actionBar, layout.ActionBounds.Left);
+        Canvas.SetTop(actionBar, layout.ActionBounds.Top);
     }
 
-    private void PositionActionBar(Rect sel)
+    private static Size MeasureFloatingElement(FrameworkElement element)
     {
-        ActionBar.Visibility = Visibility.Visible;
-        ActionBar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var sz = ActionBar.DesiredSize;
-
-        var left = sel.Left + (sel.Width - sz.Width) / 2;
-        var top = sel.Bottom + 8;
-        if (top + sz.Height > Height)
+        var originalVisibility = element.Visibility;
+        if (originalVisibility == Visibility.Collapsed)
         {
-            top = sel.Top - sz.Height - 8;
+            element.Visibility = Visibility.Hidden;
         }
 
-        left = Math.Max(0, Math.Min(left, Width - sz.Width));
-        top = Math.Max(0, top);
-
-        Canvas.SetLeft(ActionBar, left);
-        Canvas.SetTop(ActionBar, top);
+        element.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var desiredSize = element.DesiredSize;
+        element.Visibility = originalVisibility;
+        return desiredSize;
     }
 
     private void Annot_Down(object sender, MouseButtonEventArgs e)

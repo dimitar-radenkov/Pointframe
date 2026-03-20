@@ -298,6 +298,66 @@
       </StackPanel>
     </Border>
 
+    <Border x:Name="CompactActionBar"
+            Background="{DynamicResource ToolbarBackground}" CornerRadius="6"
+            BorderBrush="{DynamicResource ToolbarBorder}" BorderThickness="1"
+            Padding="4" Visibility="Collapsed">
+      <Border.Effect>
+        <DropShadowEffect Color="#444444" BlurRadius="10" ShadowDepth="0" Opacity="0.4"/>
+      </Border.Effect>
+      <StackPanel Orientation="Horizontal">
+
+        <Button Style="{StaticResource ActionBtn}"
+                x:Name="CompactRecordBtn"
+                Click="Record_Click" ToolTip="Record region to video">
+          <TextBlock Text="⏺" FontSize="13" Foreground="#FF4444" HorizontalAlignment="Center"/>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding UndoCommand}" ToolTip="Undo (Ctrl+Z)">
+          <TextBlock Text="↩" FontSize="13" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding RedoCommand}" ToolTip="Redo (Ctrl+Y)">
+          <TextBlock Text="↪" FontSize="13" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding CopyCommand}" ToolTip="Copy to clipboard (Ctrl+C)">
+          <TextBlock Text="📋" FontSize="13" HorizontalAlignment="Center"/>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding CopyTextCommand}" ToolTip="Copy text from screenshot (OCR)">
+          <TextBlock Text="🔤" FontSize="13" HorizontalAlignment="Center"/>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding PinCommand}" ToolTip="Pin to screen">
+          <TextBlock Text="📌" FontSize="13" HorizontalAlignment="Center"/>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
+                Click="CloseBtn_Click" ToolTip="Close (Esc)">
+          <TextBlock Text="✕" FontSize="13" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
+        </Button>
+
+      </StackPanel>
+    </Border>
+
     <!-- OCR toast notification -->
     <Border x:Name="OcrToast"
             Background="#DD333333" CornerRadius="6"
