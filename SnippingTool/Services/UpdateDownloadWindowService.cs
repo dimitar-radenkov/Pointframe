@@ -19,20 +19,29 @@ public sealed class UpdateDownloadWindowService : IUpdateDownloadService
     {
         var vm = _vmFactory();
         using var downloadCancellation = new CancellationTokenSource();
+        var downloadToken = downloadCancellation.Token;
         vm.AttachCancellation(downloadCancellation);
 
         var window = _windowFactory(vm);
         var downloadCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var downloadStarted = false;
+        var windowClosed = false;
 
         async void StartDownload(object? sender, EventArgs e)
         {
             window.ContentRendered -= StartDownload;
+
+            if (windowClosed)
+            {
+                downloadCompleted.TrySetResult();
+                return;
+            }
+
             downloadStarted = true;
 
             try
             {
-                await vm.DownloadAndInstallAsync(downloadUrl, destPath, downloadCancellation.Token);
+                await vm.DownloadAndInstallAsync(downloadUrl, destPath, downloadToken);
             }
             finally
             {
@@ -42,6 +51,9 @@ public sealed class UpdateDownloadWindowService : IUpdateDownloadService
 
         void HandleWindowClosed(object? sender, EventArgs e)
         {
+            windowClosed = true;
+            window.ContentRendered -= StartDownload;
+
             if (!downloadStarted || (vm.IsDownloading && !downloadCancellation.IsCancellationRequested))
             {
                 downloadCancellation.Cancel();
