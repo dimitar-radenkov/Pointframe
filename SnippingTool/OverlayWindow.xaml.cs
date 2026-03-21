@@ -15,6 +15,9 @@ namespace SnippingTool;
 public partial class OverlayWindow : Window
 {
     private const int ImageViewportMargin = 140;
+    private const double RecordingBorderStrokeThickness = 2d;
+    private const double RecordingBorderClearance = 6d;
+    private const double RecordingBorderOffset = RecordingBorderStrokeThickness + RecordingBorderClearance;
     private readonly OverlayViewModel _vm;
     private readonly IScreenCaptureService _screenCapture;
     private readonly IScreenRecordingService _recorder;
@@ -571,7 +574,13 @@ public partial class OverlayWindow : Window
 
     private void ShowRecordingSessionWindows(Rect regionRect, string outputPath)
     {
-        _recordingBorder = new RecordingBorderWindow(regionRect.Left, regionRect.Top, regionRect.Width, regionRect.Height);
+        var borderRect = new Rect(
+            regionRect.Left - RecordingBorderOffset,
+            regionRect.Top - RecordingBorderOffset,
+            regionRect.Width + (RecordingBorderOffset * 2d),
+            regionRect.Height + (RecordingBorderOffset * 2d));
+
+        _recordingBorder = new RecordingBorderWindow(borderRect.Left, borderRect.Top, borderRect.Width, borderRect.Height);
         _recordingBorder.Show();
 
         _recordingAnnotation = _recordingAnnotationWindowFactory(regionRect, _vm.DpiX, _vm.DpiY);
