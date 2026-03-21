@@ -36,7 +36,9 @@ internal sealed class AnnotationCanvasRenderer
         Canvas canvas,
         AnnotationViewModel vm,
         Action<UIElement> onAdd,
-        ILogger<AnnotationCanvasRenderer> logger)
+        ILogger<AnnotationCanvasRenderer> logger,
+        Action? onCanvasChanged = null,
+        Func<BlurShapeParameters, BitmapSource?>? captureLiveBlurSource = null)
     {
         _canvas = canvas;
         _vm = vm;
@@ -47,14 +49,14 @@ internal sealed class AnnotationCanvasRenderer
         {
             [AnnotationTool.Arrow] = new ArrowShapeHandler(GetShapeParameters),
             [AnnotationTool.Rectangle] = new RectShapeHandler(GetShapeParameters),
-            [AnnotationTool.Text] = new TextShapeHandler(_vm.ReplaceTrackedElement, _vm.RemoveTrackedElement),
+            [AnnotationTool.Text] = new TextShapeHandler(_vm.ReplaceTrackedElement, _vm.RemoveTrackedElement, onCanvasChanged),
             [AnnotationTool.Highlight] = new HighlightShapeHandler(GetShapeParameters),
             [AnnotationTool.Pen] = new PenShapeHandler(GetShapeParameters),
             [AnnotationTool.Line] = new LineShapeHandler(GetShapeParameters),
             [AnnotationTool.Circle] = new EllipseShapeHandler(GetShapeParameters),
             [AnnotationTool.Number] = new NumberShapeHandler(_vm.IncrementNumberCounter),
-            [AnnotationTool.Blur] = new BlurShapeHandler(GetShapeParameters, () => _backgroundCapture, () => _dpiX, () => _dpiY),
-            [AnnotationTool.Callout] = new CalloutShapeHandler(GetShapeParameters, _vm.ReplaceTrackedElement, _vm.RemoveTrackedElement)
+            [AnnotationTool.Blur] = new BlurShapeHandler(GetShapeParameters, () => _backgroundCapture, () => _dpiX, () => _dpiY, captureLiveBlurSource),
+            [AnnotationTool.Callout] = new CalloutShapeHandler(GetShapeParameters, _vm.ReplaceTrackedElement, _vm.RemoveTrackedElement, onCanvasChanged)
         };
     }
 

@@ -1,0 +1,19 @@
+<Window x:Class="SnippingTool.RecordingAnnotationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        Focusable="True">
+
+  <Canvas x:Name="RootCanvas"
+          Background="#01000000"
+          Cursor="Pen">
+    <Canvas x:Name="AnnotationCanvas"
+            Background="Transparent"/>
+  </Canvas>
+
+</Window>

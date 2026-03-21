@@ -11,42 +11,286 @@
 
   <Window.Resources>
     <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+
+    <Style x:Key="ToolBtn" TargetType="RadioButton">
+      <Setter Property="Width" Value="34"/>
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Margin" Value="0,1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Border x:Name="Bd"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolBtnCheckedBackground}"/>
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ToolBtnCheckedBorder}"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolBtnHoverBackground}"/>
+              </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="IsChecked" Value="True"/>
+                  <Condition Property="IsMouseOver" Value="True"/>
+                </MultiTrigger.Conditions>
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PressedBackground}"/>
+              </MultiTrigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="ActionBtn" TargetType="Button">
+      <Setter Property="Width" Value="48"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="Margin" Value="1,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="2">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ActionBtnHoverBackground}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ActionBtnPressedBackground}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="ModeActionBtn" TargetType="Button">
+      <Setter Property="Width" Value="60"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="Margin" Value="1,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd"
+                    Background="{DynamicResource ActionBtnHoverBackground}"
+                    BorderBrush="Transparent"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="2">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <DataTrigger Binding="{Binding IsAnnotationInputArmed}" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolBtnCheckedBackground}"/>
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ToolBtnCheckedBorder}"/>
+              </DataTrigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ActionBtnPressedBackground}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PressedBackground}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </Window.Resources>
 
-  <Border Background="#CC1A1A1A" CornerRadius="8" Padding="12,8">
+  <Border Background="{DynamicResource ToolbarBackground}"
+          CornerRadius="6"
+          BorderBrush="{DynamicResource ToolbarBorder}"
+          BorderThickness="1"
+          Padding="6,4">
+    <Border.Effect>
+      <DropShadowEffect Color="#444444" BlurRadius="10" ShadowDepth="0" Opacity="0.4"/>
+    </Border.Effect>
     <StackPanel Orientation="Vertical">
 
-      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-        <Button x:Name="PauseBtn"
-                Command="{Binding PauseResumeCommand}"
-                IsEnabled="{Binding CanPauseResume}"
-                Content="{Binding PauseResumeLabel}"
-                Cursor="Hand"
-                Margin="0,0,6,0"
-                Padding="8,3"
-                Background="#444444" Foreground="White"
-                BorderBrush="#666666" BorderThickness="1"
-                FontWeight="SemiBold" FontSize="12"
-                FontFamily="Segoe UI"/>
-        <Button x:Name="StopBtn"
-                Command="{Binding StopCommand}"
-                Cursor="Hand"
-                Margin="0,0,10,0"
-                Padding="8,3"
-                Background="#FF4444" Foreground="White"
-                BorderBrush="#CC2222" BorderThickness="1"
-                FontWeight="SemiBold" FontSize="12"
-                FontFamily="Segoe UI"
-                Content="⏹ Stop"/>
-        <TextBlock Text="{Binding ElapsedText}"
-                   Foreground="White"
-                   FontSize="13"
-                   FontFamily="Segoe UI"
-                   VerticalAlignment="Center"/>
-      </StackPanel>
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
+          <Button x:Name="AnnotateBtn"
+                  Style="{StaticResource ModeActionBtn}"
+                  Command="{Binding ToggleAnnotationInputCommand}"
+                  ToolTip="Switch between drawing and interacting with the app"
+                  Visibility="{Binding CanToggleAnnotation, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel>
+              <TextBlock Text="✎"
+                         FontSize="13"
+                         Foreground="{DynamicResource PrimaryText}"
+                         HorizontalAlignment="Center"/>
+              <TextBlock Text="{Binding CurrentModeLabel}"
+                         FontSize="8"
+                         Foreground="{DynamicResource SubLabelText}"
+                         HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+          <Button x:Name="PauseBtn"
+                  Style="{StaticResource ActionBtn}"
+                  Command="{Binding PauseResumeCommand}"
+                  IsEnabled="{Binding CanPauseResume}"
+                  ToolTip="Pause or resume recording">
+            <StackPanel>
+              <TextBlock Text="⏯"
+                         FontSize="13"
+                         Foreground="{DynamicResource PrimaryText}"
+                         HorizontalAlignment="Center"/>
+              <TextBlock Text="{Binding PauseResumeLabel}"
+                         FontSize="8"
+                         Foreground="{DynamicResource SubLabelText}"
+                         HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+          <Button x:Name="StopBtn"
+                  Style="{StaticResource ActionBtn}"
+                  Command="{Binding StopCommand}"
+                  ToolTip="Stop recording">
+            <StackPanel>
+              <TextBlock Text="⏹"
+                         FontSize="13"
+                         Foreground="#FF4444"
+                         HorizontalAlignment="Center"/>
+              <TextBlock Text="Stop"
+                         FontSize="8"
+                         Foreground="{DynamicResource SubLabelText}"
+                         HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <Border Grid.Column="1"
+                Background="{DynamicResource ActionBtnHoverBackground}"
+                CornerRadius="4"
+                Padding="10,0"
+                MinWidth="64"
+                Height="32"
+                Margin="8,0,0,0"
+                VerticalAlignment="Center"
+                HorizontalAlignment="Right">
+          <TextBlock Text="{Binding ElapsedText}"
+                     Foreground="{DynamicResource PrimaryText}"
+                     FontSize="13"
+                     FontFamily="Segoe UI"
+                     FontWeight="SemiBold"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center"/>
+        </Border>
+      </Grid>
+
+      <Rectangle Height="1"
+                 Fill="{DynamicResource DividerColor}"
+                 Margin="0,6,0,0"
+                 Visibility="{Binding IsAnnotationPanelVisible, Converter={StaticResource BoolToVisibility}}"/>
+
+      <Grid Margin="0,6,0,0"
+            Visibility="{Binding IsAnnotationPanelVisible, Converter={StaticResource BoolToVisibility}}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Orientation="Horizontal" Grid.Column="0" HorizontalAlignment="Left">
+          <RadioButton Style="{StaticResource ToolBtn}"
+                       GroupName="RecordingAnnotTool"
+                       Tag="Pen"
+                       IsChecked="True"
+                       Checked="ToolButton_Checked"
+                       ToolTip="Pen">
+            <TextBlock Text="✏" FontSize="14" Foreground="{DynamicResource PrimaryText}"/>
+          </RadioButton>
+
+          <RadioButton Style="{StaticResource ToolBtn}"
+                       GroupName="RecordingAnnotTool"
+                       Tag="Arrow"
+                       Checked="ToolButton_Checked"
+                       ToolTip="Arrow">
+            <TextBlock Text="➤" FontSize="14" Foreground="{DynamicResource PrimaryText}"/>
+          </RadioButton>
+
+          <RadioButton Style="{StaticResource ToolBtn}"
+                       GroupName="RecordingAnnotTool"
+                       Tag="Rectangle"
+                       Checked="ToolButton_Checked"
+                       ToolTip="Rectangle">
+            <Border Width="16" Height="12" BorderBrush="{DynamicResource SubLabelText}" BorderThickness="1.5" Background="Transparent"/>
+          </RadioButton>
+
+          <RadioButton Style="{StaticResource ToolBtn}"
+                       GroupName="RecordingAnnotTool"
+                       Tag="Text"
+                       Checked="ToolButton_Checked"
+                       ToolTip="Text">
+            <TextBlock Text="T" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
+          </RadioButton>
+
+          <RadioButton Style="{StaticResource ToolBtn}"
+                       GroupName="RecordingAnnotTool"
+                       Tag="Blur"
+                       Checked="ToolButton_Checked"
+                       ToolTip="Blur / Redact">
+            <TextBlock Text="▒" FontSize="16" Foreground="{DynamicResource PrimaryText}"/>
+          </RadioButton>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="8,0,0,0" HorizontalAlignment="Right">
+          <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+          <Button Style="{StaticResource ActionBtn}"
+                  Command="{Binding UndoAnnotationsCommand}"
+                  ToolTip="Undo annotation">
+            <StackPanel>
+              <TextBlock Text="↩" FontSize="13" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
+              <TextBlock Text="Undo" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+          <Button Style="{StaticResource ActionBtn}"
+                  Command="{Binding ClearAnnotationsCommand}"
+                  ToolTip="Clear annotations">
+            <StackPanel>
+              <TextBlock Text="✕" FontSize="13" Foreground="#D96464" HorizontalAlignment="Center"/>
+              <TextBlock Text="Clear" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Grid>
 
       <TextBlock Text="{Binding SavedFileName}"
-                 Foreground="#99DDFF"
+                 Foreground="{DynamicResource AccentColor}"
                  FontSize="11"
                  FontFamily="Segoe UI"
                  Cursor="Hand"

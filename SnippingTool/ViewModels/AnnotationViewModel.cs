@@ -333,6 +333,15 @@ public partial class AnnotationViewModel : ObservableObject
         }
     }
 
+    protected void ClearHistoryState()
+    {
+        _currentGroup = null;
+        _undoStack.Clear();
+        _redoStack.Clear();
+        UndoCount = 0;
+        RedoCount = 0;
+    }
+
     private void PublishSync(object message)
     {
         var publishTask = _eventAggregator.PublishAsync(message);

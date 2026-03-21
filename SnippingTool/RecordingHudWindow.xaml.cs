@@ -38,9 +38,7 @@ public partial class RecordingHudWindow : Window
     protected override void OnContentRendered(EventArgs e)
     {
         base.OnContentRendered(e);
-        var (left, top) = ComputePosition(_regionRect, ActualWidth, ActualHeight, SystemParameters.WorkArea, _settings.Current.HudGapPixels);
-        Left = left;
-        Top = top;
+        RepositionHud();
     }
 
     // Extracted for unit testability.
@@ -58,8 +56,33 @@ public partial class RecordingHudWindow : Window
         base.OnClosed(e);
     }
 
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        if (IsLoaded)
+        {
+            RepositionHud();
+        }
+    }
+
     private void SavedText_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         _vm.OpenOutputFolderCommand.Execute(null);
+    }
+
+    private void ToolButton_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.RadioButton { Tag: string tag }
+            && _vm.SelectToolCommand.CanExecute(tag))
+        {
+            _vm.SelectToolCommand.Execute(tag);
+        }
+    }
+
+    private void RepositionHud()
+    {
+        var (left, top) = ComputePosition(_regionRect, ActualWidth, ActualHeight, SystemParameters.WorkArea, _settings.Current.HudGapPixels);
+        Left = left;
+        Top = top;
     }
 }

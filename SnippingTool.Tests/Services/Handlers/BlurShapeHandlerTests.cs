@@ -82,6 +82,39 @@ public sealed class BlurShapeHandlerTests
         });
     }
 
+    [Fact]
+    public void Commit_WithoutStaticBackground_UsesLiveCaptureFallback()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var canvas = new Canvas();
+            var tracked = new List<UIElement>();
+            ShapeParameters? current = new BlurShapeParameters(10, 15, 30, 20);
+            var handler = new BlurShapeHandler(
+                () => current,
+                () => null,
+                () => 1.0,
+                () => 1.0,
+                parameters =>
+                {
+                    Assert.Equal(10, parameters.Left);
+                    Assert.Equal(15, parameters.Top);
+                    Assert.Equal(30, parameters.Width);
+                    Assert.Equal(20, parameters.Height);
+                    return CreateSolidBitmap(30, 20, Colors.Blue);
+                });
+
+            handler.Begin(new Point(10, 15), new SolidColorBrush(Colors.White), 1, canvas);
+            handler.Commit(canvas, tracked.Add);
+
+            var image = Assert.IsType<Image>(Assert.Single(canvas.Children));
+            var effect = Assert.IsType<BlurEffect>(image.Effect);
+            Assert.Equal(15, effect.Radius);
+            Assert.Single(tracked);
+            Assert.Same(image, tracked[0]);
+        });
+    }
+
     private static BitmapSource CreateSolidBitmap(int width, int height, Color color)
     {
         var pixels = new byte[width * height * 4];

@@ -9,12 +9,17 @@ internal sealed class TextShapeHandler : IAnnotationShapeHandler
 {
     private readonly Action<UIElement, UIElement> _replaceTrackedElement;
     private readonly Action<UIElement> _removeTrackedElement;
+    private readonly Action? _onCanvasChanged;
     private TextBox? _textBox;
 
-    public TextShapeHandler(Action<UIElement, UIElement> replaceTrackedElement, Action<UIElement> removeTrackedElement)
+    public TextShapeHandler(
+        Action<UIElement, UIElement> replaceTrackedElement,
+        Action<UIElement> removeTrackedElement,
+        Action? onCanvasChanged = null)
     {
         _replaceTrackedElement = replaceTrackedElement;
         _removeTrackedElement = removeTrackedElement;
+        _onCanvasChanged = onCanvasChanged;
     }
 
     public void Begin(Point point, SolidColorBrush brush, double thickness, Canvas canvas)
@@ -42,6 +47,7 @@ internal sealed class TextShapeHandler : IAnnotationShapeHandler
         Canvas.SetLeft(textBox, point.X);
         Canvas.SetTop(textBox, point.Y);
         canvas.Children.Add(textBox);
+        _onCanvasChanged?.Invoke();
         textBox.Focus();
         _textBox = textBox;
     }
@@ -65,6 +71,7 @@ internal sealed class TextShapeHandler : IAnnotationShapeHandler
         if (_textBox is not null && canvas.Children.Contains(_textBox))
         {
             canvas.Children.Remove(_textBox);
+            _onCanvasChanged?.Invoke();
         }
 
         _textBox = null;
@@ -81,6 +88,7 @@ internal sealed class TextShapeHandler : IAnnotationShapeHandler
         {
             canvas.Children.Remove(textBox);
             _removeTrackedElement(textBox);
+            _onCanvasChanged?.Invoke();
             return;
         }
 
@@ -100,5 +108,6 @@ internal sealed class TextShapeHandler : IAnnotationShapeHandler
         Canvas.SetTop(block, position.Y);
         canvas.Children.Add(block);
         _replaceTrackedElement(textBox, block);
+        _onCanvasChanged?.Invoke();
     }
 }

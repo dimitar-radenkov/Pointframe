@@ -8,10 +8,21 @@ namespace SnippingTool.ViewModels;
 
 public partial class RecordingHudViewModel : ObservableObject
 {
+    private static readonly string[] SupportedToolNames =
+    [
+        nameof(AnnotationTool.Pen),
+        nameof(AnnotationTool.Arrow),
+        nameof(AnnotationTool.Rectangle),
+        nameof(AnnotationTool.Text),
+        nameof(AnnotationTool.Blur)
+    ];
+
     private readonly IScreenRecordingService _svc;
     private readonly IUserSettingsService _settings;
     private readonly IProcessService _process;
     private readonly ILogger<RecordingHudViewModel> _logger;
+    private RecordingAnnotationViewModel? _annotationViewModel;
+    private Func<bool>? _toggleAnnotationInput;
     private CancellationTokenSource? _elapsedCts;
     private DateTime _startTime;
     private DateTime _pausedAt;
@@ -32,7 +43,26 @@ public partial class RecordingHudViewModel : ObservableObject
     [ObservableProperty]
     private bool _canPauseResume = true;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAnnotationPanelVisible))]
+    private bool _canToggleAnnotation;
+
+    [ObservableProperty]
+    private string _annotationModeLabel = "Annotate";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAnnotationPanelVisible))]
+    private bool _canManageAnnotations;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAnnotationPanelVisible))]
+    [NotifyPropertyChangedFor(nameof(CurrentModeLabel))]
+    private bool _isAnnotationInputArmed;
+
     public string OutputPath { get; }
+
+    public bool IsAnnotationPanelVisible => CanManageAnnotations && IsAnnotationInputArmed;
+    public string CurrentModeLabel => IsAnnotationInputArmed ? "Drawing" : "Interactive";
 
     public event Action? StopCompleted;
 
@@ -55,6 +85,16 @@ public partial class RecordingHudViewModel : ObservableObject
         _startTime = DateTime.UtcNow;
         _elapsedCts = new CancellationTokenSource();
         _ = RunElapsedTimerAsync(_elapsedCts.Token);
+    }
+
+    public void AttachAnnotationSession(RecordingAnnotationViewModel annotationViewModel, Func<bool> toggleAnnotationInput)
+    {
+        _annotationViewModel = annotationViewModel;
+        _toggleAnnotationInput = toggleAnnotationInput;
+        CanToggleAnnotation = true;
+        CanManageAnnotations = true;
+        IsAnnotationInputArmed = false;
+        AnnotationModeLabel = "Annotate";
     }
 
     public void CancelElapsedTimer() => _elapsedCts?.Cancel();
@@ -121,5 +161,56 @@ public partial class RecordingHudViewModel : ObservableObject
         {
             _process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", dir));
         }
+    }
+
+    [RelayCommand]
+    private void ToggleAnnotationInput()
+    {
+        if (_toggleAnnotationInput is null)
+        {
+            return;
+        }
+
+        var isInputArmed = _toggleAnnotationInput();
+        IsAnnotationInputArmed = isInputArmed;
+        AnnotationModeLabel = isInputArmed ? "Interact" : "Annotate";
+        _logger.LogInformation("Recording annotation spike toggled: {IsInputArmed}", isInputArmed);
+    }
+
+    [RelayCommand]
+    private void SelectTool(string? toolName)
+    {
+        if (_annotationViewModel is null
+            || string.IsNullOrWhiteSpace(toolName)
+            || !SupportedToolNames.Contains(toolName)
+            || !Enum.TryParse<AnnotationTool>(toolName, out var selectedTool))
+        {
+            return;
+        }
+
+        _annotationViewModel.SelectedTool = selectedTool;
+        _logger.LogInformation("Recording annotation tool selected from HUD: {Tool}", selectedTool);
+    }
+
+    [RelayCommand]
+    private void UndoAnnotations()
+    {
+        if (_annotationViewModel?.UndoCommand.CanExecute(null) != true)
+        {
+            return;
+        }
+
+        _annotationViewModel.UndoCommand.Execute(null);
+    }
+
+    [RelayCommand]
+    private void ClearAnnotations()
+    {
+        if (_annotationViewModel?.ClearCommand.CanExecute(null) != true)
+        {
+            return;
+        }
+
+        _annotationViewModel.ClearCommand.Execute(null);
     }
 }

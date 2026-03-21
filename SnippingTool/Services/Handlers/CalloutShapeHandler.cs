@@ -13,6 +13,7 @@ internal sealed class CalloutShapeHandler : IAnnotationShapeHandler
     private readonly Func<ShapeParameters?> _getShapeParameters;
     private readonly Action<UIElement, UIElement> _replaceTrackedElement;
     private readonly Action<UIElement> _removeTrackedElement;
+    private readonly Action? _onCanvasChanged;
 
     private Rectangle? _bubble;
     private Polygon? _tail;
@@ -21,11 +22,13 @@ internal sealed class CalloutShapeHandler : IAnnotationShapeHandler
     public CalloutShapeHandler(
         Func<ShapeParameters?> getShapeParameters,
         Action<UIElement, UIElement> replaceTrackedElement,
-        Action<UIElement> removeTrackedElement)
+        Action<UIElement> removeTrackedElement,
+        Action? onCanvasChanged = null)
     {
         _getShapeParameters = getShapeParameters;
         _replaceTrackedElement = replaceTrackedElement;
         _removeTrackedElement = removeTrackedElement;
+        _onCanvasChanged = onCanvasChanged;
     }
 
     public void Begin(Point point, SolidColorBrush brush, double thickness, Canvas canvas)
@@ -83,6 +86,7 @@ internal sealed class CalloutShapeHandler : IAnnotationShapeHandler
         var textBox = CreateTextBox(parameters, canvas);
         canvas.Children.Add(textBox);
         trackElement(textBox);
+        _onCanvasChanged?.Invoke();
         textBox.Focus();
 
         _bubble = null;
@@ -158,6 +162,7 @@ internal sealed class CalloutShapeHandler : IAnnotationShapeHandler
         {
             canvas.Children.Remove(textBox);
             _removeTrackedElement(textBox);
+            _onCanvasChanged?.Invoke();
             return;
         }
 
@@ -180,5 +185,6 @@ internal sealed class CalloutShapeHandler : IAnnotationShapeHandler
         Canvas.SetTop(block, top);
         canvas.Children.Add(block);
         _replaceTrackedElement(textBox, block);
+        _onCanvasChanged?.Invoke();
     }
 }

@@ -25,11 +25,14 @@ public partial class OverlayWindow : Window
     private readonly IMessageBoxService _messageBox;
     private readonly IFileSystemService _fileSystem;
     private readonly IOcrService _ocrService;
+    private readonly Func<Rect, RecordingAnnotationWindow> _recordingAnnotationWindowFactory;
     private readonly IEventSubscription _redoSubscription;
     private readonly IEventSubscription _undoSubscription;
     private AnnotationCanvasRenderer _renderer = null!;
+    private AnnotationCanvasInteractionController _annotationInteractionController = null!;
     private RecordingBorderWindow? _recordingBorder;
     private RecordingHudWindow? _recordingHud;
+    private RecordingAnnotationWindow? _recordingAnnotation;
     private Point? _lassoStart;
     private BitmapSource? _openedImage;
     private string? _openedImagePath;
@@ -49,7 +52,8 @@ public partial class OverlayWindow : Window
         IUserSettingsService userSettings,
         IMessageBoxService messageBox,
         IFileSystemService fileSystem,
-        IOcrService ocrService)
+        IOcrService ocrService,
+        Func<Rect, RecordingAnnotationWindow> recordingAnnotationWindowFactory)
     {
         _vm = vm;
         _screenCapture = screenCapture;
@@ -61,6 +65,7 @@ public partial class OverlayWindow : Window
         _messageBox = messageBox;
         _fileSystem = fileSystem;
         _ocrService = ocrService;
+        _recordingAnnotationWindowFactory = recordingAnnotationWindowFactory;
         InitializeComponent();
         DataContext = _vm;
         _vm.SetBitmapCapture(new OverlayBitmapCapture(
@@ -71,6 +76,7 @@ public partial class OverlayWindow : Window
             () => _vm.DpiX,
             () => _vm.DpiY));
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
+        _annotationInteractionController = new AnnotationCanvasInteractionController(AnnotationCanvas, _vm, _renderer);
         _undoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleUndoGroupAsync);
         _redoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRedoGroupAsync);
         _vm.CloseRequested += Close;
@@ -463,19 +469,7 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        var p = e.GetPosition(AnnotationCanvas);
-        _vm.BeginGroup();
-        if (_vm.SelectedTool is AnnotationTool.Text or AnnotationTool.Number)
-        {
-            _renderer.BeginShape(p);
-            _renderer.CommitShape(p);
-            _vm.CommitGroup();
-            return;
-        }
-
-        _vm.BeginDrawing(p);
-        AnnotationCanvas.CaptureMouse();
-        _renderer.BeginShape(p);
+        _annotationInteractionController.HandlePointerDown(e.GetPosition(AnnotationCanvas));
     }
 
     private void Annot_Move(object sender, MouseEventArgs e)
@@ -500,9 +494,7 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        var p = e.GetPosition(AnnotationCanvas);
-        _vm.UpdateDrawing(p);
-        _renderer.UpdateShape(p);
+        _annotationInteractionController.HandlePointerMove(e.GetPosition(AnnotationCanvas));
     }
 
     private void Annot_Up(object sender, MouseButtonEventArgs e)
@@ -531,13 +523,7 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        var p = e.GetPosition(AnnotationCanvas);
-        _vm.UpdateDrawing(p);
-        AnnotationCanvas.ReleaseMouseCapture();
-        _renderer.CommitShape(p);
-
-        _vm.CommitDrawing();
-        _vm.CommitGroup();
+        _annotationInteractionController.HandlePointerUp(e.GetPosition(AnnotationCanvas));
     }
 
     private void Tool_Click(object sender, RoutedEventArgs e)
@@ -552,7 +538,9 @@ public partial class OverlayWindow : Window
 
     private void CloseBtn_Click(object sender, RoutedEventArgs e) => Close();
 
-    private void Record_Click(object sender, RoutedEventArgs e)
+    private void Record_Click(object sender, RoutedEventArgs e) => StartRecordingSession();
+
+    private void StartRecordingSession()
     {
         var sel = _vm.SelectionRect;
         var screenX = (int)((Left + sel.X) * _vm.DpiX);
@@ -578,19 +566,43 @@ public partial class OverlayWindow : Window
         Visibility = Visibility.Hidden;
 
         var regionRect = new Rect(Left + sel.X, Top + sel.Y, sel.Width, sel.Height);
+        ShowRecordingSessionWindows(regionRect, path);
+    }
+
+    private void ShowRecordingSessionWindows(Rect regionRect, string outputPath)
+    {
         _recordingBorder = new RecordingBorderWindow(regionRect.Left, regionRect.Top, regionRect.Width, regionRect.Height);
         _recordingBorder.Show();
 
-        var hudVm = _recordingHudViewModelFactory(_recorder, path);
-        hudVm.StopCompleted += () => Dispatcher.Invoke(() =>
-        {
-            _recordingBorder?.Close();
-            _recordingBorder = null;
-            _recordingHud = null;
-            Close();
-        });
+        _recordingAnnotation = _recordingAnnotationWindowFactory(regionRect);
+        _recordingAnnotation.Show();
+
+        var hudVm = _recordingHudViewModelFactory(_recorder, outputPath);
+        hudVm.AttachAnnotationSession(_recordingAnnotation.ViewModel, () => _recordingAnnotation?.ToggleInputMode() ?? false);
+        hudVm.StopCompleted += HandleRecordingStopCompleted;
         _recordingHud = new RecordingHudWindow(hudVm, regionRect, _userSettings);
         _recordingHud.Show();
+    }
+
+    private void HandleRecordingStopCompleted()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            CloseRecordingSessionWindows();
+            Close();
+        });
+    }
+
+    private void CloseRecordingSessionWindows()
+    {
+        _recordingHud?.Close();
+        _recordingHud = null;
+
+        _recordingAnnotation?.Close();
+        _recordingAnnotation = null;
+
+        _recordingBorder?.Close();
+        _recordingBorder = null;
     }
 
     protected override void OnClosed(EventArgs e)
@@ -606,10 +618,7 @@ public partial class OverlayWindow : Window
             _recorder.Stop();
         }
 
-        _recordingHud?.Close();
-        _recordingHud = null;
-        _recordingBorder?.Close();
-        _recordingBorder = null;
+        CloseRecordingSessionWindows();
 
         base.OnClosed(e);
 

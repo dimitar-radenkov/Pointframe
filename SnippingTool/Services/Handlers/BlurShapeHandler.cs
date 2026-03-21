@@ -17,6 +17,7 @@ internal sealed class BlurShapeHandler : IAnnotationShapeHandler
     private readonly Func<BitmapSource?> _getBackgroundCapture;
     private readonly Func<double> _getDpiX;
     private readonly Func<double> _getDpiY;
+    private readonly Func<BlurShapeParameters, BitmapSource?>? _captureLiveBlurSource;
 
     private Rectangle? _draft;
 
@@ -24,12 +25,14 @@ internal sealed class BlurShapeHandler : IAnnotationShapeHandler
         Func<ShapeParameters?> getShapeParameters,
         Func<BitmapSource?> getBackgroundCapture,
         Func<double> getDpiX,
-        Func<double> getDpiY)
+        Func<double> getDpiY,
+        Func<BlurShapeParameters, BitmapSource?>? captureLiveBlurSource = null)
     {
         _getShapeParameters = getShapeParameters;
         _getBackgroundCapture = getBackgroundCapture;
         _getDpiX = getDpiX;
         _getDpiY = getDpiY;
+        _captureLiveBlurSource = captureLiveBlurSource;
     }
 
     public void Begin(Point point, SolidColorBrush brush, double thickness, Canvas canvas)
@@ -69,36 +72,50 @@ internal sealed class BlurShapeHandler : IAnnotationShapeHandler
         var parameters = _getShapeParameters() as BlurShapeParameters;
         var background = _getBackgroundCapture();
         _draft = null;
-        if (parameters is null || background is null)
+        if (parameters is null)
         {
             return;
         }
 
-        var dpiX = _getDpiX();
-        var dpiY = _getDpiY();
-        var pixelX = (int)(parameters.Left * dpiX);
-        var pixelY = (int)(parameters.Top * dpiY);
-        var pixelW = Math.Max(1, (int)(parameters.Width * dpiX));
-        var pixelH = Math.Max(1, (int)(parameters.Height * dpiY));
+        BitmapSource? source = null;
 
-        pixelX = Math.Max(0, Math.Min(pixelX, background.PixelWidth - 1));
-        pixelY = Math.Max(0, Math.Min(pixelY, background.PixelHeight - 1));
-        pixelW = Math.Min(pixelW, background.PixelWidth - pixelX);
-        pixelH = Math.Min(pixelH, background.PixelHeight - pixelY);
+        if (background is not null)
+        {
+            var dpiX = _getDpiX();
+            var dpiY = _getDpiY();
+            var pixelX = (int)(parameters.Left * dpiX);
+            var pixelY = (int)(parameters.Top * dpiY);
+            var pixelW = Math.Max(1, (int)(parameters.Width * dpiX));
+            var pixelH = Math.Max(1, (int)(parameters.Height * dpiY));
 
-        if (pixelW <= 0 || pixelH <= 0)
+            pixelX = Math.Max(0, Math.Min(pixelX, background.PixelWidth - 1));
+            pixelY = Math.Max(0, Math.Min(pixelY, background.PixelHeight - 1));
+            pixelW = Math.Min(pixelW, background.PixelWidth - pixelX);
+            pixelH = Math.Min(pixelH, background.PixelHeight - pixelY);
+
+            if (pixelW <= 0 || pixelH <= 0)
+            {
+                return;
+            }
+
+            source = new CroppedBitmap(background, new Int32Rect(pixelX, pixelY, pixelW, pixelH));
+            source.Freeze();
+        }
+        else if (_captureLiveBlurSource is not null)
+        {
+            source = _captureLiveBlurSource(parameters);
+        }
+
+        if (source is null)
         {
             return;
         }
-
-        var cropped = new CroppedBitmap(background, new Int32Rect(pixelX, pixelY, pixelW, pixelH));
-        cropped.Freeze();
 
         var image = new Image
         {
             Width = parameters.Width,
             Height = parameters.Height,
-            Source = cropped,
+            Source = source,
             Stretch = Stretch.Fill,
             Effect = new BlurEffect { Radius = BlurRadius }
         };

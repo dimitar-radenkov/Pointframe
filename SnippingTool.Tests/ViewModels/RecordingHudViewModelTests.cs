@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using SnippingTool.Models;
 using SnippingTool.Services;
+using SnippingTool.Services.Messaging;
 using SnippingTool.ViewModels;
 using Xunit;
 
@@ -14,14 +16,31 @@ public sealed class RecordingHudViewModelTests
     private static RecordingHudViewModel CreateVm(
         Mock<IScreenRecordingService>? svcMock = null,
         string outputPath = @"C:\Videos\rec.mp4",
-        UserSettings? settings = null)
+        UserSettings? settings = null,
+        IProcessService? processService = null)
     {
         var svc = (svcMock ?? DefaultSvcMock()).Object;
         var settingsMock = new Mock<IUserSettingsService>();
-        settingsMock.Setup(s => s.Current).Returns(settings ?? new UserSettings());
-        var fakeProcess = new Mock<IProcessService>().Object;
-        var logger = new Microsoft.Extensions.Logging.Abstractions.NullLogger<RecordingHudViewModel>();
-        return new RecordingHudViewModel(svc, outputPath, settingsMock.Object, fakeProcess, logger);
+        settingsMock.Setup(service => service.Current).Returns(settings ?? new UserSettings());
+        return new RecordingHudViewModel(
+            svc,
+            outputPath,
+            settingsMock.Object,
+            processService ?? Mock.Of<IProcessService>(),
+            NullLogger<RecordingHudViewModel>.Instance);
+    }
+
+    private static RecordingAnnotationViewModel CreateAnnotationViewModel(Mock<IEventAggregator>? eventAggregatorMock = null)
+    {
+        var settingsMock = new Mock<IUserSettingsService>();
+        settingsMock.SetupGet(service => service.Current).Returns(new UserSettings());
+        var aggregator = eventAggregatorMock?.Object ?? Mock.Of<IEventAggregator>();
+
+        return new RecordingAnnotationViewModel(
+            new AnnotationGeometryService(),
+            NullLogger<RecordingAnnotationViewModel>.Instance,
+            settingsMock.Object,
+            aggregator);
     }
 
     [Fact]
@@ -102,7 +121,7 @@ public sealed class RecordingHudViewModelTests
 
         await vm.StopCommand.ExecuteAsync(null);
 
-        svcMock.Verify(s => s.Stop(), Times.Once);
+        svcMock.Verify(service => service.Stop(), Times.Once);
     }
 
     [Fact]
@@ -125,7 +144,7 @@ public sealed class RecordingHudViewModelTests
 
         vm.PauseResumeCommand.Execute(null);
 
-        svcMock.Verify(s => s.Pause(), Times.Once);
+        svcMock.Verify(service => service.Pause(), Times.Once);
     }
 
     [Fact]
@@ -142,19 +161,19 @@ public sealed class RecordingHudViewModelTests
     public void PauseResumeCommand_WhenPaused_CallsResume()
     {
         var svcMock = new Mock<IScreenRecordingService>();
-        svcMock.Setup(s => s.IsPaused).Returns(true);
+        svcMock.Setup(service => service.IsPaused).Returns(true);
         var vm = CreateVm(svcMock: svcMock);
 
         vm.PauseResumeCommand.Execute(null);
 
-        svcMock.Verify(s => s.Resume(), Times.Once);
+        svcMock.Verify(service => service.Resume(), Times.Once);
     }
 
     [Fact]
     public void PauseResumeCommand_WhenPaused_UpdatesLabel()
     {
         var svcMock = new Mock<IScreenRecordingService>();
-        svcMock.Setup(s => s.IsPaused).Returns(true);
+        svcMock.Setup(service => service.IsPaused).Returns(true);
         var vm = CreateVm(svcMock: svcMock);
 
         vm.PauseResumeCommand.Execute(null);
@@ -163,7 +182,7 @@ public sealed class RecordingHudViewModelTests
     }
 
     [Fact]
-    public void PauseResumeCommand_Fires_PropertyChanged_ForLabel()
+    public void PauseResumeCommand_FiresPropertyChangedForLabel()
     {
         var vm = CreateVm();
         var changed = new List<string?>();
@@ -175,7 +194,7 @@ public sealed class RecordingHudViewModelTests
     }
 
     [Fact]
-    public async Task StopCommand_Fires_PropertyChanged_ForIsStopped()
+    public async Task StopCommand_FiresPropertyChangedForIsStopped()
     {
         var vm = CreateVm(settings: new UserSettings { HudCloseDelaySeconds = 0 });
         var changed = new List<string?>();
@@ -190,21 +209,96 @@ public sealed class RecordingHudViewModelTests
     public void OpenOutputFolderCommand_InvokesProcess()
     {
         var processMock = new Mock<IProcessService>();
-        var logger = new Microsoft.Extensions.Logging.Abstractions.NullLogger<RecordingHudViewModel>();
-        var settingsMock = new Mock<IUserSettingsService>();
-        settingsMock.Setup(s => s.Current).Returns(new UserSettings());
-        var vm = new RecordingHudViewModel(
-            new Mock<IScreenRecordingService>().Object,
-            @"C:\Videos\rec.mp4",
-            settingsMock.Object,
-            processMock.Object,
-            logger);
+        var vm = CreateVm(processService: processMock.Object);
 
         vm.OpenOutputFolderCommand.Execute(null);
 
         processMock.Verify(
-            p => p.Start(It.Is<ProcessStartInfo>(i => i.FileName == "explorer.exe" && i.Arguments == @"C:\Videos")),
+            process => process.Start(It.Is<ProcessStartInfo>(info => info.FileName == "explorer.exe" && info.Arguments == @"C:\Videos")),
             Times.Once);
     }
 
+    [Fact]
+    public void SelectToolCommand_UpdatesAnnotationViewModelTool()
+    {
+        var vm = CreateVm();
+        var annotationViewModel = CreateAnnotationViewModel();
+        vm.AttachAnnotationSession(annotationViewModel, () => false);
+
+        vm.SelectToolCommand.Execute(nameof(AnnotationTool.Blur));
+
+        Assert.Equal(AnnotationTool.Blur, annotationViewModel.SelectedTool);
+        Assert.True(vm.CanManageAnnotations);
+    }
+
+    [Fact]
+    public void AttachAnnotationSession_LeavesAnnotationPanelHiddenUntilArmed()
+    {
+        var vm = CreateVm();
+        var annotationViewModel = CreateAnnotationViewModel();
+
+        vm.AttachAnnotationSession(annotationViewModel, () => false);
+
+        Assert.True(vm.CanManageAnnotations);
+        Assert.False(vm.IsAnnotationInputArmed);
+        Assert.False(vm.IsAnnotationPanelVisible);
+        Assert.Equal("Interactive", vm.CurrentModeLabel);
+    }
+
+    [Fact]
+    public void ToggleAnnotationInputCommand_ShowsAnnotationPanelWhenArmed()
+    {
+        var vm = CreateVm();
+        var annotationViewModel = CreateAnnotationViewModel();
+        vm.AttachAnnotationSession(annotationViewModel, () => true);
+
+        vm.ToggleAnnotationInputCommand.Execute(null);
+
+        Assert.True(vm.IsAnnotationInputArmed);
+        Assert.True(vm.IsAnnotationPanelVisible);
+        Assert.Equal("Drawing", vm.CurrentModeLabel);
+        Assert.Equal("Interact", vm.AnnotationModeLabel);
+    }
+
+    [Fact]
+    public void ToggleAnnotationInputCommand_HidesAnnotationPanelWhenDisarmed()
+    {
+        var vm = CreateVm();
+        var annotationViewModel = CreateAnnotationViewModel();
+        var nextState = true;
+        vm.AttachAnnotationSession(annotationViewModel, () =>
+        {
+            var currentState = nextState;
+            nextState = false;
+            return currentState;
+        });
+
+        vm.ToggleAnnotationInputCommand.Execute(null);
+        vm.ToggleAnnotationInputCommand.Execute(null);
+
+        Assert.False(vm.IsAnnotationInputArmed);
+        Assert.False(vm.IsAnnotationPanelVisible);
+        Assert.Equal("Interactive", vm.CurrentModeLabel);
+        Assert.Equal("Annotate", vm.AnnotationModeLabel);
+    }
+
+    [Fact]
+    public void UndoAnnotationsCommand_ExecutesUndoOnAnnotationViewModel()
+    {
+        var aggregatorMock = new Mock<IEventAggregator>();
+        aggregatorMock.Setup(aggregator => aggregator.PublishAsync(It.IsAny<object>())).Returns(ValueTask.CompletedTask);
+        var annotationViewModel = CreateAnnotationViewModel(aggregatorMock);
+        annotationViewModel.BeginGroup();
+        annotationViewModel.TrackElement(new object());
+        annotationViewModel.CommitGroup();
+
+        var vm = CreateVm();
+        vm.AttachAnnotationSession(annotationViewModel, () => false);
+
+        vm.UndoAnnotationsCommand.Execute(null);
+
+        Assert.Equal(0, annotationViewModel.UndoCount);
+        Assert.Equal(1, annotationViewModel.RedoCount);
+        aggregatorMock.Verify(aggregator => aggregator.PublishAsync(It.IsAny<object>()), Times.Once);
+    }
 }
