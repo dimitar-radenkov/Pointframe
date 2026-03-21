@@ -281,6 +281,21 @@ public sealed class RecordingHudViewModelTests
     }
 
     [Fact]
+    public void SelectToolCommand_UpdatesAnnotationViewModelTool_ForNumber()
+    {
+        // Arrange
+        var vm = CreateVm();
+        var annotationViewModel = CreateAnnotationViewModel();
+        vm.AttachAnnotationSession(annotationViewModel, () => false);
+
+        // Act
+        vm.SelectToolCommand.Execute(nameof(AnnotationTool.Number));
+
+        // Assert
+        Assert.Equal(AnnotationTool.Number, annotationViewModel.SelectedTool);
+    }
+
+    [Fact]
     public void ToggleAnnotationInputCommand_BeforeSessionAttached_IsNoOp()
     {
         // Arrange

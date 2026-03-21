@@ -8,15 +8,6 @@ namespace SnippingTool.ViewModels;
 
 public partial class RecordingHudViewModel : ObservableObject
 {
-    private static readonly string[] SupportedToolNames =
-    [
-        nameof(AnnotationTool.Pen),
-        nameof(AnnotationTool.Arrow),
-        nameof(AnnotationTool.Rectangle),
-        nameof(AnnotationTool.Text),
-        nameof(AnnotationTool.Blur)
-    ];
-
     private readonly IScreenRecordingService _svc;
     private readonly IUserSettingsService _settings;
     private readonly IProcessService _process;
@@ -182,7 +173,6 @@ public partial class RecordingHudViewModel : ObservableObject
     {
         if (_annotationViewModel is null
             || string.IsNullOrWhiteSpace(toolName)
-            || !SupportedToolNames.Contains(toolName)
             || !Enum.TryParse<AnnotationTool>(toolName, out var selectedTool))
         {
             return;
