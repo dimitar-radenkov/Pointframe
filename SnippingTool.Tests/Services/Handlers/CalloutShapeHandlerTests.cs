@@ -43,4 +43,33 @@ public sealed class CalloutShapeHandlerTests
             Assert.Same(block, replacement.Replacement);
         });
     }
+
+    [Fact]
+    public void BeginCommitAndFinalize_InvokesCanvasChangedCallback()
+    {
+        StaTestHelper.Run(() =>
+        {
+            // Arrange
+            var canvas = new Canvas();
+            var canvasChangedCount = 0;
+            var handler = new CalloutShapeHandler(
+                () => new CalloutShapeParameters(20, 30, 120, 60, new Point(10, 110), string.Empty, Colors.White, Colors.Black, 2.0),
+                (_, _) => { },
+                _ => { },
+                () => canvasChangedCount++);
+
+            // Act
+            handler.Begin(new Point(20, 30), new SolidColorBrush(Colors.Black), 2.0, canvas);
+            handler.Update(new Point(140, 90));
+            handler.Commit(canvas, _ => { });
+
+            var textBox = Assert.IsType<TextBox>(canvas.Children[2]);
+            textBox.Text = "callout";
+            textBox.RaiseEvent(new RoutedEventArgs(UIElement.LostFocusEvent, textBox));
+
+            // Assert
+            Assert.Equal(2, canvasChangedCount);
+            Assert.IsType<TextBlock>(canvas.Children[2]);
+        });
+    }
 }

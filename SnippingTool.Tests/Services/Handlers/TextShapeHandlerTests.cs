@@ -43,6 +43,29 @@ public sealed class TextShapeHandlerTests
     }
 
     [Fact]
+    public void BeginAndCancel_WithoutText_CallsCanvasChangedAndRemovesTextbox()
+    {
+        StaTestHelper.Run(() =>
+        {
+            // Arrange
+            var canvas = new Canvas();
+            var canvasChangedCount = 0;
+            var handler = new TextShapeHandler(
+                (_, _) => { },
+                _ => { },
+                () => canvasChangedCount++);
+
+            // Act
+            handler.Begin(new Point(25, 35), new SolidColorBrush(Colors.Green), 2.5, canvas);
+            handler.Cancel(canvas);
+
+            // Assert
+            Assert.Equal(2, canvasChangedCount);
+            Assert.Empty(canvas.Children);
+        });
+    }
+
+    [Fact]
     public void BeginCommitAndLostFocus_WithEmptyText_RemovesTrackedTextBox()
     {
         StaTestHelper.Run(() =>

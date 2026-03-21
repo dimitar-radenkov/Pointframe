@@ -64,6 +64,30 @@ public sealed class BlurShapeHandlerTests
     }
 
     [Fact]
+    public void Commit_WithoutParameters_RemovesDraftAndDoesNotTrack()
+    {
+        StaTestHelper.Run(() =>
+        {
+            // Arrange
+            ShapeParameters? current = null;
+            var canvas = new Canvas();
+            var handler = new BlurShapeHandler(
+                () => current,
+                () => CreateSolidBitmap(20, 20, Colors.Blue),
+                () => 1.0,
+                () => 1.0);
+
+            handler.Begin(new Point(10, 15), new SolidColorBrush(Colors.White), 1, canvas);
+
+            // Act
+            handler.Commit(canvas, _ => throw new Xunit.Sdk.XunitException("Should not track without parameters."));
+
+            // Assert
+            Assert.Empty(canvas.Children);
+        });
+    }
+
+    [Fact]
     public void Cancel_RemovesDraftRectangle()
     {
         StaTestHelper.Run(() =>

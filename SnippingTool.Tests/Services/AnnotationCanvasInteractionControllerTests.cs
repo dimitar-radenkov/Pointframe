@@ -36,6 +36,27 @@ public sealed class AnnotationCanvasInteractionControllerTests
     }
 
     [Fact]
+    public void HandlePointerDown_WithNumberTool_CommitsImmediately()
+    {
+        StaTestHelper.Run(() =>
+        {
+            // Arrange
+            var controller = CreateController(out var canvas, out var viewModel, out _, out var committedCounter);
+            viewModel.SelectedTool = AnnotationTool.Number;
+
+            // Act
+            controller.HandlePointerDown(new Point(40, 50));
+
+            // Assert
+            Assert.Single(canvas.Children);
+            Assert.IsType<Grid>(canvas.Children[0]);
+            Assert.Equal(1, viewModel.UndoCount);
+            Assert.Equal(1, committedCounter.Value);
+            Assert.False(viewModel.IsDragging);
+        });
+    }
+
+    [Fact]
     public void HandlePointerUp_WithRectangleTool_CommitsShapeAndGroup()
     {
         StaTestHelper.Run(() =>
@@ -80,6 +101,41 @@ public sealed class AnnotationCanvasInteractionControllerTests
 
             // Act
             controller.Cancel();
+
+            // Assert
+            Assert.Empty(canvas.Children);
+            Assert.False(viewModel.IsDragging);
+            Assert.Equal(0, viewModel.UndoCount);
+        });
+    }
+
+    [Fact]
+    public void HandlePointerMove_WithoutDragging_IsNoOp()
+    {
+        StaTestHelper.Run(() =>
+        {
+            // Arrange
+            var controller = CreateController(out var canvas, out var viewModel, out _, out _);
+
+            // Act
+            controller.HandlePointerMove(new Point(100, 100));
+
+            // Assert
+            Assert.Empty(canvas.Children);
+            Assert.False(viewModel.IsDragging);
+        });
+    }
+
+    [Fact]
+    public void HandlePointerUp_WithoutDragging_IsNoOp()
+    {
+        StaTestHelper.Run(() =>
+        {
+            // Arrange
+            var controller = CreateController(out var canvas, out var viewModel, out _, out _);
+
+            // Act
+            controller.HandlePointerUp(new Point(100, 100));
 
             // Assert
             Assert.Empty(canvas.Children);

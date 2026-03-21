@@ -281,6 +281,37 @@ public sealed class RecordingHudViewModelTests
     }
 
     [Fact]
+    public void ToggleAnnotationInputCommand_BeforeSessionAttached_IsNoOp()
+    {
+        // Arrange
+        var vm = CreateVm();
+
+        // Act
+        vm.ToggleAnnotationInputCommand.Execute(null);
+
+        // Assert
+        Assert.False(vm.IsAnnotationInputArmed);
+        Assert.False(vm.IsAnnotationPanelVisible);
+        Assert.Equal("Interactive", vm.CurrentModeLabel);
+        Assert.Equal("Annotate", vm.AnnotationModeLabel);
+    }
+
+    [Fact]
+    public void SelectToolCommand_WithUnknownToolName_IsNoOp()
+    {
+        // Arrange
+        var vm = CreateVm();
+        var annotationViewModel = CreateAnnotationViewModel();
+        vm.AttachAnnotationSession(annotationViewModel, () => false);
+
+        // Act
+        vm.SelectToolCommand.Execute("NotATool");
+
+        // Assert
+        Assert.Equal(AnnotationTool.Pen, annotationViewModel.SelectedTool);
+    }
+
+    [Fact]
     public void AttachAnnotationSession_LeavesAnnotationPanelHiddenUntilArmed()
     {
         // Arrange
