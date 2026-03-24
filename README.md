@@ -6,7 +6,11 @@
 [![Latest release](https://img.shields.io/github/v/release/dimitar-radenkov/SnippingTool)](https://github.com/dimitar-radenkov/SnippingTool/releases/latest)
 [![winget](https://img.shields.io/winget/v/DimitarRadenkov.SnippingTool?label=winget)](https://github.com/microsoft/winget-pkgs/tree/master/manifests/d/DimitarRadenkov/SnippingTool)
 
-The open-source Windows snipping tool with OCR, screen recording, and annotation — no subscription, no telemetry.
+Record your screen with live annotations.
+
+SnippingTool helps you explain what’s on your screen without turning it into a post-editing job. It is built for demos, tutorials, and bug reports when you want to show something clearly and move on. Draw, blur, and add callouts while recording, then burn everything straight into the final video.
+
+Get it in seconds: [Download the latest release](https://github.com/dimitar-radenkov/SnippingTool/releases) · `winget install DimitarRadenkov.SnippingTool`
 
 ## Demo
 
@@ -14,13 +18,20 @@ https://github.com/user-attachments/assets/d4e0c937-a845-4266-9454-2b816934f949
 
 ## Latest features
 
-- **In-recording annotations** — Draw on the captured region while recording, then toggle between interactive and drawing modes from the recording HUD
-- **Recording HUD controls** — Use the floating HUD to pause, resume, stop, switch tools, clear annotations, and open the output folder
-- **Live blur capture** — Blur annotations now capture from the live recording region so sensitive content can be redacted during recording
+- **Show your point while recording** — Draw on the captured region as you record, then switch between interactive and drawing modes from the HUD.
+- **Stay in control without breaking flow** — Pause, resume, stop, switch tools, clear annotations, and open the output folder from one floating HUD.
+- **Redact sensitive content live** — Blur annotations now sample from the live recording region, so private details stay hidden in the final video.
+
+## Why people use it
+
+- **Show the problem, not just describe it** — Bugs and UI issues are easier to understand when the screenshot or recording already contains the important highlights.
+- **Make tutorials easier to follow** — Arrows, text, and numbered steps keep people focused on what matters.
+- **Hide private details before sharing** — Blur emails, passwords, tokens, and anything else you do not want on screen.
+- **Work from one place** — Capture, annotate, copy, save, pin, and record without bouncing between tools.
 
 ## Quick start
 
-1. Install SnippingTool with `winget install DimitarRadenkov.SnippingTool` or download the latest installer from Releases.
+1. Install SnippingTool with `winget install DimitarRadenkov.SnippingTool` or download the latest installer from [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases).
 2. Press `Print Screen` to open the capture overlay and select the region you want.
 3. Annotate, copy, save, pin, or record the region from the overlay and recording HUD.
 
