@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
 using SnippingTool.Models;
@@ -21,6 +21,32 @@ public partial class OverlayWindow
         RecordingAnnotationCanvas.Visibility = Visibility.Visible;
         RecordingAnnotationCanvas.Cursor = GetRecordingAnnotationCursor();
         UpdateRecordingAnnotationStateFromCanvas();
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, PreWarmRecordingAnnotationRenderer);
+    }
+
+    private void PreWarmRecordingAnnotationRenderer()
+    {
+        // Adding then immediately removing invisible shape elements forces WPF and the JIT to
+        // compile the rendering paths for common shape types before the user draws, preventing
+        // a visible hitch on the very first stroke.
+        UIElement[] warmupElements =
+        [
+            new Polyline { Stroke = Brushes.Transparent, IsHitTestVisible = false },
+            new Line { Stroke = Brushes.Transparent, IsHitTestVisible = false },
+            new System.Windows.Shapes.Rectangle { Stroke = Brushes.Transparent, IsHitTestVisible = false },
+            new Polygon { Stroke = Brushes.Transparent, IsHitTestVisible = false },
+            new Ellipse { Stroke = Brushes.Transparent, IsHitTestVisible = false },
+        ];
+
+        foreach (var element in warmupElements)
+        {
+            RecordingAnnotationCanvas.Children.Add(element);
+        }
+
+        foreach (var element in warmupElements)
+        {
+            RecordingAnnotationCanvas.Children.Remove(element);
+        }
     }
 
     private void HideRecordingAnnotationSurface()

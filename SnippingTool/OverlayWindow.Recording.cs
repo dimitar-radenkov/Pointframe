@@ -11,9 +11,9 @@ public partial class OverlayWindow
     private const double RecordingBorderClearance = 6d;
     private const double RecordingBorderOffset = RecordingBorderStrokeThickness + RecordingBorderClearance;
 
-    private void Record_Click(object sender, RoutedEventArgs e) => StartRecordingSession();
+    private async void Record_Click(object sender, RoutedEventArgs e) => await StartRecordingSessionAsync();
 
-    private void StartRecordingSession()
+    private async Task StartRecordingSessionAsync()
     {
         var selectionRect = _vm.SelectionRect;
         var screenX = (int)((Left + selectionRect.X) * _vm.DpiX);
@@ -39,7 +39,7 @@ public partial class OverlayWindow
         try
         {
             EnterRecordingOverlayMode(selectionRect);
-            _recorder.Start(screenX, screenY, screenW, screenH, path);
+            await Task.Run(() => _recorder.Start(screenX, screenY, screenW, screenH, path));
         }
         catch (System.IO.FileNotFoundException ex)
         {
@@ -49,6 +49,7 @@ public partial class OverlayWindow
         }
 
         var regionRect = new Rect(Left + selectionRect.X, Top + selectionRect.Y, selectionRect.Width, selectionRect.Height);
+        await Dispatcher.Yield(DispatcherPriority.Background);
         ShowRecordingSessionWindows(selectionRect, regionRect, path);
     }
 
