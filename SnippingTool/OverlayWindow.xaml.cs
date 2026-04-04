@@ -599,11 +599,7 @@ public partial class OverlayWindow : Window
 
     private void ShowRecordingSessionWindows(Rect selectionRect, Rect regionRect, string outputPath)
     {
-        var borderRect = new Rect(
-            regionRect.Left - RecordingBorderOffset,
-            regionRect.Top - RecordingBorderOffset,
-            regionRect.Width + (RecordingBorderOffset * 2d),
-            regionRect.Height + (RecordingBorderOffset * 2d));
+        var borderRect = CalculateRecordingBorderRect(regionRect, RecordingBorderOffset);
 
         _logger.LogDebug(
             "ShowRecordingSessionWindows: regionRect DIP L={L} T={T} W={W} H={H}",
@@ -758,22 +754,28 @@ public partial class OverlayWindow : Window
 
     private void PositionRecordingBorder(Rect selectionRect)
     {
-        var borderLeft = selectionRect.Left - RecordingBorderOffset;
-        var borderTop = selectionRect.Top - RecordingBorderOffset;
-        var borderWidth = selectionRect.Width + (RecordingBorderOffset * 2d);
-        var borderHeight = selectionRect.Height + (RecordingBorderOffset * 2d);
+        var borderRect = CalculateRecordingBorderRect(selectionRect, RecordingBorderOffset);
 
-        Canvas.SetLeft(RecordingBorderWhite, borderLeft);
-        Canvas.SetTop(RecordingBorderWhite, borderTop);
-        RecordingBorderWhite.Width = borderWidth;
-        RecordingBorderWhite.Height = borderHeight;
+        Canvas.SetLeft(RecordingBorderWhite, borderRect.Left);
+        Canvas.SetTop(RecordingBorderWhite, borderRect.Top);
+        RecordingBorderWhite.Width = borderRect.Width;
+        RecordingBorderWhite.Height = borderRect.Height;
         RecordingBorderWhite.Visibility = Visibility.Visible;
 
-        Canvas.SetLeft(RecordingBorderBlack, borderLeft);
-        Canvas.SetTop(RecordingBorderBlack, borderTop);
-        RecordingBorderBlack.Width = borderWidth;
-        RecordingBorderBlack.Height = borderHeight;
+        Canvas.SetLeft(RecordingBorderBlack, borderRect.Left);
+        Canvas.SetTop(RecordingBorderBlack, borderRect.Top);
+        RecordingBorderBlack.Width = borderRect.Width;
+        RecordingBorderBlack.Height = borderRect.Height;
         RecordingBorderBlack.Visibility = Visibility.Visible;
+    }
+
+    internal static Rect CalculateRecordingBorderRect(Rect selectionRect, double borderOffset)
+    {
+        return new Rect(
+            selectionRect.Left - borderOffset,
+            selectionRect.Top - borderOffset,
+            selectionRect.Width + (borderOffset * 2d),
+            selectionRect.Height + (borderOffset * 2d));
     }
 
     private void HideRecordingBorder()

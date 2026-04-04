@@ -6,6 +6,32 @@ namespace SnippingTool.Tests;
 public sealed class OverlayWindowLayoutTests
 {
     [Fact]
+    public void CalculateRecordingBorderRect_ExpandsSelectionByOffsetOnAllSides()
+    {
+        var selectionRect = new Rect(533.3333333333333, -880, 540, 474.6666666666665);
+
+        var result = OverlayWindow.CalculateRecordingBorderRect(selectionRect, 8d);
+
+        Assert.Equal(525.3333333333333, result.Left, 10);
+        Assert.Equal(-888, result.Top, 10);
+        Assert.Equal(556, result.Width, 10);
+        Assert.Equal(490.6666666666665, result.Height, 10);
+    }
+
+    [Fact]
+    public void CalculateRecordingBorderRect_OnSecondaryMonitorCoordinates_RemainsOutsideCaptureRegion()
+    {
+        var selectionRect = new Rect(539.3333333333333, -877.3333333333334, 462.66666666666674, 469.9999999999999);
+
+        var result = OverlayWindow.CalculateRecordingBorderRect(selectionRect, 8d);
+
+        Assert.True(result.Left < selectionRect.Left);
+        Assert.True(result.Top < selectionRect.Top);
+        Assert.True(result.Right > selectionRect.Right);
+        Assert.True(result.Bottom > selectionRect.Bottom);
+    }
+
+    [Fact]
     public void CalculateOpenedImageDisplayRect_CentersImageInsideSingleMonitorTargetArea()
     {
         var targetArea = new Rect(1920, 0, 1920, 1400);
