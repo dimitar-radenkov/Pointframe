@@ -76,9 +76,6 @@ public partial class OverlayWindow
         _vm.InitializeAnnotatingSession(selectionRect, pixelScaleX, pixelScaleY);
 
         Cursor = Cursors.Arrow;
-        SizeLabelBorder.Visibility = Visibility.Collapsed;
-        LoupeBorder.Visibility = Visibility.Collapsed;
-        DimFull.Visibility = Visibility.Collapsed;
 
         Canvas.SetLeft(SelectionBorder, selectionRect.X);
         Canvas.SetTop(SelectionBorder, selectionRect.Y);

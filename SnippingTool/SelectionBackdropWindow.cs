@@ -4,35 +4,9 @@ using System.Windows.Media.Imaging;
 
 namespace SnippingTool;
 
-internal sealed class SelectionBackdropWindow : Window
+internal static class SelectionBackdropWindow
 {
     private const byte DimOpacity = 128;
-
-    internal SelectionBackdropWindow(BitmapSource snapshot, Rect bounds)
-    {
-        Title = nameof(SelectionBackdropWindow);
-        WindowStyle = WindowStyle.None;
-        ResizeMode = ResizeMode.NoResize;
-        AllowsTransparency = false;
-        Background = Brushes.Black;
-        ShowInTaskbar = false;
-        Topmost = true;
-        ShowActivated = false;
-        Focusable = false;
-        Left = bounds.Left;
-        Top = bounds.Top;
-        Width = bounds.Width;
-        Height = bounds.Height;
-
-        Content = new System.Windows.Controls.Image
-        {
-            Source = CreateDimmedSnapshot(snapshot),
-            Stretch = Stretch.Fill,
-            Width = bounds.Width,
-            Height = bounds.Height,
-            IsHitTestVisible = false
-        };
-    }
 
     internal static BitmapSource CreateDimmedSnapshot(BitmapSource snapshot)
     {

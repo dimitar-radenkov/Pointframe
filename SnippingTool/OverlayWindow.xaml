@@ -150,9 +150,6 @@
     <!-- Frozen screen snapshot — painted first so the live desktop is never visible -->
     <Image x:Name="ScreenSnapshot" Stretch="Fill"/>
 
-    <!-- ── Phase 1: single full-screen dim ── -->
-    <Rectangle x:Name="DimFull" Fill="#80000000"/>
-
     <!-- ── Phase 2: four dim strips around the selection ── -->
     <Rectangle x:Name="DimTop"    Fill="#80000000" Visibility="Collapsed"/>
     <Rectangle x:Name="DimBottom" Fill="#80000000" Visibility="Collapsed"/>
@@ -199,30 +196,6 @@
                StrokeDashArray="4,3"
                Fill="{DynamicResource OcrLassoFill}"
                Visibility="Collapsed"/>
-
-    <!-- Size label shown while dragging -->
-    <Border x:Name="SizeLabelBorder"
-            Background="#CC000000" CornerRadius="3" Padding="5,2"
-            Visibility="Hidden">
-      <TextBlock x:Name="SizeLabelText"
-                 Foreground="White" FontSize="11"
-                 FontFamily="Segoe UI" FontWeight="SemiBold"/>
-    </Border>
-
-    <!-- Magnifier loupe (shown during selection drag) -->
-    <Border x:Name="LoupeBorder"
-            Width="120" Height="120"
-            BorderBrush="White" BorderThickness="1.5"
-            CornerRadius="4"
-            Visibility="Collapsed"
-            IsHitTestVisible="False">
-      <Border.Effect>
-        <DropShadowEffect Color="#000" BlurRadius="8" ShadowDepth="0" Opacity="0.5"/>
-      </Border.Effect>
-      <Image x:Name="LoupeImage"
-             RenderOptions.BitmapScalingMode="NearestNeighbor"
-             Stretch="Fill"/>
-    </Border>
 
     <!-- Annotation drawing surface (phase 2, sized over the selection) -->
     <Canvas x:Name="AnnotationCanvas"

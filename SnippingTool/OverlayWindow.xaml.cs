@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -10,15 +9,12 @@ using SnippingTool.Services;
 using SnippingTool.Services.Messaging;
 using SnippingTool.ViewModels;
 using Cursors = System.Windows.Input.Cursors;
-using Forms = System.Windows.Forms;
 
 namespace SnippingTool;
 
 public partial class OverlayWindow : Window
 {
     private const int ImageViewportMargin = 140;
-    private const uint MonitorDefaultToNearest = 2;
-    private const int MonitorDpiTypeEffective = 0;
     private readonly OverlayViewModel _vm;
     private readonly IScreenCaptureService _screenCapture;
     private readonly IScreenRecordingService _recorder;
@@ -33,7 +29,6 @@ public partial class OverlayWindow : Window
     private readonly ILoggerFactory _loggerFactory;
     private readonly IEventSubscription _redoSubscription;
     private readonly IEventSubscription _undoSubscription;
-    private readonly System.Windows.Media.Brush _interactiveRootBackground;
     private AnnotationCanvasRenderer _renderer = null!;
     private AnnotationCanvasInteractionController _annotationInteractionController = null!;
     private Point? _lassoStart;
@@ -43,25 +38,9 @@ public partial class OverlayWindow : Window
     private Rect _openedImageDisplayRect;
     private double _openedImageScaleX = 1.0;
     private double _openedImageScaleY = 1.0;
-    private BitmapSource? _screenSnapshot;
     private BitmapSource? _pendingPinnedBitmap;
     private bool _closeLeavesRecorderRunning;
-    private Int32Rect _selectionHostScreenBoundsPixels;
-    private readonly List<SelectionBackdropWindow> _selectionBackdropWindows = [];
     private SelectionSessionResult? _pendingSelectionSession;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct POINT
-    {
-        public int X;
-        public int Y;
-    }
-
-    [DllImport("user32.dll")]
-    private static extern nint MonitorFromPoint(POINT point, uint flags);
-
-    [DllImport("shcore.dll")]
-    private static extern int GetDpiForMonitor(nint hmonitor, int dpiType, out uint dpiX, out uint dpiY);
 
     public OverlayWindow(
         OverlayViewModel vm,
@@ -89,7 +68,6 @@ public partial class OverlayWindow : Window
         _ocrService = ocrService;
         _recordingAnnotationViewModel = recordingAnnotationViewModel;
         InitializeComponent();
-        _interactiveRootBackground = Root.Background;
         DataContext = _vm;
         _vm.SetBitmapCapture(new OverlayBitmapCapture(
             this,
@@ -106,9 +84,6 @@ public partial class OverlayWindow : Window
         _vm.CloseRequested += Close;
         _vm.PinRequested += DoPin;
 
-        Root.MouseLeftButtonDown += Root_MouseDown;
-        Root.MouseMove += Root_MouseMove;
-        Root.MouseLeftButtonUp += Root_MouseUp;
         KeyDown += Window_KeyDown;
 
         _vm.PropertyChanged += (_, e) =>
@@ -151,70 +126,33 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        var targetScreen = Forms.Screen.FromPoint(Forms.Cursor.Position);
-        var monitorScale = GetMonitorScale(targetScreen.Bounds.Location);
-        var selectionOverlayBounds = CalculateSelectionOverlayBounds(targetScreen.Bounds, monitorScale);
-        _selectionHostScreenBoundsPixels = new Int32Rect(
-            targetScreen.Bounds.X,
-            targetScreen.Bounds.Y,
-            targetScreen.Bounds.Width,
-            targetScreen.Bounds.Height);
-
-        Left = selectionOverlayBounds.Left;
-        Top = selectionOverlayBounds.Top;
-        Width = selectionOverlayBounds.Width;
-        Height = selectionOverlayBounds.Height;
-
-        DimFull.Width = Width;
-        DimFull.Height = Height;
-        ScreenSnapshot.Width = Width;
-        ScreenSnapshot.Height = Height;
-
-        _vm.DpiX = monitorScale;
-        _vm.DpiY = monitorScale;
-
-        _logger.LogDebug(
-            "Overlay initialized: left={Left} top={Top} width={Width} height={Height} dpiX={DpiX} dpiY={DpiY} monitorPx={MonitorLeft},{MonitorTop},{MonitorWidth},{MonitorHeight}",
-            Left,
-            Top,
-            Width,
-            Height,
-            _vm.DpiX,
-            _vm.DpiY,
-            _selectionHostScreenBoundsPixels.X,
-            _selectionHostScreenBoundsPixels.Y,
-            _selectionHostScreenBoundsPixels.Width,
-            _selectionHostScreenBoundsPixels.Height);
-
         if (_openedImage is not null)
         {
+            var targetScreen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
+            var monitorScale = MonitorDpiHelper.GetMonitorScale(targetScreen.Bounds.Location);
+            var hostBoundsDips = MonitorDpiHelper.CalculateWindowBounds(targetScreen.Bounds, monitorScale);
+            Left = hostBoundsDips.Left;
+            Top = hostBoundsDips.Top;
+            Width = hostBoundsDips.Width;
+            Height = hostBoundsDips.Height;
+            ScreenSnapshot.Width = Width;
+            ScreenSnapshot.Height = Height;
+            _vm.DpiX = monitorScale;
+            _vm.DpiY = monitorScale;
             InitializeFromOpenedImage(_openedImage);
             return;
         }
 
-        Visibility = Visibility.Hidden;
-        System.Threading.Thread.Sleep(50);
-        _screenSnapshot = _screenCapture.Capture(
-            _selectionHostScreenBoundsPixels.X,
-            _selectionHostScreenBoundsPixels.Y,
-            _selectionHostScreenBoundsPixels.Width,
-            _selectionHostScreenBoundsPixels.Height);
-        ScreenSnapshot.Source = _screenSnapshot;
-        Visibility = Visibility.Visible;
-
-        ShowSelectionBackdropWindows(targetScreen.DeviceName);
+        throw new InvalidOperationException("OverlayWindow must be initialized from a selection session or an opened image.");
     }
 
     private void InitializeFromSelectionSessionCore(SelectionSessionResult selectionSession)
     {
-        _selectionHostScreenBoundsPixels = selectionSession.HostBoundsPixels;
         Left = selectionSession.HostBoundsDips.Left;
         Top = selectionSession.HostBoundsDips.Top;
         Width = selectionSession.HostBoundsDips.Width;
         Height = selectionSession.HostBoundsDips.Height;
 
-        DimFull.Width = Width;
-        DimFull.Height = Height;
         ScreenSnapshot.Width = Width;
         ScreenSnapshot.Height = Height;
         Canvas.SetLeft(ScreenSnapshot, 0d);
@@ -222,7 +160,6 @@ public partial class OverlayWindow : Window
 
         _vm.DpiX = selectionSession.DpiScaleX;
         _vm.DpiY = selectionSession.DpiScaleY;
-        _screenSnapshot = selectionSession.MonitorSnapshot;
         ScreenSnapshot.Source = selectionSession.MonitorSnapshot;
 
         _logger.LogDebug(
@@ -244,73 +181,6 @@ public partial class OverlayWindow : Window
             selectionSession.DpiScaleX,
             selectionSession.DpiScaleY,
             allowRecording: true);
-    }
-
-    internal static Rect CalculateSelectionOverlayBounds(System.Drawing.Rectangle screenBoundsPixels, double monitorScale)
-    {
-        return new Rect(
-            screenBoundsPixels.Left / monitorScale,
-            screenBoundsPixels.Top / monitorScale,
-            screenBoundsPixels.Width / monitorScale,
-            screenBoundsPixels.Height / monitorScale);
-    }
-
-    private static double GetMonitorScale(System.Drawing.Point screenPoint)
-    {
-        var monitor = MonitorFromPoint(new POINT { X = screenPoint.X, Y = screenPoint.Y }, MonitorDefaultToNearest);
-        if (monitor == 0)
-        {
-            return 1d;
-        }
-
-        var result = GetDpiForMonitor(monitor, MonitorDpiTypeEffective, out var dpiX, out _);
-        if (result != 0 || dpiX == 0)
-        {
-            return 1d;
-        }
-
-        return dpiX / 96d;
-    }
-
-    private void ShowSelectionBackdropWindows(string activeMonitorName)
-    {
-        CloseSelectionBackdropWindows();
-
-        foreach (var screen in Forms.Screen.AllScreens.Where(screen => screen.DeviceName != activeMonitorName))
-        {
-            var monitorScale = GetMonitorScale(screen.Bounds.Location);
-            var overlayBounds = CalculateSelectionOverlayBounds(screen.Bounds, monitorScale);
-            var snapshot = _screenCapture.Capture(
-                screen.Bounds.X,
-                screen.Bounds.Y,
-                screen.Bounds.Width,
-                screen.Bounds.Height);
-            var backdropWindow = new SelectionBackdropWindow(snapshot, overlayBounds);
-            _selectionBackdropWindows.Add(backdropWindow);
-            DpiAwarenessScope.RunPerMonitorV2(() => backdropWindow.Show());
-
-            _logger.LogDebug(
-                "Selection backdrop initialized: left={Left} top={Top} width={Width} height={Height} dpi={Dpi} monitorPx={MonitorLeft},{MonitorTop},{MonitorWidth},{MonitorHeight}",
-                overlayBounds.Left,
-                overlayBounds.Top,
-                overlayBounds.Width,
-                overlayBounds.Height,
-                monitorScale,
-                screen.Bounds.X,
-                screen.Bounds.Y,
-                screen.Bounds.Width,
-                screen.Bounds.Height);
-        }
-    }
-
-    private void CloseSelectionBackdropWindows()
-    {
-        foreach (var backdropWindow in _selectionBackdropWindows)
-        {
-            backdropWindow.Close();
-        }
-
-        _selectionBackdropWindows.Clear();
     }
 
     private void Annot_Down(object sender, MouseButtonEventArgs e)
@@ -401,7 +271,6 @@ public partial class OverlayWindow : Window
     {
         var pendingPinnedBitmap = _pendingPinnedBitmap;
         _pendingPinnedBitmap = null;
-        CloseSelectionBackdropWindows();
 
         _undoSubscription.Dispose();
         _redoSubscription.Dispose();

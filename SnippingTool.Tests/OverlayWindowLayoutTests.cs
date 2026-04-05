@@ -62,11 +62,11 @@ public sealed class OverlayWindowLayoutTests
     }
 
     [Fact]
-    public void CalculateSelectionOverlayBounds_MapsMonitorPixelsIntoMonitorLocalDips()
+    public void CalculateWindowBounds_MapsMonitorPixelsIntoMonitorLocalDips()
     {
         var screenBounds = new System.Drawing.Rectangle(1440, -2160, 2560, 1440);
 
-        var result = OverlayWindow.CalculateSelectionOverlayBounds(screenBounds, 1.5);
+        var result = MonitorDpiHelper.CalculateWindowBounds(screenBounds, 1.5);
 
         Assert.Equal(960, result.Left);
         Assert.Equal(-1440, result.Top);
