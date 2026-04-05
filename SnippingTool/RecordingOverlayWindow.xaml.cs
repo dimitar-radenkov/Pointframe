@@ -88,8 +88,8 @@ public partial class RecordingOverlayWindow : Window
             _recordingAnnotationViewModel,
             _recordingRenderer,
             UpdateRecordingAnnotationStateFromCanvas);
-        _recordingUndoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleRecordingUndoGroupAsync);
-        _recordingRedoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRecordingRedoGroupAsync);
+        _recordingUndoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleRecordingUndoGroup);
+        _recordingRedoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRecordingRedoGroup);
         _recordingAnnotationViewModel.ClearRequested += HandleRecordingClearRequested;
 
         RecordingAnnotationCanvas.MouseLeftButtonDown += RecordingAnnot_Down;
@@ -365,7 +365,7 @@ public partial class RecordingOverlayWindow : Window
         UpdateRecordingAnnotationStateFromCanvas();
     }
 
-    private ValueTask HandleRecordingUndoGroupAsync(UndoGroupMessage message)
+    private ValueTask HandleRecordingUndoGroup(UndoGroupMessage message)
     {
         foreach (var element in message.Elements.OfType<UIElement>())
         {
@@ -376,7 +376,7 @@ public partial class RecordingOverlayWindow : Window
         return ValueTask.CompletedTask;
     }
 
-    private ValueTask HandleRecordingRedoGroupAsync(RedoGroupMessage message)
+    private ValueTask HandleRecordingRedoGroup(RedoGroupMessage message)
     {
         foreach (var element in message.Elements.OfType<UIElement>())
         {

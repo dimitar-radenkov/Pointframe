@@ -31,7 +31,7 @@ public sealed class GifExportServiceTests
         var svc = new GifExportService(NullLogger<GifExportService>.Instance);
 
         var ex = await Assert.ThrowsAsync<FileNotFoundException>(
-            () => svc.ExportAsync(@"C:\input.mp4", @"C:\output.gif", fps: 10));
+            () => svc.Export(@"C:\input.mp4", @"C:\output.gif", fps: 10));
 
         Assert.Equal(missingPath, ex.FileName);
     }

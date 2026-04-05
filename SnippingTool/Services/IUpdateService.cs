@@ -4,5 +4,5 @@ namespace SnippingTool.Services;
 
 public interface IUpdateService
 {
-    Task<UpdateCheckResult> CheckForUpdatesAsync(CancellationToken cancellationToken = default);
+    Task<UpdateCheckResult> CheckForUpdates(CancellationToken cancellationToken = default);
 }

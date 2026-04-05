@@ -36,7 +36,7 @@ public sealed class DefaultEventAggregator : IEventAggregator, IDisposable
         return subscription;
     }
 
-    public async ValueTask PublishAsync(object eventArgument)
+    public async ValueTask Publish(object eventArgument)
     {
         ArgumentNullException.ThrowIfNull(eventArgument);
         ThrowIfDisposed();

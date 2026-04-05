@@ -30,7 +30,7 @@ public sealed class GitHubUpdateServiceTests
             }
             """;
 
-        var result = await CreateService(json).CheckForUpdatesAsync();
+        var result = await CreateService(json).CheckForUpdates();
 
         Assert.False(result.IsUpdateAvailable);
     }
@@ -50,7 +50,7 @@ public sealed class GitHubUpdateServiceTests
             }
             """;
 
-        var result = await CreateService(Json).CheckForUpdatesAsync();
+        var result = await CreateService(Json).CheckForUpdates();
 
         Assert.True(result.IsUpdateAvailable);
         Assert.Equal(new Version(999, 0, 0), result.LatestVersion);
@@ -67,7 +67,7 @@ public sealed class GitHubUpdateServiceTests
             }
             """;
 
-        var result = await CreateService(Json).CheckForUpdatesAsync();
+        var result = await CreateService(Json).CheckForUpdates();
 
         Assert.False(result.IsUpdateAvailable);
     }
@@ -75,7 +75,7 @@ public sealed class GitHubUpdateServiceTests
     [Fact]
     public async Task NoReleasesYet_404_ReturnsNoUpdate()
     {
-        var result = await CreateService("{}", HttpStatusCode.NotFound).CheckForUpdatesAsync();
+        var result = await CreateService("{}", HttpStatusCode.NotFound).CheckForUpdates();
 
         Assert.False(result.IsUpdateAvailable);
         Assert.Empty(result.DownloadUrl);
@@ -86,7 +86,7 @@ public sealed class GitHubUpdateServiceTests
     {
         var service = CreateService("{}", HttpStatusCode.InternalServerError);
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => service.CheckForUpdatesAsync());
+        await Assert.ThrowsAsync<HttpRequestException>(() => service.CheckForUpdates());
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public sealed class GitHubUpdateServiceTests
             }
             """;
 
-        var result = await CreateService(Json).CheckForUpdatesAsync();
+        var result = await CreateService(Json).CheckForUpdates();
 
         Assert.True(result.IsUpdateAvailable);
         Assert.Empty(result.DownloadUrl);
@@ -125,7 +125,7 @@ public sealed class GitHubUpdateServiceTests
             }
             """;
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(Json).CheckForUpdatesAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(Json).CheckForUpdates());
     }
 
     [Fact(DisplayName = "Tag without 'v' prefix is parsed correctly")]
@@ -138,7 +138,7 @@ public sealed class GitHubUpdateServiceTests
             }
             """;
 
-        var result = await CreateService(Json).CheckForUpdatesAsync();
+        var result = await CreateService(Json).CheckForUpdates();
 
         Assert.Equal(new Version(999, 0, 0), result.LatestVersion);
     }
@@ -153,7 +153,7 @@ public sealed class GitHubUpdateServiceTests
             new AppVersionService(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<GitHubUpdateService>.Instance);
 
-        var result = await service.CheckForUpdatesAsync();
+        var result = await service.CheckForUpdates();
 
         // Either state is acceptable; we just verify no exception is thrown
         // and the result is well-formed.

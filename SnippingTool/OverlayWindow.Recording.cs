@@ -8,9 +8,9 @@ namespace SnippingTool;
 
 public partial class OverlayWindow
 {
-    private async void Record_Click(object sender, RoutedEventArgs e) => await StartRecordingSessionAsync();
+    private async void Record_Click(object sender, RoutedEventArgs e) => await StartRecordingSession();
 
-    private async Task StartRecordingSessionAsync()
+    private async Task StartRecordingSession()
     {
         var selectionRect = _vm.SelectionRect;
         var captureBoundsPixels = _vm.SelectionScreenBoundsPixels.Width > 0 && _vm.SelectionScreenBoundsPixels.Height > 0

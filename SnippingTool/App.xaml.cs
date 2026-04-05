@@ -94,7 +94,7 @@ public partial class App : Application
         _themeService = _host.Services.GetRequiredService<IThemeService>();
         _themeService.Apply(_userSettings.Current.Theme);
         var eventAggregator = _host.Services.GetRequiredService<IEventAggregator>();
-        _updateAvailableSubscription = eventAggregator.Subscribe<UpdateAvailableMessage>(HandleUpdateAvailableAsync);
+        _updateAvailableSubscription = eventAggregator.Subscribe<UpdateAvailableMessage>(HandleUpdateAvailable);
         _autoUpdate = _host.Services.GetRequiredService<IAutoUpdateService>();
         _logger.LogInformation("SnippingTool starting up");
 
@@ -279,7 +279,7 @@ public partial class App : Application
         try
         {
             var updateService = _host.Services.GetRequiredService<IUpdateService>();
-            var result = await updateService.CheckForUpdatesAsync();
+            var result = await updateService.CheckForUpdates();
 
             if (!result.IsUpdateAvailable)
             {
@@ -290,7 +290,7 @@ public partial class App : Application
                 return;
             }
 
-            await _autoUpdate.ConfirmAndInstallAsync(result);
+            await _autoUpdate.ConfirmAndInstall(result);
         }
         catch (Exception ex)
         {
@@ -369,7 +369,7 @@ public partial class App : Application
             BalloonIcon.Info);
     }
 
-    private ValueTask HandleUpdateAvailableAsync(UpdateAvailableMessage message)
+    private ValueTask HandleUpdateAvailable(UpdateAvailableMessage message)
     {
         _pendingUpdate = message.Result;
         ShowUpdateBalloon(message.Result);
@@ -385,7 +385,7 @@ public partial class App : Application
 
         var update = _pendingUpdate;
         _pendingUpdate = null;
-        await _autoUpdate.ConfirmAndInstallAsync(update);
+        await _autoUpdate.ConfirmAndInstall(update);
     }
 
     private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)

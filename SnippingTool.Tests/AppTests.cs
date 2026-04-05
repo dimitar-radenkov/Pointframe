@@ -57,7 +57,7 @@ public sealed class AppTests
         {
             var app = CreateAppWithoutRunning();
             var autoUpdateMock = new Mock<IAutoUpdateService>();
-            autoUpdateMock.Setup(service => service.ConfirmAndInstallAsync(It.IsAny<UpdateCheckResult>()))
+            autoUpdateMock.Setup(service => service.ConfirmAndInstall(It.IsAny<UpdateCheckResult>()))
                 .Returns(Task.CompletedTask);
             SetField(app, "_autoUpdate", autoUpdateMock.Object);
             var update = new UpdateCheckResult(true, new Version(1, 2, 3), "https://example.com/download");
@@ -68,7 +68,7 @@ public sealed class AppTests
 
             InvokePrivateHandler(app, "OnUpdateBalloonClicked", app, new RoutedEventArgs());
 
-            autoUpdateMock.Verify(service => service.ConfirmAndInstallAsync(update), Times.Once);
+            autoUpdateMock.Verify(service => service.ConfirmAndInstall(update), Times.Once);
             Assert.Null(GetField(app, "_pendingUpdate"));
         });
     }
@@ -98,7 +98,7 @@ public sealed class AppTests
             var app = CreateAppWithoutRunning();
             var updateService = new Mock<IUpdateService>();
             updateService
-                .Setup(service => service.CheckForUpdatesAsync())
+                .Setup(service => service.CheckForUpdates())
                 .ReturnsAsync(new UpdateCheckResult(false, new Version(1, 2, 3), string.Empty));
 
             var messageBox = new Mock<IMessageBoxService>();
@@ -131,7 +131,7 @@ public sealed class AppTests
             var app = CreateAppWithoutRunning();
             var updateService = new Mock<IUpdateService>();
             updateService
-                .Setup(service => service.CheckForUpdatesAsync())
+                .Setup(service => service.CheckForUpdates())
                 .ThrowsAsync(new InvalidOperationException("boom"));
 
             var messageBox = new Mock<IMessageBoxService>();
@@ -167,7 +167,7 @@ public sealed class AppTests
 
             InvokePrivateHandler(app, "OnUpdateBalloonClicked", app, new RoutedEventArgs());
 
-            autoUpdateMock.Verify(service => service.ConfirmAndInstallAsync(It.IsAny<UpdateCheckResult>()), Times.Never);
+            autoUpdateMock.Verify(service => service.ConfirmAndInstall(It.IsAny<UpdateCheckResult>()), Times.Never);
         });
     }
 

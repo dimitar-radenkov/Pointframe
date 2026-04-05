@@ -24,7 +24,7 @@ public sealed class UpdateDownloadWindowServiceTests : IDisposable
                 () => CreateViewModel(process.Object, "payload"),
                 CreateWindow);
 
-            var result = await sut.ShowAsync("https://example.invalid/update.exe", _destPath);
+            var result = await sut.Show("https://example.invalid/update.exe", _destPath);
 
             Assert.True(result);
             Assert.True(File.Exists(_destPath));
@@ -47,7 +47,7 @@ public sealed class UpdateDownloadWindowServiceTests : IDisposable
                     return window;
                 });
 
-            var result = await sut.ShowAsync("https://example.invalid/update.exe", _destPath);
+            var result = await sut.Show("https://example.invalid/update.exe", _destPath);
 
             Assert.False(result);
             process.Verify(service => service.Start(It.IsAny<System.Diagnostics.ProcessStartInfo>()), Times.Never);

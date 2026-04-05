@@ -83,8 +83,8 @@ public partial class OverlayWindow : Window
             () => _vm.DpiY));
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
         _annotationInteractionController = new AnnotationCanvasInteractionController(AnnotationCanvas, _vm, _renderer);
-        _undoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleUndoGroupAsync);
-        _redoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRedoGroupAsync);
+        _undoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleUndoGroup);
+        _redoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRedoGroup);
         _vm.CloseRequested += Close;
         _vm.PinRequested += DoPin;
 
@@ -247,7 +247,7 @@ public partial class OverlayWindow : Window
 
             if (w >= 4 && h >= 4)
             {
-                _ = DoLassoOcrAsync(new Rect(x, y, w, h));
+                _ = DoLassoOcr(new Rect(x, y, w, h));
             }
 
             return;
@@ -346,7 +346,7 @@ public partial class OverlayWindow : Window
         }
     }
 
-    private ValueTask HandleUndoGroupAsync(UndoGroupMessage message)
+    private ValueTask HandleUndoGroup(UndoGroupMessage message)
     {
         foreach (var element in message.Elements.OfType<UIElement>())
         {
@@ -357,7 +357,7 @@ public partial class OverlayWindow : Window
         return ValueTask.CompletedTask;
     }
 
-    private ValueTask HandleRedoGroupAsync(RedoGroupMessage message)
+    private ValueTask HandleRedoGroup(RedoGroupMessage message)
     {
         foreach (var element in message.Elements.OfType<UIElement>())
         {
@@ -382,7 +382,7 @@ public partial class OverlayWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(Close));
     }
 
-    private async Task DoLassoOcrAsync(Rect lassoRect)
+    private async Task DoLassoOcr(Rect lassoRect)
     {
         var background = _renderer.BackgroundCapture;
         if (background is null)
@@ -406,7 +406,7 @@ public partial class OverlayWindow : Window
         }
 
         var cropped = new CroppedBitmap(background, new Int32Rect(pixelX, pixelY, pixelW, pixelH));
-        var text = await _ocrService.RecognizeAsync(cropped);
+        var text = await _ocrService.Recognize(cropped);
 
         if (string.IsNullOrWhiteSpace(text))
         {

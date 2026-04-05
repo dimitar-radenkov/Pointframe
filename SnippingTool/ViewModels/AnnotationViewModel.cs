@@ -344,7 +344,7 @@ public partial class AnnotationViewModel : ObservableObject
 
     private void PublishSync(object message)
     {
-        var publishTask = _eventAggregator.PublishAsync(message);
+        var publishTask = _eventAggregator.Publish(message);
         if (!publishTask.IsCompletedSuccessfully)
         {
             publishTask.AsTask().GetAwaiter().GetResult();
