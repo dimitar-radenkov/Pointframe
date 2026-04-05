@@ -43,6 +43,8 @@ public partial class OverlayViewModel : AnnotationViewModel
     [ObservableProperty]
     private Rect _selectionRect = Rect.Empty;
 
+    public Int32Rect SelectionScreenBoundsPixels { get; private set; } = Int32Rect.Empty;
+
     public double DpiX { get; set; } = 1.0;
     public double DpiY { get; set; } = 1.0;
 
@@ -62,7 +64,19 @@ public partial class OverlayViewModel : AnnotationViewModel
 
     public void CommitSelection(Rect selection)
     {
+        SelectionScreenBoundsPixels = Int32Rect.Empty;
         InitializeAnnotatingSession(selection, DpiX, DpiY);
+        _logger.LogInformation("Selection committed: {W:F0}\u00d7{H:F0} at ({X:F0},{Y:F0})",
+            selection.Width, selection.Height, selection.X, selection.Y);
+    }
+
+    public void CommitSelection(Rect selection, Int32Rect selectionScreenBoundsPixels)
+    {
+        SelectionScreenBoundsPixels = selectionScreenBoundsPixels;
+        InitializeAnnotatingSession(
+            selection,
+            selection.Width > 0d ? selectionScreenBoundsPixels.Width / selection.Width : DpiX,
+            selection.Height > 0d ? selectionScreenBoundsPixels.Height / selection.Height : DpiY);
         _logger.LogInformation("Selection committed: {W:F0}\u00d7{H:F0} at ({X:F0},{Y:F0})",
             selection.Width, selection.Height, selection.X, selection.Y);
     }

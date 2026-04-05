@@ -337,11 +337,27 @@ public partial class App : Application
         var delay = _host.Services.GetRequiredService<IUserSettingsService>().Current.CaptureDelaySeconds;
         if (delay > 0)
         {
-            new CountdownWindow(delay, () => _host.Services.GetRequiredService<OverlayWindow>().Show()).Show();
+            new CountdownWindow(delay, ShowSelectionOverlay).Show();
             return;
         }
 
-        _host.Services.GetRequiredService<OverlayWindow>().Show();
+        ShowSelectionOverlay();
+    }
+
+    private async void ShowSelectionOverlay()
+    {
+        var selection = await SelectionSession.SelectAsync(
+            _host.Services.GetRequiredService<IScreenCaptureService>(),
+            _host.Services.GetRequiredService<ILoggerFactory>());
+
+        if (selection is null)
+        {
+            return;
+        }
+
+        var overlay = _host.Services.GetRequiredService<OverlayWindow>();
+        overlay.InitializeFromSelectionSession(selection);
+        DpiAwarenessScope.RunPerMonitorV2(() => overlay.Show());
     }
 
     private void ShowUpdateBalloon(UpdateCheckResult result)

@@ -1,29 +1,39 @@
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
+using SnippingTool.Models;
+using Forms = System.Windows.Forms;
 
 namespace SnippingTool;
 
 public partial class OverlayWindow
 {
-    private const double RecordingBorderStrokeThickness = 2d;
-    private const double RecordingBorderClearance = 6d;
-    private const double RecordingBorderOffset = RecordingBorderStrokeThickness + RecordingBorderClearance;
-
     private async void Record_Click(object sender, RoutedEventArgs e) => await StartRecordingSessionAsync();
 
     private async Task StartRecordingSessionAsync()
     {
         var selectionRect = _vm.SelectionRect;
-        var screenX = (int)((Left + selectionRect.X) * _vm.DpiX);
-        var screenY = (int)((Top + selectionRect.Y) * _vm.DpiY);
-        var screenW = (int)(selectionRect.Width * _vm.DpiX);
-        var screenH = (int)(selectionRect.Height * _vm.DpiY);
+        var captureBoundsPixels = _vm.SelectionScreenBoundsPixels.Width > 0 && _vm.SelectionScreenBoundsPixels.Height > 0
+            ? _vm.SelectionScreenBoundsPixels
+            : GetScreenPixelBounds(selectionRect);
+        var monitorBounds = new System.Drawing.Rectangle(
+            captureBoundsPixels.X,
+            captureBoundsPixels.Y,
+            captureBoundsPixels.Width,
+            captureBoundsPixels.Height);
+        var monitorName = Forms.Screen.FromRectangle(monitorBounds).DeviceName;
 
-        _logger.LogDebug(
-            "StartRecordingSession: overlay DIP Left={OverlayLeft} Top={OverlayTop} DpiX={DpiX} DpiY={DpiY}",
-            Left, Top, _vm.DpiX, _vm.DpiY);
+        _recordingSessionGeometry = CreateRecordingSessionGeometry(
+            selectionRect,
+            captureBoundsPixels,
+            monitorName);
+
+        var captureBounds = _recordingSessionGeometry.CaptureBoundsPixels;
+        var screenX = captureBounds.X;
+        var screenY = captureBounds.Y;
+        var screenW = captureBounds.Width;
+        var screenH = captureBounds.Height;
+
         _logger.LogDebug(
             "StartRecordingSession: selection DIP X={SelX} Y={SelY} W={SelW} H={SelH}",
             selectionRect.X, selectionRect.Y, selectionRect.Width, selectionRect.Height);
@@ -38,120 +48,47 @@ public partial class OverlayWindow
 
         try
         {
-            EnterRecordingOverlayMode(selectionRect);
+            Visibility = Visibility.Hidden;
+            Dispatcher.Invoke(() => { }, DispatcherPriority.Render);
             await Task.Run(() => _recorder.Start(screenX, screenY, screenW, screenH, path));
         }
         catch (System.IO.FileNotFoundException ex)
         {
-            ExitRecordingOverlayMode(selectionRect);
+            Visibility = Visibility.Visible;
             _messageBox.ShowWarning(ex.Message, "ffmpeg not found");
             return;
         }
 
-        var regionRect = new Rect(Left + selectionRect.X, Top + selectionRect.Y, selectionRect.Width, selectionRect.Height);
-        await Dispatcher.Yield(DispatcherPriority.Background);
-        ShowRecordingSessionWindows(selectionRect, regionRect, path);
-    }
+        RecordingOverlayWindow? recordingOverlay = null;
+        DpiAwarenessScope.RunPerMonitorV2(() =>
+        {
+            recordingOverlay = new RecordingOverlayWindow(
+                _recordingSessionGeometry,
+                path,
+                _recorder,
+                _screenCapture,
+                _recordingHudViewModelFactory,
+                _eventAggregator,
+                _loggerFactory,
+                _userSettings,
+                _recordingAnnotationViewModel);
+        });
 
-    private void ShowRecordingSessionWindows(Rect selectionRect, Rect regionRect, string outputPath)
-    {
-        var borderRect = CalculateRecordingBorderRect(regionRect, RecordingBorderOffset);
+        if (recordingOverlay is null)
+        {
+            Visibility = Visibility.Visible;
+            _logger.LogError("Failed to create the recording overlay window");
+            return;
+        }
 
-        _logger.LogDebug(
-            "ShowRecordingSessionWindows: regionRect DIP L={L} T={T} W={W} H={H}",
-            regionRect.Left, regionRect.Top, regionRect.Width, regionRect.Height);
-        _logger.LogDebug(
-            "ShowRecordingSessionWindows: borderRect DIP L={L} T={T} W={W} H={H}",
-            borderRect.Left, borderRect.Top, borderRect.Width, borderRect.Height);
-        _logger.LogDebug(
-            "ShowRecordingSessionWindows: border local DIP L={L} T={T} W={W} H={H}",
-            selectionRect.Left - RecordingBorderOffset,
-            selectionRect.Top - RecordingBorderOffset,
-            selectionRect.Width + (RecordingBorderOffset * 2d),
-            selectionRect.Height + (RecordingBorderOffset * 2d));
-        InitializeRecordingAnnotationSurface(selectionRect);
-
-        var hudVm = _recordingHudViewModelFactory(_recorder, outputPath);
-        hudVm.AttachAnnotationSession(_recordingAnnotationViewModel, ToggleRecordingAnnotationInput);
-        ShowRecordingHud(selectionRect, hudVm);
+        _closeLeavesRecorderRunning = true;
+        DpiAwarenessScope.RunPerMonitorV2(() => recordingOverlay.Show());
+        Close();
     }
 
     private void CloseRecordingSessionWindows()
     {
-        HideRecordingHud();
-        HideRecordingAnnotationSurface();
-    }
-
-    private void EnterRecordingOverlayMode(Rect selectionRect)
-    {
-        _logger.LogDebug(
-            "EnterRecordingOverlayMode: border local DIP L={L} T={T} W={W} H={H}",
-            selectionRect.Left - RecordingBorderOffset,
-            selectionRect.Top - RecordingBorderOffset,
-            selectionRect.Width + (RecordingBorderOffset * 2d),
-            selectionRect.Height + (RecordingBorderOffset * 2d));
-
-        Root.Background = Brushes.Transparent;
-        ScreenSnapshot.Visibility = Visibility.Collapsed;
-        DimFull.Visibility = Visibility.Collapsed;
-        DimTop.Visibility = Visibility.Collapsed;
-        DimBottom.Visibility = Visibility.Collapsed;
-        DimLeft.Visibility = Visibility.Collapsed;
-        DimRight.Visibility = Visibility.Collapsed;
-        SelectionBorder.Visibility = Visibility.Collapsed;
-        OcrLassoRect.Visibility = Visibility.Collapsed;
-        SizeLabelBorder.Visibility = Visibility.Collapsed;
-        LoupeBorder.Visibility = Visibility.Collapsed;
-        AnnotationCanvas.Visibility = Visibility.Collapsed;
-        RecordingAnnotationCanvas.Visibility = RecordingAnnotationCanvas.Visibility == Visibility.Visible
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        AnnotToolbar.Visibility = Visibility.Collapsed;
-        ActionBar.Visibility = Visibility.Collapsed;
-        CompactActionBar.Visibility = Visibility.Collapsed;
-
-        _isRecordingOverlayMode = true;
-        PositionRecordingBorder(selectionRect);
-        Dispatcher.Invoke(() => { }, DispatcherPriority.Render);
-    }
-
-    private void ExitRecordingOverlayMode(Rect selectionRect)
-    {
-        _isRecordingOverlayMode = false;
-        Root.Background = _interactiveRootBackground;
-        HideRecordingBorder();
-        HideRecordingHud();
-        HideRecordingAnnotationSurface();
-
-        ScreenSnapshot.Visibility = Visibility.Visible;
-        DimFull.Visibility = Visibility.Collapsed;
-        LayoutDimStrips(selectionRect);
-
-        Canvas.SetLeft(SelectionBorder, selectionRect.X);
-        Canvas.SetTop(SelectionBorder, selectionRect.Y);
-        SelectionBorder.Width = selectionRect.Width;
-        SelectionBorder.Height = selectionRect.Height;
-        SelectionBorder.Visibility = Visibility.Visible;
-
-        AnnotationCanvas.Visibility = Visibility.Visible;
-        PositionToolbars(selectionRect);
-    }
-
-    private void PositionRecordingBorder(Rect selectionRect)
-    {
-        var borderRect = CalculateRecordingBorderRect(selectionRect, RecordingBorderOffset);
-
-        Canvas.SetLeft(RecordingBorderWhite, borderRect.Left);
-        Canvas.SetTop(RecordingBorderWhite, borderRect.Top);
-        RecordingBorderWhite.Width = borderRect.Width;
-        RecordingBorderWhite.Height = borderRect.Height;
-        RecordingBorderWhite.Visibility = Visibility.Visible;
-
-        Canvas.SetLeft(RecordingBorderBlack, borderRect.Left);
-        Canvas.SetTop(RecordingBorderBlack, borderRect.Top);
-        RecordingBorderBlack.Width = borderRect.Width;
-        RecordingBorderBlack.Height = borderRect.Height;
-        RecordingBorderBlack.Visibility = Visibility.Visible;
+        _recordingSessionGeometry = RecordingSessionGeometry.Empty;
     }
 
     internal static Rect CalculateRecordingBorderRect(Rect selectionRect, double borderOffset)
@@ -163,9 +100,77 @@ public partial class OverlayWindow
             selectionRect.Height + (borderOffset * 2d));
     }
 
-    private void HideRecordingBorder()
+    internal static RecordingSessionGeometry CreateRecordingSessionGeometry(
+        Rect selectionRect,
+        Int32Rect captureBoundsPixels,
+        string monitorName)
     {
-        RecordingBorderWhite.Visibility = Visibility.Collapsed;
-        RecordingBorderBlack.Visibility = Visibility.Collapsed;
+        var monitorBounds = Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
+            captureBoundsPixels.X,
+            captureBoundsPixels.Y,
+            captureBoundsPixels.Width,
+            captureBoundsPixels.Height)).Bounds;
+
+        return CreateRecordingSessionGeometry(
+            selectionRect,
+            captureBoundsPixels,
+            monitorName,
+            new Int32Rect(
+                monitorBounds.X,
+                monitorBounds.Y,
+                monitorBounds.Width,
+                monitorBounds.Height),
+            new Int32Rect(
+                Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
+                    captureBoundsPixels.X,
+                    captureBoundsPixels.Y,
+                    captureBoundsPixels.Width,
+                    captureBoundsPixels.Height)).WorkingArea.X,
+                Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
+                    captureBoundsPixels.X,
+                    captureBoundsPixels.Y,
+                    captureBoundsPixels.Width,
+                    captureBoundsPixels.Height)).WorkingArea.Y,
+                Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
+                    captureBoundsPixels.X,
+                    captureBoundsPixels.Y,
+                    captureBoundsPixels.Width,
+                    captureBoundsPixels.Height)).WorkingArea.Width,
+                Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
+                    captureBoundsPixels.X,
+                    captureBoundsPixels.Y,
+                    captureBoundsPixels.Width,
+                    captureBoundsPixels.Height)).WorkingArea.Height));
+    }
+
+    internal static RecordingSessionGeometry CreateRecordingSessionGeometry(
+        Rect selectionRect,
+        Int32Rect captureBoundsPixels,
+        string monitorName,
+        Int32Rect hostBoundsPixels,
+        Int32Rect workAreaBoundsPixels)
+    {
+        var monitorScaleX = selectionRect.Width > 0d ? captureBoundsPixels.Width / selectionRect.Width : 1d;
+        var monitorScaleY = selectionRect.Height > 0d ? captureBoundsPixels.Height / selectionRect.Height : 1d;
+        var captureRectDips = new Rect(
+            (captureBoundsPixels.X - hostBoundsPixels.X) / monitorScaleX,
+            (captureBoundsPixels.Y - hostBoundsPixels.Y) / monitorScaleY,
+            captureBoundsPixels.Width / monitorScaleX,
+            captureBoundsPixels.Height / monitorScaleY);
+
+        return new RecordingSessionGeometry(
+            hostBoundsPixels,
+            captureBoundsPixels,
+            workAreaBoundsPixels,
+            new Rect(0, 0, hostBoundsPixels.Width / monitorScaleX, hostBoundsPixels.Height / monitorScaleY),
+            new Rect(
+                (workAreaBoundsPixels.X - hostBoundsPixels.X) / monitorScaleX,
+                (workAreaBoundsPixels.Y - hostBoundsPixels.Y) / monitorScaleY,
+                workAreaBoundsPixels.Width / monitorScaleX,
+                workAreaBoundsPixels.Height / monitorScaleY),
+            captureRectDips,
+            monitorName,
+            monitorScaleX,
+            monitorScaleY);
     }
 }

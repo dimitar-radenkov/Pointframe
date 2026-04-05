@@ -101,6 +101,25 @@ public sealed class OverlayViewModelTests
     }
 
     [Fact]
+    public void CommitSelection_WithScreenBounds_StoresNativeBoundsAndScale()
+    {
+        // Arrange
+        var vm = Vm();
+        var rect = new Rect(10, 20, 300, 200);
+        var screenBounds = new Int32Rect(150, 250, 900, 600);
+
+        // Act
+        vm.CommitSelection(rect, screenBounds);
+
+        // Assert
+        Assert.Equal(rect, vm.SelectionRect);
+        Assert.Equal(screenBounds, vm.SelectionScreenBoundsPixels);
+        Assert.Equal(3.0, vm.DpiX);
+        Assert.Equal(3.0, vm.DpiY);
+        Assert.Equal(OverlayViewModel.Phase.Annotating, vm.CurrentPhase);
+    }
+
+    [Fact]
     public void InitializeAnnotatingSession_SetsSelectionPhaseAndPixelScale()
     {
         // Arrange

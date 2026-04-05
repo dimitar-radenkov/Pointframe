@@ -14,6 +14,7 @@ internal sealed class OverlayBitmapCapture : IOverlayBitmapCapture
     private readonly Canvas _annotationCanvas;
     private readonly IScreenCaptureService _screenCapture;
     private readonly Func<Rect> _getSelectionRect;
+    private readonly Func<Int32Rect> _getSelectionScreenBoundsPixels;
     private readonly Func<double> _getDpiX;
     private readonly Func<double> _getDpiY;
 
@@ -22,6 +23,7 @@ internal sealed class OverlayBitmapCapture : IOverlayBitmapCapture
         Canvas annotationCanvas,
         IScreenCaptureService screenCapture,
         Func<Rect> getSelectionRect,
+        Func<Int32Rect> getSelectionScreenBoundsPixels,
         Func<double> getDpiX,
         Func<double> getDpiY)
     {
@@ -29,6 +31,7 @@ internal sealed class OverlayBitmapCapture : IOverlayBitmapCapture
         _annotationCanvas = annotationCanvas;
         _screenCapture = screenCapture;
         _getSelectionRect = getSelectionRect;
+        _getSelectionScreenBoundsPixels = getSelectionScreenBoundsPixels;
         _getDpiX = getDpiX;
         _getDpiY = getDpiY;
     }
@@ -36,12 +39,21 @@ internal sealed class OverlayBitmapCapture : IOverlayBitmapCapture
     public BitmapSource ComposeBitmap(bool restoreOverlayVisibilityAfterCapture = true)
     {
         var selectionRect = _getSelectionRect();
-        var dpiX = _getDpiX();
-        var dpiY = _getDpiY();
-        var screenX = (int)((_overlayWindow.Left + selectionRect.X) * dpiX);
-        var screenY = (int)((_overlayWindow.Top + selectionRect.Y) * dpiY);
-        var screenWidth = (int)(selectionRect.Width * dpiX);
-        var screenHeight = (int)(selectionRect.Height * dpiY);
+        var selectionScreenBoundsPixels = _getSelectionScreenBoundsPixels();
+        var screenX = selectionScreenBoundsPixels.X;
+        var screenY = selectionScreenBoundsPixels.Y;
+        var screenWidth = selectionScreenBoundsPixels.Width;
+        var screenHeight = selectionScreenBoundsPixels.Height;
+
+        if (screenWidth <= 0 || screenHeight <= 0)
+        {
+            var dpiX = _getDpiX();
+            var dpiY = _getDpiY();
+            screenX = (int)((_overlayWindow.Left + selectionRect.X) * dpiX);
+            screenY = (int)((_overlayWindow.Top + selectionRect.Y) * dpiY);
+            screenWidth = (int)(selectionRect.Width * dpiX);
+            screenHeight = (int)(selectionRect.Height * dpiY);
+        }
 
         var originalVisibility = _overlayWindow.Visibility;
         BitmapSource screenBitmap;

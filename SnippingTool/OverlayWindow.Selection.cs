@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
+using Microsoft.Extensions.Logging;
 using SnippingTool.ViewModels;
 
 namespace SnippingTool;
@@ -88,7 +89,9 @@ public partial class OverlayWindow
             return;
         }
 
-        _vm.CommitSelection(new Rect(x, y, w, h));
+        var selectionRect = new Rect(x, y, w, h);
+        var selectionScreenBoundsPixels = GetScreenPixelBounds(selectionRect);
+        _vm.CommitSelection(selectionRect, selectionScreenBoundsPixels);
         TransitionToAnnotating();
     }
 
@@ -137,16 +140,49 @@ public partial class OverlayWindow
     private void TransitionToAnnotating()
     {
         var sel = _vm.SelectionRect;
-        var screenX = (int)((Left + sel.X) * _vm.DpiX);
-        var screenY = (int)((Top + sel.Y) * _vm.DpiY);
-        var screenW = Math.Max(1, (int)(sel.Width * _vm.DpiX));
-        var screenH = Math.Max(1, (int)(sel.Height * _vm.DpiY));
+        var captureBounds = _vm.SelectionScreenBoundsPixels.Width > 0 && _vm.SelectionScreenBoundsPixels.Height > 0
+            ? _vm.SelectionScreenBoundsPixels
+            : GetScreenPixelBounds(sel);
+        CloseSelectionBackdropWindows();
         Visibility = Visibility.Hidden;
         System.Threading.Thread.Sleep(60);
-        var backgroundCapture = _screenCapture.Capture(screenX, screenY, screenW, screenH);
+        var backgroundCapture = _screenCapture.Capture(
+            captureBounds.X,
+            captureBounds.Y,
+            captureBounds.Width,
+            captureBounds.Height);
         Visibility = Visibility.Visible;
         _screenSnapshot = null;
 
-        EnterAnnotatingSession(sel, backgroundCapture, _vm.DpiX, _vm.DpiY, allowRecording: true);
+        var pixelScaleX = sel.Width > 0d ? captureBounds.Width / sel.Width : _vm.DpiX;
+        var pixelScaleY = sel.Height > 0d ? captureBounds.Height / sel.Height : _vm.DpiY;
+
+        _logger.LogDebug(
+            "Selection mapped to screen pixels: localDips={LocalX},{LocalY},{LocalW},{LocalH} screenPx={ScreenX},{ScreenY},{ScreenW},{ScreenH} scale={ScaleX},{ScaleY}",
+            sel.X,
+            sel.Y,
+            sel.Width,
+            sel.Height,
+            captureBounds.X,
+            captureBounds.Y,
+            captureBounds.Width,
+            captureBounds.Height,
+            pixelScaleX,
+            pixelScaleY);
+
+        EnterAnnotatingSession(sel, backgroundCapture, pixelScaleX, pixelScaleY, allowRecording: true);
+    }
+
+    private Int32Rect GetScreenPixelBounds(Rect localRect)
+    {
+        var topLeft = PointToScreen(new Point(localRect.Left, localRect.Top));
+        var bottomRight = PointToScreen(new Point(localRect.Right, localRect.Bottom));
+
+        var x = (int)Math.Round(Math.Min(topLeft.X, bottomRight.X));
+        var y = (int)Math.Round(Math.Min(topLeft.Y, bottomRight.Y));
+        var width = Math.Max(1, (int)Math.Round(Math.Abs(bottomRight.X - topLeft.X)));
+        var height = Math.Max(1, (int)Math.Round(Math.Abs(bottomRight.Y - topLeft.Y)));
+
+        return new Int32Rect(x, y, width, height);
     }
 }
