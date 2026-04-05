@@ -16,7 +16,7 @@ internal sealed class SelectionBackdropWindow : Window
         AllowsTransparency = false;
         Background = Brushes.Black;
         ShowInTaskbar = false;
-        Topmost = true;
+        Topmost = false;
         ShowActivated = false;
         Focusable = false;
         Left = bounds.Left;

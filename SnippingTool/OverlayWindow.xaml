@@ -161,6 +161,8 @@
                Stroke="White" StrokeThickness="1.5"
                StrokeDashArray="5,3"
                Fill="Transparent"
+               Panel.ZIndex="20"
+               IsHitTestVisible="False"
                Visibility="Hidden"/>
 
     <Rectangle x:Name="RecordingBorderWhite"
