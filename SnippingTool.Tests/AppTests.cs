@@ -51,7 +51,7 @@ public sealed class AppTests
     }
 
     [Fact]
-    public void HandleUpdateAvailableAsync_StoresPendingUpdateAndClickInstallsIt()
+    public void HandleUpdateAvailable_StoresPendingUpdateAndClickInstallsIt()
     {
         StaTestHelper.Run(() =>
         {
@@ -62,7 +62,7 @@ public sealed class AppTests
             SetField(app, "_autoUpdate", autoUpdateMock.Object);
             var update = new UpdateCheckResult(true, new Version(1, 2, 3), "https://example.com/download");
 
-            InvokePrivateHandler(app, "HandleUpdateAvailableAsync", new UpdateAvailableMessage(update));
+            InvokePrivateHandler(app, "HandleUpdateAvailable", new UpdateAvailableMessage(update));
             var pending = (UpdateCheckResult?)GetField(app, "_pendingUpdate");
             Assert.Same(update, pending);
 
