@@ -109,8 +109,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
         _cts = new CancellationTokenSource();
         IsRecording = true;
-        _captureLoop = Task.Run(() => CaptureLoopAsync(_cts.Token));
-        _encodeLoop = Task.Run(EncodeLoopAsync);
+        _captureLoop = Task.Run(() => CaptureLoop(_cts.Token));
+        _encodeLoop = Task.Run(EncodeLoop);
         _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps ({Format}) → {Path}", width, height, fps, format, outputPath);
     }
 
@@ -164,7 +164,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         }
     }
 
-    private async Task CaptureLoopAsync(CancellationToken ct)
+    private async Task CaptureLoop(CancellationToken ct)
     {
         _logger.LogDebug("Capture loop started");
         var interval = TimeSpan.FromMilliseconds(1000.0 / _fps);
@@ -248,7 +248,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
     // Runs on a dedicated background thread; WriteFrame may block on the pipe to ffmpeg
     // without ever affecting the capture timing or the UI thread.
-    private async Task EncodeLoopAsync()
+    private async Task EncodeLoop()
     {
         _logger.LogDebug("Encode loop started");
         if (_encodeChannel is null)

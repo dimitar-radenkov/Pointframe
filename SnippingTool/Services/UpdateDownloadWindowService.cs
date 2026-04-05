@@ -15,7 +15,7 @@ public sealed class UpdateDownloadWindowService : IUpdateDownloadService
         _windowFactory = windowFactory;
     }
 
-    public async Task<bool> ShowAsync(string downloadUrl, string destPath)
+    public async Task<bool> Show(string downloadUrl, string destPath)
     {
         var vm = _vmFactory();
         using var downloadCancellation = new CancellationTokenSource();

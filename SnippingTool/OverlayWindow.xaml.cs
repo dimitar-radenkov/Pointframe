@@ -1,14 +1,15 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
+using SnippingTool.Models;
 using SnippingTool.Services;
 using SnippingTool.Services.Messaging;
 using SnippingTool.ViewModels;
 using Cursors = System.Windows.Input.Cursors;
+using Forms = System.Windows.Forms;
 
 namespace SnippingTool;
 
@@ -28,26 +29,22 @@ public partial class OverlayWindow : Window
     private readonly RecordingAnnotationViewModel _recordingAnnotationViewModel;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IEventSubscription _redoSubscription;
-    private readonly IEventSubscription _recordingRedoSubscription;
     private readonly IEventSubscription _undoSubscription;
-    private readonly IEventSubscription _recordingUndoSubscription;
-    private readonly System.Windows.Media.Brush _interactiveRootBackground;
     private AnnotationCanvasRenderer _renderer = null!;
     private AnnotationCanvasInteractionController _annotationInteractionController = null!;
-    private AnnotationCanvasRenderer _recordingRenderer = null!;
-    private AnnotationCanvasInteractionController _recordingInteractionController = null!;
-    private RecordingHudViewModel? _recordingHudViewModel;
     private Point? _lassoStart;
+    private RecordingSessionGeometry _recordingSessionGeometry = RecordingSessionGeometry.Empty;
     private BitmapSource? _openedImage;
     private string? _openedImagePath;
-    private Rect _recordingHudRegionRect;
     private Rect _openedImageDisplayRect;
     private double _openedImageScaleX = 1.0;
     private double _openedImageScaleY = 1.0;
-    private BitmapSource? _screenSnapshot;
+    private string? _annotatingMonitorName;
+    private BitmapSource? _annotatingMonitorSnapshot;
     private BitmapSource? _pendingPinnedBitmap;
-    private HwndSource? _overlaySource;
-    private bool _isRecordingOverlayMode;
+    private bool _closeLeavesRecorderRunning;
+    private SelectionSessionResult? _pendingSelectionSession;
+    private readonly List<SelectionBackdropWindow> _annotatingBackdropWindows = [];
 
     public OverlayWindow(
         OverlayViewModel vm,
@@ -75,43 +72,22 @@ public partial class OverlayWindow : Window
         _ocrService = ocrService;
         _recordingAnnotationViewModel = recordingAnnotationViewModel;
         InitializeComponent();
-        _interactiveRootBackground = Root.Background;
         DataContext = _vm;
         _vm.SetBitmapCapture(new OverlayBitmapCapture(
             this,
             AnnotationCanvas,
             _screenCapture,
             () => _vm.SelectionRect,
+            () => _vm.SelectionScreenBoundsPixels,
             () => _vm.DpiX,
             () => _vm.DpiY));
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
         _annotationInteractionController = new AnnotationCanvasInteractionController(AnnotationCanvas, _vm, _renderer);
-        _recordingRenderer = new AnnotationCanvasRenderer(
-            RecordingAnnotationCanvas,
-            _recordingAnnotationViewModel,
-            element => _recordingAnnotationViewModel.TrackElement(element),
-            loggerFactory.CreateLogger<AnnotationCanvasRenderer>(),
-            UpdateRecordingAnnotationStateFromCanvas,
-            CaptureLiveRecordingBlurSource);
-        _recordingInteractionController = new AnnotationCanvasInteractionController(
-            RecordingAnnotationCanvas,
-            _recordingAnnotationViewModel,
-            _recordingRenderer,
-            UpdateRecordingAnnotationStateFromCanvas);
-        _undoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleUndoGroupAsync);
-        _redoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRedoGroupAsync);
-        _recordingUndoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleRecordingUndoGroupAsync);
-        _recordingRedoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRecordingRedoGroupAsync);
+        _undoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleUndoGroup);
+        _redoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRedoGroup);
         _vm.CloseRequested += Close;
         _vm.PinRequested += DoPin;
-        _recordingAnnotationViewModel.ClearRequested += HandleRecordingClearRequested;
 
-        Root.MouseLeftButtonDown += Root_MouseDown;
-        Root.MouseMove += Root_MouseMove;
-        Root.MouseLeftButtonUp += Root_MouseUp;
-        RecordingAnnotationCanvas.MouseLeftButtonDown += RecordingAnnot_Down;
-        RecordingAnnotationCanvas.MouseMove += RecordingAnnot_Move;
-        RecordingAnnotationCanvas.MouseLeftButtonUp += RecordingAnnot_Up;
         KeyDown += Window_KeyDown;
 
         _vm.PropertyChanged += (_, e) =>
@@ -137,42 +113,80 @@ public partial class OverlayWindow : Window
         _openedImagePath = sourcePath;
     }
 
+    internal void InitializeFromSelectionSession(SelectionSessionResult selectionSession)
+    {
+        ArgumentNullException.ThrowIfNull(selectionSession);
+        _pendingSelectionSession = selectionSession;
+    }
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        _overlaySource = (HwndSource?)PresentationSource.FromVisual(this);
-        _overlaySource?.AddHook(OverlayWndProc);
 
-        Left = SystemParameters.VirtualScreenLeft;
-        Top = SystemParameters.VirtualScreenTop;
-        Width = SystemParameters.VirtualScreenWidth;
-        Height = SystemParameters.VirtualScreenHeight;
-
-        DimFull.Width = Width;
-        DimFull.Height = Height;
-        ScreenSnapshot.Width = Width;
-        ScreenSnapshot.Height = Height;
-
-        var src = PresentationSource.FromVisual(this);
-        if (src?.CompositionTarget is not null)
+        if (_pendingSelectionSession is not null)
         {
-            _vm.DpiX = src.CompositionTarget.TransformToDevice.M11;
-            _vm.DpiY = src.CompositionTarget.TransformToDevice.M22;
+            InitializeFromSelectionSessionCore(_pendingSelectionSession);
+            _pendingSelectionSession = null;
+            return;
         }
 
         if (_openedImage is not null)
         {
+            var targetScreen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
+            var monitorScale = MonitorDpiHelper.GetMonitorScale(targetScreen.Bounds.Location);
+            var hostBoundsDips = MonitorDpiHelper.CalculateWindowBounds(targetScreen.Bounds, monitorScale);
+            Left = hostBoundsDips.Left;
+            Top = hostBoundsDips.Top;
+            Width = hostBoundsDips.Width;
+            Height = hostBoundsDips.Height;
+            ScreenSnapshot.Width = Width;
+            ScreenSnapshot.Height = Height;
+            _vm.DpiX = monitorScale;
+            _vm.DpiY = monitorScale;
             InitializeFromOpenedImage(_openedImage);
             return;
         }
 
-        Visibility = Visibility.Hidden;
-        System.Threading.Thread.Sleep(50);
-        _screenSnapshot = _screenCapture.Capture(
-            (int)(Left * _vm.DpiX), (int)(Top * _vm.DpiY),
-            (int)(Width * _vm.DpiX), (int)(Height * _vm.DpiY));
-        ScreenSnapshot.Source = _screenSnapshot;
-        Visibility = Visibility.Visible;
+        throw new InvalidOperationException("OverlayWindow must be initialized from a selection session or an opened image.");
+    }
+
+    private void InitializeFromSelectionSessionCore(SelectionSessionResult selectionSession)
+    {
+        Left = selectionSession.HostBoundsDips.Left;
+        Top = selectionSession.HostBoundsDips.Top;
+        Width = selectionSession.HostBoundsDips.Width;
+        Height = selectionSession.HostBoundsDips.Height;
+
+        _annotatingMonitorName = selectionSession.MonitorName;
+        _annotatingMonitorSnapshot = selectionSession.MonitorSnapshot;
+        ScreenSnapshot.Source = selectionSession.SelectionBackground;
+        ScreenSnapshot.Width = selectionSession.SelectionRectDips.Width;
+        ScreenSnapshot.Height = selectionSession.SelectionRectDips.Height;
+        Canvas.SetLeft(ScreenSnapshot, selectionSession.SelectionRectDips.X);
+        Canvas.SetTop(ScreenSnapshot, selectionSession.SelectionRectDips.Y);
+
+        _vm.DpiX = selectionSession.DpiScaleX;
+        _vm.DpiY = selectionSession.DpiScaleY;
+
+        _logger.LogDebug(
+            "Overlay annotating session initialized: monitor={Monitor} left={Left} top={Top} width={Width} height={Height} selectionPx={SelX},{SelY},{SelW},{SelH}",
+            selectionSession.MonitorName,
+            Left,
+            Top,
+            Width,
+            Height,
+            selectionSession.SelectionBoundsPixels.X,
+            selectionSession.SelectionBoundsPixels.Y,
+            selectionSession.SelectionBoundsPixels.Width,
+            selectionSession.SelectionBoundsPixels.Height);
+
+        _vm.CommitSelection(selectionSession.SelectionRectDips, selectionSession.SelectionBoundsPixels);
+        EnterAnnotatingSession(
+            selectionSession.SelectionRectDips,
+            selectionSession.SelectionBackground,
+            selectionSession.DpiScaleX,
+            selectionSession.DpiScaleY,
+            allowRecording: true);
     }
 
     private void Annot_Down(object sender, MouseButtonEventArgs e)
@@ -233,7 +247,7 @@ public partial class OverlayWindow : Window
 
             if (w >= 4 && h >= 4)
             {
-                _ = DoLassoOcrAsync(new Rect(x, y, w, h));
+                _ = DoLassoOcr(new Rect(x, y, w, h));
             }
 
             return;
@@ -259,29 +273,64 @@ public partial class OverlayWindow : Window
 
     private void CloseBtn_Click(object sender, RoutedEventArgs e) => Close();
 
+    private void ShowAnnotatingBackdropWindows()
+    {
+        CloseAnnotatingBackdropWindows();
+
+        foreach (var screen in Forms.Screen.AllScreens)
+        {
+            var snapshot = screen.DeviceName == _annotatingMonitorName && _annotatingMonitorSnapshot is not null
+                ? _annotatingMonitorSnapshot
+                : _screenCapture.Capture(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height);
+            var monitorScale = MonitorDpiHelper.GetMonitorScale(screen.Bounds.Location);
+            var bounds = MonitorDpiHelper.CalculateWindowBounds(screen.Bounds, monitorScale);
+            var backdropWindow = new SelectionBackdropWindow(snapshot, bounds);
+            _annotatingBackdropWindows.Add(backdropWindow);
+            DpiAwarenessScope.RunPerMonitorV2(() => backdropWindow.Show());
+
+            _logger.LogDebug(
+                "Annotating backdrop initialized: monitor={Monitor} left={Left} top={Top} width={Width} height={Height}",
+                screen.DeviceName,
+                bounds.Left,
+                bounds.Top,
+                bounds.Width,
+                bounds.Height);
+        }
+
+        var topmost = Topmost;
+        Topmost = false;
+        Topmost = topmost;
+        Activate();
+    }
+
+    private void CloseAnnotatingBackdropWindows()
+    {
+        foreach (var backdropWindow in _annotatingBackdropWindows)
+        {
+            backdropWindow.Close();
+        }
+
+        _annotatingBackdropWindows.Clear();
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         var pendingPinnedBitmap = _pendingPinnedBitmap;
         _pendingPinnedBitmap = null;
-
-        if (_overlaySource is not null)
-        {
-            _overlaySource.RemoveHook(OverlayWndProc);
-            _overlaySource = null;
-        }
+        CloseAnnotatingBackdropWindows();
 
         _undoSubscription.Dispose();
         _redoSubscription.Dispose();
-        _recordingUndoSubscription.Dispose();
-        _recordingRedoSubscription.Dispose();
-        _recordingAnnotationViewModel.ClearRequested -= HandleRecordingClearRequested;
 
-        if (_recorder.IsRecording)
+        if (!_closeLeavesRecorderRunning && _recorder.IsRecording)
         {
             _recorder.Stop();
         }
 
-        CloseRecordingSessionWindows();
+        if (!_closeLeavesRecorderRunning)
+        {
+            CloseRecordingSessionWindows();
+        }
 
         base.OnClosed(e);
 
@@ -297,7 +346,7 @@ public partial class OverlayWindow : Window
         }
     }
 
-    private ValueTask HandleUndoGroupAsync(UndoGroupMessage message)
+    private ValueTask HandleUndoGroup(UndoGroupMessage message)
     {
         foreach (var element in message.Elements.OfType<UIElement>())
         {
@@ -308,7 +357,7 @@ public partial class OverlayWindow : Window
         return ValueTask.CompletedTask;
     }
 
-    private ValueTask HandleRedoGroupAsync(RedoGroupMessage message)
+    private ValueTask HandleRedoGroup(RedoGroupMessage message)
     {
         foreach (var element in message.Elements.OfType<UIElement>())
         {
@@ -333,7 +382,7 @@ public partial class OverlayWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(Close));
     }
 
-    private async Task DoLassoOcrAsync(Rect lassoRect)
+    private async Task DoLassoOcr(Rect lassoRect)
     {
         var background = _renderer.BackgroundCapture;
         if (background is null)
@@ -357,7 +406,7 @@ public partial class OverlayWindow : Window
         }
 
         var cropped = new CroppedBitmap(background, new Int32Rect(pixelX, pixelY, pixelW, pixelH));
-        var text = await _ocrService.RecognizeAsync(cropped);
+        var text = await _ocrService.Recognize(cropped);
 
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -388,13 +437,6 @@ public partial class OverlayWindow : Window
         switch (e.Key)
         {
             case Key.Escape:
-                if (_isRecordingOverlayMode && _recordingAnnotationViewModel.IsInputArmed)
-                {
-                    SetRecordingAnnotationInputArmed(false);
-                    e.Handled = true;
-                    break;
-                }
-
                 if (_vm.IsTextLassoActive)
                 {
                     _vm.IsTextLassoActive = false;
@@ -406,12 +448,6 @@ public partial class OverlayWindow : Window
                     Close();
                 }
 
-                break;
-            case Key.Z when e.KeyboardDevice.Modifiers == ModifierKeys.Control
-                             && _isRecordingOverlayMode
-                             && _recordingAnnotationViewModel.UndoCommand.CanExecute(null):
-                _recordingAnnotationViewModel.UndoCommand.Execute(null);
-                e.Handled = true;
                 break;
 #if DEBUG
             case Key.F12 when e.KeyboardDevice.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift):

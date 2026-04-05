@@ -41,7 +41,7 @@ public sealed class GitHubUpdateService : IUpdateService
 
     public static GitHubUpdateService CreateForTesting(HttpClient http) => new(http, new AppVersionService(), null);
 
-    public async Task<UpdateCheckResult> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
+    public async Task<UpdateCheckResult> CheckForUpdates(CancellationToken cancellationToken = default)
     {
         _logger?.LogInformation("Checking for updates at {Url}", LatestReleaseUrl);
 

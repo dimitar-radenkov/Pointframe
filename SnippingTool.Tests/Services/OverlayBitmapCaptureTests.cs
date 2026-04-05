@@ -46,6 +46,7 @@ public sealed class OverlayBitmapCaptureTests
                 annotationCanvas,
                 captureMock.Object,
                 () => new Rect(10, 5, 40, 20),
+                () => new Int32Rect(220, 110, 80, 40),
                 () => 2.0,
                 () => 2.0);
 
@@ -82,6 +83,7 @@ public sealed class OverlayBitmapCaptureTests
                 annotationCanvas,
                 captureMock.Object,
                 () => new Rect(0, 0, 10, 10),
+                () => new Int32Rect(0, 0, 10, 10),
                 () => 1.0,
                 () => 1.0);
 

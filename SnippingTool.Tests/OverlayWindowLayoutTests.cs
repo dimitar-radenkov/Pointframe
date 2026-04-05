@@ -60,4 +60,17 @@ public sealed class OverlayWindowLayoutTests
         Assert.True(result.Width <= (targetArea.Width - 280) + 0.01);
         Assert.True(result.Height <= (targetArea.Height - 280) + 0.01);
     }
+
+    [Fact]
+    public void CalculateWindowBounds_MapsMonitorPixelsIntoMonitorLocalDips()
+    {
+        var screenBounds = new System.Drawing.Rectangle(1440, -2160, 2560, 1440);
+
+        var result = MonitorDpiHelper.CalculateWindowBounds(screenBounds, 1.5);
+
+        Assert.Equal(960, result.Left);
+        Assert.Equal(-1440, result.Top);
+        Assert.Equal(1706.6666666666667, result.Width, 10);
+        Assert.Equal(960, result.Height, 10);
+    }
 }

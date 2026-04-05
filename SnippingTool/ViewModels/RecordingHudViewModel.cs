@@ -104,7 +104,7 @@ public partial class RecordingHudViewModel : ObservableObject
     {
         _startTime = DateTime.UtcNow;
         _elapsedCts = new CancellationTokenSource();
-        _ = RunElapsedTimerAsync(_elapsedCts.Token);
+        _ = RunElapsedTimer(_elapsedCts.Token);
     }
 
     public void AttachAnnotationSession(RecordingAnnotationViewModel annotationViewModel, Func<bool> toggleAnnotationInput)
@@ -119,7 +119,7 @@ public partial class RecordingHudViewModel : ObservableObject
 
     public void CancelElapsedTimer() => _elapsedCts?.Cancel();
 
-    private async Task RunElapsedTimerAsync(CancellationToken ct)
+    private async Task RunElapsedTimer(CancellationToken ct)
     {
         try
         {
@@ -201,7 +201,7 @@ public partial class RecordingHudViewModel : ObservableObject
         var gifPath = Path.ChangeExtension(OutputPath, ".gif");
         try
         {
-            await _gifExport.ExportAsync(OutputPath, gifPath, _settings.Current.GifFps, ct).ConfigureAwait(true);
+            await _gifExport.Export(OutputPath, gifPath, _settings.Current.GifFps, ct).ConfigureAwait(true);
             GifExportStatusText = $"GIF saved \u2192 {Path.GetFileName(gifPath)}";
             GifExportOutcome = GifExportOutcome.Succeeded;
             _logger.LogInformation("GIF export succeeded: {Path}", gifPath);

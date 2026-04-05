@@ -7,7 +7,7 @@ namespace SnippingTool.Services;
 
 internal sealed class WindowsOcrService : IOcrService
 {
-    public async Task<string?> RecognizeAsync(BitmapSource bitmap)
+    public async Task<string?> Recognize(BitmapSource bitmap)
     {
         var engine = OcrEngine.TryCreateFromUserProfileLanguages();
         if (engine is null)

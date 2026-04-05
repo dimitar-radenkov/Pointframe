@@ -393,7 +393,7 @@ public sealed class RecordingHudViewModelTests
     {
         // Arrange
         var aggregatorMock = new Mock<IEventAggregator>();
-        aggregatorMock.Setup(aggregator => aggregator.PublishAsync(It.IsAny<object>())).Returns(ValueTask.CompletedTask);
+        aggregatorMock.Setup(aggregator => aggregator.Publish(It.IsAny<object>())).Returns(ValueTask.CompletedTask);
         var annotationViewModel = CreateAnnotationViewModel(aggregatorMock);
         annotationViewModel.BeginGroup();
         annotationViewModel.TrackElement(new object());
@@ -408,7 +408,7 @@ public sealed class RecordingHudViewModelTests
         // Assert
         Assert.Equal(0, annotationViewModel.UndoCount);
         Assert.Equal(1, annotationViewModel.RedoCount);
-        aggregatorMock.Verify(aggregator => aggregator.PublishAsync(It.IsAny<object>()), Times.Once);
+        aggregatorMock.Verify(aggregator => aggregator.Publish(It.IsAny<object>()), Times.Once);
     }
 
     [Fact]
@@ -486,7 +486,7 @@ public sealed class RecordingHudViewModelTests
     {
         // Arrange
         var gifSvc = new Mock<IGifExportService>();
-        gifSvc.Setup(s => s.ExportAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        gifSvc.Setup(s => s.Export(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
               .Returns(Task.CompletedTask);
 
         var vm = CreateVm(
@@ -510,7 +510,7 @@ public sealed class RecordingHudViewModelTests
     {
         // Arrange
         var gifSvc = new Mock<IGifExportService>();
-        gifSvc.Setup(s => s.ExportAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        gifSvc.Setup(s => s.Export(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
               .Returns(Task.CompletedTask);
 
         var vm = CreateVm(settings: new UserSettings { HudCloseDelaySeconds = 0 }, gifExportService: gifSvc.Object);
@@ -532,7 +532,7 @@ public sealed class RecordingHudViewModelTests
     {
         // Arrange
         var gifSvc = new Mock<IGifExportService>();
-        gifSvc.Setup(s => s.ExportAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        gifSvc.Setup(s => s.Export(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
               .ThrowsAsync(new InvalidOperationException("ffmpeg failed"));
 
         var vm = CreateVm(gifExportService: gifSvc.Object);
@@ -554,7 +554,7 @@ public sealed class RecordingHudViewModelTests
     {
         // Arrange
         var gifSvc = new Mock<IGifExportService>();
-        gifSvc.Setup(s => s.ExportAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        gifSvc.Setup(s => s.Export(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
               .Returns(Task.CompletedTask);
 
         var vm = CreateVm(
@@ -574,7 +574,7 @@ public sealed class RecordingHudViewModelTests
     {
         // Arrange
         var gifSvc = new Mock<IGifExportService>();
-        gifSvc.Setup(s => s.ExportAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        gifSvc.Setup(s => s.Export(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
               .ThrowsAsync(new InvalidOperationException("ffmpeg failed"));
 
         var vm = CreateVm(gifExportService: gifSvc.Object);
@@ -593,7 +593,7 @@ public sealed class RecordingHudViewModelTests
     {
         // Arrange
         var gifSvc = new Mock<IGifExportService>();
-        gifSvc.Setup(s => s.ExportAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        gifSvc.Setup(s => s.Export(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
               .ThrowsAsync(new InvalidOperationException("ffmpeg failed"));
 
         var vm = CreateVm(
@@ -616,7 +616,7 @@ public sealed class RecordingHudViewModelTests
         // Arrange
         string? capturedOutput = null;
         var gifSvc = new Mock<IGifExportService>();
-        gifSvc.Setup(s => s.ExportAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        gifSvc.Setup(s => s.Export(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
               .Callback<string, string, int, CancellationToken>((_, output, _, _) => capturedOutput = output)
               .Returns(Task.CompletedTask);
 
@@ -639,7 +639,7 @@ public sealed class RecordingHudViewModelTests
         // Arrange
         int? capturedFps = null;
         var gifSvc = new Mock<IGifExportService>();
-        gifSvc.Setup(s => s.ExportAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        gifSvc.Setup(s => s.Export(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
               .Callback<string, string, int, CancellationToken>((_, _, fps, _) => capturedFps = fps)
               .Returns(Task.CompletedTask);
 

@@ -13,7 +13,7 @@ public sealed class GifExportService : IGifExportService
         _logger = logger;
     }
 
-    public async Task ExportAsync(string inputPath, string outputPath, int fps, CancellationToken ct = default)
+    public async Task Export(string inputPath, string outputPath, int fps, CancellationToken ct = default)
     {
         var ffmpegPath = FfmpegResolver.Resolve();
         if (!File.Exists(ffmpegPath))
@@ -48,7 +48,7 @@ public sealed class GifExportService : IGifExportService
         };
 
         process.Start();
-        _ = ConsumeStderrAsync(process);
+        _ = ConsumeStderr(process);
 
         await process.WaitForExitAsync(ct).ConfigureAwait(false);
 
@@ -61,7 +61,7 @@ public sealed class GifExportService : IGifExportService
         _logger.LogInformation("GIF export complete: {Output}", outputPath);
     }
 
-    private async Task ConsumeStderrAsync(Process process)
+    private async Task ConsumeStderr(Process process)
     {
         try
         {

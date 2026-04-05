@@ -87,7 +87,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         }
     }
 
-    public async Task ConfirmAndInstallAsync(UpdateCheckResult result)
+    public async Task ConfirmAndInstall(UpdateCheckResult result)
     {
         var v = result.LatestVersion;
         if (!_messageBox.Confirm(
@@ -99,7 +99,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
 
         var fileName = $"SnippingTool-Setup-{v.Major}.{v.Minor}.{v.Build}.exe";
         var destPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
-        var succeeded = await _downloadService.ShowAsync(result.DownloadUrl, destPath);
+        var succeeded = await _downloadService.Show(result.DownloadUrl, destPath);
         if (succeeded)
         {
             _logger.LogInformation(
@@ -111,11 +111,11 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
     private async Task CheckAndNotifyAsync(CancellationToken cancellationToken)
     {
         _logger.LogDebug("Auto-update: checking for updates");
-        var result = await _updateService.CheckForUpdatesAsync(cancellationToken);
+        var result = await _updateService.CheckForUpdates(cancellationToken);
         if (result.IsUpdateAvailable)
         {
             _logger.LogInformation("Auto-update: update available ({Version})", result.LatestVersion);
-            await _eventAggregator.PublishAsync(new UpdateAvailableMessage(result));
+            await _eventAggregator.Publish(new UpdateAvailableMessage(result));
         }
         else
         {

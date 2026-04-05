@@ -78,4 +78,19 @@ public sealed class RecordingHudPositionTests
         Assert.Equal(2430, left);
         Assert.Equal(508, top);
     }
+
+    [Fact]
+    public void ComputePosition_RespectsWorkAreaLeftInset()
+    {
+        // Arrange
+        var insetWorkArea = new Rect(40, 0, 1880, 1040);
+        var region = new Rect(-100, 100, 160, 200);
+
+        // Act
+        var (left, top) = OverlayWindow.ComputeRecordingHudPosition(region, HudW, HudH, insetWorkArea);
+
+        // Assert
+        Assert.Equal(40, left);
+        Assert.Equal(308, top);
+    }
 }

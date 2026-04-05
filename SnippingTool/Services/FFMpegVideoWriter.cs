@@ -57,7 +57,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter
 
         _ffmpeg.Start();
         _stdin = _ffmpeg.StandardInput.BaseStream;
-        _ = ConsumeStderrAsync(_ffmpeg);
+        _ = ConsumeStderr(_ffmpeg);
         _logger.LogInformation("FFMpeg process started (PID {Pid}): {Args}", _ffmpeg.Id, args);
     }
 
@@ -91,7 +91,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter
         _ffmpeg.Dispose();
     }
 
-    private async Task ConsumeStderrAsync(Process process)
+    private async Task ConsumeStderr(Process process)
     {
         try
         {

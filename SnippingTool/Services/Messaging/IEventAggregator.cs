@@ -4,7 +4,7 @@ public interface IEventAggregator
 {
     IEventSubscription Subscribe<TEvent>(Func<TEvent, ValueTask> handler);
 
-    ValueTask PublishAsync(object eventArgument);
+    ValueTask Publish(object eventArgument);
 
     void Unsubscribe(IEventSubscription subscription);
 }

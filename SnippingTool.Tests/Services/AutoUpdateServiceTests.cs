@@ -49,7 +49,7 @@ public sealed class AutoUpdateServiceTests
         var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
         var updateService = new Mock<IUpdateService>();
         updateService
-            .Setup(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()))
+            .Setup(s => s.CheckForUpdates(It.IsAny<CancellationToken>()))
             .ReturnsAsync(NoUpdate);
 
         var sut = CreateService(eventAggregator, updateService, SettingsMock(), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
@@ -69,7 +69,7 @@ public sealed class AutoUpdateServiceTests
         var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
         var updateService = new Mock<IUpdateService>();
         updateService
-            .Setup(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()))
+            .Setup(s => s.CheckForUpdates(It.IsAny<CancellationToken>()))
             .ReturnsAsync(UpdateAvailable);
 
         var sut = CreateService(eventAggregator, updateService, SettingsMock(), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
@@ -88,7 +88,7 @@ public sealed class AutoUpdateServiceTests
     {
         var updateService = new Mock<IUpdateService>();
         updateService
-            .Setup(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()))
+            .Setup(s => s.CheckForUpdates(It.IsAny<CancellationToken>()))
             .ReturnsAsync(NoUpdate);
 
         var settingsMock = SettingsMock();
@@ -119,7 +119,7 @@ public sealed class AutoUpdateServiceTests
     {
         var updateService = new Mock<IUpdateService>();
         updateService
-            .Setup(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()))
+            .Setup(s => s.CheckForUpdates(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("network error"));
 
         var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
@@ -144,9 +144,9 @@ public sealed class AutoUpdateServiceTests
 
         var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), downloadService, messageBox);
 
-        await sut.ConfirmAndInstallAsync(UpdateAvailable);
+        await sut.ConfirmAndInstall(UpdateAvailable);
 
-        downloadService.Verify(d => d.ShowAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        downloadService.Verify(d => d.Show(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
@@ -154,16 +154,16 @@ public sealed class AutoUpdateServiceTests
     {
         var updateService = new Mock<IUpdateService>();
         var downloadService = new Mock<IUpdateDownloadService>();
-        downloadService.Setup(d => d.ShowAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
+        downloadService.Setup(d => d.Show(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
         var messageBox = new Mock<IMessageBoxService>();
         messageBox.Setup(m => m.Confirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
 
         var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), downloadService, messageBox);
 
-        await sut.ConfirmAndInstallAsync(UpdateAvailable);
+        await sut.ConfirmAndInstall(UpdateAvailable);
 
         downloadService.Verify(
-            d => d.ShowAsync(
+            d => d.Show(
                 UpdateAvailable.DownloadUrl,
                 It.Is<string>(p => p.Contains("SnippingTool-Setup-9.9.0.exe"))),
             Times.Once);
@@ -174,16 +174,16 @@ public sealed class AutoUpdateServiceTests
     {
         var updateService = new Mock<IUpdateService>();
         var downloadService = new Mock<IUpdateDownloadService>();
-        downloadService.Setup(d => d.ShowAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+        downloadService.Setup(d => d.Show(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
         var messageBox = new Mock<IMessageBoxService>();
         messageBox.Setup(m => m.Confirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
 
         var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), downloadService, messageBox);
 
-        var ex = await Record.ExceptionAsync(() => sut.ConfirmAndInstallAsync(UpdateAvailable));
+        var ex = await Record.ExceptionAsync(() => sut.ConfirmAndInstall(UpdateAvailable));
 
         Assert.Null(ex);
-        downloadService.Verify(d => d.ShowAsync(UpdateAvailable.DownloadUrl, It.IsAny<string>()), Times.Once);
+        downloadService.Verify(d => d.Show(UpdateAvailable.DownloadUrl, It.IsAny<string>()), Times.Once);
     }
 
     [Theory]
@@ -210,7 +210,7 @@ public sealed class AutoUpdateServiceTests
 
         var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), downloadService, messageBox);
 
-        await sut.ConfirmAndInstallAsync(UpdateAvailable);
+        await sut.ConfirmAndInstall(UpdateAvailable);
 
         messageBox.Verify(
             m => m.Confirm(
@@ -224,7 +224,7 @@ public sealed class AutoUpdateServiceTests
     {
         var updateService = new Mock<IUpdateService>();
         updateService
-            .Setup(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()))
+            .Setup(s => s.CheckForUpdates(It.IsAny<CancellationToken>()))
             .ReturnsAsync(NoUpdate);
 
         var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(UpdateCheckInterval.Never), new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
@@ -234,7 +234,7 @@ public sealed class AutoUpdateServiceTests
         await sut.StopAsync(CancellationToken.None);
 
         // Only the startup check — no periodic ticks
-        updateService.Verify(s => s.CheckForUpdatesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        updateService.Verify(s => s.CheckForUpdates(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private sealed class UpdateAvailableRecorder
