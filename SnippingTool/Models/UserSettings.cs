@@ -20,6 +20,9 @@ public sealed class UserSettings
     public int GifFps { get; set; } = 10;
     public int HudCloseDelaySeconds { get; set; } = 2;
     public int HudGapPixels { get; set; } = 8;
+    public bool RecordingCursorHighlightEnabled { get; set; } = true;
+    public bool RecordingClickRippleEnabled { get; set; } = true;
+    public double RecordingCursorHighlightSize { get; set; } = 28d;
 
     public string DefaultAnnotationColor { get; set; } = "#FFFF0000";
     public double DefaultStrokeThickness { get; set; } = 2.5;

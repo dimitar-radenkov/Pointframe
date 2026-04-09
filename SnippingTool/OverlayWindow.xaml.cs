@@ -19,6 +19,7 @@ public partial class OverlayWindow : Window
     private readonly OverlayViewModel _vm;
     private readonly IScreenCaptureService _screenCapture;
     private readonly IScreenRecordingService _recorder;
+    private readonly IMouseHookService _mouseHookService;
     private readonly Func<IScreenRecordingService, string, RecordingHudViewModel> _recordingHudViewModelFactory;
     private readonly IEventAggregator _eventAggregator;
     private readonly ILogger<OverlayWindow> _logger;
@@ -46,10 +47,11 @@ public partial class OverlayWindow : Window
     private SelectionSessionResult? _pendingSelectionSession;
     private readonly List<SelectionBackdropWindow> _annotatingBackdropWindows = [];
 
-    public OverlayWindow(
+    internal OverlayWindow(
         OverlayViewModel vm,
         IScreenCaptureService screenCapture,
         IScreenRecordingService recorder,
+        IMouseHookService mouseHookService,
         Func<IScreenRecordingService, string, RecordingHudViewModel> recordingHudViewModelFactory,
         IEventAggregator eventAggregator,
         ILoggerFactory loggerFactory,
@@ -62,6 +64,7 @@ public partial class OverlayWindow : Window
         _vm = vm;
         _screenCapture = screenCapture;
         _recorder = recorder;
+        _mouseHookService = mouseHookService;
         _recordingHudViewModelFactory = recordingHudViewModelFactory;
         _eventAggregator = eventAggregator;
         _loggerFactory = loggerFactory;

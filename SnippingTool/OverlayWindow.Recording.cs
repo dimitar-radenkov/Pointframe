@@ -67,6 +67,7 @@ public partial class OverlayWindow
                 path,
                 _recorder,
                 _screenCapture,
+                _mouseHookService,
                 _recordingHudViewModelFactory,
                 _eventAggregator,
                 _loggerFactory,

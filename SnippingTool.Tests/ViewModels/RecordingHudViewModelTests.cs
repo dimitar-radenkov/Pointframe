@@ -389,6 +389,33 @@ public sealed class RecordingHudViewModelTests
     }
 
     [Fact]
+    public void ToggleAnnotationInputCommand_RaisesModePropertiesAcrossStateTransitions()
+    {
+        // Arrange
+        var vm = CreateVm();
+        var annotationViewModel = CreateAnnotationViewModel();
+        var nextState = true;
+        vm.AttachAnnotationSession(annotationViewModel, () =>
+        {
+            var currentState = nextState;
+            nextState = false;
+            return currentState;
+        });
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        // Act
+        vm.ToggleAnnotationInputCommand.Execute(null);
+        vm.ToggleAnnotationInputCommand.Execute(null);
+
+        // Assert
+        Assert.Contains(nameof(vm.IsAnnotationInputArmed), changed);
+        Assert.Contains(nameof(vm.IsAnnotationPanelVisible), changed);
+        Assert.Contains(nameof(vm.CurrentModeLabel), changed);
+        Assert.Contains(nameof(vm.AnnotationModeLabel), changed);
+    }
+
+    [Fact]
     public void UndoAnnotationsCommand_ExecutesUndoOnAnnotationViewModel()
     {
         // Arrange

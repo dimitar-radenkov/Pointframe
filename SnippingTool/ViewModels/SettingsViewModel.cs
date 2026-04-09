@@ -9,6 +9,9 @@ namespace SnippingTool.ViewModels;
 
 public partial class SettingsViewModel : ObservableObject
 {
+    private const double MinRecordingCursorHighlightSize = 8d;
+    private const double MaxRecordingCursorHighlightSize = 96d;
+
     private readonly IDialogService _dialogService;
     private readonly IUserSettingsService _settingsService;
     private readonly IThemeService _themeService;
@@ -27,6 +30,9 @@ public partial class SettingsViewModel : ObservableObject
         _recordingFormat = s.RecordingFormat;
         _gifFps = s.GifFps;
         _hudCloseDelaySeconds = s.HudCloseDelaySeconds;
+        _recordingCursorHighlightEnabled = s.RecordingCursorHighlightEnabled;
+        _recordingClickRippleEnabled = s.RecordingClickRippleEnabled;
+        _recordingCursorHighlightSize = ClampRecordingCursorHighlightSize(s.RecordingCursorHighlightSize);
         _captureDelaySeconds = s.CaptureDelaySeconds;
         _defaultStrokeThickness = s.DefaultStrokeThickness;
         _regionCaptureHotkey = s.RegionCaptureHotkey;
@@ -61,6 +67,15 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private int _hudCloseDelaySeconds;
+
+    [ObservableProperty]
+    private bool _recordingCursorHighlightEnabled;
+
+    [ObservableProperty]
+    private bool _recordingClickRippleEnabled;
+
+    [ObservableProperty]
+    private double _recordingCursorHighlightSize;
 
     [ObservableProperty]
     private int _captureDelaySeconds;
@@ -129,6 +144,9 @@ public partial class SettingsViewModel : ObservableObject
     private void Save()
     {
         var c = DefaultAnnotationColor;
+        var clampedRecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(RecordingCursorHighlightSize);
+        RecordingCursorHighlightSize = clampedRecordingCursorHighlightSize;
+
         _settingsService.Save(new UserSettings
         {
             ScreenshotSavePath = ScreenshotSavePath,
@@ -139,6 +157,9 @@ public partial class SettingsViewModel : ObservableObject
             RecordingJpegQuality = _settingsService.Current.RecordingJpegQuality,
             GifFps = GifFps,
             HudCloseDelaySeconds = HudCloseDelaySeconds,
+            RecordingCursorHighlightEnabled = RecordingCursorHighlightEnabled,
+            RecordingClickRippleEnabled = RecordingClickRippleEnabled,
+            RecordingCursorHighlightSize = clampedRecordingCursorHighlightSize,
             CaptureDelaySeconds = CaptureDelaySeconds,
             HudGapPixels = _settingsService.Current.HudGapPixels,
             DefaultAnnotationColor = $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}",
@@ -176,4 +197,9 @@ public partial class SettingsViewModel : ObservableObject
             0x2C => "Print Screen",
             _ => KeyInterop.KeyFromVirtualKey((int)vk).ToString(),
         };
+
+    private static double ClampRecordingCursorHighlightSize(double size)
+    {
+        return Math.Clamp(size, MinRecordingCursorHighlightSize, MaxRecordingCursorHighlightSize);
+    }
 }

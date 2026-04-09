@@ -270,6 +270,56 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void LoadsFromSettings_RecordingCursorEffectSettings()
+    {
+        var vm = CreateVm(new UserSettings
+        {
+            RecordingCursorHighlightEnabled = false,
+            RecordingClickRippleEnabled = false,
+            RecordingCursorHighlightSize = 34d,
+        });
+
+        Assert.False(vm.RecordingCursorHighlightEnabled);
+        Assert.False(vm.RecordingClickRippleEnabled);
+        Assert.Equal(34d, vm.RecordingCursorHighlightSize);
+    }
+
+    [Fact]
+    public void Save_PersistsRecordingCursorEffectSettings()
+    {
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(new UserSettings());
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>());
+        vm.RecordingCursorHighlightEnabled = false;
+        vm.RecordingClickRippleEnabled = false;
+        vm.RecordingCursorHighlightSize = 36d;
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.False(saved?.RecordingCursorHighlightEnabled);
+        Assert.False(saved?.RecordingClickRippleEnabled);
+        Assert.Equal(36d, saved?.RecordingCursorHighlightSize);
+    }
+
+    [Fact]
+    public void RecordingCursorEffectSettings_PropertyChanged_Fired()
+    {
+        var vm = CreateVm();
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        vm.RecordingCursorHighlightEnabled = false;
+        vm.RecordingClickRippleEnabled = false;
+        vm.RecordingCursorHighlightSize = 30d;
+
+        Assert.Contains(nameof(vm.RecordingCursorHighlightEnabled), raised);
+        Assert.Contains(nameof(vm.RecordingClickRippleEnabled), raised);
+        Assert.Contains(nameof(vm.RecordingCursorHighlightSize), raised);
+    }
+
+    [Fact]
     public void PickAnnotationColorCommand_UsesDialogSelection()
     {
         var dialogMock = new Mock<IDialogService>();

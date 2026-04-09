@@ -134,7 +134,22 @@
                             <sys:Int32>30</sys:Int32>
                         </ComboBox>
                     </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="Cursor highlight" Style="{StaticResource RowLabel}"/>
+                        <CheckBox IsChecked="{Binding RecordingCursorHighlightEnabled}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="Click ripple" Style="{StaticResource RowLabel}"/>
+                        <CheckBox IsChecked="{Binding RecordingClickRippleEnabled}"/>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Highlight size" Style="{StaticResource RowLabel}"/>
+                        <TextBox Width="60"
+                                 Text="{Binding RecordingCursorHighlightSize, UpdateSourceTrigger=PropertyChanged}"
+                                 PreviewTextInput="DoubleInput_PreviewTextInput"
+                                 DataObject.Pasting="DoubleInput_Pasting"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                         <TextBlock Text="GIF export FPS" Style="{StaticResource RowLabel}"/>
                         <ComboBox Width="70"
                                   SelectedItem="{Binding GifFps}">

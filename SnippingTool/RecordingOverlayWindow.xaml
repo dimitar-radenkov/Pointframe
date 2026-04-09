@@ -129,6 +129,10 @@
       </Rectangle.StrokeDashArray>
     </Rectangle>
 
+    <Canvas x:Name="RecordingCursorEffectsCanvas"
+            Background="Transparent"
+            IsHitTestVisible="False"/>
+
     <Canvas x:Name="RecordingAnnotationCanvas"
             Background="#01000000"/>
 

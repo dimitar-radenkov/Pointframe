@@ -34,6 +34,7 @@ public partial class RecordingOverlayWindow : Window
     private readonly RecordingAnnotationViewModel _recordingAnnotationViewModel;
     private readonly AnnotationCanvasRenderer _recordingRenderer;
     private readonly AnnotationCanvasInteractionController _recordingInteractionController;
+    private readonly RecordingCursorEffectsService _recordingCursorEffectsService;
     private readonly IEventSubscription _recordingUndoSubscription;
     private readonly IEventSubscription _recordingRedoSubscription;
 
@@ -50,11 +51,12 @@ public partial class RecordingOverlayWindow : Window
         public int Bottom;
     }
 
-    public RecordingOverlayWindow(
+    internal RecordingOverlayWindow(
         RecordingSessionGeometry geometry,
         string outputPath,
         IScreenRecordingService recorder,
         IScreenCaptureService screenCapture,
+        IMouseHookService mouseHookService,
         Func<IScreenRecordingService, string, RecordingHudViewModel> recordingHudViewModelFactory,
         IEventAggregator eventAggregator,
         ILoggerFactory loggerFactory,
@@ -88,6 +90,13 @@ public partial class RecordingOverlayWindow : Window
             _recordingAnnotationViewModel,
             _recordingRenderer,
             UpdateRecordingAnnotationStateFromCanvas);
+        _recordingCursorEffectsService = new RecordingCursorEffectsService(
+            RecordingCursorEffectsCanvas,
+            _geometry,
+            mouseHookService,
+            _userSettings,
+            () => _recordingAnnotationViewModel.IsInputArmed,
+            loggerFactory.CreateLogger<RecordingCursorEffectsService>());
         _recordingUndoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleRecordingUndoGroup);
         _recordingRedoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRecordingRedoGroup);
         _recordingAnnotationViewModel.ClearRequested += HandleRecordingClearRequested;
@@ -114,6 +123,7 @@ public partial class RecordingOverlayWindow : Window
         LogSessionStartDiagnostics();
         PositionWindow();
         PositionRecordingBorder();
+        _recordingCursorEffectsService.Start();
         InitializeRecordingAnnotationSurface();
 
         var hudViewModel = _recordingHudViewModelFactory(_recorder, _outputPath);
@@ -132,6 +142,7 @@ public partial class RecordingOverlayWindow : Window
         _recordingUndoSubscription.Dispose();
         _recordingRedoSubscription.Dispose();
         _recordingAnnotationViewModel.ClearRequested -= HandleRecordingClearRequested;
+        _recordingCursorEffectsService.Dispose();
         HideRecordingHud();
         HideRecordingAnnotationSurface();
 
