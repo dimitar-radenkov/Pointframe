@@ -134,7 +134,19 @@ public partial class App : Application
         services.AddSingleton<IOcrService, WindowsOcrService>();
         services.AddTransient<OverlayViewModel>();
         services.AddTransient<RecordingAnnotationViewModel>();
-        services.AddTransient<OverlayWindow>();
+        services.AddTransient<OverlayWindow>(sp => new OverlayWindow(
+            sp.GetRequiredService<OverlayViewModel>(),
+            sp.GetRequiredService<IScreenCaptureService>(),
+            sp.GetRequiredService<IScreenRecordingService>(),
+            sp.GetRequiredService<IMouseHookService>(),
+            sp.GetRequiredService<Func<IScreenRecordingService, string, RecordingHudViewModel>>(),
+            sp.GetRequiredService<IEventAggregator>(),
+            sp.GetRequiredService<ILoggerFactory>(),
+            sp.GetRequiredService<IUserSettingsService>(),
+            sp.GetRequiredService<IMessageBoxService>(),
+            sp.GetRequiredService<IFileSystemService>(),
+            sp.GetRequiredService<IOcrService>(),
+            sp.GetRequiredService<RecordingAnnotationViewModel>()));
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<SettingsWindow>();
         services.AddTransient<Func<IScreenRecordingService, string, RecordingHudViewModel>>(sp =>

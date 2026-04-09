@@ -111,13 +111,79 @@ public sealed class RecordingCursorEffectsServiceTests
         });
     }
 
+    [Fact]
+    public void UpdateCursorHighlight_WhenHighlightDisabled_KeepsRingCollapsed()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var canvas = new Canvas();
+            var mouseHook = new FakeMouseHookService();
+            var settings = new UserSettings
+            {
+                RecordingCursorHighlightEnabled = false,
+            };
+            using var service = CreateService(canvas, mouseHook, () => false, settings, () => new Point(2085, 140));
+            service.Start();
+
+            service.UpdateCursorHighlight();
+
+            var highlightRing = Assert.IsType<Ellipse>(Assert.Single(canvas.Children));
+            Assert.Equal(Visibility.Collapsed, highlightRing.Visibility);
+        });
+    }
+
+    [Fact]
+    public void MouseButtonDown_WhenRippleDisabled_DoesNotAddRipple()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var canvas = new Canvas();
+            var mouseHook = new FakeMouseHookService();
+            var settings = new UserSettings
+            {
+                RecordingClickRippleEnabled = false,
+            };
+            using var service = CreateService(canvas, mouseHook, () => false, settings);
+            service.Start();
+
+            mouseHook.RaiseMouseButtonDown(MouseHookButton.Left, new Point(2085, 140));
+
+            Assert.Single(canvas.Children);
+        });
+    }
+
+    [Fact]
+    public void UpdateCursorHighlight_UsesClampedConfiguredSize()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var canvas = new Canvas();
+            var mouseHook = new FakeMouseHookService();
+            var settings = new UserSettings
+            {
+                RecordingCursorHighlightSize = 200d,
+            };
+            using var service = CreateService(canvas, mouseHook, () => false, settings, () => new Point(2085, 140));
+            service.Start();
+
+            service.UpdateCursorHighlight();
+
+            var highlightRing = Assert.IsType<Ellipse>(Assert.Single(canvas.Children));
+            Assert.Equal(96d, highlightRing.Width);
+            Assert.Equal(96d, highlightRing.Height);
+            Assert.Equal(Visibility.Visible, highlightRing.Visibility);
+        });
+    }
+
     private static RecordingCursorEffectsService CreateService(
         Canvas canvas,
         IMouseHookService mouseHookService,
-        Func<bool> isAnnotationInputArmed)
+        Func<bool> isAnnotationInputArmed,
+        UserSettings? settings = null,
+        Func<Point?>? getCursorScreenPoint = null)
     {
         var settingsService = new Mock<IUserSettingsService>();
-        settingsService.SetupGet(service => service.Current).Returns(new UserSettings());
+        settingsService.SetupGet(service => service.Current).Returns(settings ?? new UserSettings());
 
         return new RecordingCursorEffectsService(
             canvas,
@@ -125,7 +191,8 @@ public sealed class RecordingCursorEffectsServiceTests
             mouseHookService,
             settingsService.Object,
             isAnnotationInputArmed,
-            NullLogger<RecordingCursorEffectsService>.Instance);
+            NullLogger<RecordingCursorEffectsService>.Instance,
+            getCursorScreenPoint);
     }
 
     private sealed class FakeMouseHookService : IMouseHookService

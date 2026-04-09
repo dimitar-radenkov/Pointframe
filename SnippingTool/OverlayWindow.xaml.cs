@@ -47,7 +47,7 @@ public partial class OverlayWindow : Window
     private SelectionSessionResult? _pendingSelectionSession;
     private readonly List<SelectionBackdropWindow> _annotatingBackdropWindows = [];
 
-    public OverlayWindow(
+    internal OverlayWindow(
         OverlayViewModel vm,
         IScreenCaptureService screenCapture,
         IScreenRecordingService recorder,

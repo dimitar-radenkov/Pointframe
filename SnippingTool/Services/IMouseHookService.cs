@@ -1,6 +1,6 @@
 namespace SnippingTool.Services;
 
-public enum MouseHookButton
+internal enum MouseHookButton
 {
     Left,
     Right,
@@ -9,7 +9,7 @@ public enum MouseHookButton
     X2,
 }
 
-public sealed class MouseHookEventArgs : EventArgs
+internal sealed class MouseHookEventArgs : EventArgs
 {
     public MouseHookEventArgs(MouseHookButton button, Point screenPoint)
     {
@@ -22,7 +22,7 @@ public sealed class MouseHookEventArgs : EventArgs
     public Point ScreenPoint { get; }
 }
 
-public interface IMouseHookService
+internal interface IMouseHookService
 {
     event EventHandler<MouseHookEventArgs>? MouseButtonDown;
 

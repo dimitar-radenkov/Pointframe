@@ -12,6 +12,9 @@ namespace SnippingTool.Services;
 
 internal sealed class RecordingCursorEffectsService : IDisposable
 {
+    private const double DefaultCursorHighlightDiameter = 28d;
+    private const double MinCursorHighlightDiameter = 8d;
+    private const double MaxCursorHighlightDiameter = 96d;
     private const double ClickRippleStartDiameter = 16d;
     private const double ClickRippleEndScale = 3d;
     private const double ClickRippleStrokeThickness = 3d;
@@ -26,6 +29,7 @@ internal sealed class RecordingCursorEffectsService : IDisposable
     private readonly ILogger<RecordingCursorEffectsService> _logger;
     private readonly DispatcherTimer _cursorTimer;
     private readonly Ellipse _cursorHighlightRing;
+    private readonly Func<Point?> _getCursorScreenPoint;
     private Point? _lastCursorScreenPoint;
     private bool _isStarted;
 
@@ -42,7 +46,8 @@ internal sealed class RecordingCursorEffectsService : IDisposable
         IMouseHookService mouseHookService,
         IUserSettingsService userSettingsService,
         Func<bool> isAnnotationInputArmed,
-        ILogger<RecordingCursorEffectsService> logger)
+        ILogger<RecordingCursorEffectsService> logger,
+        Func<Point?>? getCursorScreenPoint = null)
     {
         _canvas = canvas;
         _geometry = geometry;
@@ -50,6 +55,7 @@ internal sealed class RecordingCursorEffectsService : IDisposable
         _userSettingsService = userSettingsService;
         _isAnnotationInputArmed = isAnnotationInputArmed;
         _logger = logger;
+        _getCursorScreenPoint = getCursorScreenPoint ?? GetCursorScreenPoint;
         _cursorHighlightRing = CreateCursorHighlightRing();
         _cursorTimer = new DispatcherTimer(DispatcherPriority.Render, _canvas.Dispatcher)
         {
@@ -101,6 +107,8 @@ internal sealed class RecordingCursorEffectsService : IDisposable
     {
         return new Ellipse
         {
+            Width = DefaultCursorHighlightDiameter,
+            Height = DefaultCursorHighlightDiameter,
             StrokeThickness = 3d,
             Stroke = new SolidColorBrush(Color.FromArgb(220, 255, 210, 64)),
             Fill = new SolidColorBrush(Color.FromArgb(48, 255, 210, 64)),
@@ -109,36 +117,42 @@ internal sealed class RecordingCursorEffectsService : IDisposable
         };
     }
 
-    private void HandleCursorTimerTick(object? sender, EventArgs e)
+    internal void UpdateCursorHighlight()
     {
-        if (!TryGetCursorScreenPoint(out var cursorScreenPoint))
+        var cursorScreenPoint = _getCursorScreenPoint();
+        if (cursorScreenPoint is null)
         {
             HideCursorHighlight();
             return;
         }
 
-        if (_lastCursorScreenPoint == cursorScreenPoint)
+        if (_lastCursorScreenPoint == cursorScreenPoint.Value)
         {
             return;
         }
 
-        _lastCursorScreenPoint = cursorScreenPoint;
+        _lastCursorScreenPoint = cursorScreenPoint.Value;
 
         if (!_userSettingsService.Current.RecordingCursorHighlightEnabled
-            || !_geometry.IsScreenPixelPointInsideCapture(cursorScreenPoint))
+            || !_geometry.IsScreenPixelPointInsideCapture(cursorScreenPoint.Value))
         {
             HideCursorHighlight();
             return;
         }
 
-        var cursorHighlightDiameter = _userSettingsService.Current.RecordingCursorHighlightSize;
+        var cursorHighlightDiameter = ClampCursorHighlightDiameter(_userSettingsService.Current.RecordingCursorHighlightSize);
         _cursorHighlightRing.Width = cursorHighlightDiameter;
         _cursorHighlightRing.Height = cursorHighlightDiameter;
 
-        var hostPoint = _geometry.MapScreenPixelPointToHostDips(cursorScreenPoint);
+        var hostPoint = _geometry.MapScreenPixelPointToHostDips(cursorScreenPoint.Value);
         Canvas.SetLeft(_cursorHighlightRing, hostPoint.X - (cursorHighlightDiameter / 2d));
         Canvas.SetTop(_cursorHighlightRing, hostPoint.Y - (cursorHighlightDiameter / 2d));
         _cursorHighlightRing.Visibility = Visibility.Visible;
+    }
+
+    private void HandleCursorTimerTick(object? sender, EventArgs e)
+    {
+        UpdateCursorHighlight();
     }
 
     private void HandleMouseButtonDown(object? sender, MouseHookEventArgs e)
@@ -206,15 +220,18 @@ internal sealed class RecordingCursorEffectsService : IDisposable
         storyboard.Begin();
     }
 
-    private static bool TryGetCursorScreenPoint(out Point cursorScreenPoint)
+    private static Point? GetCursorScreenPoint()
     {
         if (GetCursorPos(out var nativePoint))
         {
-            cursorScreenPoint = new Point(nativePoint.X, nativePoint.Y);
-            return true;
+            return new Point(nativePoint.X, nativePoint.Y);
         }
 
-        cursorScreenPoint = default;
-        return false;
+        return null;
+    }
+
+    private static double ClampCursorHighlightDiameter(double size)
+    {
+        return Math.Clamp(size, MinCursorHighlightDiameter, MaxCursorHighlightDiameter);
     }
 }

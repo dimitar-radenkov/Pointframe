@@ -51,7 +51,7 @@ public partial class RecordingOverlayWindow : Window
         public int Bottom;
     }
 
-    public RecordingOverlayWindow(
+    internal RecordingOverlayWindow(
         RecordingSessionGeometry geometry,
         string outputPath,
         IScreenRecordingService recorder,
