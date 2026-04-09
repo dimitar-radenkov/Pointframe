@@ -14,6 +14,7 @@ using SnippingTool.Services;
 using SnippingTool.Services.Messaging;
 using SnippingTool.ViewModels;
 using Application = System.Windows.Application;
+using WpfMenuItem = System.Windows.Controls.MenuItem;
 
 namespace SnippingTool;
 
@@ -27,9 +28,13 @@ public partial class App : Application
     private IThemeService _themeService = null!;
     private IAutoUpdateService _autoUpdate = null!;
     private IEventSubscription? _updateAvailableSubscription;
+    private IEventSubscription? _recordingCompletedSubscription;
     private SettingsWindow? _settingsWindow;
     private AboutWindow? _aboutWindow;
     private UpdateCheckResult? _pendingUpdate;
+    private string? _pendingRecordingBalloonPath;
+    private WpfMenuItem? _recentRecordingsMenuItem;
+    private readonly List<RecentRecordingItem> _recentRecordings = [];
 
     private const string TrayIconResourceKey = "TrayIcon";
     private const int WH_KEYBOARD_LL = 13;
@@ -95,6 +100,7 @@ public partial class App : Application
         _themeService.Apply(_userSettings.Current.Theme);
         var eventAggregator = _host.Services.GetRequiredService<IEventAggregator>();
         _updateAvailableSubscription = eventAggregator.Subscribe<UpdateAvailableMessage>(HandleUpdateAvailable);
+        _recordingCompletedSubscription = eventAggregator.Subscribe<RecordingCompletedMessage>(HandleRecordingCompleted);
         _autoUpdate = _host.Services.GetRequiredService<IAutoUpdateService>();
         _logger.LogInformation("SnippingTool starting up");
 
@@ -103,7 +109,8 @@ public partial class App : Application
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
         _trayIcon = (TaskbarIcon)FindResource(TrayIconResourceKey);
-        _trayIcon.TrayBalloonTipClicked += OnUpdateBalloonClicked;
+        _trayIcon.TrayBalloonTipClicked += OnTrayBalloonClicked;
+        InitializeRecentRecordingsMenu();
 #if DEBUG
         AddDebugMenuItems();
 #endif
@@ -153,9 +160,7 @@ public partial class App : Application
             (screenRecordingService, outputPath) => new RecordingHudViewModel(
                 screenRecordingService,
                 outputPath,
-                sp.GetRequiredService<IUserSettingsService>(),
-                sp.GetRequiredService<IProcessService>(),
-                sp.GetRequiredService<IGifExportService>(),
+                sp.GetRequiredService<IEventAggregator>(),
                 sp.GetRequiredService<ILogger<RecordingHudViewModel>>()));
         services.AddTransient<AboutViewModel>();
         services.AddTransient<AboutWindow>();
@@ -177,6 +182,7 @@ public partial class App : Application
     {
         _logger?.LogInformation("SnippingTool shutting down");
         _updateAvailableSubscription?.Dispose();
+        _recordingCompletedSubscription?.Dispose();
         if (_keyboardHook != IntPtr.Zero)
         {
             UnhookWindowsHookEx(_keyboardHook);
@@ -220,6 +226,68 @@ public partial class App : Application
 
     private void TrayIcon_LeftClick(object sender, RoutedEventArgs e) => StartSnip();
     private void NewSnip_Click(object sender, RoutedEventArgs e) => StartSnip();
+
+    private void InitializeRecentRecordingsMenu()
+    {
+        if (_trayIcon?.ContextMenu is not { } contextMenu)
+        {
+            return;
+        }
+
+        _recentRecordingsMenuItem = new WpfMenuItem
+        {
+            Header = "Recent recordings",
+        };
+
+        contextMenu.Items.Insert(2, _recentRecordingsMenuItem);
+        RebuildRecentRecordingsMenu();
+    }
+
+    private void RebuildRecentRecordingsMenu()
+    {
+        if (_recentRecordingsMenuItem is null)
+        {
+            return;
+        }
+
+        _recentRecordingsMenuItem.Items.Clear();
+
+        if (_recentRecordings.Count == 0)
+        {
+            _recentRecordingsMenuItem.Items.Add(new WpfMenuItem
+            {
+                Header = "No recent recordings",
+                IsEnabled = false,
+            });
+            return;
+        }
+
+        foreach (var recentRecording in _recentRecordings)
+        {
+            var recentRecordingItem = new WpfMenuItem
+            {
+                Header = $"{recentRecording.FileName} ({recentRecording.ElapsedText})",
+            };
+            recentRecordingItem.Items.Add(CreateRecentRecordingActionMenuItem("Open", OpenRecentRecording_Click, recentRecording));
+            recentRecordingItem.Items.Add(CreateRecentRecordingActionMenuItem("Open folder", OpenRecentRecordingFolder_Click, recentRecording));
+            recentRecordingItem.Items.Add(CreateRecentRecordingActionMenuItem("Export to GIF", ExportRecentRecordingGif_Click, recentRecording));
+            _recentRecordingsMenuItem.Items.Add(recentRecordingItem);
+        }
+    }
+
+    private static WpfMenuItem CreateRecentRecordingActionMenuItem(
+        string header,
+        RoutedEventHandler clickHandler,
+        RecentRecordingItem recentRecording)
+    {
+        var menuItem = new WpfMenuItem
+        {
+            Header = header,
+            Tag = recentRecording,
+        };
+        menuItem.Click += clickHandler;
+        return menuItem;
+    }
 
     private void OpenImage_Click(object sender, RoutedEventArgs e)
     {
@@ -375,6 +443,7 @@ public partial class App : Application
 
     private void ShowUpdateBalloon(UpdateCheckResult result)
     {
+        _pendingRecordingBalloonPath = null;
         var v = result.LatestVersion;
         _trayIcon?.ShowBalloonTip(
             "Update Available",
@@ -389,16 +458,135 @@ public partial class App : Application
         return ValueTask.CompletedTask;
     }
 
-    private async void OnUpdateBalloonClicked(object sender, System.Windows.RoutedEventArgs e)
+    private ValueTask HandleRecordingCompleted(RecordingCompletedMessage message)
     {
-        if (_pendingUpdate is null)
+        var recentRecording = new RecentRecordingItem(message.OutputPath, message.ElapsedText);
+        _recentRecordings.RemoveAll(item => string.Equals(item.OutputPath, recentRecording.OutputPath, StringComparison.OrdinalIgnoreCase));
+        _recentRecordings.Insert(0, recentRecording);
+        if (_recentRecordings.Count > 5)
+        {
+            _recentRecordings.RemoveRange(5, _recentRecordings.Count - 5);
+        }
+
+        RebuildRecentRecordingsMenu();
+        ShowRecordingCompletedBalloon(recentRecording);
+        return ValueTask.CompletedTask;
+    }
+
+    private void ShowRecordingCompletedBalloon(RecentRecordingItem recentRecording)
+    {
+        _pendingRecordingBalloonPath = recentRecording.OutputPath;
+        var directory = Path.GetDirectoryName(recentRecording.OutputPath) ?? recentRecording.OutputPath;
+        _trayIcon?.ShowBalloonTip(
+            "Recording saved",
+            $"{recentRecording.FileName} • {recentRecording.ElapsedText}{Environment.NewLine}{directory}",
+            BalloonIcon.Info);
+    }
+
+    private async void OnTrayBalloonClicked(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (_pendingUpdate is not null)
+        {
+            var update = _pendingUpdate;
+            _pendingUpdate = null;
+            await _autoUpdate.ConfirmAndInstall(update);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_pendingRecordingBalloonPath))
         {
             return;
         }
 
-        var update = _pendingUpdate;
-        _pendingUpdate = null;
-        await _autoUpdate.ConfirmAndInstall(update);
+        OpenPath(_pendingRecordingBalloonPath);
+        _pendingRecordingBalloonPath = null;
+    }
+
+    private void OpenRecentRecording_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not WpfMenuItem { Tag: RecentRecordingItem recentRecording })
+        {
+            return;
+        }
+
+        OpenPath(recentRecording.OutputPath);
+    }
+
+    private void OpenRecentRecordingFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not WpfMenuItem { Tag: RecentRecordingItem recentRecording })
+        {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(recentRecording.OutputPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            OpenFolder(directory);
+        }
+    }
+
+    private async void ExportRecentRecordingGif_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not WpfMenuItem { Tag: RecentRecordingItem recentRecording } menuItem)
+        {
+            return;
+        }
+
+        if (!File.Exists(recentRecording.OutputPath))
+        {
+            _messageBox.ShowWarning("The recording file could not be found.", "Export to GIF");
+            return;
+        }
+
+        var gifPath = Path.ChangeExtension(recentRecording.OutputPath, ".gif");
+        menuItem.IsEnabled = false;
+
+        try
+        {
+            var gifExportService = _host.Services.GetRequiredService<IGifExportService>();
+            await gifExportService.Export(recentRecording.OutputPath, gifPath, _userSettings.Current.GifFps).ConfigureAwait(true);
+            var directory = Path.GetDirectoryName(gifPath) ?? gifPath;
+            _trayIcon?.ShowBalloonTip(
+                "GIF exported",
+                $"{Path.GetFileName(gifPath)} is ready.{Environment.NewLine}{directory}",
+                BalloonIcon.Info);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "GIF export from recent recordings failed for {Path}", recentRecording.OutputPath);
+            _messageBox.ShowWarning("The GIF export failed. Please try again.", "Export to GIF");
+        }
+        finally
+        {
+            menuItem.IsEnabled = true;
+        }
+    }
+
+    private void OpenPath(string path)
+    {
+        if (!File.Exists(path))
+        {
+            _messageBox.ShowWarning("The selected recording file could not be found.", "Open Recording");
+            return;
+        }
+
+        var processService = _host.Services.GetRequiredService<IProcessService>();
+        processService.Start(new ProcessStartInfo(path)
+        {
+            UseShellExecute = true,
+        });
+    }
+
+    private void OpenFolder(string path)
+    {
+        var processService = _host.Services.GetRequiredService<IProcessService>();
+        processService.Start(new ProcessStartInfo("explorer.exe", path));
+    }
+
+    private sealed record RecentRecordingItem(string OutputPath, string ElapsedText)
+    {
+        public string FileName => Path.GetFileName(OutputPath);
     }
 
     private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)

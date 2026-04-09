@@ -29,7 +29,6 @@ public partial class SettingsViewModel : ObservableObject
         _recordingOutputPath = s.RecordingOutputPath;
         _recordingFormat = s.RecordingFormat;
         _gifFps = s.GifFps;
-        _hudCloseDelaySeconds = s.HudCloseDelaySeconds;
         _recordingCursorHighlightEnabled = s.RecordingCursorHighlightEnabled;
         _recordingClickRippleEnabled = s.RecordingClickRippleEnabled;
         _recordingCursorHighlightSize = ClampRecordingCursorHighlightSize(s.RecordingCursorHighlightSize);
@@ -64,9 +63,6 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private int _gifFps;
-
-    [ObservableProperty]
-    private int _hudCloseDelaySeconds;
 
     [ObservableProperty]
     private bool _recordingCursorHighlightEnabled;
@@ -156,7 +152,6 @@ public partial class SettingsViewModel : ObservableObject
             RecordingFps = _settingsService.Current.RecordingFps,
             RecordingJpegQuality = _settingsService.Current.RecordingJpegQuality,
             GifFps = GifFps,
-            HudCloseDelaySeconds = HudCloseDelaySeconds,
             RecordingCursorHighlightEnabled = RecordingCursorHighlightEnabled,
             RecordingClickRippleEnabled = RecordingClickRippleEnabled,
             RecordingCursorHighlightSize = clampedRecordingCursorHighlightSize,

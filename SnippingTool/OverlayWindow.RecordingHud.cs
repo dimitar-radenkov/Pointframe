@@ -20,10 +20,6 @@ public partial class OverlayWindow
     {
     }
 
-    private void RecordingSavedText_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-    }
-
     private void RecordingToolButton_Checked(object sender, RoutedEventArgs e)
     {
     }

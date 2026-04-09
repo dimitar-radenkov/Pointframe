@@ -289,58 +289,6 @@
             </Button>
           </StackPanel>
         </Grid>
-
-        <TextBlock Text="{Binding SavedFileName}"
-                   Foreground="{DynamicResource AccentColor}"
-                   FontSize="11"
-                   FontFamily="Segoe UI"
-                   Cursor="Hand"
-                   Margin="0,6,0,0"
-                   Visibility="{Binding IsStopped, Converter={StaticResource BoolToVisibility}}"
-                   MouseLeftButtonUp="RecordingSavedText_Click"/>
-
-        <Button Style="{StaticResource RecordingHudActionBtn}"
-                Command="{Binding ExportToGifCommand}"
-                Margin="0,4,0,0"
-                HorizontalAlignment="Left"
-                Width="Auto"
-                Visibility="{Binding IsStopped, Converter={StaticResource BoolToVisibility}}"
-                ToolTip="Export recording as animated GIF">
-          <StackPanel Orientation="Horizontal">
-            <TextBlock Text="🎞" FontSize="12" Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-            <TextBlock FontSize="11" Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center">
-              <TextBlock.Style>
-                <Style TargetType="TextBlock">
-                  <Setter Property="Text" Value="Export as GIF"/>
-                  <Style.Triggers>
-                    <DataTrigger Binding="{Binding IsExportingGif}" Value="True">
-                      <Setter Property="Text" Value="Exporting…"/>
-                    </DataTrigger>
-                  </Style.Triggers>
-                </Style>
-              </TextBlock.Style>
-            </TextBlock>
-          </StackPanel>
-        </Button>
-
-        <TextBlock Text="{Binding GifExportStatusText}"
-                   FontSize="11"
-                   FontFamily="Segoe UI"
-                   Margin="0,4,0,0"
-                   Cursor="Hand"
-                   Visibility="{Binding IsGifExportStatusVisible, Converter={StaticResource BoolToVisibility}}"
-                   MouseLeftButtonUp="RecordingSavedText_Click">
-          <TextBlock.Style>
-            <Style TargetType="TextBlock">
-              <Setter Property="Foreground" Value="{DynamicResource AccentColor}"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding IsGifExportStatusError}" Value="True">
-                  <Setter Property="Foreground" Value="#D96464"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </TextBlock.Style>
-        </TextBlock>
       </StackPanel>
     </Border>
   </Canvas>

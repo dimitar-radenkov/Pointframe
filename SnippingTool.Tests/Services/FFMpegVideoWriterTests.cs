@@ -1,7 +1,7 @@
 using System.IO;
 using System.Diagnostics;
 using System.Reflection;
-using System.Runtime.Serialization;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using SnippingTool.Services;
 using Xunit;
@@ -131,7 +131,7 @@ public sealed class FFMpegVideoWriterTests
 
     private static FFMpegVideoWriter CreateDetachedWriter(int exitCode, out MemoryStream memoryStream)
     {
-        var writer = (FFMpegVideoWriter)FormatterServices.GetUninitializedObject(typeof(FFMpegVideoWriter));
+        var writer = (FFMpegVideoWriter)RuntimeHelpers.GetUninitializedObject(typeof(FFMpegVideoWriter));
         memoryStream = new MemoryStream();
         SetField(writer, "_stdin", memoryStream);
         SetField(writer, "_logger", NullLogger.Instance);

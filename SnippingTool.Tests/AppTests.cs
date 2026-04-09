@@ -1,5 +1,6 @@
 using System.Windows.Threading;
-using System.Runtime.Serialization;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Moq;
@@ -10,6 +11,7 @@ using SnippingTool.Models;
 using SnippingTool.ViewModels;
 using SnippingTool.Tests.Services.Handlers;
 using Xunit;
+using System.IO;
 
 namespace SnippingTool.Tests;
 
@@ -66,7 +68,7 @@ public sealed class AppTests
             var pending = (UpdateCheckResult?)GetField(app, "_pendingUpdate");
             Assert.Same(update, pending);
 
-            InvokePrivateHandler(app, "OnUpdateBalloonClicked", app, new RoutedEventArgs());
+            InvokePrivateHandler(app, "OnTrayBalloonClicked", app, new RoutedEventArgs());
 
             autoUpdateMock.Verify(service => service.ConfirmAndInstall(update), Times.Once);
             Assert.Null(GetField(app, "_pendingUpdate"));
@@ -157,7 +159,7 @@ public sealed class AppTests
     }
 
     [Fact]
-    public void OnUpdateBalloonClicked_WithoutPendingUpdate_DoesNothing()
+    public void OnTrayBalloonClicked_WithoutPendingUpdate_DoesNothing()
     {
         StaTestHelper.Run(() =>
         {
@@ -165,9 +167,38 @@ public sealed class AppTests
             var autoUpdateMock = new Mock<IAutoUpdateService>();
             SetField(app, "_autoUpdate", autoUpdateMock.Object);
 
-            InvokePrivateHandler(app, "OnUpdateBalloonClicked", app, new RoutedEventArgs());
+            InvokePrivateHandler(app, "OnTrayBalloonClicked", app, new RoutedEventArgs());
 
             autoUpdateMock.Verify(service => service.ConfirmAndInstall(It.IsAny<UpdateCheckResult>()), Times.Never);
+        });
+    }
+
+    [Fact]
+    public void OnTrayBalloonClicked_WithPendingRecording_OpensSavedRecording()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var app = CreateAppWithoutRunning();
+            var processMock = new Mock<IProcessService>();
+            var messageBoxMock = new Mock<IMessageBoxService>();
+            var tempFilePath = Path.GetTempFileName();
+            SetField(app, "_host", CreateHost(processService: processMock.Object, messageBox: messageBoxMock.Object));
+            SetField(app, "_messageBox", messageBoxMock.Object);
+            SetField(app, "_pendingRecordingBalloonPath", tempFilePath);
+
+            try
+            {
+                InvokePrivateHandler(app, "OnTrayBalloonClicked", app, new RoutedEventArgs());
+
+                processMock.Verify(
+                    process => process.Start(It.Is<ProcessStartInfo>(info => info.FileName == tempFilePath && info.UseShellExecute)),
+                    Times.Once);
+                Assert.Null(GetField(app, "_pendingRecordingBalloonPath"));
+            }
+            finally
+            {
+                File.Delete(tempFilePath);
+            }
         });
     }
 
@@ -187,9 +218,7 @@ public sealed class AppTests
 
     private static App CreateAppWithoutRunning()
     {
-#pragma warning disable SYSLIB0050
-        return (App)FormatterServices.GetUninitializedObject(typeof(App));
-#pragma warning restore SYSLIB0050
+        return (App)RuntimeHelpers.GetUninitializedObject(typeof(App));
     }
 
     private static void InvokePrivateHandler(object target, string methodName, params object[] args)
@@ -220,12 +249,16 @@ public sealed class AppTests
         field.SetValue(target, value);
     }
 
-    private static IHost CreateHost(IUpdateService updateService, IMessageBoxService messageBox)
+    private static IHost CreateHost(
+        IUpdateService? updateService = null,
+        IMessageBoxService? messageBox = null,
+        IProcessService? processService = null)
     {
         var services = new ServiceCollection();
-        services.AddSingleton(updateService);
+        services.AddSingleton(updateService ?? Mock.Of<IUpdateService>());
         services.AddSingleton(Mock.Of<IAppVersionService>(version => version.Current == new Version(1, 2, 3)));
-        services.AddSingleton(messageBox);
+        services.AddSingleton(messageBox ?? Mock.Of<IMessageBoxService>());
+        services.AddSingleton(processService ?? Mock.Of<IProcessService>());
 
         var provider = services.BuildServiceProvider();
         var host = new Mock<IHost>();

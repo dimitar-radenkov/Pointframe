@@ -556,11 +556,6 @@ public partial class RecordingOverlayWindow : Window
             captureCanvasPixels.Height);
     }
 
-    private void RecordingSavedText_Click(object sender, MouseButtonEventArgs e)
-    {
-        _recordingHudViewModel?.OpenOutputFolderCommand.Execute(null);
-    }
-
     private void RecordingToolButton_Checked(object sender, RoutedEventArgs e)
     {
         if (sender is System.Windows.Controls.RadioButton { Tag: string tag }

@@ -18,7 +18,6 @@ public sealed class UserSettings
     public int RecordingFps { get; set; } = 20;
     public int RecordingJpegQuality { get; set; } = 85;
     public int GifFps { get; set; } = 10;
-    public int HudCloseDelaySeconds { get; set; } = 2;
     public int HudGapPixels { get; set; } = 8;
     public bool RecordingCursorHighlightEnabled { get; set; } = true;
     public bool RecordingClickRippleEnabled { get; set; } = true;

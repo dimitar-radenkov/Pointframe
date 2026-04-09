@@ -1,55 +1,25 @@
-using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using SnippingTool.Services;
+using SnippingTool.Services.Messaging;
 
 namespace SnippingTool.ViewModels;
-
-public enum GifExportOutcome
-{
-    None,
-    Succeeded,
-    Failed,
-}
 
 public partial class RecordingHudViewModel : ObservableObject
 {
     private readonly IScreenRecordingService _svc;
-    private readonly IUserSettingsService _settings;
-    private readonly IProcessService _process;
-    private readonly IGifExportService _gifExport;
+    private readonly IEventAggregator _eventAggregator;
     private readonly ILogger<RecordingHudViewModel> _logger;
     private RecordingAnnotationViewModel? _annotationViewModel;
     private Func<bool>? _toggleAnnotationInput;
     private CancellationTokenSource? _elapsedCts;
-    private CancellationTokenSource? _autoCloseCts;
     private DateTime _startTime;
     private DateTime _pausedAt;
     private TimeSpan _totalPausedDuration;
 
     [ObservableProperty]
     private string _elapsedText = "00:00";
-
-    [ObservableProperty]
-    private string _savedFileName = string.Empty;
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ExportToGifCommand))]
-    private bool _isStopped;
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ExportToGifCommand))]
-    private bool _isExportingGif;
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ExportToGifCommand))]
-    [NotifyPropertyChangedFor(nameof(IsGifExportStatusVisible))]
-    [NotifyPropertyChangedFor(nameof(IsGifExportStatusError))]
-    private GifExportOutcome _gifExportOutcome;
-
-    [ObservableProperty]
-    private string _gifExportStatusText = string.Empty;
 
     [ObservableProperty]
     private string _pauseResumeLabel = "⏸ Pause";
@@ -75,10 +45,6 @@ public partial class RecordingHudViewModel : ObservableObject
 
     public string OutputPath { get; }
 
-    public bool CanExportGif => IsStopped && !IsExportingGif && GifExportOutcome != GifExportOutcome.Succeeded;
-    public bool IsGifExportStatusVisible => GifExportOutcome != GifExportOutcome.None;
-    public bool IsGifExportStatusError => GifExportOutcome == GifExportOutcome.Failed;
-
     public bool IsAnnotationPanelVisible => CanManageAnnotations && IsAnnotationInputArmed;
     public string CurrentModeLabel => IsAnnotationInputArmed ? "Drawing" : "Interactive";
 
@@ -87,16 +53,12 @@ public partial class RecordingHudViewModel : ObservableObject
     public RecordingHudViewModel(
         IScreenRecordingService svc,
         string outputPath,
-        IUserSettingsService settings,
-        IProcessService process,
-        IGifExportService gifExport,
+        IEventAggregator eventAggregator,
         ILogger<RecordingHudViewModel> logger)
     {
         _svc = svc;
         OutputPath = outputPath;
-        _settings = settings;
-        _process = process;
-        _gifExport = gifExport;
+        _eventAggregator = eventAggregator;
         _logger = logger;
     }
 
@@ -147,21 +109,10 @@ public partial class RecordingHudViewModel : ObservableObject
         CanPauseResume = false;
         CancelElapsedTimer();
         await Task.Run(() => _svc.Stop()).ConfigureAwait(true);
-        SavedFileName = $"Saved \u2192 {Path.GetFileName(OutputPath)}";
-        IsStopped = true;
         _logger.LogInformation("Recording saved to {Path}", OutputPath);
 
-        _autoCloseCts?.Cancel();
-        _autoCloseCts = new CancellationTokenSource();
-        try
-        {
-            await Task.Delay(TimeSpan.FromSeconds(_settings.Current.HudCloseDelaySeconds), _autoCloseCts.Token).ConfigureAwait(true);
-            CloseRequested?.Invoke();
-        }
-        catch (OperationCanceledException)
-        {
-            _logger.LogInformation("Auto-close cancelled");
-        }
+        await _eventAggregator.Publish(new RecordingCompletedMessage(OutputPath, ElapsedText)).ConfigureAwait(true);
+        CloseRequested?.Invoke();
     }
 
     [RelayCommand]
@@ -180,47 +131,6 @@ public partial class RecordingHudViewModel : ObservableObject
             _svc.Pause();
             PauseResumeLabel = "▶ Resume";
             _logger.LogInformation("Recording paused from HUD");
-        }
-    }
-
-    [RelayCommand]
-    private void OpenOutputFolder()
-    {
-        var dir = Path.GetDirectoryName(OutputPath);
-        if (dir is not null)
-        {
-            _process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", dir));
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanExportGif))]
-    private async Task ExportToGif(CancellationToken ct)
-    {
-        _autoCloseCts?.Cancel();
-        IsExportingGif = true;
-        var gifPath = Path.ChangeExtension(OutputPath, ".gif");
-        try
-        {
-            await _gifExport.Export(OutputPath, gifPath, _settings.Current.GifFps, ct).ConfigureAwait(true);
-            GifExportStatusText = $"GIF saved \u2192 {Path.GetFileName(gifPath)}";
-            GifExportOutcome = GifExportOutcome.Succeeded;
-            _logger.LogInformation("GIF export succeeded: {Path}", gifPath);
-            await Task.Delay(TimeSpan.FromSeconds(_settings.Current.HudCloseDelaySeconds), ct).ConfigureAwait(true);
-            CloseRequested?.Invoke();
-        }
-        catch (OperationCanceledException)
-        {
-            _logger.LogInformation("GIF export cancelled");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "GIF export failed");
-            GifExportStatusText = "GIF export failed";
-            GifExportOutcome = GifExportOutcome.Failed;
-        }
-        finally
-        {
-            IsExportingGif = false;
         }
     }
 

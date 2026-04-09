@@ -123,18 +123,6 @@
                                   ItemsSource="{Binding Source={x:Static models:RecordingFormatValues.All}}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <TextBlock Text="HUD close delay (sec)" Style="{StaticResource RowLabel}"/>
-                        <ComboBox Width="70"
-                                  SelectedItem="{Binding HudCloseDelaySeconds}">
-                            <sys:Int32>0</sys:Int32>
-                            <sys:Int32>3</sys:Int32>
-                            <sys:Int32>5</sys:Int32>
-                            <sys:Int32>10</sys:Int32>
-                            <sys:Int32>15</sys:Int32>
-                            <sys:Int32>30</sys:Int32>
-                        </ComboBox>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="Cursor highlight" Style="{StaticResource RowLabel}"/>
                         <CheckBox IsChecked="{Binding RecordingCursorHighlightEnabled}"/>
                     </StackPanel>
