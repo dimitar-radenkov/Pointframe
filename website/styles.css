@@ -330,6 +330,10 @@ button {
     background: rgba(255, 255, 255, 0.72);
 }
 
+.section-alt {
+    background: linear-gradient(180deg, rgba(230, 240, 252, 0.58) 0%, rgba(255, 255, 255, 0.86) 100%);
+}
+
 .section-header {
     max-width: 680px;
     margin: 0 auto 48px;
@@ -352,6 +356,49 @@ button {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 24px;
+}
+
+.comparison-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 24px;
+    margin-bottom: 28px;
+}
+
+.comparison-card {
+    padding: 28px;
+    border: 1px solid rgba(215, 225, 236, 0.92);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: var(--shadow-soft);
+}
+
+.comparison-title {
+    margin: 0 0 12px;
+    font-size: 1.2rem;
+    letter-spacing: -0.03em;
+}
+
+.comparison-copy {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.7;
+}
+
+.seo-copy-block {
+    max-width: 920px;
+    margin: 0 auto;
+    color: var(--muted);
+    font-size: 1.05rem;
+    line-height: 1.8;
+}
+
+.seo-copy-block p {
+    margin: 0 0 16px;
+}
+
+.seo-copy-block p:last-child {
+    margin-bottom: 0;
 }
 
 .feature-card {
@@ -437,7 +484,8 @@ button {
 }
 
 @media (max-width: 900px) {
-    .feature-grid {
+    .feature-grid,
+    .comparison-grid {
         grid-template-columns: 1fr;
     }
 }
