@@ -6,6 +6,10 @@
 </p>
 
 <p align="center">
+  <b>🌐 <a href="https://dimitar-radenkov.github.io/SnippingTool/">Visit the Official Website</a></b>
+</p>
+
+<p align="center">
   <a href="https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml"><img src="https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://codecov.io/gh/dimitar-radenkov/SnippingTool"><img src="https://codecov.io/gh/dimitar-radenkov/SnippingTool/branch/master/graph/badge.svg" alt="codecov"></a>
   <a href="https://github.com/dimitar-radenkov/SnippingTool/releases/latest"><img src="https://img.shields.io/github/v/release/dimitar-radenkov/SnippingTool?color=success" alt="Latest release"></a>
