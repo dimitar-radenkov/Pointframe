@@ -77,8 +77,12 @@ button {
     letter-spacing: -0.03em;
 }
 
-.brand-mark {
-    font-size: 1.65rem;
+.brand-logo {
+    display: block;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
 }
 
 .nav-links {
