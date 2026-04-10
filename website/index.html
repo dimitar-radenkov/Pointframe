@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SnippingTool - Modern Screen Capture & Recording for Windows</title>
+    <meta name="description" content="A modern, lightning-fast screen capture and recording tool for Windows. Record your screen, add live annotations without breaking your flow, and redact sensitive data on the fly.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .gradient-text {
+            background: linear-gradient(to right, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+    </style>
+</head>
+<body class="text-gray-800 antialiased selection:bg-blue-200">
+
+    <!-- Navigation -->
+    <nav class="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">✂️</span>
+                    <span class="font-bold text-xl tracking-tight text-gray-900">SnippingTool</span>
+                </div>
+                <div class="flex items-center space-x-6">
+                    <a href="#features" class="text-gray-600 hover:text-blue-600 font-medium transition-colors hidden sm:block">Features</a>
+                    <a href="https://github.com/dimitar-radenkov/SnippingTool" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:text-gray-900 transition-colors">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <main class="pt-20 pb-16 sm:pt-24 sm:pb-20 lg:pb-24">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h1 class="text-5xl sm:text-6xl font-extrabold tracking-tight text-gray-900 mb-6">
+                Capture & Record like a <span class="gradient-text">Pro</span>
+            </h1>
+            <p class="mt-4 text-xl text-gray-600 max-w-3xl mx-auto mb-10 leading-relaxed">
+                A modern, lightning-fast screen capture and recording tool for Windows. Record your screen, add live annotations to explain your point, and redact sensitive data on the fly.
+            </p>
+            
+            <div class="flex flex-col sm:flex-row justify-center items-center gap-4 mb-16">
+                <a href="https://github.com/dimitar-radenkov/SnippingTool/releases/latest" class="inline-flex items-center justify-center px-8 py-4 text-base font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-1 w-full sm:w-auto">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Download for Windows
+                </a>
+                
+                <div class="bg-gray-100 border border-gray-200 rounded-lg px-6 py-4 flex items-center gap-3 w-full sm:w-auto shadow-inner group relative cursor-pointer" onclick="navigator.clipboard.writeText('winget install DimitarRadenkov.SnippingTool'); alert('Command copied to clipboard!');">
+                    <div class="font-mono text-sm text-gray-700">
+                        <span class="text-gray-400">$</span> winget install DimitarRadenkov.SnippingTool
+                    </div>
+                    <button class="text-gray-400 hover:text-blue-600 transition-colors" title="Copy command">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    </button>
+                    <!-- Tooltip -->
+                    <div class="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                        Click to copy
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Demo -->
+            <div class="relative rounded-2xl overflow-hidden shadow-2xl border border-gray-200 bg-white max-w-5xl mx-auto transform hover:scale-[1.01] transition-transform duration-500">
+                <div class="absolute inset-0 bg-gradient-to-t from-gray-900/10 to-transparent pointer-events-none z-10"></div>
+                <video src="https://github.com/user-attachments/assets/d4e0c937-a845-4266-9454-2b816934f949" class="w-full h-auto" autoplay loop muted playsinline controls></video>
+            </div>
+        </div>
+    </main>
+
+    <!-- Features Section -->
+    <section id="features" class="py-20 bg-white border-t border-gray-100">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl font-bold text-gray-900 sm:text-4xl">Why use this over the built-in Windows tool?</h2>
+                <p class="mt-4 text-lg text-gray-600">Built for speed, privacy, and seamless communication.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                <!-- Feature 1 -->
+                <div class="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:border-blue-200 hover:shadow-md transition-all">
+                    <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-3">Live Video Annotations</h3>
+                    <p class="text-gray-600 leading-relaxed">Draw, highlight, and point things out <em>while</em> you are recording. No need for complicated post-production video editing to explain a bug or tutorial.</p>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:border-purple-200 hover:shadow-md transition-all">
+                    <div class="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-3">Privacy First (Live Blur)</h3>
+                    <p class="text-gray-600 leading-relaxed">Drag over sensitive content (passwords, emails, API keys) to apply a Gaussian blur instantly. It stays blurred even in your exported video recordings.</p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:border-green-200 hover:shadow-md transition-all">
+                    <div class="w-12 h-12 bg-green-100 text-green-600 rounded-xl flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-3">Built-in OCR (Text Extraction)</h3>
+                    <p class="text-gray-600 leading-relaxed">Can't copy text from an image or video? Just lasso the text on your screen with SnippingTool, and it instantly extracts and copies it to your clipboard.</p>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="bg-gray-50 rounded-2xl p-8 border border-gray-100 hover:border-orange-200 hover:shadow-md transition-all">
+                    <div class="w-12 h-12 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-3">Pin to Screen</h3>
+                    <p class="text-gray-600 leading-relaxed">Working on something complex? Pin a captured screenshot as a floating, always-on-top window for quick reference while you code or type.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-12">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="flex items-center gap-2">
+                <span class="text-2xl">✂️</span>
+                <span class="font-bold text-xl tracking-tight">SnippingTool</span>
+            </div>
+            
+            <div class="flex space-x-6 text-sm text-gray-400 text-center md:text-left">
+                <span>Built on .NET 10, WPF, and MVVM</span>
+                <a href="https://github.com/dimitar-radenkov/SnippingTool/issues" class="hover:text-white transition-colors">Report an Issue</a>
+                <a href="https://github.com/dimitar-radenkov/SnippingTool" class="hover:text-white transition-colors">Source Code</a>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>

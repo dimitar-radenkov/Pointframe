@@ -1,20 +1,38 @@
-# SnippingTool
+# ✂️ SnippingTool
 
-[![CI](https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml/badge.svg)](https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/dimitar-radenkov/SnippingTool/branch/master/graph/badge.svg)](https://codecov.io/gh/dimitar-radenkov/SnippingTool)
-[![Downloads](https://img.shields.io/github/downloads/dimitar-radenkov/SnippingTool/total?label=downloads&color=blue)](https://github.com/dimitar-radenkov/SnippingTool/releases)
-[![Latest release](https://img.shields.io/github/v/release/dimitar-radenkov/SnippingTool)](https://github.com/dimitar-radenkov/SnippingTool/releases/latest)
-[![winget](https://img.shields.io/winget/v/DimitarRadenkov.SnippingTool?label=winget)](https://github.com/microsoft/winget-pkgs/tree/master/manifests/d/DimitarRadenkov/SnippingTool)
+<p align="center">
+  <b>A modern, lightning-fast screen capture and recording tool for Windows, built on .NET 10.</b><br>
+  Record your screen, add live annotations without breaking your flow, and redact sensitive data on the fly.
+</p>
 
-Record your screen with live annotations.
+<p align="center">
+  <a href="https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml"><img src="https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/dimitar-radenkov/SnippingTool"><img src="https://codecov.io/gh/dimitar-radenkov/SnippingTool/branch/master/graph/badge.svg" alt="codecov"></a>
+  <a href="https://github.com/dimitar-radenkov/SnippingTool/releases/latest"><img src="https://img.shields.io/github/v/release/dimitar-radenkov/SnippingTool?color=success" alt="Latest release"></a>
+  <a href="https://github.com/microsoft/winget-pkgs/tree/master/manifests/d/DimitarRadenkov/SnippingTool"><img src="https://img.shields.io/winget/v/DimitarRadenkov.SnippingTool?label=winget&color=blue" alt="winget"></a>
+  <a href="https://github.com/dimitar-radenkov/SnippingTool/releases"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/SnippingTool/total?label=downloads&color=purple" alt="Downloads"></a>
+</p>
 
-SnippingTool helps you explain what’s on your screen without turning it into a post-editing job. It is built for demos, tutorials, and bug reports when you want to show something clearly and move on. Draw, blur, and add callouts while recording, then burn everything straight into the final video.
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/d4e0c937-a845-4266-9454-2b816934f949" width="100%" controls autoplay loop muted></video>
+</p>
 
-Get it in seconds: [Download the latest release](https://github.com/dimitar-radenkov/SnippingTool/releases) · `winget install DimitarRadenkov.SnippingTool`
+## 🚀 Quick Start
 
-## Demo
+Get up and running in seconds using the Windows Package Manager (winget):
 
-https://github.com/user-attachments/assets/d4e0c937-a845-4266-9454-2b816934f949
+```powershell
+winget install DimitarRadenkov.SnippingTool
+```
+
+*Prefer a manual install? Download the latest `SnippingTool-Setup-*.exe` from the [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases) page.*
+
+## ✨ Why use this over the built-in Windows tool?
+
+- **Live Video Annotations:** Draw, highlight, and redact *while* recording. No need for post-production video editing.
+- **Privacy First (Live Blur):** Drag over sensitive content (passwords, emails, API keys) to apply a live Gaussian blur that stays hidden in the final export.
+- **Built-in OCR:** Lasso any text on your screen (even in images or videos) to instantly copy it to your clipboard.
+- **Pin to Screen:** Pin captured screenshots as floating, always-on-top windows for quick reference while coding or writing.
 
 ## Latest features
 
@@ -198,6 +216,15 @@ To bump the version:
 - **Hardcodet.Wpf.TaskbarNotification** — system tray icon
 - **Nerdbank.GitVersioning** — automatic semantic versioning from git history
 - **xUnit** — unit tests
+
+## 🤝 Contributing
+
+We welcome contributions! Whether it's reporting a bug, suggesting a feature, or submitting a pull request. 
+SnippingTool is built on a very clean, modern stack (.NET 10, WPF, CommunityToolkit.Mvvm) making it a great jumping-off point for developers.
+
+1. Check out our [Developer Guide](docs/developer-guide.md) and [Architecture Knowledge Base](docs/project-knowledge-base.md).
+2. Browse our [Planned Features](docs/planned-features.md) or look for issues tagged `good first issue`.
+3. Open a Pull Request!
 
 ## Privacy
 
