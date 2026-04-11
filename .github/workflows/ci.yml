@@ -7,7 +7,7 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
+  unit-tests:
     runs-on: windows-latest
 
     steps:
@@ -40,6 +40,8 @@ jobs:
         run: dotnet format SnippingTool/SnippingTool.csproj --verify-no-changes --no-restore
 
       - name: Test with coverage
+        # Hosted CI stays on the unit-test lane only.
+        # DesktopAutomation and InstallerSmoke run outside this workflow.
         run: >
           dotnet test SnippingTool.Tests/SnippingTool.Tests.csproj
           --configuration Release

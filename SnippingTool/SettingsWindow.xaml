@@ -10,7 +10,8 @@
         MaxHeight="750"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI"
-        Background="{DynamicResource WindowBackground}">
+        Background="{DynamicResource WindowBackground}"
+        AutomationProperties.AutomationId="SettingsWindow.Root">
     <Window.Resources>
         <Style x:Key="SectionHeader" TargetType="TextBlock">
             <Setter Property="FontSize" Value="12"/>
@@ -88,7 +89,8 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="Auto-save on copy" Style="{StaticResource RowLabel}"/>
-                        <CheckBox IsChecked="{Binding AutoSaveScreenshots}"/>
+                        <CheckBox IsChecked="{Binding AutoSaveScreenshots}"
+                                  AutomationProperties.AutomationId="SettingsWindow.AutoSaveScreenshots"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="Capture delay (sec)" Style="{StaticResource RowLabel}"/>
@@ -293,9 +295,11 @@
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right"
                     Margin="0,14,0,0">
             <Button Content="Cancel" Style="{StaticResource SecondaryBtn}"
-                    Margin="0,0,8,0" Command="{Binding CancelCommand}"/>
+                    Margin="0,0,8,0" Command="{Binding CancelCommand}"
+                    AutomationProperties.AutomationId="SettingsWindow.Cancel"/>
             <Button Content="Save" Style="{StaticResource PrimaryBtn}"
-                    Command="{Binding SaveCommand}"/>
+                    Command="{Binding SaveCommand}"
+                    AutomationProperties.AutomationId="SettingsWindow.Save"/>
         </StackPanel>
 
     </Grid>

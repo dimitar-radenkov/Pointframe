@@ -9,6 +9,7 @@ namespace SnippingTool.Tests.Services;
 
 public sealed class UserSettingsServiceTests : IDisposable
 {
+    private const string AutomationSettingsPathEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH";
     private readonly string _tempDirectory = Path.Combine(
         Path.GetTempPath(),
         "SnippingTool.Tests",
@@ -100,6 +101,32 @@ public sealed class UserSettingsServiceTests : IDisposable
         Assert.True(persisted!.AutoSaveScreenshots);
         Assert.Equal(3, persisted.CaptureDelaySeconds);
         Assert.Equal(60, persisted.RecordingFps);
+    }
+
+    [Fact]
+    public void Constructor_WhenAutomationSettingsPathEnvironmentVariableIsSet_UsesOverridePath()
+    {
+        var settingsPath = Path.Combine(_tempDirectory, "automation", "settings.json");
+        var originalValue = Environment.GetEnvironmentVariable(AutomationSettingsPathEnvironmentVariable);
+        Environment.SetEnvironmentVariable(AutomationSettingsPathEnvironmentVariable, settingsPath);
+
+        try
+        {
+            var sut = new UserSettingsService(NullLogger<UserSettingsService>.Instance);
+            var settings = new UserSettings
+            {
+                AutoSaveScreenshots = true,
+            };
+
+            sut.Save(settings);
+
+            Assert.Same(settings, sut.Current);
+            Assert.True(File.Exists(settingsPath));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(AutomationSettingsPathEnvironmentVariable, originalValue);
+        }
     }
 
     public void Dispose()

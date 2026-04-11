@@ -7,7 +7,8 @@
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI"
         Background="{DynamicResource WindowBackground}"
-        Icon="/Assets/icon.ico">
+        Icon="/Assets/icon.ico"
+        AutomationProperties.AutomationId="AboutWindow.Root">
 
     <Grid Margin="24,20,24,20">
         <Grid.RowDefinitions>
@@ -65,6 +66,7 @@
                 BorderThickness="0"
                 FontSize="13"
                 Cursor="Hand"
-                Command="{Binding CloseCommand}"/>
+                Command="{Binding CloseCommand}"
+                AutomationProperties.AutomationId="AboutWindow.Close"/>
     </Grid>
 </Window>

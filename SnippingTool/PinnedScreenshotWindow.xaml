@@ -8,7 +8,8 @@
         MouseLeftButtonDown="Window_MouseLeftButtonDown"
         KeyDown="Window_KeyDown"
         MouseEnter="Window_MouseEnter"
-        MouseLeave="Window_MouseLeave">
+        MouseLeave="Window_MouseLeave"
+        AutomationProperties.AutomationId="PinnedScreenshotWindow.Root">
 
   <Border BorderBrush="{DynamicResource AccentColor}" BorderThickness="1">
     <Grid>
@@ -20,18 +21,20 @@
 
       <!-- Screenshot fills the remaining space below the drag strip -->
       <Image x:Name="ScreenshotImage"
-             Stretch="Uniform"
-             Margin="0,8,0,0"/>
+              Stretch="Uniform"
+              Margin="0,8,0,0"
+              AutomationProperties.AutomationId="PinnedScreenshotWindow.Image"/>
 
       <!-- Close button: hidden until mouse enters the window -->
-      <Button x:Name="CloseBtn"
-              Width="22" Height="22"
-              HorizontalAlignment="Right" VerticalAlignment="Top"
-              Margin="0,2,30,0"
-              Visibility="Hidden"
-              Click="CloseBtn_Click"
-              ToolTip="Close"
-              Cursor="Hand">
+       <Button x:Name="CloseBtn"
+               Width="22" Height="22"
+               HorizontalAlignment="Right" VerticalAlignment="Top"
+               Margin="0,2,30,0"
+               Visibility="Hidden"
+               Click="CloseBtn_Click"
+               ToolTip="Close"
+               Cursor="Hand"
+               AutomationProperties.AutomationId="PinnedScreenshotWindow.Close">
         <Button.Template>
           <ControlTemplate TargetType="Button">
             <Border x:Name="Bd"

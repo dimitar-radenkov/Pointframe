@@ -6,7 +6,8 @@
         Background="Transparent"
         Topmost="True"
         ShowInTaskbar="False"
-        Cursor="Arrow">
+        Cursor="Arrow"
+        AutomationProperties.AutomationId="RecordingOverlayWindow.Root">
 
   <Window.Resources>
     <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
@@ -134,7 +135,8 @@
             IsHitTestVisible="False"/>
 
     <Canvas x:Name="RecordingAnnotationCanvas"
-            Background="#01000000"/>
+            Background="#01000000"
+            AutomationProperties.AutomationId="RecordingOverlayWindow.AnnotationCanvas"/>
 
     <Border x:Name="RecordingHudPanel"
             Background="{DynamicResource ToolbarBackground}"
@@ -143,7 +145,8 @@
             BorderThickness="1"
             Padding="6,4"
             Visibility="Collapsed"
-            SizeChanged="RecordingHudPanel_SizeChanged">
+            SizeChanged="RecordingHudPanel_SizeChanged"
+            AutomationProperties.AutomationId="RecordingOverlayWindow.Hud">
       <Border.Effect>
         <DropShadowEffect Color="#444444" BlurRadius="10" ShadowDepth="0" Opacity="0.4"/>
       </Border.Effect>
@@ -172,7 +175,8 @@
                     Style="{StaticResource RecordingHudModeActionBtn}"
                     Command="{Binding ToggleAnnotationInputCommand}"
                     ToolTip="Switch between drawing and interacting with the app"
-                    Visibility="{Binding CanToggleAnnotation, Converter={StaticResource BoolToVisibility}}">
+                    Visibility="{Binding CanToggleAnnotation, Converter={StaticResource BoolToVisibility}}"
+                    AutomationProperties.AutomationId="RecordingOverlayWindow.ToggleAnnotation">
               <TextBlock Text="✎" FontSize="13" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
             </Button>
 
@@ -192,7 +196,8 @@
                     Style="{StaticResource RecordingHudActionBtn}"
                     Command="{Binding PauseResumeCommand}"
                     IsEnabled="{Binding CanPauseResume}"
-                    ToolTip="Pause or resume recording">
+                    ToolTip="Pause or resume recording"
+                    AutomationProperties.AutomationId="RecordingOverlayWindow.PauseResume">
               <TextBlock FontSize="13" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center">
                 <TextBlock.Style>
                   <Style TargetType="TextBlock">
@@ -225,7 +230,8 @@
             <Button Grid.Row="0" Grid.Column="4"
                     Style="{StaticResource RecordingHudActionBtn}"
                     Command="{Binding StopCommand}"
-                    ToolTip="Stop recording">
+                    ToolTip="Stop recording"
+                    AutomationProperties.AutomationId="RecordingOverlayWindow.Stop">
               <TextBlock Text="⏹" FontSize="13" Foreground="#FF4444" HorizontalAlignment="Center"/>
             </Button>
 

@@ -7,6 +7,7 @@ namespace SnippingTool.Services;
 
 public sealed class UserSettingsService : IUserSettingsService
 {
+    private const string AutomationSettingsPathEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH";
     private readonly string _settingsPath;
     private readonly ILogger<UserSettingsService> _logger;
     private readonly object _syncRoot = new();
@@ -14,7 +15,7 @@ public sealed class UserSettingsService : IUserSettingsService
     public UserSettings Current { get; private set; }
 
     public UserSettingsService(ILogger<UserSettingsService> logger)
-        : this(logger, GetDefaultSettingsPath())
+        : this(logger, GetSettingsPath())
     {
     }
 
@@ -92,6 +93,17 @@ public sealed class UserSettingsService : IUserSettingsService
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "SnippingTool",
             "settings.json");
+
+    private static string GetSettingsPath()
+    {
+        var automationSettingsPath = Environment.GetEnvironmentVariable(AutomationSettingsPathEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(automationSettingsPath))
+        {
+            return automationSettingsPath;
+        }
+
+        return GetDefaultSettingsPath();
+    }
 
     private static UserSettings Clone(UserSettings settings) =>
         new()

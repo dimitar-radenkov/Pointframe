@@ -1,0 +1,53 @@
+name: Desktop Automation
+
+on:
+  push:
+    branches: [ master, "feature/**", "fix/**" ]
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-automation
+  cancel-in-progress: false
+
+jobs:
+  desktop-smoke:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      - name: Restore
+        run: dotnet restore SnippingTool.slnx
+
+      - name: Build desktop automation tests
+        run: dotnet build SnippingTool.AutomationTests/SnippingTool.AutomationTests.csproj --no-restore --configuration Release
+
+      - name: Run desktop smoke tests
+        # InstallerSmoke is intentionally excluded from CI/CD.
+        run: >
+          dotnet test SnippingTool.AutomationTests/SnippingTool.AutomationTests.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+          --verbosity normal
+          --filter "Category=DesktopAutomation"

@@ -6,7 +6,8 @@
         Background="Transparent"
         Topmost="True"
         Cursor="Cross"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False"
+        AutomationProperties.AutomationId="OverlayWindow.Root">
 
   <Window.Resources>
 
@@ -202,13 +203,15 @@
     <!-- Annotation drawing surface (phase 2, sized over the selection) -->
     <Canvas x:Name="AnnotationCanvas"
             Background="#01000000"
-            Visibility="Collapsed"/>
+            Visibility="Collapsed"
+            AutomationProperties.AutomationId="OverlayWindow.AnnotationCanvas"/>
 
     <!-- Vertical annotation toolbar (phase 2, floats right of selection) -->
     <Border x:Name="AnnotToolbar"
             Background="{DynamicResource ToolbarBackground}" CornerRadius="6"
             BorderBrush="{DynamicResource ToolbarBorder}" BorderThickness="1"
-            Padding="4,6" Visibility="Collapsed">
+            Padding="4,6" Visibility="Collapsed"
+            AutomationProperties.AutomationId="OverlayWindow.AnnotationToolbar">
       <Border.Effect>
         <DropShadowEffect Color="#444444" BlurRadius="10" ShadowDepth="0" Opacity="0.4"/>
       </Border.Effect>
@@ -292,7 +295,8 @@
     <Border x:Name="ActionBar"
             Background="{DynamicResource ToolbarBackground}" CornerRadius="6"
             BorderBrush="{DynamicResource ToolbarBorder}" BorderThickness="1"
-            Padding="6,4" Visibility="Collapsed">
+            Padding="6,4" Visibility="Collapsed"
+            AutomationProperties.AutomationId="OverlayWindow.ActionBar">
       <Border.Effect>
         <DropShadowEffect Color="#444444" BlurRadius="10" ShadowDepth="0" Opacity="0.4"/>
       </Border.Effect>
@@ -300,7 +304,8 @@
 
         <Button Style="{StaticResource ActionBtn}"
                 x:Name="RecordBtn"
-                Click="Record_Click" ToolTip="Record region to video">
+                Click="Record_Click" ToolTip="Record region to video"
+                AutomationProperties.AutomationId="OverlayWindow.Record">
           <StackPanel>
             <TextBlock Text="⏺" FontSize="13" Foreground="#FF4444" HorizontalAlignment="Center"/>
             <TextBlock Text="Record" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
@@ -330,7 +335,8 @@
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
-          Command="{Binding CopyCommand}" ToolTip="Copy to clipboard (Ctrl+C)">
+          Command="{Binding CopyCommand}" ToolTip="Copy to clipboard (Ctrl+C)"
+          AutomationProperties.AutomationId="OverlayWindow.Copy">
           <StackPanel>
             <TextBlock Text="📋" FontSize="13" HorizontalAlignment="Center"/>
             <TextBlock Text="Copy" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
@@ -350,7 +356,8 @@
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
-                Command="{Binding PinCommand}" ToolTip="Pin to screen">
+                Command="{Binding PinCommand}" ToolTip="Pin to screen"
+                AutomationProperties.AutomationId="OverlayWindow.Pin">
           <StackPanel>
             <TextBlock Text="📌" FontSize="13" HorizontalAlignment="Center"/>
             <TextBlock Text="Pin" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
@@ -360,7 +367,8 @@
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
-                Click="CloseBtn_Click" ToolTip="Close (Esc)">
+                Click="CloseBtn_Click" ToolTip="Close (Esc)"
+                AutomationProperties.AutomationId="OverlayWindow.Close">
           <StackPanel>
             <TextBlock Text="✕" FontSize="13" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
             <TextBlock Text="Close" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
@@ -373,7 +381,8 @@
     <Border x:Name="CompactActionBar"
             Background="{DynamicResource ToolbarBackground}" CornerRadius="6"
             BorderBrush="{DynamicResource ToolbarBorder}" BorderThickness="1"
-            Padding="4" Visibility="Collapsed">
+            Padding="4" Visibility="Collapsed"
+            AutomationProperties.AutomationId="OverlayWindow.CompactActionBar">
       <Border.Effect>
         <DropShadowEffect Color="#444444" BlurRadius="10" ShadowDepth="0" Opacity="0.4"/>
       </Border.Effect>
@@ -381,7 +390,8 @@
 
         <Button Style="{StaticResource ActionBtn}"
                 x:Name="CompactRecordBtn"
-                Click="Record_Click" ToolTip="Record region to video">
+                Click="Record_Click" ToolTip="Record region to video"
+                AutomationProperties.AutomationId="OverlayWindow.CompactRecord">
           <TextBlock Text="⏺" FontSize="13" Foreground="#FF4444" HorizontalAlignment="Center"/>
         </Button>
 
@@ -402,7 +412,8 @@
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
-                Command="{Binding CopyCommand}" ToolTip="Copy to clipboard (Ctrl+C)">
+                Command="{Binding CopyCommand}" ToolTip="Copy to clipboard (Ctrl+C)"
+                AutomationProperties.AutomationId="OverlayWindow.CompactCopy">
           <TextBlock Text="📋" FontSize="13" HorizontalAlignment="Center"/>
         </Button>
 
@@ -416,14 +427,16 @@
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
-                Command="{Binding PinCommand}" ToolTip="Pin to screen">
+                Command="{Binding PinCommand}" ToolTip="Pin to screen"
+                AutomationProperties.AutomationId="OverlayWindow.CompactPin">
           <TextBlock Text="📌" FontSize="13" HorizontalAlignment="Center"/>
         </Button>
 
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
-                Click="CloseBtn_Click" ToolTip="Close (Esc)">
+                Click="CloseBtn_Click" ToolTip="Close (Esc)"
+                AutomationProperties.AutomationId="OverlayWindow.CompactClose">
           <TextBlock Text="✕" FontSize="13" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
         </Button>
 
