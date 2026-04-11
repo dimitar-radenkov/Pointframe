@@ -38,15 +38,26 @@ public sealed class AutomationApp : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(automationArgument);
 
         var executablePath = Path.Combine(AppContext.BaseDirectory, "SnippingTool.exe");
+        return LaunchExecutable(executablePath, automationArgument, environmentVariables);
+    }
+
+    public static AutomationApp LaunchExecutable(
+        string executablePath,
+        string automationArgument,
+        IReadOnlyDictionary<string, string>? environmentVariables = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(automationArgument);
+
         if (!File.Exists(executablePath))
         {
-            throw new FileNotFoundException("SnippingTool.exe was not found next to the automation test output.", executablePath);
+            throw new FileNotFoundException("SnippingTool.exe was not found at the requested automation launch path.", executablePath);
         }
 
         var startInfo = new ProcessStartInfo(executablePath, automationArgument)
         {
             UseShellExecute = false,
-            WorkingDirectory = AppContext.BaseDirectory,
+            WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
         };
 
         if (environmentVariables is not null)
