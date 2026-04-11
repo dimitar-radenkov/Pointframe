@@ -156,6 +156,10 @@ public sealed class AutomationApp : IDisposable
         catch (InvalidOperationException)
         {
         }
+        finally
+        {
+            Application.Dispose();
+        }
     }
 
     private static Window WaitForMainWindow(Application application, UIA3Automation automation)
