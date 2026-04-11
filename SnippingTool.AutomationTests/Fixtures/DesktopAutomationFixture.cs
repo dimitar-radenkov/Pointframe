@@ -41,7 +41,10 @@ public class DesktopAutomationFixture : IDisposable
         return settings ?? throw new InvalidOperationException("The automation settings file could not be deserialized.");
     }
 
-    public void SeedSettings(bool autoSaveScreenshots)
+    public void SeedSettings(
+        bool autoSaveScreenshots,
+        RecordingFormat recordingFormat = RecordingFormat.Mp4,
+        int recordingFps = 20)
     {
         if (Directory.Exists(OutputDirectory))
         {
@@ -56,9 +59,37 @@ public class DesktopAutomationFixture : IDisposable
             AutoSaveScreenshots = autoSaveScreenshots,
             ScreenshotSavePath = ScreenshotOutputPath,
             RecordingOutputPath = RecordingOutputPath,
+            RecordingFormat = recordingFormat,
+            RecordingFps = recordingFps,
         };
 
         File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, SerializerOptions));
+    }
+
+    public void EnsureRecordingBackendAvailable(RecordingFormat recordingFormat)
+    {
+        if (recordingFormat != RecordingFormat.Mp4)
+        {
+            return;
+        }
+
+        var appDirectory = AppContext.BaseDirectory;
+        var directPath = Path.Combine(appDirectory, "ffmpeg.exe");
+        var bundledPath = Path.Combine(appDirectory, "Assets", "ffmpeg", "ffmpeg.exe");
+        if (File.Exists(directPath) || File.Exists(bundledPath))
+        {
+            return;
+        }
+
+        var pathEntries = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (pathEntries.Any(pathEntry => File.Exists(Path.Combine(pathEntry, "ffmpeg.exe"))))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            "Recording smoke requires ffmpeg.exe for MP4 output, but it was not found next to the test app, under Assets\\ffmpeg, or on PATH.");
     }
 
     public void Dispose()
