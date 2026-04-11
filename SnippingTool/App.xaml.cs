@@ -26,6 +26,7 @@ public partial class App : Application
 {
     private TaskbarIcon? _trayIcon;
     private IHost _host = null!;
+    private bool _isAutomationMode;
     private ILogger<App>? _logger;
     private IMessageBoxService _messageBox = null!;
     private IUserSettingsService _userSettings = null!;
@@ -62,9 +63,8 @@ public partial class App : Application
     {
         var automationLaunchOptions = AutomationLaunchOptions.Parse(e.Args);
         base.OnStartup(e);
-        ShutdownMode = automationLaunchOptions.IsAutomationMode
-            ? ShutdownMode.OnLastWindowClose
-            : ShutdownMode.OnExplicitShutdown;
+        _isAutomationMode = automationLaunchOptions.IsAutomationMode;
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         var config = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
@@ -475,6 +475,7 @@ public partial class App : Application
         }
 
         _settingsWindow = _host.Services.GetRequiredService<SettingsWindow>();
+        RegisterAutomationWindow(_settingsWindow);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
     }
@@ -490,6 +491,7 @@ public partial class App : Application
         }
 
         _aboutWindow = _host.Services.GetRequiredService<AboutWindow>();
+        RegisterAutomationWindow(_aboutWindow);
         _aboutWindow.Closed += (_, _) => _aboutWindow = null;
         _aboutWindow.Show();
     }
@@ -503,6 +505,7 @@ public partial class App : Application
     private void ShowAutomationSampleRecordingOverlayWindow()
     {
         var overlay = _host.Services.GetRequiredService<OverlayWindow>();
+        RegisterAutomationWindow(overlay);
         overlay.InitializeFromSelectionSession(AutomationSampleFactory.CreateRecordingSelectionSample());
         DpiAwarenessScope.RunPerMonitorV2(() => overlay.Show());
     }
@@ -510,8 +513,41 @@ public partial class App : Application
     private void ShowOverlayFromImage(BitmapSource bitmap, string sourcePath)
     {
         var overlay = _host.Services.GetRequiredService<OverlayWindow>();
+        RegisterAutomationWindow(overlay);
         overlay.InitializeFromImage(bitmap, sourcePath);
         overlay.Show();
+    }
+
+    internal void RegisterAutomationWindow(Window window)
+    {
+        if (!_isAutomationMode)
+        {
+            return;
+        }
+
+        window.Closed -= OnAutomationWindowClosed;
+        window.Closed += OnAutomationWindowClosed;
+    }
+
+    private void OnAutomationWindowClosed(object? sender, EventArgs e)
+    {
+        if (sender is Window window)
+        {
+            window.Closed -= OnAutomationWindowClosed;
+        }
+
+        Dispatcher.BeginInvoke(DispatcherPriority.SystemIdle, new Action(() =>
+        {
+            if (!_isAutomationMode)
+            {
+                return;
+            }
+
+            if (!Current.Windows.OfType<Window>().Any(window => window.IsVisible))
+            {
+                Current.Shutdown();
+            }
+        }));
     }
 
     private void StartSnip()

@@ -82,6 +82,11 @@ public partial class OverlayWindow
             return;
         }
 
+        if (System.Windows.Application.Current is App app)
+        {
+            app.RegisterAutomationWindow(recordingOverlay);
+        }
+
         _closeLeavesRecorderRunning = true;
         DpiAwarenessScope.RunPerMonitorV2(() => recordingOverlay.Show());
         Close();

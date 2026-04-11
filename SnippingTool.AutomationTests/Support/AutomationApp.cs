@@ -24,7 +24,7 @@ public sealed class AutomationApp : IDisposable
 
     public Application Application { get; }
 
-    public Window MainWindow { get; }
+    public Window MainWindow { get; private set; }
 
     public string MainWindowAutomationId => MainWindow.AutomationId;
 
@@ -107,6 +107,17 @@ public sealed class AutomationApp : IDisposable
         ClickButton(AutomationIds.SettingsWindowCancel);
     }
 
+    public void CloseMainWindow()
+    {
+        MainWindow.Close();
+    }
+
+    public void SwitchToTopLevelWindow(string automationId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(automationId);
+        MainWindow = WaitForTopLevelWindow(_processId, _automation, automationId);
+    }
+
     public void WaitForExit()
     {
         var stopwatch = Stopwatch.StartNew();
@@ -164,6 +175,11 @@ public sealed class AutomationApp : IDisposable
 
     private static Window WaitForMainWindow(Application application, UIA3Automation automation)
     {
+        return WaitForTopLevelWindow(application.ProcessId, automation);
+    }
+
+    private static Window WaitForTopLevelWindow(int processId, UIA3Automation automation, params string[] automationIds)
+    {
         var stopwatch = Stopwatch.StartNew();
 
         while (stopwatch.Elapsed < WindowTimeout)
@@ -171,8 +187,11 @@ public sealed class AutomationApp : IDisposable
             try
             {
                 var windows = automation.GetDesktop()
-                    .FindAllChildren(criteria => criteria.ByProcessId(application.ProcessId));
-                var window = windows.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate.AutomationId));
+                    .FindAllChildren(criteria => criteria.ByProcessId(processId));
+                var window = automationIds.Length == 0
+                    ? windows.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate.AutomationId))
+                    : windows.FirstOrDefault(candidate =>
+                        automationIds.Contains(candidate.AutomationId, StringComparer.Ordinal));
                 if (window is not null)
                 {
                     return window.AsWindow();

@@ -344,6 +344,11 @@ public partial class OverlayWindow : Window
                 new Action(() =>
                 {
                     var pinned = new PinnedScreenshotWindow(pendingPinnedBitmap);
+                    if (System.Windows.Application.Current is App app)
+                    {
+                        app.RegisterAutomationWindow(pinned);
+                    }
+
                     pinned.Show();
                 }));
         }

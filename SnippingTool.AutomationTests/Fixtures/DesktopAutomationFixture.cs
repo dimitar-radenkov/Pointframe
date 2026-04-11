@@ -43,6 +43,11 @@ public class DesktopAutomationFixture : IDisposable
 
     public void SeedSettings(bool autoSaveScreenshots)
     {
+        if (Directory.Exists(OutputDirectory))
+        {
+            Directory.Delete(OutputDirectory, recursive: true);
+        }
+
         Directory.CreateDirectory(ScreenshotOutputPath);
         Directory.CreateDirectory(RecordingOutputPath);
 
