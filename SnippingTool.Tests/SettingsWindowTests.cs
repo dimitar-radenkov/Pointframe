@@ -1,8 +1,10 @@
 using System.Reflection;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using SnippingTool.Models;
 using SnippingTool.Services;
 using SnippingTool.Tests.Services.Handlers;
@@ -139,6 +141,43 @@ public sealed class SettingsWindowTests
         });
     }
 
+    [Fact]
+    public void SettingsWindow_ContainsSectionNavigationAndResetActions()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var window = CreateWindow();
+            window.Show();
+            window.UpdateLayout();
+
+            Assert.NotNull(FindByAutomationId<ListBox>(window, "SettingsWindow.SectionNavigation"));
+            Assert.NotNull(FindByAutomationId<Button>(window, "SettingsWindow.ResetCurrentSection"));
+            Assert.NotNull(FindByAutomationId<Button>(window, "SettingsWindow.RestoreDefaults"));
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void SectionNavigation_SelectedValue_UpdatesSelectedSection()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var window = CreateWindow(out var viewModel);
+            window.Show();
+            window.UpdateLayout();
+
+            var navigation = FindByAutomationId<ListBox>(window, "SettingsWindow.SectionNavigation");
+            Assert.NotNull(navigation);
+
+            navigation!.SelectedValue = SettingsSection.App;
+
+            Assert.Equal(SettingsSection.App, viewModel.SelectedSection);
+
+            window.Close();
+        });
+    }
+
     private static SettingsWindow CreateWindow(out SettingsViewModel viewModel)
     {
         var settings = new UserSettings { DefaultAnnotationColor = "#FFFF0000" };
@@ -178,5 +217,29 @@ public sealed class SettingsWindowTests
         {
             RoutedEvent = Keyboard.PreviewKeyDownEvent,
         };
+    }
+
+    private static T? FindByAutomationId<T>(DependencyObject root, string automationId)
+        where T : DependencyObject
+    {
+        var queue = new Queue<DependencyObject>();
+        queue.Enqueue(root);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (current is T typed && AutomationProperties.GetAutomationId(typed) == automationId)
+            {
+                return typed;
+            }
+
+            var childCount = VisualTreeHelper.GetChildrenCount(current);
+            for (var index = 0; index < childCount; index++)
+            {
+                queue.Enqueue(VisualTreeHelper.GetChild(current, index));
+            }
+        }
+
+        return null;
     }
 }

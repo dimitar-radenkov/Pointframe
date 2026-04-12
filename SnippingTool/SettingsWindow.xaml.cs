@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using SnippingTool.Models;
 using SnippingTool.ViewModels;
@@ -96,5 +97,10 @@ public partial class SettingsWindow : Window
         {
             HotkeyRecordingPanel.Focus();
         }
+    }
+
+    private void SectionNavigation_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        ContentScrollViewer?.ScrollToHome();
     }
 }

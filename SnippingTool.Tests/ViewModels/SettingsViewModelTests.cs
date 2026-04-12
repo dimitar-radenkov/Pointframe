@@ -333,4 +333,145 @@ public sealed class SettingsViewModelTests
         Assert.Equal(Colors.DodgerBlue, vm.DefaultAnnotationColor);
         dialogMock.VerifyAll();
     }
+
+    [Fact]
+    public void SelectedSection_DefaultsToCapture()
+    {
+        var vm = CreateVm();
+
+        Assert.Equal(SettingsSection.Capture, vm.SelectedSection);
+        Assert.True(vm.IsCaptureSectionSelected);
+        Assert.Equal("Capture", vm.SelectedSectionDisplayName);
+    }
+
+    [Fact]
+    public void SelectedSection_UpdatesDerivedProperties()
+    {
+        var vm = CreateVm();
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        vm.SelectedSection = SettingsSection.App;
+
+        Assert.True(vm.IsAppSectionSelected);
+        Assert.Equal("App", vm.SelectedSectionDisplayName);
+        Assert.Contains(nameof(vm.SelectedSectionDisplayName), raised);
+        Assert.Contains(nameof(vm.IsAppSectionSelected), raised);
+    }
+
+    [Fact]
+    public void ResetCurrentSectionCommand_WhenRecordingSelected_ResetsRecordingValuesOnly()
+    {
+        var vm = CreateVm(new UserSettings
+        {
+            ScreenshotSavePath = @"C:\Shots",
+            RecordingOutputPath = @"C:\Videos",
+            RecordingFormat = RecordingFormat.Avi,
+            GifFps = 20,
+            RecordingCursorHighlightEnabled = false,
+            RecordingClickRippleEnabled = false,
+            RecordingCursorHighlightSize = 36d,
+        });
+
+        vm.ScreenshotSavePath = @"D:\Keep";
+        vm.RecordingOutputPath = @"D:\Reset";
+        vm.RecordingFormat = RecordingFormat.Avi;
+        vm.GifFps = 20;
+        vm.RecordingCursorHighlightEnabled = false;
+        vm.RecordingClickRippleEnabled = false;
+        vm.RecordingCursorHighlightSize = 36d;
+        vm.SelectedSection = SettingsSection.Recording;
+
+        vm.ResetCurrentSectionCommand.Execute(null);
+
+        var defaults = new UserSettings();
+        Assert.Equal(@"D:\Keep", vm.ScreenshotSavePath);
+        Assert.Equal(defaults.RecordingOutputPath, vm.RecordingOutputPath);
+        Assert.Equal(defaults.RecordingFormat, vm.RecordingFormat);
+        Assert.Equal(defaults.GifFps, vm.GifFps);
+        Assert.Equal(defaults.RecordingCursorHighlightEnabled, vm.RecordingCursorHighlightEnabled);
+        Assert.Equal(defaults.RecordingClickRippleEnabled, vm.RecordingClickRippleEnabled);
+        Assert.Equal(defaults.RecordingCursorHighlightSize, vm.RecordingCursorHighlightSize);
+    }
+
+    [Fact]
+    public void RestoreDefaultsCommand_SaveUsesDefaultBaseSettings()
+    {
+        var current = new UserSettings
+        {
+            RecordingFps = 7,
+            RecordingJpegQuality = 11,
+            HudGapPixels = 99,
+            LastAutoUpdateCheckUtc = new DateTime(2025, 1, 1, 12, 0, 0, DateTimeKind.Utc),
+        };
+        var defaults = new UserSettings();
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(current);
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>());
+
+        vm.RestoreDefaultsCommand.Execute(null);
+        vm.SaveCommand.Execute(null);
+
+        Assert.NotNull(saved);
+        Assert.Equal(defaults.RecordingFps, saved!.RecordingFps);
+        Assert.Equal(defaults.RecordingJpegQuality, saved.RecordingJpegQuality);
+        Assert.Equal(defaults.HudGapPixels, saved.HudGapPixels);
+        Assert.Equal(defaults.LastAutoUpdateCheckUtc, saved.LastAutoUpdateCheckUtc);
+    }
+
+    [Fact]
+    public void RestoreDefaultsCommand_ThenEditingVisibleSetting_StillPersistsHiddenDefaults()
+    {
+        var current = new UserSettings
+        {
+            RecordingFps = 7,
+            RecordingJpegQuality = 11,
+            HudGapPixels = 99,
+            LastAutoUpdateCheckUtc = new DateTime(2025, 1, 1, 12, 0, 0, DateTimeKind.Utc),
+        };
+        var defaults = new UserSettings();
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(current);
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>());
+
+        vm.RestoreDefaultsCommand.Execute(null);
+        vm.ScreenshotSavePath = @"D:\Screens";
+        vm.SaveCommand.Execute(null);
+
+        Assert.NotNull(saved);
+        Assert.Equal(@"D:\Screens", saved!.ScreenshotSavePath);
+        Assert.Equal(defaults.RecordingFps, saved.RecordingFps);
+        Assert.Equal(defaults.RecordingJpegQuality, saved.RecordingJpegQuality);
+        Assert.Equal(defaults.HudGapPixels, saved.HudGapPixels);
+        Assert.Equal(defaults.LastAutoUpdateCheckUtc, saved.LastAutoUpdateCheckUtc);
+    }
+
+    [Fact]
+    public void Sections_ProvideSingleSourceOfTruthForHeaderMetadata()
+    {
+        var vm = CreateVm();
+
+        var appSection = Assert.Single(vm.Sections, section => section.Section == SettingsSection.App);
+
+        Assert.Equal(appSection.DisplayName, vm.SelectedSectionDisplayName.Replace("Capture", "App"));
+        vm.SelectedSection = SettingsSection.App;
+        Assert.Equal(appSection.DisplayName, vm.SelectedSectionDisplayName);
+        Assert.Equal(appSection.Description, vm.SelectedSectionDescription);
+    }
+
+    [Fact]
+    public void AnnotationPreviewThickness_HasMinimumOfOne()
+    {
+        var vm = CreateVm();
+
+        vm.DefaultStrokeThickness = 0.25d;
+        Assert.Equal(1d, vm.AnnotationPreviewThickness);
+
+        vm.DefaultStrokeThickness = 3d;
+        Assert.Equal(3d, vm.AnnotationPreviewThickness);
+    }
 }
