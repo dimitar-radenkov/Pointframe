@@ -129,11 +129,11 @@ winget install DimitarRadenkov.SnippingTool
 
 **Manual installer**
 
-Download the latest `SnippingTool-Setup-*.exe` from the [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases) page and run it. The installer downloads `ffmpeg.exe` automatically because MP4 recording and GIF export depend on it.
+Download the latest `SnippingTool-Setup-*.exe` from the [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases) page and run it. During setup you can choose to download `ffmpeg.exe`, which is required for MP4 recording and GIF export.
 
 ## Troubleshooting
 
-- **Recording or GIF export does not start** — SnippingTool requires `ffmpeg.exe` for MP4 recording and GIF export. The installer provisions it automatically; source builds need `ffmpeg.exe` next to the app, under `Assets\ffmpeg`, or on `PATH`.
+- **Recording or GIF export does not start** — SnippingTool requires `ffmpeg.exe` for MP4 recording and GIF export. If you skipped the ffmpeg download during setup, install `ffmpeg.exe` next to the app, under `Assets\ffmpeg`, or on `PATH`.
 - **OCR is unavailable** — OCR uses Windows.Media.Ocr and requires a supported Windows build.
 - **Hotkey seems ignored** — Make sure another app is not already using the same key and try changing the capture hotkey in Settings.
 - **App is running but not visible** — SnippingTool lives in the system tray after launch.

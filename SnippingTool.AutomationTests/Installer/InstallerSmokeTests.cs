@@ -34,7 +34,6 @@ public sealed class InstallerSmokeTests : IClassFixture<DesktopAutomationFixture
         {
             Assert.True(File.Exists(installedApp.InstalledExecutablePath));
             Assert.True(File.Exists(installedApp.UninstallerPath));
-            Assert.True(File.Exists(Path.Combine(installedApp.InstallDirectory, "ffmpeg.exe")));
 
             _fixture.SeedSettings(autoSaveScreenshots: false);
 

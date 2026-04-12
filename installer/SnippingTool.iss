@@ -53,6 +53,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "startupicon"; Description: "Start automatically with Windows"; GroupDescription: "Startup:"
+Name: "ffmpeg"; Description: "Download ffmpeg for MP4 recording and GIF export (~80 MB, recommended)"; GroupDescription: "Optional components:"; Flags: checkedonce
 
 [Files]
 ; The single-file publish exe — everything is bundled inside it
@@ -121,14 +122,17 @@ begin
   InfoText.Caption :=
     'SnippingTool now records to MP4 only.' + #13#10#13#10 +
     'ffmpeg is required because the app streams raw screen frames to ffmpeg for video encoding, and the same executable is also used for GIF export.' + #13#10#13#10 +
-    'The installer downloads ffmpeg automatically and places ffmpeg.exe next to the app.';
+    'You can continue without ffmpeg, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed next to the app or available on PATH.';
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  DownloadFailed: Boolean;
 begin
   Result := True;
-  if CurPageID = wpReady then
+  if (CurPageID = wpReady) and IsTaskSelected('ffmpeg') then
   begin
+    DownloadFailed := False;
     DownloadPage.Clear;
     DownloadPage.Add('{#FFmpegZipUrl}', '{#FFmpegZipFile}', '');
     DownloadPage.Show;
@@ -138,23 +142,22 @@ begin
       except
         if DownloadPage.AbortedByUser then
           SuppressibleMsgBox(
-            'Setup cannot continue because ffmpeg is required for MP4 recording and GIF export.',
+            'ffmpeg download was cancelled. SnippingTool will still install, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed.',
             mbError, MB_OK, IDOK)
         else
           SuppressibleMsgBox(
-            'ffmpeg download failed. Setup cannot continue because SnippingTool requires ffmpeg for MP4 recording and GIF export.' + #13#10#13#10 + #13#10 +
+            'ffmpeg download failed. SnippingTool will still install, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed.' + #13#10#13#10 + #13#10 +
             'Error: ' + GetExceptionMessage,
             mbError, MB_OK, IDOK);
 
-        Result := False;
+        DownloadFailed := True;
       end;
 
-      if Result and not FileExists(ExpandConstant('{tmp}\{#FFmpegZipFile}')) then
+      if (not DownloadFailed) and not FileExists(ExpandConstant('{tmp}\{#FFmpegZipFile}')) then
       begin
         SuppressibleMsgBox(
-          'ffmpeg download did not produce the expected archive. Setup cannot continue.',
+          'ffmpeg download did not produce the expected archive. SnippingTool will still install, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed.',
           mbError, MB_OK, IDOK);
-        Result := False;
       end;
     finally
       DownloadPage.Hide;
@@ -172,7 +175,8 @@ begin
 
   if not FileExists(ZipPath) then
   begin
-    RaiseException('Required ffmpeg archive was not downloaded. SnippingTool requires ffmpeg for MP4 recording and GIF export.');
+    Log('ffmpeg zip not found - skipping extraction');
+    Exit;
   end;
 
   PsCmd :=
@@ -191,10 +195,14 @@ begin
     if (ResultCode = 0) and FileExists(DestPath) then
       Log('ffmpeg.exe extracted successfully to ' + DestPath)
     else
-      RaiseException('ffmpeg extraction failed with code ' + IntToStr(ResultCode) + '. SnippingTool requires ffmpeg for MP4 recording and GIF export.');
+      SuppressibleMsgBox(
+        'ffmpeg extraction failed with code ' + IntToStr(ResultCode) + '. SnippingTool will still install, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed.',
+        mbError, MB_OK, IDOK);
   end
   else
-    RaiseException('Failed to launch PowerShell for ffmpeg extraction. SnippingTool requires ffmpeg for MP4 recording and GIF export.');
+    SuppressibleMsgBox(
+      'Failed to launch PowerShell for ffmpeg extraction. SnippingTool will still install, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed.',
+      mbError, MB_OK, IDOK);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
