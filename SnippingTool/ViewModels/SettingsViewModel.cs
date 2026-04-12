@@ -16,6 +16,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IUserSettingsService _settingsService;
     private readonly IThemeService _themeService;
     private readonly AppTheme _originalTheme;
+    private bool _persistFromDefaults;
 
     public SettingsViewModel(IUserSettingsService settingsService, IThemeService themeService, IDialogService dialogService)
     {
@@ -80,6 +81,7 @@ public partial class SettingsViewModel : ObservableObject
     private Color _defaultAnnotationColor;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AnnotationPreviewThickness))]
     private double _defaultStrokeThickness;
 
     [ObservableProperty]
@@ -95,7 +97,38 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private AppTheme _appTheme;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedSectionDisplayName))]
+    [NotifyPropertyChangedFor(nameof(SelectedSectionDescription))]
+    [NotifyPropertyChangedFor(nameof(IsCaptureSectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsRecordingSectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsAnnotationSectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsAppSectionSelected))]
+    private SettingsSection _selectedSection = SettingsSection.Capture;
+
     public string RegionCaptureHotkeyDisplayName => VkToDisplayName(RegionCaptureHotkey);
+    public string SelectedSectionDisplayName =>
+        SelectedSection switch
+        {
+            SettingsSection.Capture => "Capture",
+            SettingsSection.Recording => "Recording",
+            SettingsSection.Annotation => "Annotation",
+            SettingsSection.App => "App",
+            _ => "Settings",
+        };
+    public string SelectedSectionDescription =>
+        SelectedSection switch
+        {
+            SettingsSection.Capture => "Screenshot folders, timing, and the capture shortcut.",
+            SettingsSection.Recording => "Output options, cursor effects, and advanced recording defaults.",
+            SettingsSection.Annotation => "Default annotation appearance and preview.",
+            SettingsSection.App => "Appearance, update checks, and reset actions.",
+            _ => string.Empty,
+        };
+    public bool IsCaptureSectionSelected => SelectedSection == SettingsSection.Capture;
+    public bool IsRecordingSectionSelected => SelectedSection == SettingsSection.Recording;
+    public bool IsAnnotationSectionSelected => SelectedSection == SettingsSection.Annotation;
+    public bool IsAppSectionSelected => SelectedSection == SettingsSection.App;
 
     partial void OnDefaultAnnotationColorChanged(Color value) =>
         OnPropertyChanged(nameof(ColorPreviewBrush));
@@ -103,6 +136,7 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnAppThemeChanged(AppTheme value) => _themeService.Apply(value);
 
     public SolidColorBrush ColorPreviewBrush => new(DefaultAnnotationColor);
+    public double AnnotationPreviewThickness => Math.Max(DefaultStrokeThickness, 1d);
 
     public event Action? RequestClose;
 
@@ -141,6 +175,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         var c = DefaultAnnotationColor;
         var clampedRecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(RecordingCursorHighlightSize);
+        var baseSettings = _persistFromDefaults ? new UserSettings() : _settingsService.Current;
         RecordingCursorHighlightSize = clampedRecordingCursorHighlightSize;
 
         _settingsService.Save(new UserSettings
@@ -149,19 +184,19 @@ public partial class SettingsViewModel : ObservableObject
             AutoSaveScreenshots = AutoSaveScreenshots,
             RecordingOutputPath = RecordingOutputPath,
             RecordingFormat = RecordingFormat,
-            RecordingFps = _settingsService.Current.RecordingFps,
-            RecordingJpegQuality = _settingsService.Current.RecordingJpegQuality,
+            RecordingFps = baseSettings.RecordingFps,
+            RecordingJpegQuality = baseSettings.RecordingJpegQuality,
             GifFps = GifFps,
             RecordingCursorHighlightEnabled = RecordingCursorHighlightEnabled,
             RecordingClickRippleEnabled = RecordingClickRippleEnabled,
             RecordingCursorHighlightSize = clampedRecordingCursorHighlightSize,
             CaptureDelaySeconds = CaptureDelaySeconds,
-            HudGapPixels = _settingsService.Current.HudGapPixels,
+            HudGapPixels = baseSettings.HudGapPixels,
             DefaultAnnotationColor = $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}",
             DefaultStrokeThickness = DefaultStrokeThickness,
             RegionCaptureHotkey = RegionCaptureHotkey,
             AutoUpdateCheckInterval = AutoUpdateCheckInterval,
-            LastAutoUpdateCheckUtc = _settingsService.Current.LastAutoUpdateCheckUtc,
+            LastAutoUpdateCheckUtc = baseSettings.LastAutoUpdateCheckUtc,
             Theme = AppTheme,
         });
         RequestClose?.Invoke();
@@ -175,6 +210,60 @@ public partial class SettingsViewModel : ObservableObject
     {
         RegionCaptureHotkey = 0x2C; // VK_SNAPSHOT (Print Screen)
         IsRecordingHotkey = false;
+    }
+
+    [RelayCommand]
+    private void ResetCurrentSection()
+    {
+        var defaults = new UserSettings();
+        switch (SelectedSection)
+        {
+            case SettingsSection.Capture:
+                ScreenshotSavePath = defaults.ScreenshotSavePath;
+                AutoSaveScreenshots = defaults.AutoSaveScreenshots;
+                CaptureDelaySeconds = defaults.CaptureDelaySeconds;
+                RegionCaptureHotkey = defaults.RegionCaptureHotkey;
+                IsRecordingHotkey = false;
+                break;
+            case SettingsSection.Recording:
+                RecordingOutputPath = defaults.RecordingOutputPath;
+                RecordingFormat = defaults.RecordingFormat;
+                GifFps = defaults.GifFps;
+                RecordingCursorHighlightEnabled = defaults.RecordingCursorHighlightEnabled;
+                RecordingClickRippleEnabled = defaults.RecordingClickRippleEnabled;
+                RecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(defaults.RecordingCursorHighlightSize);
+                break;
+            case SettingsSection.Annotation:
+                DefaultAnnotationColor = (Color)System.Windows.Media.ColorConverter.ConvertFromString(defaults.DefaultAnnotationColor);
+                DefaultStrokeThickness = defaults.DefaultStrokeThickness;
+                break;
+            case SettingsSection.App:
+                AutoUpdateCheckInterval = defaults.AutoUpdateCheckInterval;
+                AppTheme = defaults.Theme;
+                break;
+        }
+    }
+
+    [RelayCommand]
+    private void RestoreDefaults()
+    {
+        var defaults = new UserSettings();
+        _persistFromDefaults = true;
+        ScreenshotSavePath = defaults.ScreenshotSavePath;
+        AutoSaveScreenshots = defaults.AutoSaveScreenshots;
+        RecordingOutputPath = defaults.RecordingOutputPath;
+        RecordingFormat = defaults.RecordingFormat;
+        GifFps = defaults.GifFps;
+        RecordingCursorHighlightEnabled = defaults.RecordingCursorHighlightEnabled;
+        RecordingClickRippleEnabled = defaults.RecordingClickRippleEnabled;
+        RecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(defaults.RecordingCursorHighlightSize);
+        CaptureDelaySeconds = defaults.CaptureDelaySeconds;
+        DefaultAnnotationColor = (Color)System.Windows.Media.ColorConverter.ConvertFromString(defaults.DefaultAnnotationColor);
+        DefaultStrokeThickness = defaults.DefaultStrokeThickness;
+        RegionCaptureHotkey = defaults.RegionCaptureHotkey;
+        IsRecordingHotkey = false;
+        AutoUpdateCheckInterval = defaults.AutoUpdateCheckInterval;
+        AppTheme = defaults.Theme;
     }
 
     [RelayCommand]

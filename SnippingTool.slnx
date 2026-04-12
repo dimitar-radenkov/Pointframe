@@ -1,5 +1,7 @@
 <Solution>
-  <Project Path="SnippingTool/SnippingTool.csproj" />
+  <Project Path="SnippingTool.AutomationTests/SnippingTool.AutomationTests.csproj">
+    <Build Solution="Debug|*" Project="false" />
+  </Project>
   <Project Path="SnippingTool.Tests/SnippingTool.Tests.csproj" />
-  <Project Path="SnippingTool.AutomationTests/SnippingTool.AutomationTests.csproj" />
+  <Project Path="SnippingTool/SnippingTool.csproj" />
 </Solution>
