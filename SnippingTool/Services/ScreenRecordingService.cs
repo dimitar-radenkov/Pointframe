@@ -39,6 +39,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private int _fps;
     private string? _activeMicrophoneDeviceName;
     private bool? _restoreMicrophoneMutedState;
+    private byte[]? _latestFrameBytes;
     private Stopwatch? _sessionStopwatch;
     private int _attemptedFrameCount;
     private int _writtenFrameCount;
@@ -99,6 +100,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _writtenFrameCount = 0;
         _droppedFrameCount = 0;
         _firstFrameWrittenAtMilliseconds = -1;
+        _latestFrameBytes = null;
         _sessionStopwatch = Stopwatch.StartNew();
 
         // Allocate the capture surface once per session — no per-frame allocation.
@@ -127,11 +129,11 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
         // Bounded channel: if the encode loop falls behind, CaptureFrameToChannel will
         // skip frames (TryWrite returns false) rather than stalling the capture thread.
-        _encodeChannel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(PoolSize)
+        _encodeChannel = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions
         {
-            FullMode = BoundedChannelFullMode.DropWrite,
             SingleReader = true,
             SingleWriter = true,
+            AllowSynchronousContinuations = false,
         });
 
         _cts = new CancellationTokenSource();
@@ -151,6 +153,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
         _logger.LogInformation("Stopping recording");
         IsRecording = false;
+        var stopRequestedElapsed = _sessionStopwatch?.Elapsed ?? TimeSpan.Zero;
         if (IsPaused)
         {
             IsPaused = false;
@@ -159,24 +162,37 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
         _cts?.Cancel();
 
+        try
+        {
+            _captureLoop?.Wait(TimeSpan.FromSeconds(3));
+        }
+        catch (AggregateException ae) when (ae.InnerExceptions.All(ex => ex is OperationCanceledException))
+        {
+        }
+
         // Complete the channel so the encode loop drains remaining buffered frames and exits.
         _encodeChannel?.Writer.TryComplete();
 
         try
         {
-            _captureLoop?.Wait(TimeSpan.FromSeconds(3));
             _encodeLoop?.Wait(TimeSpan.FromSeconds(10));
         }
         catch (AggregateException ae) when (ae.InnerExceptions.All(ex => ex is OperationCanceledException))
         {
         }
+
+        try
+        {
+            PadRecordingToElapsedDuration(stopRequestedElapsed);
+        }
         finally
         {
-            LogSessionSummary();
+            LogSessionSummary(stopRequestedElapsed);
             _captureGraphics?.Dispose();
             _captureGraphics = null;
             _captureBitmap?.Dispose();
             _captureBitmap = null;
+            _latestFrameBytes = null;
             IsRecordingMicrophoneEnabled = false;
             CanToggleMicrophone = false;
             IsMicrophoneMuted = false;
@@ -229,11 +245,6 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _logger.LogError(ex, "Capture loop failed after {FrameCount} frames", frameCount);
             throw;
         }
-        finally
-        {
-            // Signal the encode loop that no more frames are coming.
-            _encodeChannel?.Writer.TryComplete();
-        }
 
         _logger.LogDebug("Capture loop ended after {FrameCount} frames", frameCount);
     }
@@ -250,9 +261,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         // Rent a pre-allocated buffer; skip this frame if the pool is empty (encode is behind).
         if (!_bufferPool.TryDequeue(out var buffer))
         {
-            Interlocked.Increment(ref _droppedFrameCount);
-            _logger.LogDebug("Frame skipped — buffer pool exhausted");
-            return;
+            buffer = new byte[_captureWidth * _captureHeight * 4];
         }
 
         // BitBlt is a direct GDI call, faster than the managed Graphics.CopyFromScreen wrapper.
@@ -281,12 +290,16 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _captureBitmap.UnlockBits(bits);
         }
 
+        UpdateLatestFrame(buffer);
+
         // TryWrite never blocks; dropped frames are logged at debug level above.
-        if (!_encodeChannel.Writer.TryWrite(buffer))
+        if (_encodeChannel.Writer.TryWrite(buffer))
         {
-            Interlocked.Increment(ref _droppedFrameCount);
-            _bufferPool.Enqueue(buffer);
+            return;
         }
+
+        Interlocked.Increment(ref _droppedFrameCount);
+        _bufferPool.Enqueue(buffer);
     }
 
     // Runs on a dedicated background thread; WriteFrame may block on the pipe to ffmpeg
@@ -408,6 +421,52 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
     public void Dispose() => Stop();
 
+    private void UpdateLatestFrame(byte[] source)
+    {
+        _latestFrameBytes ??= new byte[source.Length];
+        Buffer.BlockCopy(source, 0, _latestFrameBytes, 0, source.Length);
+    }
+
+    private void PadRecordingToElapsedDuration(TimeSpan targetElapsed)
+    {
+        if (_fps <= 0)
+        {
+            return;
+        }
+
+        var paddingSource = _latestFrameBytes;
+        if (paddingSource is null)
+        {
+            if (_captureWidth <= 0 || _captureHeight <= 0)
+            {
+                return;
+            }
+
+            paddingSource = new byte[_captureWidth * _captureHeight * 4];
+            _logger.LogWarning("No captured frame was available for stop-time padding; using a blank frame to preserve recording duration");
+        }
+
+        var elapsedFrameCount = (int)Math.Ceiling(targetElapsed.TotalSeconds * _fps);
+        var writtenFrameCount = Volatile.Read(ref _writtenFrameCount);
+        var framesToPad = Math.Max(0, elapsedFrameCount - writtenFrameCount);
+
+        if (framesToPad == 0)
+        {
+            return;
+        }
+
+        _logger.LogInformation("Padding recording with {FrameCount} duplicate frames to match elapsed duration", framesToPad);
+
+        for (var index = 0; index < framesToPad; index++)
+        {
+            var frameCopy = new byte[paddingSource.Length];
+            Buffer.BlockCopy(paddingSource, 0, frameCopy, 0, frameCopy.Length);
+            Interlocked.Increment(ref _attemptedFrameCount);
+            _writer?.WriteFrame(frameCopy);
+            Interlocked.Increment(ref _writtenFrameCount);
+        }
+    }
+
     private void LogFirstFrameWriteIfNeeded()
     {
         if (_sessionStopwatch is null)
@@ -422,9 +481,9 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         }
     }
 
-    private void LogSessionSummary()
+    private void LogSessionSummary(TimeSpan targetElapsed)
     {
-        if (_sessionStopwatch is null || _fps <= 0)
+        if (_fps <= 0)
         {
             return;
         }
@@ -432,14 +491,13 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         var attemptedFrames = Volatile.Read(ref _attemptedFrameCount);
         var writtenFrames = Volatile.Read(ref _writtenFrameCount);
         var droppedFrames = Volatile.Read(ref _droppedFrameCount);
-        var elapsed = _sessionStopwatch.Elapsed;
         var firstFrameDelayMilliseconds = Volatile.Read(ref _firstFrameWrittenAtMilliseconds);
         var effectiveOutputDuration = TimeSpan.FromSeconds((double)writtenFrames / _fps);
         var droppedDuration = TimeSpan.FromSeconds((double)droppedFrames / _fps);
 
         _logger.LogInformation(
             "Recording session stats: elapsed={ElapsedMs} ms, attemptedFrames={AttemptedFrames}, writtenFrames={WrittenFrames}, droppedFrames={DroppedFrames}, firstWriteDelayMs={FirstWriteDelayMs}, outputDuration={OutputDuration:c}, droppedDuration={DroppedDuration:c}",
-            (long)elapsed.TotalMilliseconds,
+            (long)targetElapsed.TotalMilliseconds,
             attemptedFrames,
             writtenFrames,
             droppedFrames,

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using SnippingTool.Models;
@@ -8,6 +9,32 @@ namespace SnippingTool.Tests.Services;
 
 public sealed class ScreenRecordingServiceTests
 {
+    private sealed class TestVideoWriter : IVideoWriter
+    {
+        private readonly TimeSpan _writeDelay;
+
+        public TestVideoWriter(TimeSpan writeDelay)
+        {
+            _writeDelay = writeDelay;
+        }
+
+        public int WrittenFrameCount { get; private set; }
+
+        public void WriteFrame(byte[] frameData)
+        {
+            if (_writeDelay > TimeSpan.Zero)
+            {
+                Thread.Sleep(_writeDelay);
+            }
+
+            WrittenFrameCount++;
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
     private static ScreenRecordingService CreateSut() =>
         new(NullLogger<ScreenRecordingService>.Instance,
             Mock.Of<IMicrophoneDeviceService>(),
@@ -434,5 +461,30 @@ public sealed class ScreenRecordingServiceTests
 
         microphoneService.Verify(service => service.TrySetCaptureDeviceMuted("Studio Mic", true), Times.Once);
         microphoneService.Verify(service => service.TrySetCaptureDeviceMuted("Studio Mic", false), Times.Once);
+    }
+
+    [Fact]
+    public void Stop_WhenWriterBackpressureOccurs_PadsFramesToElapsedDuration()
+    {
+        var writer = new TestVideoWriter(TimeSpan.FromMilliseconds(180));
+        var mockFactory = new Mock<IVideoWriterFactory>();
+        mockFactory
+            .Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()))
+            .Returns(writer);
+        var settings = new UserSettings { RecordingFps = 10 };
+
+        using var svc = CreateSut(mockFactory.Object, settings: settings);
+
+        var stopwatch = Stopwatch.StartNew();
+        svc.Start(0, 0, 100, 100, "test.mp4");
+        Thread.Sleep(650);
+        var elapsedBeforeStop = stopwatch.Elapsed;
+        svc.Stop();
+        stopwatch.Stop();
+
+        var minimumExpectedFrames = (int)Math.Floor(elapsedBeforeStop.TotalSeconds * settings.RecordingFps) - 1;
+
+        Assert.True(writer.WrittenFrameCount >= minimumExpectedFrames,
+            $"Expected at least {minimumExpectedFrames} written frames for elapsed time {elapsedBeforeStop}, but saw {writer.WrittenFrameCount}.");
     }
 }
