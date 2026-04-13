@@ -51,4 +51,5 @@ jobs:
           version: ${{ steps.version.outputs.display }}
           release-tag: v${{ steps.version.outputs.display }}
           installers-regex: 'Setup\.exe$'
+          fork-user: dimitar-radenkov
           token: ${{ secrets.WINGET_TOKEN }}
