@@ -233,6 +233,14 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void DefaultSettings_RecordMicrophone_IsEnabled()
+    {
+        var vm = CreateVm();
+
+        Assert.True(vm.RecordMicrophone);
+    }
+
+    [Fact]
     public void LoadsFromSettings_RecordingMicrophoneDeviceName()
     {
         var vm = CreateVm(new UserSettings { RecordingMicrophoneDeviceName = "USB Mic" });
@@ -264,7 +272,7 @@ public sealed class SettingsViewModelTests
         var raised = new List<string?>();
         vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
 
-        vm.RecordMicrophone = true;
+        vm.RecordMicrophone = false;
 
         Assert.Contains(nameof(vm.RecordMicrophone), raised);
     }
@@ -301,7 +309,11 @@ public sealed class SettingsViewModelTests
         mock.SetupGet(s => s.Current).Returns(new UserSettings());
         UserSettings? saved = null;
         mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
-        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>(), CreateMicrophoneDeviceService()); 
+        var vm = new SettingsViewModel(
+            mock.Object,
+            Mock.Of<IThemeService>(),
+            Mock.Of<IDialogService>(),
+            CreateMicrophoneDeviceService());
         vm.RecordingCursorHighlightEnabled = false;
         vm.RecordingClickRippleEnabled = false;
         vm.RecordingCursorHighlightSize = 36d;

@@ -342,6 +342,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     {
         if (!_settings.Current.RecordMicrophone)
         {
+            _logger.LogInformation("Microphone recording is disabled in settings. Continuing with video only.");
             return null;
         }
 

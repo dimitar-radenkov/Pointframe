@@ -77,6 +77,22 @@ public sealed class RecordingHudViewModelTests
     }
 
     [Fact]
+    public void InitialState_WhenMicrophoneUnavailable_ShowsOffLabelAndExplanation()
+    {
+        var svcMock = new Mock<IScreenRecordingService>();
+        svcMock.SetupGet(service => service.CanToggleMicrophone).Returns(false);
+        svcMock.SetupGet(service => service.IsMicrophoneMuted).Returns(false);
+
+        var vm = CreateVm(svcMock: svcMock);
+
+        Assert.False(vm.CanToggleMicrophone);
+        Assert.Equal("Mic off", vm.MicrophoneActionLabel);
+        Assert.Equal(
+            "Microphone controls are unavailable for this recording. Enable Record microphone in Settings and make sure a compatible microphone device is selected.",
+            vm.MicrophoneToolTip);
+    }
+
+    [Fact]
     public void OutputPath_ExposesConstructorValue()
     {
         var vm = CreateVm(outputPath: @"C:\Videos\test.mp4");
@@ -235,6 +251,7 @@ public sealed class RecordingHudViewModelTests
 
         svcMock.Verify(service => service.TrySetMicrophoneMuted(It.IsAny<bool>()), Times.Never);
         Assert.False(vm.IsMicrophoneMuted);
+        Assert.Equal("Mic off", vm.MicrophoneActionLabel);
     }
 
     [Fact]

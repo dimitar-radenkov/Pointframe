@@ -258,8 +258,9 @@
             <Button Grid.Row="0" Grid.Column="4"
                     Style="{StaticResource RecordingHudActionBtn}"
                     Command="{Binding ToggleMicrophoneCommand}"
+                    IsEnabled="{Binding CanToggleMicrophone}"
                     ToolTip="{Binding MicrophoneToolTip}"
-                    Visibility="{Binding CanToggleMicrophone, Converter={StaticResource BoolToVisibility}}"
+                    ToolTipService.ShowOnDisabled="True"
                     AutomationProperties.AutomationId="RecordingOverlayWindow.ToggleMicrophone">
               <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                          FontSize="15"
@@ -270,6 +271,10 @@
                     <Setter Property="Text" Value="&#xE720;"/>
                     <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
                     <Style.Triggers>
+                      <DataTrigger Binding="{Binding CanToggleMicrophone}" Value="False">
+                        <Setter Property="Text" Value="&#xEC54;"/>
+                        <Setter Property="Foreground" Value="{DynamicResource SubLabelText}"/>
+                      </DataTrigger>
                       <DataTrigger Binding="{Binding IsMicrophoneMuted}" Value="True">
                         <Setter Property="Text" Value="&#xEC54;"/>
                         <Setter Property="Foreground" Value="#FFB94A48"/>
@@ -285,15 +290,13 @@
                        FontSize="8"
                        Foreground="{DynamicResource SubLabelText}"
                        TextAlignment="Center"
-                       Margin="0,2,0,0"
-                       Visibility="{Binding CanToggleMicrophone, Converter={StaticResource BoolToVisibility}}"/>
+                       Margin="0,2,0,0"/>
 
             <Rectangle Grid.Row="0" Grid.RowSpan="2" Grid.Column="5"
                        Width="1"
                        Fill="{DynamicResource DividerColor}"
                        Margin="3,7"
-                       VerticalAlignment="Stretch"
-                       Visibility="{Binding CanToggleMicrophone, Converter={StaticResource BoolToVisibility}}"/>
+                       VerticalAlignment="Stretch"/>
 
             <Button Grid.Row="0" Grid.Column="6"
                     Style="{StaticResource RecordingHudActionBtn}"

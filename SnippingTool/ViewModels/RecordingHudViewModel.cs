@@ -28,6 +28,8 @@ public partial class RecordingHudViewModel : ObservableObject
     private bool _canPauseResume = true;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MicrophoneActionLabel))]
+    [NotifyPropertyChangedFor(nameof(MicrophoneToolTip))]
     private bool _canToggleMicrophone;
 
     [ObservableProperty]
@@ -55,10 +57,14 @@ public partial class RecordingHudViewModel : ObservableObject
 
     public bool IsAnnotationPanelVisible => CanManageAnnotations && IsAnnotationInputArmed;
     public string CurrentModeLabel => IsAnnotationInputArmed ? "Drawing" : "Interactive";
-    public string MicrophoneActionLabel => IsMicrophoneMuted ? "Unmute" : "Mute";
-    public string MicrophoneToolTip => IsMicrophoneMuted
-        ? "Enable microphone audio for the rest of this recording"
-        : "Disable microphone audio for the rest of this recording";
+    public string MicrophoneActionLabel => CanToggleMicrophone
+        ? (IsMicrophoneMuted ? "Unmute" : "Mute")
+        : "Mic off";
+    public string MicrophoneToolTip => CanToggleMicrophone
+        ? (IsMicrophoneMuted
+            ? "Enable microphone audio for the rest of this recording"
+            : "Disable microphone audio for the rest of this recording")
+        : "Microphone controls are unavailable for this recording. Enable Record microphone in Settings and make sure a compatible microphone device is selected.";
 
     public event Action? CloseRequested;
 
