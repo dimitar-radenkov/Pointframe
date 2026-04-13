@@ -74,23 +74,65 @@ public class DesktopAutomationFixture : IDisposable
 
     public void EnsureRecordingBackendAvailable()
     {
+        _ = ResolveRecordingBackendPath();
+    }
+
+    public string ResolveRecordingBackendPath()
+    {
         var appDirectory = AppContext.BaseDirectory;
         var directPath = Path.Combine(appDirectory, "ffmpeg.exe");
         var bundledPath = Path.Combine(appDirectory, "Assets", "ffmpeg", "ffmpeg.exe");
         if (File.Exists(directPath) || File.Exists(bundledPath))
         {
-            return;
+            return File.Exists(directPath) ? directPath : bundledPath;
+        }
+
+        var repositoryRoot = FindRepositoryRoot();
+        if (repositoryRoot is not null)
+        {
+            var binRoot = Path.Combine(repositoryRoot.FullName, "SnippingTool", "bin");
+            if (Directory.Exists(binRoot))
+            {
+                var builtBackend = Directory
+                    .EnumerateFiles(binRoot, "ffmpeg.exe", SearchOption.AllDirectories)
+                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                    .FirstOrDefault();
+
+                if (!string.IsNullOrWhiteSpace(builtBackend))
+                {
+                    return builtBackend;
+                }
+            }
         }
 
         var pathEntries = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (pathEntries.Any(pathEntry => File.Exists(Path.Combine(pathEntry, "ffmpeg.exe"))))
         {
-            return;
+            return "ffmpeg.exe";
         }
 
         throw new InvalidOperationException(
             "Recording smoke requires ffmpeg.exe for MP4 output, but it was not found next to the test app, under Assets\\ffmpeg, or on PATH.");
+    }
+
+    private static DirectoryInfo? FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var appProjectDirectory = Path.Combine(directory.FullName, "SnippingTool");
+            var automationProjectDirectory = Path.Combine(directory.FullName, "SnippingTool.AutomationTests");
+
+            if (Directory.Exists(appProjectDirectory) && Directory.Exists(automationProjectDirectory))
+            {
+                return directory;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
     }
 
     public void Dispose()

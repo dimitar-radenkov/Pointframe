@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using SnippingTool.Models;
@@ -9,6 +10,35 @@ namespace SnippingTool.Tests.Services;
 
 public sealed class ScreenRecordingServiceTests
 {
+    private sealed class ListLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull
+        {
+            return NoopDisposable.Instance;
+        }
+
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            return true;
+        }
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            Messages.Add(formatter(state, exception));
+        }
+
+        private sealed class NoopDisposable : IDisposable
+        {
+            public static NoopDisposable Instance { get; } = new();
+
+            public void Dispose()
+            {
+            }
+        }
+    }
+
     private sealed class TestVideoWriter : IVideoWriter
     {
         private readonly TimeSpan _writeDelay;
@@ -44,8 +74,9 @@ public sealed class ScreenRecordingServiceTests
     private static ScreenRecordingService CreateSut(
         IVideoWriterFactory factory,
         IMicrophoneDeviceService? microphoneDeviceService = null,
-        UserSettings? settings = null) =>
-        new(NullLogger<ScreenRecordingService>.Instance,
+        UserSettings? settings = null,
+        ILogger<ScreenRecordingService>? logger = null) =>
+        new(logger ?? NullLogger<ScreenRecordingService>.Instance,
             microphoneDeviceService ?? Mock.Of<IMicrophoneDeviceService>(),
             Mock.Of<IUserSettingsService>(s => s.Current == (settings ?? new UserSettings())),
             factory);
@@ -486,5 +517,84 @@ public sealed class ScreenRecordingServiceTests
 
         Assert.True(writer.WrittenFrameCount >= minimumExpectedFrames,
             $"Expected at least {minimumExpectedFrames} written frames for elapsed time {elapsedBeforeStop}, but saw {writer.WrittenFrameCount}.");
+    }
+
+    [Fact]
+    public void Stop_WhenWriterBackpressureOccursDuringMicrophoneRecording_PadsFramesToElapsedDuration()
+    {
+        var writer = new TestVideoWriter(TimeSpan.FromMilliseconds(180));
+        var mockFactory = new Mock<IVideoWriterFactory>();
+        mockFactory
+            .Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()))
+            .Returns(writer);
+        var microphoneService = Mock.Of<IMicrophoneDeviceService>(service =>
+            service.GetAvailableCaptureDeviceNames() == new[] { "Studio Mic" } &&
+            service.GetDefaultCaptureDeviceName() == "Studio Mic" &&
+            service.TryGetCaptureDeviceMuted("Studio Mic") == false);
+        var settings = new UserSettings
+        {
+            RecordingFps = 10,
+            RecordMicrophone = true,
+        };
+
+        using var svc = CreateSut(mockFactory.Object, microphoneService, settings);
+
+        var stopwatch = Stopwatch.StartNew();
+        svc.Start(0, 0, 100, 100, "test.mp4");
+        Thread.Sleep(650);
+        var elapsedBeforeStop = stopwatch.Elapsed;
+        svc.Stop();
+        stopwatch.Stop();
+
+        var minimumExpectedFrames = (int)Math.Floor(elapsedBeforeStop.TotalSeconds * settings.RecordingFps) - 1;
+
+        mockFactory.Verify(f => f.Create(100, 100, settings.RecordingFps, "test.mp4", "Studio Mic"), Times.Once);
+        Assert.True(writer.WrittenFrameCount >= minimumExpectedFrames,
+            $"Expected at least {minimumExpectedFrames} written frames for elapsed time {elapsedBeforeStop}, but saw {writer.WrittenFrameCount}.");
+    }
+
+    [Fact]
+    public void Stop_WhenWriterBackpressureOccurs_LogsZeroDroppedFrames()
+    {
+        var writer = new TestVideoWriter(TimeSpan.FromMilliseconds(180));
+        var mockFactory = new Mock<IVideoWriterFactory>();
+        mockFactory
+            .Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()))
+            .Returns(writer);
+        var logger = new ListLogger<ScreenRecordingService>();
+        var settings = new UserSettings { RecordingFps = 10 };
+
+        using var svc = CreateSut(mockFactory.Object, settings: settings, logger: logger);
+
+        svc.Start(0, 0, 100, 100, "test.mp4");
+        Thread.Sleep(650);
+        svc.Stop();
+
+        var statsMessage = logger.Messages.Last(message => message.StartsWith("Recording session stats:", StringComparison.Ordinal));
+
+        Assert.Contains("droppedFrames=0", statsMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Stop_WhenWriterBackpressureOccurs_LogsZeroDroppedDuration()
+    {
+        var logger = new ListLogger<ScreenRecordingService>();
+        var writer = new TestVideoWriter(TimeSpan.FromMilliseconds(180));
+        var mockFactory = new Mock<IVideoWriterFactory>();
+        mockFactory
+            .Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()))
+            .Returns(writer);
+        var settings = new UserSettings { RecordingFps = 10 };
+
+        using var svc = CreateSut(mockFactory.Object, settings: settings, logger: logger);
+
+        svc.Start(0, 0, 100, 100, "test.mp4");
+        Thread.Sleep(650);
+        svc.Stop();
+
+        var sessionStats = logger.Messages.Last(message => message.StartsWith("Recording session stats:", StringComparison.Ordinal));
+
+        Assert.Contains("droppedFrames=0", sessionStats, StringComparison.Ordinal);
+        Assert.Contains("droppedDuration=00:00:00", sessionStats, StringComparison.Ordinal);
     }
 }

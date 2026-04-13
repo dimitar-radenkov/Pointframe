@@ -37,7 +37,7 @@ public sealed class AutomationApp : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(automationArgument);
 
-        var executablePath = Path.Combine(AppContext.BaseDirectory, "SnippingTool.exe");
+        var executablePath = ResolveAutomationExecutablePath();
         return LaunchExecutable(executablePath, automationArgument, environmentVariables);
     }
 
@@ -83,6 +83,54 @@ public sealed class AutomationApp : IDisposable
             {
                 [AutomationSettingsPathEnvironmentVariable] = settingsPath,
             });
+    }
+
+    private static string ResolveAutomationExecutablePath()
+    {
+        var directPath = Path.Combine(AppContext.BaseDirectory, "SnippingTool.exe");
+        if (File.Exists(directPath))
+        {
+            return directPath;
+        }
+
+        var repositoryRoot = FindRepositoryRoot();
+        if (repositoryRoot is not null)
+        {
+            var binRoot = Path.Combine(repositoryRoot.FullName, "SnippingTool", "bin");
+            if (Directory.Exists(binRoot))
+            {
+                var builtExecutable = Directory
+                    .EnumerateFiles(binRoot, "SnippingTool.exe", SearchOption.AllDirectories)
+                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                    .FirstOrDefault();
+
+                if (!string.IsNullOrWhiteSpace(builtExecutable))
+                {
+                    return builtExecutable;
+                }
+            }
+        }
+
+        return directPath;
+    }
+
+    private static DirectoryInfo? FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var appProjectDirectory = Path.Combine(directory.FullName, "SnippingTool");
+            var automationProjectDirectory = Path.Combine(directory.FullName, "SnippingTool.AutomationTests");
+
+            if (Directory.Exists(appProjectDirectory) && Directory.Exists(automationProjectDirectory))
+            {
+                return directory;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
     }
 
     public bool IsAutoSaveScreenshotsChecked()
@@ -192,7 +240,7 @@ public sealed class AutomationApp : IDisposable
                     if (!process.HasExited)
                     {
                         process.Kill(entireProcessTree: true);
-                        process.WaitForExit();
+                        process.WaitForExit((int)WindowTimeout.TotalMilliseconds);
                     }
                 }
             }
