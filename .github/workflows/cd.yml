@@ -116,7 +116,7 @@ jobs:
           path: installer/output/SnippingTool-${{ steps.version.outputs.display }}-Setup.exe
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.version.outputs.display }}
           files: installer/output/SnippingTool-${{ steps.version.outputs.display }}-Setup.exe
