@@ -1,8 +1,6 @@
 name: Desktop Automation
 
 on:
-  push:
-    branches: [ master, "feature/**", "fix/**" ]
   workflow_dispatch:
 
 concurrency:
