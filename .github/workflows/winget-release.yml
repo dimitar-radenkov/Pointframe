@@ -83,6 +83,25 @@ jobs:
           "display=$display" | Out-File -Append $env:GITHUB_OUTPUT
           "tag=$tag" | Out-File -Append $env:GITHUB_OUTPUT
 
+        - name: Sync winget fork
+          if: steps.check.outputs.changed == 'true'
+          env:
+            GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          run: gh repo sync dimitar-radenkov/winget-pkgs -b master
+
+        - name: Verify winget fork head
+          if: steps.check.outputs.changed == 'true'
+          shell: pwsh
+          env:
+            GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          run: |
+            $fork = gh api repos/dimitar-radenkov/winget-pkgs/commits/master --jq .sha
+            $upstream = gh api repos/microsoft/winget-pkgs/commits/master --jq .sha
+
+            if ($fork -ne $upstream) {
+              throw "winget-pkgs fork is not synced with upstream."
+            }
+
       - name: Submit to winget
         if: steps.check.outputs.changed == 'true'
         uses: vedantmgoyal9/winget-releaser@v2
