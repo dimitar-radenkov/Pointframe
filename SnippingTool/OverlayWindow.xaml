@@ -215,6 +215,8 @@
                Stroke="#0078D4" StrokeThickness="1.5"
                StrokeDashArray="4,3"
                Fill="{DynamicResource OcrLassoFill}"
+               Panel.ZIndex="30"
+               IsHitTestVisible="False"
                Visibility="Collapsed"/>
 
     <!-- Annotation drawing surface (phase 2, sized over the selection) -->
