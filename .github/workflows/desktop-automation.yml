@@ -35,15 +35,15 @@ jobs:
         run: dotnet tool restore
 
       - name: Restore
-        run: dotnet restore SnippingTool.slnx
+        run: dotnet restore Pointframe.slnx
 
       - name: Build desktop automation tests
-        run: dotnet build SnippingTool.AutomationTests/SnippingTool.AutomationTests.csproj --no-restore --configuration Release
+        run: dotnet build SnippingTool.AutomationTests/Pointframe.AutomationTests.csproj --no-restore --configuration Release
 
       - name: Run desktop smoke tests
         # InstallerSmoke is intentionally excluded from CI/CD.
         run: >
-          dotnet test SnippingTool.AutomationTests/SnippingTool.AutomationTests.csproj
+          dotnet test SnippingTool.AutomationTests/Pointframe.AutomationTests.csproj
           --configuration Release
           --no-build
           --no-restore

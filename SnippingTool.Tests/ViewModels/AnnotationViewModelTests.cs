@@ -1,12 +1,12 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using SnippingTool.Models;
-using SnippingTool.Services;
-using SnippingTool.Services.Messaging;
-using SnippingTool.ViewModels;
+using Pointframe.Models;
+using Pointframe.Services;
+using Pointframe.Services.Messaging;
+using Pointframe.ViewModels;
 using Xunit;
 
-namespace SnippingTool.Tests.ViewModels;
+namespace Pointframe.Tests.ViewModels;
 
 public sealed class AnnotationViewModelTests
 {
@@ -196,7 +196,7 @@ public sealed class AnnotationViewModelTests
         var result = vm.TryGetShapeParameters();
 
         // Assert
-        Assert.IsType<SnippingTool.Models.RectShapeParameters>(result);
+        Assert.IsType<RectShapeParameters>(result);
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public sealed class AnnotationViewModelTests
         vm.UpdateDrawing(new System.Windows.Point(100, 0));
 
         // Act
-        var result = vm.TryGetShapeParameters() as SnippingTool.Models.ArrowShapeParameters;
+        var result = vm.TryGetShapeParameters() as ArrowShapeParameters;
 
         // Assert
         Assert.NotNull(result);
@@ -245,7 +245,7 @@ public sealed class AnnotationViewModelTests
         var result = vm.TryGetShapeParameters();
 
         // Assert
-        Assert.IsType<SnippingTool.Models.EllipseShapeParameters>(result);
+        Assert.IsType<EllipseShapeParameters>(result);
     }
 
     [Fact]
@@ -258,7 +258,7 @@ public sealed class AnnotationViewModelTests
         vm.UpdateDrawing(new System.Windows.Point(110, 120));
 
         // Act
-        var result = vm.TryGetShapeParameters() as SnippingTool.Models.BlurShapeParameters;
+        var result = vm.TryGetShapeParameters() as BlurShapeParameters;
 
         // Assert
         Assert.NotNull(result);

@@ -1,4 +1,4 @@
-namespace SnippingTool.Models;
+namespace Pointframe.Models;
 
 public enum SettingsSection
 {

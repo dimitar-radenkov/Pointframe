@@ -3,12 +3,12 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Moq;
-using SnippingTool.Services;
-using SnippingTool.Tests.Services.Handlers;
+using Pointframe.Services;
+using Pointframe.Tests.Services.Handlers;
 using Xunit;
 using Rectangle = System.Windows.Shapes.Rectangle;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class OverlayBitmapCaptureTests
 {

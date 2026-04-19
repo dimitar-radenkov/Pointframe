@@ -1,22 +1,21 @@
-using System.Windows.Threading;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
+using System.Windows;
+using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using System.Windows;
-using SnippingTool.Services;
-using SnippingTool.Services.Messaging;
-using SnippingTool.Models;
-using SnippingTool.Automation;
-using SnippingTool.ViewModels;
-using SnippingTool.Tests.Services.Handlers;
+using Pointframe.Models;
+using Pointframe.Services;
+using Pointframe.Services.Messaging;
+using Pointframe.Tests.Services.Handlers;
+using Pointframe.ViewModels;
 using Xunit;
-using System.IO;
 using WpfMenuItem = System.Windows.Controls.MenuItem;
 
-namespace SnippingTool.Tests;
+namespace Pointframe.Tests;
 
 public sealed class AppTests
 {
@@ -87,7 +86,7 @@ public sealed class AppTests
             root.Show();
             var child = new Window { Title = "Child", Width = 100, Height = 100, Owner = root };
             child.Show();
-  
+
             InvokePrivateStatic("CloseWindowTree", root);
 
             Assert.False(root.IsVisible);
@@ -453,7 +452,6 @@ public sealed class AppTests
         Assert.NotNull(recentRecordingType);
         return Activator.CreateInstance(recentRecordingType!, [outputPath, elapsedText])!;
     }
-
 
     private static object InvokePrivateStaticResult(string methodName, params object[] args)
     {

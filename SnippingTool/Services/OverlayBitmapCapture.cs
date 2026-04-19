@@ -4,7 +4,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 internal sealed class OverlayBitmapCapture : IOverlayBitmapCapture
 {

@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.Security.Principal;
-using SnippingTool.AutomationTests.Fixtures;
-using SnippingTool.AutomationTests.Support;
+using Pointframe.AutomationTests.Fixtures;
+using Pointframe.AutomationTests.Support;
 using Xunit;
 
-namespace SnippingTool.AutomationTests.Installer;
+namespace Pointframe.AutomationTests.Installer;
 
 public sealed class InstallerSmokeTests : IClassFixture<DesktopAutomationFixture>
 {

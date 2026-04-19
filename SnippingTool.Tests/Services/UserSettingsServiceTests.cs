@@ -1,11 +1,11 @@
 using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
-using SnippingTool.Models;
-using SnippingTool.Services;
+using Pointframe.Models;
+using Pointframe.Services;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class UserSettingsServiceTests : IDisposable
 {

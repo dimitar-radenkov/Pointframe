@@ -1,12 +1,12 @@
-using System.IO;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging.Abstractions;
-using SnippingTool.Services;
+using Pointframe.Services;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 [Collection("FfmpegPathOverride")]
 public sealed class FFMpegVideoWriterTests

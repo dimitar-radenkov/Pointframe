@@ -1,8 +1,8 @@
-using SnippingTool.AutomationTests.Fixtures;
-using SnippingTool.AutomationTests.Support;
+using Pointframe.AutomationTests.Fixtures;
+using Pointframe.AutomationTests.Support;
 using Xunit;
 
-namespace SnippingTool.AutomationTests.Smoke;
+namespace Pointframe.AutomationTests.Smoke;
 
 public sealed class TrayOpenImageSmokeTests : IClassFixture<DesktopAutomationFixture>
 {

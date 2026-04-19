@@ -1,6 +1,6 @@
 using System.Reflection;
 
-namespace SnippingTool.Services.Messaging;
+namespace Pointframe.Services.Messaging;
 
 internal sealed class EventSubscription<TEvent> : IEventSubscription
 {

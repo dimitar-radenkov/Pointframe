@@ -2,9 +2,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using SnippingTool.Models;
+using Pointframe.Models;
 
-namespace SnippingTool.Services.Handlers;
+namespace Pointframe.Services.Handlers;
 
 internal sealed class PenShapeHandler : IAnnotationShapeHandler
 {

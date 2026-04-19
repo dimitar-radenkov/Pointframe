@@ -1,10 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using SnippingTool.Models;
+using Pointframe.Models;
 using Rectangle = System.Windows.Shapes.Rectangle;
 
-namespace SnippingTool.Services.Handlers;
+namespace Pointframe.Services.Handlers;
 
 internal sealed class RectShapeHandler : IAnnotationShapeHandler
 {

@@ -1,7 +1,7 @@
 using System.IO;
 using System.Windows.Media.Imaging;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class ImageFileService : IImageFileService
 {

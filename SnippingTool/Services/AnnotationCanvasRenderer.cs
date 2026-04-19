@@ -3,11 +3,11 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Models;
-using SnippingTool.Services.Handlers;
-using SnippingTool.ViewModels;
+using Pointframe.Models;
+using Pointframe.Services.Handlers;
+using Pointframe.ViewModels;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 internal sealed class AnnotationCanvasRenderer
 {

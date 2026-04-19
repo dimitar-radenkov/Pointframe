@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 public partial class OverlayWindow
 {

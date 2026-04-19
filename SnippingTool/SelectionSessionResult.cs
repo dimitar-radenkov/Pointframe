@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Media.Imaging;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 internal sealed record SelectionSessionResult(
     string MonitorName,

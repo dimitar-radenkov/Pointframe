@@ -4,7 +4,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 public partial class PinnedScreenshotWindow : Window
 {

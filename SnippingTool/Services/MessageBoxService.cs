@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using WpfMessageBox = System.Windows.MessageBox;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class MessageBoxService : IMessageBoxService
 {

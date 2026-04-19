@@ -1,4 +1,4 @@
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 internal static class FfmpegResolver
 {

@@ -1,7 +1,7 @@
-﻿<Application x:Class="SnippingTool.App"
+﻿<Application x:Class="Pointframe.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:SnippingTool">
+             xmlns:local="clr-namespace:Pointframe">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>

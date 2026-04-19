@@ -3,11 +3,11 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Services;
+using Pointframe.Services;
 using Cursors = System.Windows.Input.Cursors;
 using Forms = System.Windows.Forms;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 public partial class OverlayWindow
 {

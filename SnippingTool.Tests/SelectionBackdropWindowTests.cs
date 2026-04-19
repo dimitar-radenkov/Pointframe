@@ -2,7 +2,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Xunit;
 
-namespace SnippingTool.Tests;
+namespace Pointframe.Tests;
 
 public sealed class SelectionBackdropWindowTests
 {

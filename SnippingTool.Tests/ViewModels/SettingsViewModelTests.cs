@@ -1,10 +1,10 @@
 using Moq;
-using SnippingTool.Models;
-using SnippingTool.Services;
-using SnippingTool.ViewModels;
+using Pointframe.Models;
+using Pointframe.Services;
+using Pointframe.ViewModels;
 using Xunit;
 
-namespace SnippingTool.Tests.ViewModels;
+namespace Pointframe.Tests.ViewModels;
 
 public sealed class SettingsViewModelTests
 {

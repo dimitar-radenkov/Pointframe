@@ -1,6 +1,6 @@
-using SnippingTool.ViewModels;
+using Pointframe.ViewModels;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class UpdateDownloadWindowService : IUpdateDownloadService
 {

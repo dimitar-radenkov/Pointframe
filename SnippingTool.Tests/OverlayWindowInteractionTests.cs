@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -9,14 +8,14 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using SnippingTool.Models;
-using SnippingTool.Services;
-using SnippingTool.Services.Messaging;
-using SnippingTool.Tests.Services.Handlers;
-using SnippingTool.ViewModels;
+using Pointframe.Models;
+using Pointframe.Services;
+using Pointframe.Services.Messaging;
+using Pointframe.Tests.Services.Handlers;
+using Pointframe.ViewModels;
 using Xunit;
 
-namespace SnippingTool.Tests;
+namespace Pointframe.Tests;
 
 [Collection("OverlayWindowUi")]
 public sealed class OverlayWindowInteractionTests

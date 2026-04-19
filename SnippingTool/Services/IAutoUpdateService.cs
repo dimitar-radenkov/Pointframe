@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Hosting;
-using SnippingTool.Models;
+using Pointframe.Models;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public interface IAutoUpdateService : IHostedService
 {

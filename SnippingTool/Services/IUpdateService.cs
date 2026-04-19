@@ -1,6 +1,6 @@
-using SnippingTool.Models;
+using Pointframe.Models;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public interface IUpdateService
 {

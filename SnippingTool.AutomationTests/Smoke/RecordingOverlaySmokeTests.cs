@@ -1,11 +1,11 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
-using SnippingTool.AutomationTests.Fixtures;
-using SnippingTool.AutomationTests.Support;
+using Pointframe.AutomationTests.Fixtures;
+using Pointframe.AutomationTests.Support;
 using Xunit;
 
-namespace SnippingTool.AutomationTests.Smoke;
+namespace Pointframe.AutomationTests.Smoke;
 
 public sealed class RecordingOverlaySmokeTests : IClassFixture<DesktopAutomationFixture>
 {

@@ -3,11 +3,11 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using SnippingTool.Models;
-using SnippingTool.ViewModels;
+using Pointframe.Models;
+using Pointframe.ViewModels;
 using DataFormats = System.Windows.DataFormats;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 public partial class SettingsWindow : Window
 {

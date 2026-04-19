@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class ScreenCaptureServiceTests
 {

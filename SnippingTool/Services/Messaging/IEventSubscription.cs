@@ -1,4 +1,4 @@
-namespace SnippingTool.Services.Messaging;
+namespace Pointframe.Services.Messaging;
 
 public interface IEventSubscription : IDisposable
 {

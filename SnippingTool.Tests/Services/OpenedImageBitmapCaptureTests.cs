@@ -1,12 +1,12 @@
+using System.Runtime.ExceptionServices;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
-using System.Runtime.ExceptionServices;
-using SnippingTool.Services;
+using Pointframe.Services;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class OpenedImageBitmapCaptureTests
 {

@@ -49,7 +49,7 @@ jobs:
 
       - name: Publish (self-contained single-file)
         run: >-
-          dotnet publish SnippingTool/SnippingTool.csproj
+          dotnet publish SnippingTool/Pointframe.csproj
           /p:PublishProfile=win-x64
           --nologo
 

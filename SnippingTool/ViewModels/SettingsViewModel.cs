@@ -2,10 +2,10 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using SnippingTool.Models;
-using SnippingTool.Services;
+using Pointframe.Models;
+using Pointframe.Services;
 
-namespace SnippingTool.ViewModels;
+namespace Pointframe.ViewModels;
 
 public partial class SettingsViewModel : ObservableObject
 {

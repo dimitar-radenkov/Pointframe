@@ -2,11 +2,11 @@ using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Models;
-using SnippingTool.Services;
-using SnippingTool.Services.Messaging;
+using Pointframe.Models;
+using Pointframe.Services;
+using Pointframe.Services.Messaging;
 
-namespace SnippingTool.ViewModels;
+namespace Pointframe.ViewModels;
 
 public partial class AnnotationViewModel : ObservableObject
 {

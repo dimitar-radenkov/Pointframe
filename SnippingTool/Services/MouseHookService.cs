@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 internal sealed class MouseHookService : IMouseHookService
 {

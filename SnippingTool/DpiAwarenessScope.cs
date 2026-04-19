@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 internal static class DpiAwarenessScope
 {

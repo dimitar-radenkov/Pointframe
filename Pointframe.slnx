@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="SnippingTool.AutomationTests/Pointframe.AutomationTests.csproj" />
+  <Project Path="SnippingTool.Tests/Pointframe.Tests.csproj" />
+  <Project Path="SnippingTool/Pointframe.csproj" />
+</Solution>

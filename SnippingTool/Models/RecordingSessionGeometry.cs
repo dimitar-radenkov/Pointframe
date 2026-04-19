@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace SnippingTool.Models;
+namespace Pointframe.Models;
 
 public sealed record RecordingSessionGeometry(
     Int32Rect HostBoundsPixels,

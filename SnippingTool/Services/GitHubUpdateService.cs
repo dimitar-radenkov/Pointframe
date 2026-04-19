@@ -2,9 +2,9 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Models;
+using Pointframe.Models;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class GitHubUpdateService : IUpdateService
 {

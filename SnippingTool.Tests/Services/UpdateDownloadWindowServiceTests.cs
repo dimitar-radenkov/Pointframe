@@ -3,12 +3,12 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using Moq;
-using SnippingTool.Services;
-using SnippingTool.Tests.Services.Handlers;
-using SnippingTool.ViewModels;
+using Pointframe.Services;
+using Pointframe.Tests.Services.Handlers;
+using Pointframe.ViewModels;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class UpdateDownloadWindowServiceTests : IDisposable
 {

@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class AppVersionService : IAppVersionService
 {

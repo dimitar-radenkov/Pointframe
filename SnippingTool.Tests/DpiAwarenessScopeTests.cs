@@ -1,7 +1,7 @@
-using SnippingTool.Tests.Services.Handlers;
+using Pointframe.Tests.Services.Handlers;
 using Xunit;
 
-namespace SnippingTool.Tests;
+namespace Pointframe.Tests;
 
 public sealed class DpiAwarenessScopeTests
 {

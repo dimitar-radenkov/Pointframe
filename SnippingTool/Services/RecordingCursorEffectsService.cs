@@ -6,9 +6,9 @@ using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Models;
+using Pointframe.Models;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 internal sealed class RecordingCursorEffectsService : IDisposable
 {

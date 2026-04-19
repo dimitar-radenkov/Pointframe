@@ -30,7 +30,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $RepoRoot    = Split-Path $PSScriptRoot -Parent
-$ProjectFile = Join-Path $RepoRoot "SnippingTool\SnippingTool.csproj"
+$ProjectFile = Join-Path $RepoRoot "SnippingTool\Pointframe.csproj"
 $IssScript   = Join-Path $PSScriptRoot "SnippingTool.iss"
 $OutputDir   = Join-Path $PSScriptRoot "output"
 

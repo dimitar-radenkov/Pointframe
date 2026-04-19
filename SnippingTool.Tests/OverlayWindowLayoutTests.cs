@@ -1,7 +1,7 @@
 using System.Windows;
 using Xunit;
 
-namespace SnippingTool.Tests;
+namespace Pointframe.Tests;
 
 public sealed class OverlayWindowLayoutTests
 {

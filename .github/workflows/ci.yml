@@ -31,19 +31,19 @@ jobs:
         run: dotnet tool restore
 
       - name: Restore
-        run: dotnet restore SnippingTool.slnx
+        run: dotnet restore Pointframe.slnx
 
       - name: Build
-        run: dotnet build SnippingTool.Tests/SnippingTool.Tests.csproj --no-restore --configuration Release
+        run: dotnet build SnippingTool.Tests/Pointframe.Tests.csproj --no-restore --configuration Release
 
       - name: Format check
-        run: dotnet format SnippingTool/SnippingTool.csproj --verify-no-changes --no-restore
+        run: dotnet format SnippingTool/Pointframe.csproj --verify-no-changes --no-restore
 
       - name: Test with coverage
         # Hosted CI stays on the unit-test lane only.
         # DesktopAutomation and InstallerSmoke run outside this workflow.
         run: >
-          dotnet test SnippingTool.Tests/SnippingTool.Tests.csproj
+          dotnet test SnippingTool.Tests/Pointframe.Tests.csproj
           --configuration Release
           --no-build
           --no-restore

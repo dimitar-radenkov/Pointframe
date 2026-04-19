@@ -2,10 +2,10 @@ using System.Reflection;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
-using SnippingTool.Tests.Services.Handlers;
+using Pointframe.Tests.Services.Handlers;
 using Xunit;
 
-namespace SnippingTool.Tests;
+namespace Pointframe.Tests;
 
 public sealed class PinnedScreenshotWindowTests
 {

@@ -3,12 +3,12 @@ using System.Windows.Controls;
 using System.Windows.Shapes;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using SnippingTool.Models;
-using SnippingTool.Services;
-using SnippingTool.Tests.Services.Handlers;
+using Pointframe.Models;
+using Pointframe.Services;
+using Pointframe.Tests.Services.Handlers;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class RecordingCursorEffectsServiceTests
 {

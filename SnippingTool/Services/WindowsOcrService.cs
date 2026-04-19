@@ -3,7 +3,7 @@ using System.Windows.Media.Imaging;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 internal sealed class WindowsOcrService : IOcrService
 {

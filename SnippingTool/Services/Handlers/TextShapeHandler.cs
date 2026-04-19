@@ -3,7 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
-namespace SnippingTool.Services.Handlers;
+namespace Pointframe.Services.Handlers;
 
 internal sealed class TextShapeHandler : IAnnotationShapeHandler
 {

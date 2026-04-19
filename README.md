@@ -146,14 +146,14 @@ Download the latest installer from the [Releases](https://github.com/dimitar-rad
 git clone https://github.com/dimitar-radenkov/SnippingTool.git
 cd SnippingTool
 
-dotnet build SnippingTool/SnippingTool.csproj
-dotnet run   --project SnippingTool/SnippingTool.csproj
+dotnet build SnippingTool/Pointframe.csproj
+dotnet run   --project SnippingTool/Pointframe.csproj
 ```
 
 ## Running tests
 
 ```powershell
-dotnet test SnippingTool.Tests/SnippingTool.Tests.csproj
+dotnet test SnippingTool.Tests/Pointframe.Tests.csproj
 ```
 
 ## Settings

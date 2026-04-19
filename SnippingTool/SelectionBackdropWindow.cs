@@ -2,7 +2,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 internal sealed class SelectionBackdropWindow : Window
 {

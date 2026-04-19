@@ -5,7 +5,7 @@ using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
 
-namespace SnippingTool.AutomationTests.Support;
+namespace Pointframe.AutomationTests.Support;
 
 public sealed class AutomationApp : IDisposable
 {

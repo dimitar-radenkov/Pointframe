@@ -1,8 +1,8 @@
 using System.Windows;
-using SnippingTool.Models;
+using Pointframe.Models;
 using Xunit;
 
-namespace SnippingTool.Tests.Models;
+namespace Pointframe.Tests.Models;
 
 public sealed class RecordingSessionGeometryTests
 {

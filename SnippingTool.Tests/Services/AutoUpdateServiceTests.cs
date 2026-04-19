@@ -1,12 +1,12 @@
 using System.Net.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using SnippingTool.Models;
-using SnippingTool.Services;
-using SnippingTool.Services.Messaging;
+using Pointframe.Models;
+using Pointframe.Services;
+using Pointframe.Services.Messaging;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class AutoUpdateServiceTests
 {

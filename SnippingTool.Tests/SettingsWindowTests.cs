@@ -5,14 +5,14 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using SnippingTool.Models;
-using SnippingTool.Services;
-using SnippingTool.Tests.Services.Handlers;
-using SnippingTool.ViewModels;
 using Moq;
+using Pointframe.Models;
+using Pointframe.Services;
+using Pointframe.Tests.Services.Handlers;
+using Pointframe.ViewModels;
 using Xunit;
 
-namespace SnippingTool.Tests;
+namespace Pointframe.Tests;
 
 public sealed class SettingsWindowTests
 {

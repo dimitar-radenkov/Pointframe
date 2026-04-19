@@ -1,7 +1,7 @@
 using System.Runtime.ExceptionServices;
 using System.Windows.Threading;
 
-namespace SnippingTool.Tests.Services.Handlers;
+namespace Pointframe.Tests.Services.Handlers;
 
 internal static class StaTestHelper
 {

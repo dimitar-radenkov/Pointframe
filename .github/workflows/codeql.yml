@@ -38,8 +38,8 @@ jobs:
 
       - name: Restore & Build
         run: |
-          dotnet restore SnippingTool/SnippingTool.csproj
-          dotnet build SnippingTool/SnippingTool.csproj --no-restore --configuration Release
+          dotnet restore SnippingTool/Pointframe.csproj
+          dotnet build SnippingTool/Pointframe.csproj --no-restore --configuration Release
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4

@@ -1,6 +1,6 @@
 using Xunit;
 
-namespace SnippingTool.Tests;
+namespace Pointframe.Tests;
 
 [CollectionDefinition("OverlayWindowUi", DisableParallelization = true)]
 public sealed class OverlayWindowUiCollection

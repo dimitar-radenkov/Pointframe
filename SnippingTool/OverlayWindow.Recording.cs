@@ -1,10 +1,10 @@
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Models;
+using Pointframe.Models;
 using Forms = System.Windows.Forms;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 public partial class OverlayWindow
 {

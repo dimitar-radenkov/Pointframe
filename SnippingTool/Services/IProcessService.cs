@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public interface IProcessService
 {

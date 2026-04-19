@@ -1,10 +1,10 @@
 using System.Reflection;
-using Forms = System.Windows.Forms;
-using SnippingTool.Services;
-using SnippingTool.Tests.Services.Handlers;
+using Pointframe.Services;
+using Pointframe.Tests.Services.Handlers;
 using Xunit;
+using Forms = System.Windows.Forms;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class DialogServiceTests
 {

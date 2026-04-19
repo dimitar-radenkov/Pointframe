@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 public partial class CountdownWindow : Window
 {

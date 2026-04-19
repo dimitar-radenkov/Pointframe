@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class MicrophoneDeviceService : IMicrophoneDeviceService
 {

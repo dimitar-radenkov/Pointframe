@@ -2,15 +2,15 @@ using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using SnippingTool.Models;
-using SnippingTool.Services;
-using SnippingTool.Services.Messaging;
-using SnippingTool.Tests.Services.Handlers;
-using SnippingTool.ViewModels;
+using Pointframe.Models;
+using Pointframe.Services;
+using Pointframe.Services.Messaging;
+using Pointframe.Tests.Services.Handlers;
+using Pointframe.ViewModels;
 using Xunit;
 using Rectangle = System.Windows.Shapes.Rectangle;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class AnnotationCanvasInteractionControllerTests
 {

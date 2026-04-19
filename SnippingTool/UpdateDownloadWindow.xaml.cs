@@ -1,7 +1,7 @@
 using System.Windows;
-using SnippingTool.ViewModels;
+using Pointframe.ViewModels;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 public partial class UpdateDownloadWindow : Window
 {

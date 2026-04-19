@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class ScreenRecordingService : IScreenRecordingService
 {

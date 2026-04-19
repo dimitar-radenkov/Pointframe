@@ -2,11 +2,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using SnippingTool.Models;
-using SnippingTool.Services.Handlers;
+using Pointframe.Models;
+using Pointframe.Services.Handlers;
 using Xunit;
 
-namespace SnippingTool.Tests.Services.Handlers;
+namespace Pointframe.Tests.Services.Handlers;
 
 public sealed class EllipseShapeHandlerTests
 {

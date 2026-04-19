@@ -4,7 +4,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 
-namespace SnippingTool.Services.Handlers;
+namespace Pointframe.Services.Handlers;
 
 internal sealed class NumberShapeHandler : IAnnotationShapeHandler
 {

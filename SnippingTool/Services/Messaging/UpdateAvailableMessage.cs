@@ -1,5 +1,5 @@
-using SnippingTool.Models;
+using Pointframe.Models;
 
-namespace SnippingTool.Services.Messaging;
+namespace Pointframe.Services.Messaging;
 
 public sealed record UpdateAvailableMessage(UpdateCheckResult Result);

@@ -1,4 +1,4 @@
-namespace SnippingTool.Automation;
+namespace Pointframe.Automation;
 
 internal sealed class AutomationLaunchOptions
 {

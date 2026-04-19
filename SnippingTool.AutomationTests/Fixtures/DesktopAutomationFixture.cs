@@ -1,7 +1,7 @@
 using System.Text.Json;
-using SnippingTool.Models;
+using Pointframe.Models;
 
-namespace SnippingTool.AutomationTests.Fixtures;
+namespace Pointframe.AutomationTests.Fixtures;
 
 public class DesktopAutomationFixture : IDisposable
 {

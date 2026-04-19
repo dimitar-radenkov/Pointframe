@@ -1,9 +1,9 @@
 using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Models;
+using Pointframe.Models;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class UserSettingsService : IUserSettingsService
 {

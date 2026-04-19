@@ -2,7 +2,7 @@ using System.Windows;
 using System.Windows.Interop;
 using Forms = System.Windows.Forms;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class DialogService : IDialogService
 {

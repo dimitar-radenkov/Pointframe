@@ -1,8 +1,8 @@
 using System.Windows;
 using Microsoft.Win32;
-using SnippingTool.Models;
+using Pointframe.Models;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class ThemeService : IThemeService
 {

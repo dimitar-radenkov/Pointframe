@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Models;
-using SnippingTool.Services.Messaging;
+using Pointframe.Models;
+using Pointframe.Services.Messaging;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
 {

@@ -4,14 +4,14 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Models;
-using SnippingTool.Services;
-using SnippingTool.Services.Messaging;
-using SnippingTool.ViewModels;
+using Pointframe.Models;
+using Pointframe.Services;
+using Pointframe.Services.Messaging;
+using Pointframe.ViewModels;
 using Cursors = System.Windows.Input.Cursors;
 using Forms = System.Windows.Forms;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 public partial class OverlayWindow : Window
 {

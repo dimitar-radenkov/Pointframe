@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using System.IO;
-using SnippingTool.Services;
+using Pointframe.Services;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class ProcessServiceTests : IDisposable
 {
@@ -21,14 +21,14 @@ public sealed class ProcessServiceTests : IDisposable
 
         sut.Start(startInfo);
 
-        Assert.True(SpinWait.SpinUntil(() => this.TryReadOutput() is "coverage", millisecondsTimeout: 3000));
+        Assert.True(SpinWait.SpinUntil(() => TryReadOutput() is "coverage", millisecondsTimeout: 3000));
     }
 
     public void Dispose()
     {
         if (File.Exists(_outputPath))
         {
-            SpinWait.SpinUntil(this.TryDeleteOutput, millisecondsTimeout: 3000);
+            SpinWait.SpinUntil(TryDeleteOutput, millisecondsTimeout: 3000);
         }
     }
 

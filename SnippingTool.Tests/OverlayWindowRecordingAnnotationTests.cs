@@ -1,8 +1,8 @@
 using System.Windows;
-using SnippingTool.Models;
+using Pointframe.Models;
 using Xunit;
 
-namespace SnippingTool.Tests;
+namespace Pointframe.Tests;
 
 public sealed class OverlayWindowRecordingAnnotationTests
 {

@@ -1,9 +1,9 @@
 using System.Reflection;
 using System.Windows;
-using SnippingTool.Services;
+using Pointframe.Services;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class MessageBoxServiceTests
 {

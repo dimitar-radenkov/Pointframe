@@ -4,9 +4,9 @@ using System.Net.Http;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Services;
+using Pointframe.Services;
 
-namespace SnippingTool.ViewModels;
+namespace Pointframe.ViewModels;
 
 public partial class UpdateDownloadViewModel : ObservableObject
 {

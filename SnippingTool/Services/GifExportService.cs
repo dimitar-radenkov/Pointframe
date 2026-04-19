@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class GifExportService : IGifExportService
 {

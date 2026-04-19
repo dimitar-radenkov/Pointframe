@@ -3,10 +3,10 @@ using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Services;
-using SnippingTool.Services.Messaging;
+using Pointframe.Services;
+using Pointframe.Services.Messaging;
 
-namespace SnippingTool.ViewModels;
+namespace Pointframe.ViewModels;
 
 public partial class OverlayViewModel : AnnotationViewModel
 {

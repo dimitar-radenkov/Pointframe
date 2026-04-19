@@ -1,7 +1,7 @@
-using SnippingTool.Automation;
+using Pointframe.Automation;
 using Xunit;
 
-namespace SnippingTool.Tests.Automation;
+namespace Pointframe.Tests.Automation;
 
 public sealed class AutomationLaunchOptionsTests
 {

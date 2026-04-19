@@ -1,7 +1,7 @@
 using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 
-namespace SnippingTool.Services.Messaging;
+namespace Pointframe.Services.Messaging;
 
 public sealed class DefaultEventAggregator : IEventAggregator, IDisposable
 {

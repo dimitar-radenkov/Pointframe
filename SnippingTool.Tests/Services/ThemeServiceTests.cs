@@ -1,8 +1,8 @@
-using SnippingTool.Models;
-using SnippingTool.Services;
+using Pointframe.Models;
+using Pointframe.Services;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class ThemeServiceTests
 {

@@ -3,13 +3,13 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
-using SnippingTool.Models;
-using SnippingTool.Services.Handlers;
+using Pointframe.Models;
+using Pointframe.Services.Handlers;
 using Xunit;
 using Image = System.Windows.Controls.Image;
 using Rectangle = System.Windows.Shapes.Rectangle;
 
-namespace SnippingTool.Tests.Services.Handlers;
+namespace Pointframe.Tests.Services.Handlers;
 
 public sealed class BlurShapeHandlerTests
 {

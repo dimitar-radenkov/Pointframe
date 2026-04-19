@@ -2,7 +2,7 @@
 
 Thanks for your interest in contributing to Pointframe.
 
-The product is now branded as `Pointframe`, but the repository and project paths still use `SnippingTool` during the transition.
+The product is now branded as `Pointframe`. The repository folders still use `SnippingTool` during the transition, while the solution and project files use `Pointframe`.
 
 ## Getting Started
 
@@ -11,8 +11,8 @@ The product is now branded as `Pointframe`, but the repository and project paths
 ```powershell
 git clone https://github.com/dimitar-radenkov/SnippingTool.git
 cd SnippingTool
-dotnet build SnippingTool/SnippingTool.csproj
-dotnet test  SnippingTool.Tests/SnippingTool.Tests.csproj
+dotnet build SnippingTool/Pointframe.csproj
+dotnet test  SnippingTool.Tests/Pointframe.Tests.csproj
 ```
 
 ## Before You Submit
@@ -20,7 +20,7 @@ dotnet test  SnippingTool.Tests/SnippingTool.Tests.csproj
 Run the formatter — CI will reject unformatted code:
 
 ```powershell
-dotnet format SnippingTool/SnippingTool.csproj
+dotnet format SnippingTool/Pointframe.csproj
 ```
 
 ## Key Conventions

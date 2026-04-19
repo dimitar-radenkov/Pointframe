@@ -1,6 +1,6 @@
 using System.IO;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public sealed class FileSystemService : IFileSystemService
 {

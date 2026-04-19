@@ -1,4 +1,4 @@
-namespace SnippingTool.AutomationTests.Support;
+namespace Pointframe.AutomationTests.Support;
 
 internal static class AutomationIds
 {

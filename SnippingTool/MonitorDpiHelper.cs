@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 internal static class MonitorDpiHelper
 {

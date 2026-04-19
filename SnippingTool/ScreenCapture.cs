@@ -3,9 +3,9 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using Microsoft.Extensions.Logging;
-using SnippingTool.Services;
+using Pointframe.Services;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 internal sealed class ScreenCaptureService : IScreenCaptureService
 {

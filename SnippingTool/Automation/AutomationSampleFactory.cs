@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Media.Imaging;
 using Forms = System.Windows.Forms;
 
-namespace SnippingTool.Automation;
+namespace Pointframe.Automation;
 
 internal static class AutomationSampleFactory
 {

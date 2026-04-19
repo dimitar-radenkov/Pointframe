@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 using Cursors = System.Windows.Input.Cursors;
 using Rectangle = System.Windows.Shapes.Rectangle;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 internal sealed class SelectionMonitorWindow : Window
 {

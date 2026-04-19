@@ -3,13 +3,13 @@ using System.Windows;
 using System.Windows.Media.Imaging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using SnippingTool.Models;
-using SnippingTool.Services;
-using SnippingTool.Services.Messaging;
-using SnippingTool.ViewModels;
+using Pointframe.Models;
+using Pointframe.Services;
+using Pointframe.Services.Messaging;
+using Pointframe.ViewModels;
 using Xunit;
 
-namespace SnippingTool.Tests.ViewModels;
+namespace Pointframe.Tests.ViewModels;
 
 public sealed class OverlayViewModelTests
 {

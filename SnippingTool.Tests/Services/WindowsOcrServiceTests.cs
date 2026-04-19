@@ -1,11 +1,11 @@
 using System.Reflection;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using SnippingTool.Services;
+using Pointframe.Services;
 using Windows.Graphics.Imaging;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class WindowsOcrServiceTests
 {

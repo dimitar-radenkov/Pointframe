@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Http;
-using SnippingTool.Services;
+using Pointframe.Services;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class GitHubUpdateServiceTests
 {

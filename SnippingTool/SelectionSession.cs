@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging;
-using SnippingTool.Services;
+using Pointframe.Services;
 using Forms = System.Windows.Forms;
 
-namespace SnippingTool;
+namespace Pointframe;
 
 internal static class SelectionSession
 {

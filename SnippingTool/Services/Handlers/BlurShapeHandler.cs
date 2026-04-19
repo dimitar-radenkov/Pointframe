@@ -3,11 +3,11 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
-using SnippingTool.Models;
+using Pointframe.Models;
 using Image = System.Windows.Controls.Image;
 using Rectangle = System.Windows.Shapes.Rectangle;
 
-namespace SnippingTool.Services.Handlers;
+namespace Pointframe.Services.Handlers;
 
 internal sealed class BlurShapeHandler : IAnnotationShapeHandler
 {

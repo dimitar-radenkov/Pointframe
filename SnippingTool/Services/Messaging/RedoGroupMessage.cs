@@ -1,3 +1,3 @@
-namespace SnippingTool.Services.Messaging;
+namespace Pointframe.Services.Messaging;
 
 public sealed record RedoGroupMessage(IReadOnlyList<object> Elements);

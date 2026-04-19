@@ -1,6 +1,6 @@
 using System.Windows.Media.Imaging;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 public interface IClipboardService
 {

@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using SnippingTool.Services;
+using Pointframe.Services;
 
-namespace SnippingTool.ViewModels;
+namespace Pointframe.ViewModels;
 
 public partial class AboutViewModel : ObservableObject
 {

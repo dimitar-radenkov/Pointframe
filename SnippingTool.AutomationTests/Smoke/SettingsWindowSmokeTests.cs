@@ -1,10 +1,10 @@
 using System.Text.Json;
-using SnippingTool.AutomationTests.Fixtures;
-using SnippingTool.AutomationTests.Support;
-using SnippingTool.Models;
+using Pointframe.AutomationTests.Fixtures;
+using Pointframe.AutomationTests.Support;
+using Pointframe.Models;
 using Xunit;
 
-namespace SnippingTool.AutomationTests.Smoke;
+namespace Pointframe.AutomationTests.Smoke;
 
 public sealed class SettingsWindowSmokeTests : IClassFixture<SettingsAutomationFixture>
 {
@@ -20,7 +20,7 @@ public sealed class SettingsWindowSmokeTests : IClassFixture<SettingsAutomationF
     public void Save_Relaunch_PersistsAutoSaveScreenshots()
     {
         // Manual run:
-        // dotnet test SnippingTool.AutomationTests\SnippingTool.AutomationTests.csproj --filter "Category=DesktopAutomation"
+        // dotnet test SnippingTool.AutomationTests\Pointframe.AutomationTests.csproj --filter "Category=DesktopAutomation"
         _fixture.SeedSettings(autoSaveScreenshots: false);
 
         using (var app = AutomationApp.LaunchSettingsWindow(_fixture.SettingsPath))

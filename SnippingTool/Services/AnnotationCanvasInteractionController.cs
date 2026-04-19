@@ -1,7 +1,7 @@
 using System.Windows.Controls;
-using SnippingTool.ViewModels;
+using Pointframe.ViewModels;
 
-namespace SnippingTool.Services;
+namespace Pointframe.Services;
 
 internal sealed class AnnotationCanvasInteractionController
 {

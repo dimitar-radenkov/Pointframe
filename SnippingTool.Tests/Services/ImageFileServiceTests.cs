@@ -1,10 +1,10 @@
 using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using SnippingTool.Services;
+using Pointframe.Services;
 using Xunit;
 
-namespace SnippingTool.Tests.Services;
+namespace Pointframe.Tests.Services;
 
 public sealed class ImageFileServiceTests : IDisposable
 {
