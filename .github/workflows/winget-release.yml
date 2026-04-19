@@ -1,8 +1,8 @@
 name: Winget Release
 
-# Submits a new package version to microsoft/winget-pkgs only when
-# version.json is changed (i.e. a minor or major version bump).
-# Patch releases (commit-height increments) are intentionally excluded.
+# Submits a new package version to microsoft/winget-pkgs for every
+# successful CD run on master. Manual dispatch can still override the
+# computed version and release tag when needed.
 
 on:
   workflow_run:
@@ -12,11 +12,6 @@ on:
       - master
   workflow_dispatch:
     inputs:
-      force_submit:
-        description: Force winget submission even when version.json did not change
-        required: true
-        default: true
-        type: boolean
       version:
         description: Package version to submit. Leave blank to use the current Nerdbank.GitVersioning version.
         required: false
@@ -42,31 +37,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check if version.json changed
-        id: check
-        shell: pwsh
-        run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $manualVersion = "${{ inputs.version }}"
-            $manualTag = "${{ inputs.release_tag }}"
-            $forceSubmit = "${{ inputs.force_submit }}" -eq "true"
-
-            $changed = $forceSubmit -or -not [string]::IsNullOrWhiteSpace($manualVersion) -or -not [string]::IsNullOrWhiteSpace($manualTag)
-          }
-          else {
-            $changed = git diff HEAD~1 HEAD --name-only | Where-Object { $_ -eq "version.json" }
-          }
-
-          $result = if ($changed) { "true" } else { "false" }
-          "changed=$result" | Out-File -Append $env:GITHUB_OUTPUT
-
       - name: Restore tools
-        if: steps.check.outputs.changed == 'true'
         run: dotnet tool restore
 
       - name: Get version
         id: version
-        if: steps.check.outputs.changed == 'true'
         shell: pwsh
         run: |
           $display = "${{ inputs.version }}"
@@ -84,13 +59,11 @@ jobs:
           "tag=$tag" | Out-File -Append $env:GITHUB_OUTPUT
 
       - name: Sync winget fork
-        if: steps.check.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: gh repo sync dimitar-radenkov/winget-pkgs -b master
 
       - name: Verify winget fork head
-        if: steps.check.outputs.changed == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
@@ -103,7 +76,6 @@ jobs:
           }
 
       - name: Submit to winget
-        if: steps.check.outputs.changed == 'true'
         uses: vedantmgoyal9/winget-releaser@v2
         with:
           # Winget migration target for the Pointframe brand.
