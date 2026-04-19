@@ -154,6 +154,6 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
             }
         }
 
-        return $"Pointframe-Setup-{version.Major}.{version.Minor}.{version.Build}.exe";
+        return $"Pointframe-{version.Major}.{version.Minor}.{version.Build}-Setup.exe";
     }
 }

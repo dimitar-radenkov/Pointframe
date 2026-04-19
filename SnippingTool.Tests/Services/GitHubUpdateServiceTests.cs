@@ -43,8 +43,8 @@ public sealed class GitHubUpdateServiceTests
               "tag_name": "v999.0.0",
               "assets": [
                 {
-                  "name": "Pointframe-Setup-999.0.0.exe",
-                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe-Setup-999.0.0.exe"
+                  "name": "Pointframe-999.0.0-Setup.exe",
+                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe"
                 }
               ]
             }
@@ -54,7 +54,7 @@ public sealed class GitHubUpdateServiceTests
 
         Assert.True(result.IsUpdateAvailable);
         Assert.Equal(new Version(999, 0, 0), result.LatestVersion);
-        Assert.Contains("Pointframe-Setup-999.0.0.exe", result.DownloadUrl);
+        Assert.Contains("Pointframe-999.0.0-Setup.exe", result.DownloadUrl);
     }
 
     [Fact]
@@ -69,8 +69,8 @@ public sealed class GitHubUpdateServiceTests
                   "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe.exe"
                 },
                 {
-                  "name": "Pointframe-Setup-999.0.0.exe",
-                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe-Setup-999.0.0.exe"
+                  "name": "Pointframe-999.0.0-Setup.exe",
+                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe"
                 }
               ]
             }
@@ -78,7 +78,33 @@ public sealed class GitHubUpdateServiceTests
 
         var result = await CreateService(Json).CheckForUpdates();
 
-        Assert.Contains("Pointframe-Setup-999.0.0.exe", result.DownloadUrl);
+        Assert.Contains("Pointframe-999.0.0-Setup.exe", result.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task NewerVersionAvailable_PrefersPointframeInstallerOverLegacyInstaller()
+    {
+        const string Json = """
+            {
+              "tag_name": "v999.0.0",
+              "assets": [
+                {
+                  "name": "SnippingTool-999.0.0-Setup.exe",
+                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/SnippingTool-999.0.0-Setup.exe"
+                },
+                {
+                  "name": "Pointframe-999.0.0-Setup.exe",
+                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe"
+                }
+              ]
+            }
+            """;
+
+        var result = await CreateService(Json).CheckForUpdates();
+
+        Assert.Equal(
+            "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe",
+            result.DownloadUrl);
     }
 
     [Fact]

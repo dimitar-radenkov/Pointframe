@@ -177,7 +177,7 @@ public sealed class AutoUpdateServiceTests
         downloadService.Setup(d => d.Show(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
         var messageBox = new Mock<IMessageBoxService>();
         messageBox.Setup(m => m.Confirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
-        var update = new UpdateCheckResult(true, new Version(9, 9, 0), "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v9.9.0/Pointframe-Setup-9.9.0.exe");
+        var update = new UpdateCheckResult(true, new Version(9, 9, 0), "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v9.9.0/Pointframe-9.9.0-Setup.exe");
 
         var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), downloadService, messageBox);
 
@@ -186,7 +186,28 @@ public sealed class AutoUpdateServiceTests
         downloadService.Verify(
             d => d.Show(
                 update.DownloadUrl,
-                It.Is<string>(p => p.Contains("Pointframe-Setup-9.9.0.exe"))),
+                It.Is<string>(p => p.Contains("Pointframe-9.9.0-Setup.exe"))),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ConfirmAndInstall_WithoutExeFileName_UsesPointframeFallbackPattern()
+    {
+        var updateService = new Mock<IUpdateService>();
+        var downloadService = new Mock<IUpdateDownloadService>();
+        downloadService.Setup(d => d.Show(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
+        var messageBox = new Mock<IMessageBoxService>();
+        messageBox.Setup(m => m.Confirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
+        var update = new UpdateCheckResult(true, new Version(9, 9, 0), "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v9.9.0/download");
+
+        var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), downloadService, messageBox);
+
+        await sut.ConfirmAndInstall(update);
+
+        downloadService.Verify(
+            d => d.Show(
+                update.DownloadUrl,
+                It.Is<string>(p => p.Contains("Pointframe-9.9.0-Setup.exe"))),
             Times.Once);
     }
 
