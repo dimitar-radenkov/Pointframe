@@ -51,7 +51,7 @@ public sealed class AutomationApp : IDisposable
 
         if (!File.Exists(executablePath))
         {
-            throw new FileNotFoundException("SnippingTool.exe was not found at the requested automation launch path.", executablePath);
+            throw new FileNotFoundException("Pointframe.exe was not found at the requested automation launch path.", executablePath);
         }
 
         var startInfo = new ProcessStartInfo(executablePath, automationArgument)
@@ -87,7 +87,7 @@ public sealed class AutomationApp : IDisposable
 
     private static string ResolveAutomationExecutablePath()
     {
-        var directPath = Path.Combine(AppContext.BaseDirectory, "SnippingTool.exe");
+        var directPath = Path.Combine(AppContext.BaseDirectory, "Pointframe.exe");
         if (File.Exists(directPath))
         {
             return directPath;
@@ -100,7 +100,7 @@ public sealed class AutomationApp : IDisposable
             if (Directory.Exists(binRoot))
             {
                 var builtExecutable = Directory
-                    .EnumerateFiles(binRoot, "SnippingTool.exe", SearchOption.AllDirectories)
+                    .EnumerateFiles(binRoot, "Pointframe.exe", SearchOption.AllDirectories)
                     .OrderByDescending(File.GetLastWriteTimeUtc)
                     .FirstOrDefault();
 

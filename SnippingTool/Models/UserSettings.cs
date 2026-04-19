@@ -5,14 +5,14 @@ public sealed class UserSettings
     public string ScreenshotSavePath { get; set; } =
         System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SnippingTool", "Screenshots");
+            "Pointframe", "Screenshots");
 
     public bool AutoSaveScreenshots { get; set; } = false;
 
     public string RecordingOutputPath { get; set; } =
         System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SnippingTool", "Videos");
+            "Pointframe", "Videos");
 
     public bool RecordMicrophone { get; set; } = true;
     public string? RecordingMicrophoneDeviceName { get; set; }

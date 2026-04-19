@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds the SnippingTool installer if needed and runs the installer smoke test.
+    Builds the Pointframe installer if needed and runs the installer smoke test.
 
 .DESCRIPTION
     1. Optionally builds the installer with build-installer.ps1.
@@ -8,7 +8,7 @@
     3. Runs only the InstallerSmoke test category.
 
 .PARAMETER InstallerPath
-    Path to an existing SnippingTool setup executable. If omitted, the script uses the
+    Path to an existing Pointframe setup executable. If omitted, the script uses the
     newest installer from installer\output, optionally building first.
 
 .PARAMETER Version
@@ -24,7 +24,7 @@
     .\installer\test-installer.ps1
 
 .EXAMPLE
-    .\installer\test-installer.ps1 -InstallerPath .\installer\output\SnippingTool-4.2.0-Setup.exe
+    .\installer\test-installer.ps1 -InstallerPath .\installer\output\Pointframe-4.2.0-Setup.exe
 #>
 
 [CmdletBinding()]
@@ -77,7 +77,7 @@ if ([string]::IsNullOrWhiteSpace($InstallerPath))
         }
     }
 
-    $installerFile = Get-ChildItem $InstallerOutputDirectory -Filter "SnippingTool-*-Setup.exe" |
+    $installerFile = Get-ChildItem $InstallerOutputDirectory -Filter "Pointframe-*-Setup.exe" |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
     if ($null -eq $installerFile)

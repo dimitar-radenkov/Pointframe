@@ -74,7 +74,7 @@ public partial class App : Application
 
         var logPath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SnippingTool", "logs", "snipping-.log");
+            "Pointframe", "logs", "pointframe-.log");
 
         Log.Logger = new LoggerConfiguration()
 #if DEBUG
@@ -113,7 +113,7 @@ public partial class App : Application
             _autoUpdate = _host.Services.GetRequiredService<IAutoUpdateService>();
         }
 
-        _logger.LogInformation("SnippingTool starting up");
+        _logger.LogInformation("Pointframe starting up");
 
         Current.DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
@@ -121,7 +121,7 @@ public partial class App : Application
 
         if (automationLaunchOptions.IsAutomationMode)
         {
-            _logger.LogInformation("SnippingTool automation mode enabled");
+            _logger.LogInformation("Pointframe automation mode enabled");
             ShowAutomationWindow(automationLaunchOptions);
             return;
         }
@@ -197,7 +197,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _logger?.LogInformation("SnippingTool shutting down");
+        _logger?.LogInformation("Pointframe shutting down");
         _updateAvailableSubscription?.Dispose();
         _recordingCompletedSubscription?.Dispose();
         if (_keyboardHook != IntPtr.Zero)
@@ -755,12 +755,12 @@ public partial class App : Application
 
         var closedWindowName = TryRecoverFromActiveWindow();
         var recoveryMessage = closedWindowName is null
-            ? "You can continue using SnippingTool. Details have been written to the log file."
-            : $"{closedWindowName} was closed so SnippingTool can recover. You can continue using the app. Details have been written to the log file.";
+            ? "You can continue using Pointframe. Details have been written to the log file."
+            : $"{closedWindowName} was closed so Pointframe can recover. You can continue using the app. Details have been written to the log file.";
 
         _messageBox.ShowError(
             $"Something went wrong while processing your last action.\n\n{e.Exception.Message}\n\n{recoveryMessage}",
-            "SnippingTool — Recovered From Error");
+            "Pointframe — Recovered From Error");
     }
 
     private string? TryRecoverFromActiveWindow()

@@ -1,17 +1,17 @@
-# SnippingTool
+# Pointframe
 
 <p align="center">
   <a href="https://dimitar-radenkov.github.io/SnippingTool/">
-    <img src="website/app-icon.png" alt="SnippingTool icon" width="48" height="48">
+    <img src="website/app-icon.png" alt="Pointframe icon" width="48" height="48">
   </a>
 </p>
 
-<h1 align="center">SnippingTool</h1>
+<h1 align="center">Pointframe</h1>
 
 
 <p align="center">
-  <b>A modern, lightning-fast screen capture and recording tool for Windows, built on .NET 10.</b><br>
-  Record your screen, add live annotations without breaking your flow, and redact sensitive data on the fly.
+  <b>Pointframe is a screen capture and recording tool for Windows, built for bug reports, tutorials, and fast feedback.</b><br>
+  Formerly SnippingTool. Capture, annotate, blur, record, and share what matters without breaking your flow.
 </p>
 
 <p align="center">
@@ -34,13 +34,15 @@
 
 Get up and running in seconds using the Windows Package Manager (winget):
 
+The package ID remains `DimitarRadenkov.SnippingTool` during the rebrand transition.
+
 ```powershell
 winget install DimitarRadenkov.SnippingTool
 ```
 
-*Prefer a manual install? Download the latest `SnippingTool-Setup-*.exe` from the [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases) page.*
+*Prefer a manual install? Download the latest installer from the [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases) page.*
 
-1. Install SnippingTool with `winget install DimitarRadenkov.SnippingTool` or download the latest installer from [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases).
+1. Install Pointframe with `winget install DimitarRadenkov.SnippingTool` or download the latest installer from [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases).
 2. Press `Print Screen` to open the capture overlay and select the region you want.
 3. Annotate, copy, save, pin, or record the region from the overlay and recording HUD.
 
@@ -129,14 +131,14 @@ winget install DimitarRadenkov.SnippingTool
 
 **Manual installer**
 
-Download the latest `SnippingTool-Setup-*.exe` from the [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases) page and run it. During setup you can choose to download `ffmpeg.exe`, which is required for MP4 recording and GIF export.
+Download the latest installer from the [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases) page and run it. During setup you can choose to download `ffmpeg.exe`, which is required for MP4 recording and GIF export.
 
 ## Troubleshooting
 
-- **Recording or GIF export does not start** — SnippingTool requires `ffmpeg.exe` for MP4 recording and GIF export. If you skipped the ffmpeg download during setup, install `ffmpeg.exe` next to the app, under `Assets\ffmpeg`, or on `PATH`.
+- **Recording or GIF export does not start** — Pointframe requires `ffmpeg.exe` for MP4 recording and GIF export. If you skipped the ffmpeg download during setup, install `ffmpeg.exe` next to the app, under `Assets\ffmpeg`, or on `PATH`.
 - **OCR is unavailable** — OCR uses Windows.Media.Ocr and requires a supported Windows build.
 - **Hotkey seems ignored** — Make sure another app is not already using the same key and try changing the capture hotkey in Settings.
-- **App is running but not visible** — SnippingTool lives in the system tray after launch.
+- **App is running but not visible** — Pointframe lives in the system tray after launch.
 
 ## Building from source
 

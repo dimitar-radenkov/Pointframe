@@ -26,7 +26,7 @@ public sealed class InstallerSmokeTests : IClassFixture<DesktopAutomationFixture
         if (string.IsNullOrWhiteSpace(installerPath))
         {
             throw new InvalidOperationException(
-                $"Set {InstallerPathEnvironmentVariable} to the built SnippingTool installer path before running installer smoke tests.");
+                $"Set {InstallerPathEnvironmentVariable} to the built Pointframe installer path before running installer smoke tests.");
         }
 
         var installedApp = InstalledSnippingTool.Install(installerPath);
@@ -79,7 +79,7 @@ public sealed class InstallerSmokeTests : IClassFixture<DesktopAutomationFixture
 
         public string InstallDirectory => Path.Combine(_workspaceDirectory, "Install");
 
-        public string InstalledExecutablePath => Path.Combine(InstallDirectory, "SnippingTool.exe");
+        public string InstalledExecutablePath => Path.Combine(InstallDirectory, "Pointframe.exe");
 
         public string UninstallerPath => Path.Combine(InstallDirectory, "unins000.exe");
 
@@ -121,7 +121,7 @@ public sealed class InstallerSmokeTests : IClassFixture<DesktopAutomationFixture
 
             if (!File.Exists(UninstallerPath))
             {
-                throw new FileNotFoundException("The SnippingTool uninstaller was not found after installation.", UninstallerPath);
+                throw new FileNotFoundException("The Pointframe uninstaller was not found after installation.", UninstallerPath);
             }
 
             var uninstallLogPath = Path.Combine(_workspaceDirectory, "uninstall.log");

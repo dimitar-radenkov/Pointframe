@@ -8,6 +8,8 @@ namespace SnippingTool.Services;
 public sealed class UserSettingsService : IUserSettingsService
 {
     private const string AutomationSettingsPathEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH";
+    private const string LegacySettingsFolderName = "SnippingTool";
+    private const string CurrentSettingsFolderName = "Pointframe";
     private readonly string _settingsPath;
     private readonly ILogger<UserSettingsService> _logger;
     private readonly object _syncRoot = new();
@@ -88,11 +90,17 @@ public sealed class UserSettingsService : IUserSettingsService
         File.WriteAllText(_settingsPath, json);
     }
 
-    private static string GetDefaultSettingsPath() =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SnippingTool",
-            "settings.json");
+    private static string GetDefaultSettingsPath()
+    {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var legacySettingsPath = Path.Combine(localAppData, LegacySettingsFolderName, "settings.json");
+        if (File.Exists(legacySettingsPath))
+        {
+            return legacySettingsPath;
+        }
+
+        return Path.Combine(localAppData, CurrentSettingsFolderName, "settings.json");
+    }
 
     private static string GetSettingsPath()
     {

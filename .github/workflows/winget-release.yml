@@ -106,6 +106,9 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         uses: vedantmgoyal9/winget-releaser@v2
         with:
+          # Keep the existing package identifier through the transition release.
+          # The product is branded as Pointframe, but winget remains on the
+          # DimitarRadenkov.SnippingTool identifier until a deliberate package-ID migration.
           identifier: DimitarRadenkov.SnippingTool
           version: ${{ steps.version.outputs.display }}
           release-tag: ${{ steps.version.outputs.tag }}

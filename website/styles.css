@@ -60,8 +60,8 @@ button {
     z-index: 10;
     border-bottom: 1px solid var(--line);
     background: rgba(9, 9, 11, 0.6);
-    backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
 }
 
 .nav-inner {
@@ -148,6 +148,7 @@ button {
     color: var(--muted);
     font-size: 0.9rem;
     font-weight: 500;
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
 }
 
@@ -221,6 +222,7 @@ button {
     color: var(--text);
     cursor: pointer;
     transition: all 0.3s ease;
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
 }
 
@@ -291,6 +293,10 @@ button {
     box-shadow: 0 32px 80px rgba(0,0,0,0.5);
 }
 
+.video-shell-showcase {
+    margin-top: 80px;
+}
+
 .video-overlay {
     position: absolute;
     inset: 0;
@@ -299,10 +305,19 @@ button {
     border-radius: 24px;
 }
 
+.video-overlay-showcase {
+    border-radius: 24px;
+}
+
 .video-player {
     display: block;
     width: 100%;
     height: auto;
+}
+
+.video-player-showcase {
+    border-radius: 24px;
+    object-fit: cover;
 }
 
 .section {
@@ -352,6 +367,7 @@ button {
     border: 1px solid var(--line);
     border-radius: 24px;
     background: var(--surface);
+    -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     transition: all 0.3s ease;
     display: flex;

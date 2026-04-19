@@ -51,7 +51,7 @@ public sealed class AppTests
             Assert.True(args.Handled);
             messageBoxMock.Verify(service => service.ShowError(
                 It.Is<string>(message => message.Contains("boom", StringComparison.Ordinal)),
-                "SnippingTool — Recovered From Error"), Times.Once);
+                "Pointframe — Recovered From Error"), Times.Once);
         });
     }
 

@@ -70,8 +70,11 @@ public sealed class GitHubUpdateService : IUpdateService
         }
 
         var downloadUrl = release.Assets
-            .FirstOrDefault(a => a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-            ?.BrowserDownloadUrl ?? string.Empty;
+            .Where(a => a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(a => GetInstallerAssetPriority(a.Name))
+            .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(a => a.BrowserDownloadUrl)
+            .FirstOrDefault(url => !string.IsNullOrEmpty(url)) ?? string.Empty;
 
         if (!string.IsNullOrEmpty(downloadUrl) && !IsAllowedDownloadUrl(downloadUrl))
         {
@@ -90,6 +93,28 @@ public sealed class GitHubUpdateService : IUpdateService
 
     private static bool IsAllowedDownloadUrl(string url) =>
         AllowedDownloadHosts.Any(h => url.StartsWith(h, StringComparison.OrdinalIgnoreCase));
+
+    private static int GetInstallerAssetPriority(string assetName)
+    {
+        if (assetName.StartsWith("Pointframe-", StringComparison.OrdinalIgnoreCase)
+            && assetName.EndsWith("-Setup.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return 3;
+        }
+
+        if (assetName.StartsWith("SnippingTool-", StringComparison.OrdinalIgnoreCase)
+            && assetName.EndsWith("-Setup.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return 2;
+        }
+
+        if (assetName.EndsWith("-Setup.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        return 0;
+    }
 
     private sealed class GitHubRelease
     {

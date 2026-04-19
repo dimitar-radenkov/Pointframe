@@ -97,7 +97,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
             return;
         }
 
-        var fileName = $"SnippingTool-Setup-{v.Major}.{v.Minor}.{v.Build}.exe";
+        var fileName = ResolveInstallerFileName(result.DownloadUrl, v);
         var destPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
         var succeeded = await _downloadService.Show(result.DownloadUrl, destPath);
         if (succeeded)
@@ -142,4 +142,18 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
 #endif
             _ => TimeSpan.FromDays(1),
         };
+
+    private static string ResolveInstallerFileName(string downloadUrl, Version version)
+    {
+        if (Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri))
+        {
+            var fileName = System.IO.Path.GetFileName(uri.LocalPath);
+            if (!string.IsNullOrWhiteSpace(fileName) && fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                return fileName;
+            }
+        }
+
+        return $"Pointframe-{version.Major}.{version.Minor}.{version.Build}-Setup.exe";
+    }
 }

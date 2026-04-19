@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Publishes SnippingTool and builds the Inno Setup installer.
+    Publishes Pointframe and builds the Inno Setup installer.
 
 .DESCRIPTION
     1. Runs `dotnet publish` with the win-x64 publish profile
@@ -55,7 +55,7 @@ Write-Host "Using Inno Setup: $Iscc" -ForegroundColor Cyan
 # ── 2. dotnet publish ────────────────────────────────────────────────────────
 if (-not $SkipPublish)
 {
-    Write-Host "`n==> Publishing SnippingTool (win-x64, self-contained, single-file)..." -ForegroundColor Cyan
+    Write-Host "`n==> Publishing Pointframe (win-x64, self-contained, single-file)..." -ForegroundColor Cyan
     dotnet publish $ProjectFile `
         /p:PublishProfile=win-x64 `
         /p:Version=$Version `
