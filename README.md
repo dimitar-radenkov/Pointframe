@@ -11,7 +11,7 @@
 
 <p align="center">
   <b>Pointframe is a screen capture and recording tool for Windows, built for bug reports, tutorials, and fast feedback.</b><br>
-  Formerly SnippingTool. Capture, annotate, blur, record, and share what matters without breaking your flow.
+  Capture, annotate, blur, record, and share what matters without breaking your flow.
 </p>
 
 <p align="center">
@@ -96,7 +96,7 @@ winget install DimitarRadenkov.SnippingTool
 
 ## How does it compare?
 
-| Feature | SnippingTool | Windows Snipping Tool | Greenshot | ShareX |
+| Feature | Pointframe | Windows Snipping Tool | Greenshot | ShareX |
 |---|:---:|:---:|:---:|:---:|
 | Region capture | ✅ | ✅ | ✅ | ✅ |
 | Annotation (arrows, shapes, text) | ✅ | ✅ | ✅ | ✅ |
@@ -221,7 +221,7 @@ To bump the version:
 - **WPF / .NET 10**
 - **CommunityToolkit.Mvvm** — `[ObservableProperty]`, `[RelayCommand]`
 - **Microsoft.Extensions.DependencyInjection** — constructor injection throughout
-- **Serilog** — file + debug logging (`%LOCALAPPDATA%\SnippingTool\logs\`)
+- **Serilog** — file + debug logging (`%LOCALAPPDATA%\Pointframe\logs\`)
 - **ffmpeg** — external encoder used for MP4 recording and GIF export
 - **Microsoft.Extensions.Hosting** — Generic Host + `BackgroundService` for the auto-update background loop
 - **Windows.Media.Ocr** — built-in Windows OCR for text extraction
@@ -232,7 +232,7 @@ To bump the version:
 ## 🤝 Contributing
 
 We welcome contributions! Whether it's reporting a bug, suggesting a feature, or submitting a pull request.
-SnippingTool is built on a very clean, modern stack (.NET 10, WPF, CommunityToolkit.Mvvm) making it a great jumping-off point for developers.
+Pointframe is built on a very clean, modern stack (.NET 10, WPF, CommunityToolkit.Mvvm) making it a great jumping-off point for developers.
 
 1. Check out our [Developer Guide](docs/developer-guide.md) and [Architecture Knowledge Base](docs/project-knowledge-base.md).
 2. Browse our [Planned Features](docs/planned-features.md) or look for issues tagged `good first issue`.
@@ -240,7 +240,7 @@ SnippingTool is built on a very clean, modern stack (.NET 10, WPF, CommunityTool
 
 ## Privacy
 
-- SnippingTool is local-first and does not use telemetry.
+- Pointframe is local-first and does not use telemetry.
 - Screenshots, recordings, and OCR processing stay on your machine.
 - Update checks only contact GitHub Releases to look for newer versions.
 

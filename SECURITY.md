@@ -18,4 +18,4 @@ Please include:
 
 ## Scope
 
-SnippingTool is a local, offline Windows desktop application. It does not transmit screenshots, recordings, or any user data to external servers. The only outbound network request is the optional **Check for Updates** feature, which queries the GitHub Releases API (`api.github.com`) — no screenshot or personal data is sent.
+Pointframe is a local, offline Windows desktop application. It does not transmit screenshots, recordings, or any user data to external servers. The only outbound network request is the optional **Check for Updates** feature, which queries the GitHub Releases API (`api.github.com`) — no screenshot or personal data is sent.

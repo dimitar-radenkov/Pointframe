@@ -281,7 +281,7 @@ public partial class App : Application
         _trayIcon = new TaskbarIcon
         {
             IconSource = new BitmapImage(new Uri("pack://application:,,,/Assets/icon.ico", UriKind.Absolute)),
-            ToolTipText = "Snipping Tool",
+            ToolTipText = "Pointframe",
             ContextMenu = CreateTrayContextMenu(),
         };
         _trayIcon.TrayLeftMouseUp += TrayIcon_LeftClick;

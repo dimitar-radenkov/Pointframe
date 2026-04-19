@@ -36,21 +36,21 @@
                        FontSize="12" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,12"/>
 
             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                <TextBlock Text="Changelog: " FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
+                <TextBlock Text="Release notes: " FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
                 <TextBlock FontSize="12" VerticalAlignment="Center">
                     <Hyperlink Command="{Binding OpenUrlCommand}"
                                CommandParameter="https://github.com/dimitar-radenkov/SnippingTool/releases">
-                        github.com/…/releases
+                        View release notes
                     </Hyperlink>
                 </TextBlock>
             </StackPanel>
 
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Source: " FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
+                <TextBlock Text="GitHub: " FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
                 <TextBlock FontSize="12" VerticalAlignment="Center">
                     <Hyperlink Command="{Binding OpenUrlCommand}"
                                CommandParameter="https://github.com/dimitar-radenkov/SnippingTool">
-                        github.com/dimitar-radenkov/SnippingTool
+                        Open source repository
                     </Hyperlink>
                 </TextBlock>
             </StackPanel>
