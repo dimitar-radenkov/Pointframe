@@ -39,7 +39,7 @@
                 <TextBlock Text="Release notes: " FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
                 <TextBlock FontSize="12" VerticalAlignment="Center">
                     <Hyperlink Command="{Binding OpenUrlCommand}"
-                               CommandParameter="https://github.com/dimitar-radenkov/SnippingTool/releases">
+                               CommandParameter="https://github.com/dimitar-radenkov/Pointframe/releases">
                         View release notes
                     </Hyperlink>
                 </TextBlock>
@@ -49,7 +49,7 @@
                 <TextBlock Text="GitHub: " FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
                 <TextBlock FontSize="12" VerticalAlignment="Center">
                     <Hyperlink Command="{Binding OpenUrlCommand}"
-                               CommandParameter="https://github.com/dimitar-radenkov/SnippingTool">
+                               CommandParameter="https://github.com/dimitar-radenkov/Pointframe">
                         Open source repository
                     </Hyperlink>
                 </TextBlock>

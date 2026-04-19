@@ -12,7 +12,7 @@ public partial class UpdateDownloadViewModel : ObservableObject
 {
     internal static readonly HttpClient SharedHttp = new()
     {
-        DefaultRequestHeaders = { { "User-Agent", "SnippingTool" } },
+        DefaultRequestHeaders = { { "User-Agent", "Pointframe" } },
     };
 
     private readonly HttpClient _http;

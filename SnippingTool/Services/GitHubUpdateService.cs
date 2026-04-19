@@ -11,11 +11,11 @@ public sealed class GitHubUpdateService : IUpdateService
     private static readonly HttpClient Http = new()
     {
         Timeout = TimeSpan.FromSeconds(15),
-        DefaultRequestHeaders = { { "User-Agent", "SnippingTool" } },
+        DefaultRequestHeaders = { { "User-Agent", "Pointframe" } },
     };
 
     private const string LatestReleaseUrl =
-        "https://api.github.com/repos/dimitar-radenkov/SnippingTool/releases/latest";
+        "https://api.github.com/repos/dimitar-radenkov/Pointframe/releases/latest";
 
     private static readonly string[] AllowedDownloadHosts =
     [

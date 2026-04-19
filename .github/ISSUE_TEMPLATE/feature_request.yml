@@ -4,7 +4,7 @@ labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
-      value: Thanks for the suggestion! Before submitting, please check [planned features](https://github.com/dimitar-radenkov/SnippingTool/blob/master/docs/planned-features.md) to see if it's already on the roadmap.
+      value: Thanks for the suggestion! Before submitting, please check [planned features](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/planned-features.md) to see if it's already on the roadmap.
 
   - type: textarea
     id: problem

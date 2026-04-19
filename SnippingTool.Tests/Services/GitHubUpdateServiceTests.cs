@@ -44,7 +44,7 @@ public sealed class GitHubUpdateServiceTests
               "assets": [
                 {
                   "name": "Pointframe-999.0.0-Setup.exe",
-                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe"
+                  "browser_download_url": "https://github.com/dimitar-radenkov/Pointframe/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe"
                 }
               ]
             }
@@ -66,11 +66,11 @@ public sealed class GitHubUpdateServiceTests
               "assets": [
                 {
                   "name": "Pointframe.exe",
-                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe.exe"
+                  "browser_download_url": "https://github.com/dimitar-radenkov/Pointframe/releases/download/v999.0.0/Pointframe.exe"
                 },
                 {
                   "name": "Pointframe-999.0.0-Setup.exe",
-                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe"
+                  "browser_download_url": "https://github.com/dimitar-radenkov/Pointframe/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe"
                 }
               ]
             }
@@ -90,11 +90,11 @@ public sealed class GitHubUpdateServiceTests
               "assets": [
                 {
                   "name": "SnippingTool-999.0.0-Setup.exe",
-                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/SnippingTool-999.0.0-Setup.exe"
+                  "browser_download_url": "https://github.com/dimitar-radenkov/Pointframe/releases/download/v999.0.0/SnippingTool-999.0.0-Setup.exe"
                 },
                 {
                   "name": "Pointframe-999.0.0-Setup.exe",
-                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe"
+                  "browser_download_url": "https://github.com/dimitar-radenkov/Pointframe/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe"
                 }
               ]
             }
@@ -103,7 +103,7 @@ public sealed class GitHubUpdateServiceTests
         var result = await CreateService(Json).CheckForUpdates();
 
         Assert.Equal(
-            "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe",
+            "https://github.com/dimitar-radenkov/Pointframe/releases/download/v999.0.0/Pointframe-999.0.0-Setup.exe",
             result.DownloadUrl);
     }
 
@@ -148,7 +148,7 @@ public sealed class GitHubUpdateServiceTests
               "assets": [
                 {
                   "name": "SnippingTool-999.0.0.zip",
-                  "browser_download_url": "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v999.0.0/SnippingTool-999.0.0.zip"
+                  "browser_download_url": "https://github.com/dimitar-radenkov/Pointframe/releases/download/v999.0.0/SnippingTool-999.0.0.zip"
                 }
               ]
             }

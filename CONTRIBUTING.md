@@ -2,15 +2,15 @@
 
 Thanks for your interest in contributing to Pointframe.
 
-The product is now branded as `Pointframe`. The repository folders still use `SnippingTool` during the transition, while the solution and project files use `Pointframe`.
+The product is now branded as `Pointframe`. The main app and test folders still use `SnippingTool` during the transition, while the solution, project files, and namespaces use `Pointframe`.
 
 ## Getting Started
 
 **Prerequisites:** Windows 10/11, [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), Visual Studio 2022 or VS Code.
 
 ```powershell
-git clone https://github.com/dimitar-radenkov/SnippingTool.git
-cd SnippingTool
+git clone https://github.com/dimitar-radenkov/Pointframe.git
+cd Pointframe
 dotnet build SnippingTool/Pointframe.csproj
 dotnet test  SnippingTool.Tests/Pointframe.Tests.csproj
 ```
@@ -49,4 +49,4 @@ dotnet format SnippingTool/Pointframe.csproj
 
 ## Good First Issues
 
-New to the codebase? Look for issues labelled [`good first issue`](https://github.com/dimitar-radenkov/SnippingTool/issues?q=label%3A%22good+first+issue%22).
+New to the codebase? Look for issues labelled [`good first issue`](https://github.com/dimitar-radenkov/Pointframe/issues?q=label%3A%22good+first+issue%22).

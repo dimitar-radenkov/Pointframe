@@ -10,7 +10,7 @@ InstallerSwitches:
   SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP-
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/dimitar-radenkov/SnippingTool/releases/download/v2.5.4/SnippingTool-2.5.4-Setup.exe
+    InstallerUrl: https://github.com/dimitar-radenkov/Pointframe/releases/download/v2.5.4/SnippingTool-2.5.4-Setup.exe
     InstallerSha256: B92767362E5D81F8A9A9E30B919200BC065B41D14C1658A963E7DEFE9BBCA90E
     ProductCode: "{A3F2C1D0-8B4E-4F7A-9C6D-0E5B2A1F3E8C}_is1"
 ManifestType: installer

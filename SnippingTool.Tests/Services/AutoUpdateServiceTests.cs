@@ -177,7 +177,7 @@ public sealed class AutoUpdateServiceTests
         downloadService.Setup(d => d.Show(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
         var messageBox = new Mock<IMessageBoxService>();
         messageBox.Setup(m => m.Confirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
-        var update = new UpdateCheckResult(true, new Version(9, 9, 0), "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v9.9.0/Pointframe-9.9.0-Setup.exe");
+        var update = new UpdateCheckResult(true, new Version(9, 9, 0), "https://github.com/dimitar-radenkov/Pointframe/releases/download/v9.9.0/Pointframe-9.9.0-Setup.exe");
 
         var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), downloadService, messageBox);
 
@@ -198,7 +198,7 @@ public sealed class AutoUpdateServiceTests
         downloadService.Setup(d => d.Show(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
         var messageBox = new Mock<IMessageBoxService>();
         messageBox.Setup(m => m.Confirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
-        var update = new UpdateCheckResult(true, new Version(9, 9, 0), "https://github.com/dimitar-radenkov/SnippingTool/releases/download/v9.9.0/download");
+        var update = new UpdateCheckResult(true, new Version(9, 9, 0), "https://github.com/dimitar-radenkov/Pointframe/releases/download/v9.9.0/download");
 
         var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, SettingsMock(), downloadService, messageBox);
 

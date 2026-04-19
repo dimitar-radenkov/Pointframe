@@ -1,7 +1,7 @@
 # Pointframe
 
 <p align="center">
-  <a href="https://dimitar-radenkov.github.io/SnippingTool/">
+  <a href="https://dimitar-radenkov.github.io/Pointframe/">
     <img src="website/app-icon.png" alt="Pointframe icon" width="48" height="48">
   </a>
 </p>
@@ -15,15 +15,15 @@
 </p>
 
 <p align="center">
-  <b>🌐 <a href="https://dimitar-radenkov.github.io/SnippingTool/">Visit the Official Website</a></b>
+  <b>🌐 <a href="https://dimitar-radenkov.github.io/Pointframe/">Visit the Official Website</a></b>
 </p>
 
 <p align="center">
-  <a href="https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml"><img src="https://github.com/dimitar-radenkov/SnippingTool/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://codecov.io/gh/dimitar-radenkov/SnippingTool"><img src="https://codecov.io/gh/dimitar-radenkov/SnippingTool/branch/master/graph/badge.svg" alt="codecov"></a>
-  <a href="https://github.com/dimitar-radenkov/SnippingTool/releases/latest"><img src="https://img.shields.io/github/v/release/dimitar-radenkov/SnippingTool?color=success" alt="Latest release"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/actions/workflows/ci.yml"><img src="https://github.com/dimitar-radenkov/Pointframe/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/dimitar-radenkov/Pointframe"><img src="https://codecov.io/gh/dimitar-radenkov/Pointframe/branch/master/graph/badge.svg" alt="codecov"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest"><img src="https://img.shields.io/github/v/release/dimitar-radenkov/Pointframe?color=success" alt="Latest release"></a>
   <a href="https://github.com/microsoft/winget-pkgs/tree/master/manifests/d/DimitarRadenkov/Pointframe"><img src="https://img.shields.io/winget/v/DimitarRadenkov.Pointframe?label=winget&color=blue" alt="winget"></a>
-  <a href="https://github.com/dimitar-radenkov/SnippingTool/releases"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/SnippingTool/total?label=downloads&color=purple" alt="Downloads"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/total?label=downloads&color=purple" alt="Downloads"></a>
 </p>
 
 <p align="center">
@@ -40,9 +40,9 @@ Starting with the `5.0` release line, the winget package ID is `DimitarRadenkov.
 winget install DimitarRadenkov.Pointframe
 ```
 
-*Prefer a manual install? Download the latest installer from the [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases) page.*
+*Prefer a manual install? Download the latest installer from the [Releases](https://github.com/dimitar-radenkov/Pointframe/releases) page.*
 
-1. Install Pointframe with `winget install DimitarRadenkov.Pointframe` or download the latest installer from [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases).
+1. Install Pointframe with `winget install DimitarRadenkov.Pointframe` or download the latest installer from [Releases](https://github.com/dimitar-radenkov/Pointframe/releases).
 2. Press `Print Screen` to open the capture overlay and select the region you want.
 3. Annotate, copy, save, pin, or record the region from the overlay and recording HUD.
 
@@ -131,7 +131,7 @@ winget install DimitarRadenkov.Pointframe
 
 **Manual installer**
 
-Download the latest installer from the [Releases](https://github.com/dimitar-radenkov/SnippingTool/releases) page and run it. During setup you can choose to download `ffmpeg.exe`, which is required for MP4 recording and GIF export.
+Download the latest installer from the [Releases](https://github.com/dimitar-radenkov/Pointframe/releases) page and run it. During setup you can choose to download `ffmpeg.exe`, which is required for MP4 recording and GIF export.
 
 ## Troubleshooting
 
@@ -143,8 +143,8 @@ Download the latest installer from the [Releases](https://github.com/dimitar-rad
 ## Building from source
 
 ```powershell
-git clone https://github.com/dimitar-radenkov/SnippingTool.git
-cd SnippingTool
+git clone https://github.com/dimitar-radenkov/Pointframe.git
+cd Pointframe
 
 dotnet build SnippingTool/Pointframe.csproj
 dotnet run   --project SnippingTool/Pointframe.csproj
