@@ -3,11 +3,11 @@ PackageVersion: 2.5.4
 PackageLocale: en-US
 Publisher: Dimitar Radenkov
 PublisherUrl: https://github.com/dimitar-radenkov
-PublisherSupportUrl: https://github.com/dimitar-radenkov/SnippingTool/issues
+PublisherSupportUrl: https://github.com/dimitar-radenkov/Pointframe/issues
 PackageName: SnippingTool
-PackageUrl: https://github.com/dimitar-radenkov/SnippingTool
+PackageUrl: https://github.com/dimitar-radenkov/Pointframe
 License: MIT
-LicenseUrl: https://github.com/dimitar-radenkov/SnippingTool/blob/master/LICENSE
+LicenseUrl: https://github.com/dimitar-radenkov/Pointframe/blob/master/LICENSE
 Copyright: Copyright (c) Dimitar Radenkov
 ShortDescription: Open-source Windows snipping tool with OCR, screen recording, and annotation
 Description: |-

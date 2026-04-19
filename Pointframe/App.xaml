@@ -1,0 +1,14 @@
+﻿<Application x:Class="Pointframe.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Pointframe">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Control templates — always loaded; use DynamicResource for colors -->
+                <ResourceDictionary Source="pack://application:,,,/Themes/Controls.xaml"/>
+                <!-- Active theme dictionary is loaded at runtime by ThemeService -->
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

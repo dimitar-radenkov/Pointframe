@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://dimitar-radenkov.github.io/SnippingTool/sitemap.xml
+Sitemap: https://dimitar-radenkov.github.io/Pointframe/sitemap.xml

@@ -49,7 +49,7 @@ jobs:
 
       - name: Publish (self-contained single-file)
         run: >-
-          dotnet publish SnippingTool/SnippingTool.csproj
+          dotnet publish Pointframe/Pointframe.csproj
           /p:PublishProfile=win-x64
           --nologo
 
@@ -86,7 +86,7 @@ jobs:
           & $iscc `
             /DAppVersion=${{ steps.version.outputs.display }} `
             /O"installer\output" `
-            installer\SnippingTool.iss
+            installer\Pointframe.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Sign installer

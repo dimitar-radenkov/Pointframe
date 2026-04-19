@@ -30,8 +30,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $RepoRoot    = Split-Path $PSScriptRoot -Parent
-$ProjectFile = Join-Path $RepoRoot "SnippingTool\SnippingTool.csproj"
-$IssScript   = Join-Path $PSScriptRoot "SnippingTool.iss"
+$ProjectFile = Join-Path $RepoRoot "Pointframe\Pointframe.csproj"
+$IssScript   = Join-Path $PSScriptRoot "Pointframe.iss"
 $OutputDir   = Join-Path $PSScriptRoot "output"
 
 # ── 1. Locate Inno Setup ────────────────────────────────────────────────────

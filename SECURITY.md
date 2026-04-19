@@ -8,7 +8,7 @@ Only the latest release receives security fixes.
 
 Please **do not** open a public GitHub issue for security vulnerabilities.
 
-Use GitHub's [private vulnerability reporting](https://github.com/dimitar-radenkov/SnippingTool/security/advisories/new) to submit a report confidentially. You will receive a response within 7 days.
+Use GitHub's [private vulnerability reporting](https://github.com/dimitar-radenkov/Pointframe/security/advisories/new) to submit a report confidentially. You will receive a response within 7 days.
 
 Please include:
 

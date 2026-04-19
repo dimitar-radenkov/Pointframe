@@ -2,17 +2,17 @@
 
 Thanks for your interest in contributing to Pointframe.
 
-The product is now branded as `Pointframe`, but the repository and project paths still use `SnippingTool` during the transition.
+The product is now branded as `Pointframe`, and the main solution, project files, namespaces, and top-level source folders use `Pointframe`.
 
 ## Getting Started
 
 **Prerequisites:** Windows 10/11, [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), Visual Studio 2022 or VS Code.
 
 ```powershell
-git clone https://github.com/dimitar-radenkov/SnippingTool.git
-cd SnippingTool
-dotnet build SnippingTool/SnippingTool.csproj
-dotnet test  SnippingTool.Tests/SnippingTool.Tests.csproj
+git clone https://github.com/dimitar-radenkov/Pointframe.git
+cd Pointframe
+dotnet build Pointframe/Pointframe.csproj
+dotnet test  Pointframe.Tests/Pointframe.Tests.csproj
 ```
 
 ## Before You Submit
@@ -20,7 +20,7 @@ dotnet test  SnippingTool.Tests/SnippingTool.Tests.csproj
 Run the formatter — CI will reject unformatted code:
 
 ```powershell
-dotnet format SnippingTool/SnippingTool.csproj
+dotnet format Pointframe/Pointframe.csproj
 ```
 
 ## Key Conventions
@@ -38,7 +38,7 @@ dotnet format SnippingTool/SnippingTool.csproj
 2. Add a matching `sealed record` in `Models/ShapeParameters.cs`.
 3. Handle the new case in `AnnotationViewModel.TryGetShapeParameters()`.
 4. Render it in `AnnotationCanvasRenderer` (`UpdateDragFeedback` + `CommitShape`).
-5. Add unit tests in `SnippingTool.Tests/ViewModels/AnnotationViewModelTests.cs`.
+5. Add unit tests in `Pointframe.Tests/ViewModels/AnnotationViewModelTests.cs`.
 
 ## Pull Request Tips
 
@@ -49,4 +49,4 @@ dotnet format SnippingTool/SnippingTool.csproj
 
 ## Good First Issues
 
-New to the codebase? Look for issues labelled [`good first issue`](https://github.com/dimitar-radenkov/SnippingTool/issues?q=label%3A%22good+first+issue%22).
+New to the codebase? Look for issues labelled [`good first issue`](https://github.com/dimitar-radenkov/Pointframe/issues?q=label%3A%22good+first+issue%22).

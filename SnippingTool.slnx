@@ -1,5 +1,0 @@
-<Solution>
-  <Project Path="SnippingTool.AutomationTests/SnippingTool.AutomationTests.csproj" />
-  <Project Path="SnippingTool.Tests/SnippingTool.Tests.csproj" />
-  <Project Path="SnippingTool/SnippingTool.csproj" />
-</Solution>

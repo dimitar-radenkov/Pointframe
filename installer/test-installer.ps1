@@ -39,7 +39,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = Split-Path $PSScriptRoot -Parent
-$AutomationProject = Join-Path $RepoRoot "SnippingTool.AutomationTests\SnippingTool.AutomationTests.csproj"
+$AutomationProject = Join-Path $RepoRoot "Pointframe.AutomationTests\Pointframe.AutomationTests.csproj"
 $BuildScript = Join-Path $PSScriptRoot "build-installer.ps1"
 $InstallerOutputDirectory = Join-Path $PSScriptRoot "output"
 

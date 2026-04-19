@@ -1,0 +1,72 @@
+<Window x:Class="Pointframe.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="About Pointframe"
+        Width="360" Height="260"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI"
+        Background="{DynamicResource WindowBackground}"
+        Icon="/Assets/icon.ico"
+        AutomationProperties.AutomationId="AboutWindow.Root">
+
+    <Grid Margin="24,20,24,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header: icon + name -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+            <Image Source="/Assets/icon.ico" Width="48" Height="48"
+                   RenderOptions.BitmapScalingMode="HighQuality"
+                   VerticalAlignment="Center" Margin="0,0,14,0"/>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="Pointframe"
+                           FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}"/>
+                <TextBlock Text="{Binding Version}"
+                           FontSize="12" Foreground="{DynamicResource MutedText}" Margin="0,2,0,0"/>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Body -->
+        <StackPanel Grid.Row="1">
+            <TextBlock Text="A lightweight screen capture and recording tool for fast feedback."
+                       FontSize="12" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                <TextBlock Text="Release notes: " FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
+                <TextBlock FontSize="12" VerticalAlignment="Center">
+                    <Hyperlink Command="{Binding OpenUrlCommand}"
+                               CommandParameter="https://github.com/dimitar-radenkov/Pointframe/releases">
+                        View release notes
+                    </Hyperlink>
+                </TextBlock>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="GitHub: " FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
+                <TextBlock FontSize="12" VerticalAlignment="Center">
+                    <Hyperlink Command="{Binding OpenUrlCommand}"
+                               CommandParameter="https://github.com/dimitar-radenkov/Pointframe">
+                        Open source repository
+                    </Hyperlink>
+                </TextBlock>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Footer button -->
+        <Button Grid.Row="2"
+                Content="Close"
+                HorizontalAlignment="Right"
+                Padding="22,6"
+                Background="{DynamicResource AccentColor}"
+                Foreground="White"
+                BorderThickness="0"
+                FontSize="13"
+                Cursor="Hand"
+                Command="{Binding CloseCommand}"
+                AutomationProperties.AutomationId="AboutWindow.Close"/>
+    </Grid>
+</Window>
