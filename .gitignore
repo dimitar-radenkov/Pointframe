@@ -371,5 +371,4 @@ MigrationBackup/
 *.mmd
 
 # ffmpeg binary — downloaded by developer locally, not committed
-SnippingTool/Assets/ffmpeg/
 /Pointframe/Assets/ffmpeg/ffmpeg.exe
