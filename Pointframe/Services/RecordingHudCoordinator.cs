@@ -92,4 +92,15 @@ internal sealed class RecordingHudCoordinator
             _initialHudDiagnosticsLogged = true;
         }
     }
+
+    public bool TrySelectTool(string tag)
+    {
+        if (_recordingHudViewModel?.SelectToolCommand.CanExecute(tag) != true)
+        {
+            return false;
+        }
+
+        _recordingHudViewModel.SelectToolCommand.Execute(tag);
+        return true;
+    }
 }

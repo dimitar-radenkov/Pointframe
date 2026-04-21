@@ -36,13 +36,12 @@ public partial class RecordingOverlayWindow : Window
     private readonly RecordingAnnotationSurfaceCoordinator _recordingAnnotationSurfaceCoordinator;
     private readonly RecordingCursorEffectsService _recordingCursorEffectsService;
     private readonly RecordingHudCoordinator _recordingHudCoordinator;
+    private readonly RecordingMousePassthroughCoordinator _recordingMousePassthroughCoordinator;
     private readonly IEventSubscription _recordingUndoSubscription;
     private readonly IEventSubscription _recordingRedoSubscription;
     private readonly Func<Point?> _getCursorScreenPoint;
-    private readonly Action<Point> _relayInteractiveClickAction;
 
     private HwndSource? _windowSource;
-    private bool _isRelayingInteractiveClick;
 
     internal RecordingOverlayWindow(
         RecordingSessionGeometry geometry,
@@ -55,8 +54,7 @@ public partial class RecordingOverlayWindow : Window
         ILoggerFactory loggerFactory,
         IUserSettingsService userSettings,
         RecordingAnnotationViewModel recordingAnnotationViewModel,
-        Func<Point?>? getCursorScreenPoint = null,
-        Action<Point>? relayInteractiveClickAction = null)
+        Func<Point?>? getCursorScreenPoint = null)
     {
         _geometry = geometry;
         _outputPath = outputPath;
@@ -68,13 +66,16 @@ public partial class RecordingOverlayWindow : Window
         _userSettings = userSettings;
         _recordingAnnotationViewModel = recordingAnnotationViewModel;
         _getCursorScreenPoint = getCursorScreenPoint ?? RecordingOverlayNativeInterop.GetCursorScreenPoint;
-        _relayInteractiveClickAction = relayInteractiveClickAction ?? RelayInteractiveClickToUnderlyingWindow;
 
         InitializeComponent();
 
         Width = _geometry.HostBoundsDips.Width;
         Height = _geometry.HostBoundsDips.Height;
 
+        _recordingAnnotationSurfaceCoordinator = new RecordingAnnotationSurfaceCoordinator(
+            RecordingAnnotationCanvas,
+            _geometry,
+            _recordingAnnotationViewModel);
         _recordingRenderer = new AnnotationCanvasRenderer(
             RecordingAnnotationCanvas,
             _recordingAnnotationViewModel,
@@ -82,10 +83,6 @@ public partial class RecordingOverlayWindow : Window
             loggerFactory.CreateLogger<AnnotationCanvasRenderer>(),
             () => _recordingAnnotationSurfaceCoordinator.SyncAnnotationState(),
             CaptureLiveRecordingBlurSource);
-        _recordingAnnotationSurfaceCoordinator = new RecordingAnnotationSurfaceCoordinator(
-            RecordingAnnotationCanvas,
-            _geometry,
-            _recordingAnnotationViewModel);
         _recordingInteractionController = new AnnotationCanvasInteractionController(
             RecordingAnnotationCanvas,
             _recordingAnnotationViewModel,
@@ -103,12 +100,17 @@ public partial class RecordingOverlayWindow : Window
             _geometry,
             _userSettings,
             _logger);
+        _recordingMousePassthroughCoordinator = new RecordingMousePassthroughCoordinator(
+            () => _recordingAnnotationViewModel.IsInputArmed,
+            _getCursorScreenPoint,
+            IsPointInsideRecordingHud,
+            SetWindowMouseTransparency,
+            Dispatcher);
         _recordingUndoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleRecordingUndoGroup);
         _recordingRedoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRecordingRedoGroup);
         _recordingAnnotationViewModel.ClearRequested += HandleRecordingClearRequested;
 
         RecordingAnnotationCanvas.MouseLeftButtonDown += RecordingAnnot_Down;
-        RecordingAnnotationCanvas.PreviewMouseLeftButtonDown += RecordingAnnot_PreviewMouseLeftButtonDown;
         RecordingAnnotationCanvas.MouseMove += RecordingAnnot_Move;
         RecordingAnnotationCanvas.MouseLeftButtonUp += RecordingAnnot_Up;
         KeyDown += Window_KeyDown;
@@ -125,6 +127,7 @@ public partial class RecordingOverlayWindow : Window
         PositionWindow();
         PositionRecordingBorder();
         _recordingCursorEffectsService.Start();
+        _recordingMousePassthroughCoordinator.Start();
         InitializeRecordingAnnotationSurface();
 
         var hudViewModel = _recordingHudViewModelFactory(_recorder, _outputPath);
@@ -144,6 +147,7 @@ public partial class RecordingOverlayWindow : Window
         _recordingRedoSubscription.Dispose();
         _recordingAnnotationViewModel.ClearRequested -= HandleRecordingClearRequested;
         _recordingCursorEffectsService.Dispose();
+        _recordingMousePassthroughCoordinator.Dispose();
         HideRecordingHud();
         HideRecordingAnnotationSurface();
 
@@ -218,7 +222,7 @@ public partial class RecordingOverlayWindow : Window
 
     private bool IsPointInsideRecordingCaptureSurface(Point screenPoint)
     {
-        if (_geometry.IsEmpty)
+        if (!_recordingAnnotationViewModel.IsInputArmed || _geometry.IsEmpty)
         {
             return false;
         }
@@ -315,6 +319,7 @@ public partial class RecordingOverlayWindow : Window
 
         _recordingAnnotationViewModel.SetInputArmed(isInputArmed);
         _recordingAnnotationSurfaceCoordinator.UpdateCursor(GetRecordingAnnotationCursor());
+        _recordingMousePassthroughCoordinator.Update();
 
         if (_recordingAnnotationViewModel.IsInputArmed)
         {
@@ -338,14 +343,6 @@ public partial class RecordingOverlayWindow : Window
 
         _recordingInteractionController.HandlePointerDown(e.GetPosition(RecordingAnnotationCanvas));
         e.Handled = true;
-    }
-
-    private void RecordingAnnot_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (TryRelayInteractiveCaptureClick())
-        {
-            e.Handled = true;
-        }
     }
 
     private void RecordingAnnot_Move(object sender, MouseEventArgs e)
@@ -384,49 +381,6 @@ public partial class RecordingOverlayWindow : Window
     {
         _recordingAnnotationSurfaceCoordinator.ApplyRedo(message.Elements);
         return ValueTask.CompletedTask;
-    }
-
-    private void UpdateRecordingAnnotationStateFromCanvas()
-    {
-        _recordingAnnotationSurfaceCoordinator.SyncAnnotationState();
-    }
-
-    private bool TryRelayInteractiveCaptureClick()
-    {
-        if (_recordingAnnotationViewModel.IsInputArmed || _isRelayingInteractiveClick)
-        {
-            return false;
-        }
-
-        var screenPoint = _getCursorScreenPoint();
-        if (screenPoint is null || !_geometry.IsScreenPixelPointInsideCapture(screenPoint.Value))
-        {
-            return false;
-        }
-
-        _relayInteractiveClickAction(screenPoint.Value);
-        return true;
-    }
-
-    private void RelayInteractiveClickToUnderlyingWindow(Point screenPoint)
-    {
-        if (_windowSource is null)
-        {
-            return;
-        }
-
-        try
-        {
-            _isRelayingInteractiveClick = true;
-            SetWindowMouseTransparency(true);
-            RecordingOverlayNativeInterop.SetCursorScreenPosition(screenPoint);
-            RecordingOverlayNativeInterop.SendLeftClick();
-        }
-        finally
-        {
-            SetWindowMouseTransparency(false);
-            _isRelayingInteractiveClick = false;
-        }
     }
 
     private void SetWindowMouseTransparency(bool isTransparent)
@@ -468,11 +422,13 @@ public partial class RecordingOverlayWindow : Window
     private void ShowRecordingHud(RecordingHudViewModel hudViewModel)
     {
         _recordingHudCoordinator.Show(hudViewModel, OnRecordingHudCloseRequested);
+        _recordingMousePassthroughCoordinator.Update();
     }
 
     private void HideRecordingHud()
     {
         _recordingHudCoordinator.Hide(OnRecordingHudCloseRequested);
+        _recordingMousePassthroughCoordinator.Update();
     }
 
     private void OnRecordingHudCloseRequested()
@@ -485,6 +441,7 @@ public partial class RecordingOverlayWindow : Window
         if (RecordingHudPanel.Visibility == Visibility.Visible)
         {
             _recordingHudCoordinator.Position();
+            _recordingMousePassthroughCoordinator.Update();
         }
     }
 
@@ -542,11 +499,10 @@ public partial class RecordingOverlayWindow : Window
     private void RecordingToolButton_Checked(object sender, RoutedEventArgs e)
     {
         if (sender is System.Windows.Controls.RadioButton { Tag: string tag }
-            && RecordingHudPanel.DataContext is RecordingHudViewModel hudViewModel
-            && hudViewModel.SelectToolCommand.CanExecute(tag))
+            && _recordingHudCoordinator is not null
+            && _recordingHudCoordinator.TrySelectTool(tag))
         {
-            hudViewModel.SelectToolCommand.Execute(tag);
-            RecordingAnnotationCanvas.Cursor = GetRecordingAnnotationCursor();
+            _recordingAnnotationSurfaceCoordinator.UpdateCursor(GetRecordingAnnotationCursor());
         }
     }
 
