@@ -111,7 +111,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
     private async Task CheckAndNotifyAsync(CancellationToken cancellationToken)
     {
         _logger.LogDebug("Auto-update: checking for updates");
-        var result = await _updateService.CheckForUpdates(cancellationToken).ConfigureAwait(false);
+        var result = await _updateService.CheckForUpdates(cancellationToken);
         if (result.IsUpdateAvailable)
         {
             _logger.LogInformation("Auto-update: update available ({Version})", result.LatestVersion);

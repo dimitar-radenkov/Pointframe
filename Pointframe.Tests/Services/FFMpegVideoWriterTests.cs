@@ -166,7 +166,7 @@ public sealed class FFMpegVideoWriterTests
     }
 
     [Fact]
-    public void BuildArguments_WithQuotedMicrophone_EscapesDeviceName()
+    public void BuildArguments_WithQuotedMicrophone_PassesDeviceNameUnescaped()
     {
         var args = new List<string>();
         FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", "Studio \"Mic\"");

@@ -129,10 +129,12 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         IsMicrophoneMuted = initialMicrophoneMutedState ?? false;
 
         // Bounded channel: if the encode loop falls behind, CaptureFrameToChannel will
-        // skip frames (TryWrite returns false) rather than stalling the capture thread.
+        // skip the newest frame (TryWrite returns false) rather than stalling the capture thread.
+        // DropWrite is used so TryWrite still returns false on a full channel, keeping the
+        // buffer-pool return and dropped-frame counter working correctly.
         _encodeChannel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(PoolSize)
         {
-            FullMode = BoundedChannelFullMode.DropOldest,
+            FullMode = BoundedChannelFullMode.DropWrite,
             SingleReader = true,
             SingleWriter = true,
             AllowSynchronousContinuations = false,
