@@ -509,7 +509,7 @@ public partial class OverlayWindow : Window
                     _vm.RevertToPreviousTool();
                     SyncToolbarToSelectedTool();
                     UpdateLoupe(null);
-                    AnnotationCanvas.Cursor = Cursors.Cross;
+                    AnnotationCanvas.Cursor = _vm.SelectedTool == AnnotationTool.Text ? Cursors.IBeam : Cursors.Cross;
                 }
                 else
                 {

@@ -42,6 +42,8 @@ internal static class AutomationIds
     public const string OverlayWindowToolNumber = "OverlayWindow.Tool.Number";
     public const string OverlayWindowToolBlur = "OverlayWindow.Tool.Blur";
     public const string OverlayWindowToolCallout = "OverlayWindow.Tool.Callout";
+    public const string OverlayWindowToolColorPicker = "OverlayWindow.Tool.ColorPicker";
+    public const string OverlayWindowToolPixelRuler = "OverlayWindow.Tool.PixelRuler";
     public const string PinnedScreenshotWindowRoot = "PinnedScreenshotWindow.Root";
     public const string PinnedScreenshotWindowImage = "PinnedScreenshotWindow.Image";
     public const string PinnedScreenshotWindowClose = "PinnedScreenshotWindow.Close";

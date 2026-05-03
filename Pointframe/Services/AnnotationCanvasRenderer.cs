@@ -43,8 +43,8 @@ internal sealed class AnnotationCanvasRenderer
             return null;
         }
 
-        var px = Math.Clamp((int)Math.Round(dipPoint.X * _dpiX), 0, _backgroundCapture.PixelWidth - 1);
-        var py = Math.Clamp((int)Math.Round(dipPoint.Y * _dpiY), 0, _backgroundCapture.PixelHeight - 1);
+        var px = Math.Clamp((int)Math.Floor(dipPoint.X * _dpiX), 0, _backgroundCapture.PixelWidth - 1);
+        var py = Math.Clamp((int)Math.Floor(dipPoint.Y * _dpiY), 0, _backgroundCapture.PixelHeight - 1);
         var bytes = new byte[4];
         _backgroundCapture.CopyPixels(new Int32Rect(px, py, 1, 1), bytes, 4, 0);
         return Color.FromRgb(bytes[2], bytes[1], bytes[0]); // BGRA → RGB
@@ -57,12 +57,13 @@ internal sealed class AnnotationCanvasRenderer
             return null;
         }
 
-        var cx = (int)Math.Round(dipCenter.X * _dpiX);
-        var cy = (int)Math.Round(dipCenter.Y * _dpiY);
-        var x = Math.Max(0, cx - halfPixels);
-        var y = Math.Max(0, cy - halfPixels);
-        var w = Math.Min(halfPixels * 2 + 1, _backgroundCapture.PixelWidth - x);
-        var h = Math.Min(halfPixels * 2 + 1, _backgroundCapture.PixelHeight - y);
+        var cx = (int)Math.Floor(dipCenter.X * _dpiX);
+        var cy = (int)Math.Floor(dipCenter.Y * _dpiY);
+        var fullSize = halfPixels * 2 + 1;
+        var x = Math.Clamp(cx - halfPixels, 0, Math.Max(0, _backgroundCapture.PixelWidth - fullSize));
+        var y = Math.Clamp(cy - halfPixels, 0, Math.Max(0, _backgroundCapture.PixelHeight - fullSize));
+        var w = Math.Min(fullSize, _backgroundCapture.PixelWidth);
+        var h = Math.Min(fullSize, _backgroundCapture.PixelHeight);
         if (w <= 0 || h <= 0)
         {
             return null;

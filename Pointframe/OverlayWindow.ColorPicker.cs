@@ -32,21 +32,26 @@ public partial class OverlayWindow
             LoupeHexLabel.Text = $"#{color.Value.R:X2}{color.Value.G:X2}{color.Value.B:X2}";
         }
 
-        // Position loupe near cursor, flip if near an edge
+        // Position loupe near cursor, flip if near an edge.
+        // dipPoint is in AnnotationCanvas space; ColorPickerLoupe lives on the root canvas,
+        // so offset by the selection origin to convert to root coords.
         const double Offset = 18;
         const double LoupeW = 120;
         const double LoupeH = 140;
 
-        var lx = dipPoint.Value.X + Offset;
-        var ly = dipPoint.Value.Y - LoupeH - Offset;
+        var originX = _vm.SelectionRect.X;
+        var originY = _vm.SelectionRect.Y;
+
+        var lx = originX + dipPoint.Value.X + Offset;
+        var ly = originY + dipPoint.Value.Y - LoupeH - Offset;
         if (ly < 0)
         {
-            ly = dipPoint.Value.Y + Offset;
+            ly = originY + dipPoint.Value.Y + Offset;
         }
 
         if (lx + LoupeW > ActualWidth)
         {
-            lx = dipPoint.Value.X - LoupeW - Offset;
+            lx = originX + dipPoint.Value.X - LoupeW - Offset;
         }
 
         Canvas.SetLeft(ColorPickerLoupe, lx);

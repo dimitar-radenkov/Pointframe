@@ -138,7 +138,7 @@ public partial class AnnotationViewModel : ObservableObject
 
     public ShapeParameters? TryGetShapeParameters()
     {
-        if (!_geometry.IsValidShapeSize(DragStart, DragCurrent))
+        if (SelectedTool != AnnotationTool.PixelRuler && !_geometry.IsValidShapeSize(DragStart, DragCurrent))
         {
             return null;
         }

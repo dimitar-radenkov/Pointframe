@@ -25,6 +25,8 @@ public sealed class AnnotationToolSmokeTests : IClassFixture<DesktopAutomationFi
         AutomationIds.OverlayWindowToolNumber,
         AutomationIds.OverlayWindowToolBlur,
         AutomationIds.OverlayWindowToolCallout,
+        AutomationIds.OverlayWindowToolColorPicker,
+        AutomationIds.OverlayWindowToolPixelRuler,
     };
 
     [Theory]

@@ -39,8 +39,8 @@ internal sealed class AnnotationCanvasInteractionController
                 _viewModel.ActiveColor = color.Value;
             }
 
-            _onColorPicked?.Invoke(color ?? Colors.Transparent, point);
             _viewModel.RevertToPreviousTool();
+            _onColorPicked?.Invoke(color ?? Colors.Transparent, point);
             _onLoupePositionChanged?.Invoke(null);
             return;
         }
