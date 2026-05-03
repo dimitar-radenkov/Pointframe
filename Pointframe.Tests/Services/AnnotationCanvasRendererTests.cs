@@ -69,13 +69,22 @@ public sealed class AnnotationCanvasRendererTests
             // 4-pixel wide bitmap: pixel 0=Red, pixel 1=Blue (1px wide each at DPI=1)
             var pixels = new byte[4 * 1 * 4];
             // pixel 0 = Red
-            pixels[0] = Colors.Red.B; pixels[1] = Colors.Red.G; pixels[2] = Colors.Red.R; pixels[3] = 255;
+            pixels[0] = Colors.Red.B;
+            pixels[1] = Colors.Red.G;
+            pixels[2] = Colors.Red.R;
+            pixels[3] = 255;
             // pixel 1 = Blue
-            pixels[4] = Colors.Blue.B; pixels[5] = Colors.Blue.G; pixels[6] = Colors.Blue.R; pixels[7] = 255;
+            pixels[4] = Colors.Blue.B;
+            pixels[5] = Colors.Blue.G;
+            pixels[6] = Colors.Blue.R;
+            pixels[7] = 255;
             // pixel 2,3 = Green
             for (var i = 8; i < 16; i += 4)
             {
-                pixels[i] = Colors.Green.B; pixels[i + 1] = Colors.Green.G; pixels[i + 2] = Colors.Green.R; pixels[i + 3] = 255;
+                pixels[i] = Colors.Green.B;
+                pixels[i + 1] = Colors.Green.G;
+                pixels[i + 2] = Colors.Green.R;
+                pixels[i + 3] = 255;
             }
 
             var bitmap = BitmapSource.Create(4, 1, 96, 96, PixelFormats.Bgra32, null, pixels, 4 * 4);
@@ -144,7 +153,6 @@ public sealed class AnnotationCanvasRendererTests
             Assert.Equal(Half * 2 + 1, crop.PixelHeight);
         });
     }
-
 
     [Fact]
     public void BeginUpdateCommit_WithRectangle_TracksCommittedElement()

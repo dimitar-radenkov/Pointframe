@@ -6,7 +6,6 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Moq;
-using Pointframe;
 using Pointframe.Models;
 using Pointframe.Services;
 using Pointframe.Tests.Services.Handlers;

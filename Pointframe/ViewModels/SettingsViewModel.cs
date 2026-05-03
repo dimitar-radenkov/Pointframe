@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Windows.Input;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -61,6 +62,9 @@ public partial class SettingsViewModel : ObservableObject
         _lastAutoUpdateCheckUtc = s.LastAutoUpdateCheckUtc;
 
         _defaultAnnotationColor = ParseAnnotationColorOrFallback(s.DefaultAnnotationColor);
+        _stylePresets = new ObservableCollection<AnnotationStylePresetViewModel>(
+            s.StylePresets.Select(p => new AnnotationStylePresetViewModel(p)));
+        _stylePresets.CollectionChanged += (_, _) => OnPropertyChanged(nameof(CanAddPreset));
     }
 
     public IReadOnlyList<SettingsSectionItem> Sections => SectionItems;
@@ -162,6 +166,10 @@ public partial class SettingsViewModel : ObservableObject
     public SolidColorBrush ColorPreviewBrush => new(DefaultAnnotationColor);
     public double AnnotationPreviewThickness => Math.Max(DefaultStrokeThickness, 1d);
 
+    private readonly ObservableCollection<AnnotationStylePresetViewModel> _stylePresets;
+    public ObservableCollection<AnnotationStylePresetViewModel> StylePresets => _stylePresets;
+    public bool CanAddPreset => _stylePresets.Count < AnnotationStylePreset.MaxCount;
+
     public event Action? RequestClose;
 
     [RelayCommand]
@@ -194,6 +202,35 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanAddPreset))]
+    private void AddPreset()
+    {
+        _stylePresets.Add(new AnnotationStylePresetViewModel(new AnnotationStylePreset
+        {
+            Name = $"Preset {_stylePresets.Count + 1}",
+            Color = $"#{DefaultAnnotationColor.A:X2}{DefaultAnnotationColor.R:X2}{DefaultAnnotationColor.G:X2}{DefaultAnnotationColor.B:X2}",
+            StrokeThickness = DefaultStrokeThickness,
+        }));
+        AddPresetCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void RemovePreset(AnnotationStylePresetViewModel preset)
+    {
+        _stylePresets.Remove(preset);
+        AddPresetCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void PickPresetColor(AnnotationStylePresetViewModel preset)
+    {
+        var selectedColor = _dialogService.PickColor(preset.Color);
+        if (selectedColor.HasValue)
+        {
+            preset.Color = selectedColor.Value;
+        }
+    }
+
     [RelayCommand]
     private void Save()
     {
@@ -217,6 +254,7 @@ public partial class SettingsViewModel : ObservableObject
             HudGapPixels = _hudGapPixels,
             DefaultAnnotationColor = $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}",
             DefaultStrokeThickness = DefaultStrokeThickness,
+            StylePresets = [.. _stylePresets.Select(p => p.ToModel())],
             RegionCaptureHotkey = RegionCaptureHotkey,
             RegionCaptureHotkeyModifiers = RegionCaptureHotkeyModifiers,
             WholeScreenRecordHotkey = WholeScreenRecordHotkey,
@@ -279,6 +317,7 @@ public partial class SettingsViewModel : ObservableObject
             case SettingsSection.Annotation:
                 DefaultAnnotationColor = ParseAnnotationColorOrFallback(defaults.DefaultAnnotationColor);
                 DefaultStrokeThickness = defaults.DefaultStrokeThickness;
+                ResetStylePresets(defaults.StylePresets);
                 break;
             case SettingsSection.App:
                 AutoUpdateCheckInterval = defaults.AutoUpdateCheckInterval;
@@ -306,6 +345,7 @@ public partial class SettingsViewModel : ObservableObject
         CaptureDelaySeconds = defaults.CaptureDelaySeconds;
         DefaultAnnotationColor = ParseAnnotationColorOrFallback(defaults.DefaultAnnotationColor);
         DefaultStrokeThickness = defaults.DefaultStrokeThickness;
+        ResetStylePresets(defaults.StylePresets);
         RegionCaptureHotkey = defaults.RegionCaptureHotkey;
         RegionCaptureHotkeyModifiers = defaults.RegionCaptureHotkeyModifiers;
         IsRecordingHotkey = false;
@@ -324,6 +364,18 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     internal void RevertThemePreview() => _themeService.Apply(_originalTheme);
+
+    private void ResetStylePresets(List<Models.AnnotationStylePreset> presets)
+    {
+        _stylePresets.Clear();
+        foreach (var preset in presets)
+        {
+            _stylePresets.Add(new AnnotationStylePresetViewModel(preset));
+        }
+
+        AddPresetCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanAddPreset));
+    }
 
     private static string VkToKeyName(uint vk) =>
         vk == 0x2C ? "Print Screen" : KeyInterop.KeyFromVirtualKey((int)vk).ToString();

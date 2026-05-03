@@ -761,6 +761,85 @@
 
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
+                            <TextBlock Text="Style Presets" Style="{StaticResource GroupTitle}"/>
+                            <TextBlock Text="Up to 5 colour and thickness shortcuts in the annotation toolbar."
+                                       Style="{StaticResource GroupDescription}"/>
+
+                            <ItemsControl ItemsSource="{Binding StylePresets}" Margin="0,14,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="90"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Colour swatch (click to pick) -->
+                                            <Button Grid.Column="0"
+                                                    Width="28" Height="28"
+                                                    Margin="0,0,10,0"
+                                                    Padding="4"
+                                                    Cursor="Hand"
+                                                    Style="{StaticResource BrowseBtn}"
+                                                    Command="{Binding DataContext.PickPresetColorCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="Click to change colour">
+                                                <Border Width="16" Height="16"
+                                                        CornerRadius="8"
+                                                        Background="{Binding ColorBrush}"
+                                                        BorderBrush="{DynamicResource ControlBorder}"
+                                                        BorderThickness="1"/>
+                                            </Button>
+
+                                            <!-- Name -->
+                                            <TextBox Grid.Column="1"
+                                                     Margin="0,0,10,0"
+                                                     Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                     MaxLength="24"
+                                                     VerticalContentAlignment="Center"/>
+
+                                            <!-- Thickness -->
+                                            <TextBox Grid.Column="2"
+                                                     Margin="0,0,10,0"
+                                                     Text="{Binding StrokeThickness, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="Stroke thickness"
+                                                     VerticalContentAlignment="Center"
+                                                     PreviewTextInput="DoubleInput_PreviewTextInput"
+                                                     DataObject.Pasting="DoubleInput_Pasting"/>
+
+                                            <!-- Delete -->
+                                            <Button Grid.Column="3"
+                                                    Width="28" Height="28"
+                                                    Cursor="Hand"
+                                                    Style="{StaticResource BrowseBtn}"
+                                                    Command="{Binding DataContext.RemovePresetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="Remove preset">
+                                                <TextBlock Text="&#xE74D;"
+                                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                           FontSize="12"
+                                                           Foreground="#D96464"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"/>
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Button Content="+ Add preset"
+                                    Style="{StaticResource BrowseBtn}"
+                                    Command="{Binding AddPresetCommand}"
+                                    HorizontalAlignment="Left"
+                                    Margin="0,4,0,0"
+                                    AutomationProperties.AutomationId="SettingsWindow.AddStylePreset"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource GroupCard}">
+                        <StackPanel>
                             <TextBlock Text="Preview" Style="{StaticResource GroupTitle}"/>
                             <TextBlock Text="See the current annotation defaults before saving."
                                        Style="{StaticResource GroupDescription}"/>

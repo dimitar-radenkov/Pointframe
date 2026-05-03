@@ -160,6 +160,32 @@
       <Setter Property="Foreground" Value="#D96464"/>
     </Style>
 
+    <!-- Popup menu-item button (used in colour/preset dropdown) -->
+    <Style x:Key="PresetMenuItemBtn" TargetType="Button">
+      <Setter Property="Height" Value="30"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="Transparent"
+                    BorderBrush="Transparent" BorderThickness="0"
+                    CornerRadius="4" Padding="6,0">
+              <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolBtnHoverBackground}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PressedBackground}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
   </Window.Resources>
 
   <!-- Root canvas — near-transparent so WPF hit-tests it (fully transparent = no hit-test) -->
@@ -385,12 +411,120 @@
         <!-- Divider -->
         <Rectangle Height="1" Fill="{DynamicResource DividerColor}" Margin="4,5"/>
 
-        <!-- Color swatch -->
-        <Button Width="34" Height="34" Cursor="Hand"
-          Style="{StaticResource ActionBtn}"
-          Command="{Binding PickColorCommand}" ToolTip="Colour">
-          <Ellipse Width="20" Height="20" Fill="{Binding ActiveBrush}"/>
-        </Button>
+        <!-- Color swatch with style-preset dropdown.
+             The button shows the active colour + a mini strip of preset dots so the
+             palette is visible at a glance without needing to open the menu. -->
+        <Grid x:Name="ColorDropdownRoot" Width="34" Margin="0,1">
+          <Button Width="34" Height="42" Cursor="Hand"
+                  Style="{StaticResource ActionBtn}"
+                  Command="{Binding ToggleColorMenuCommand}"
+                  ToolTip="Colour / Style presets">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+
+              <!-- Active colour -->
+              <Ellipse Width="18" Height="18"
+                       Fill="{Binding ActiveBrush}"
+                       HorizontalAlignment="Center"/>
+
+              <!-- Mini preset dot strip (up to 5 dots, always visible) -->
+              <ItemsControl ItemsSource="{Binding StylePresets}"
+                            Margin="0,3,0,0"
+                            HorizontalAlignment="Center">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal"/>
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Ellipse Width="6" Height="6"
+                             Fill="{Binding Brush}"
+                             Margin="1,0"/>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+            </StackPanel>
+          </Button>
+
+          <Popup IsOpen="{Binding IsColorMenuOpen, Mode=TwoWay}"
+                 PlacementTarget="{Binding ElementName=ColorDropdownRoot}"
+                 Placement="Right"
+                 AllowsTransparency="True"
+                 StaysOpen="False"
+                 PopupAnimation="Fade">
+            <Border Background="{DynamicResource ToolbarBackground}"
+                    BorderBrush="{DynamicResource ToolbarBorder}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="4"
+                    MinWidth="160">
+              <Border.Effect>
+                <DropShadowEffect Color="#444444" BlurRadius="10" ShadowDepth="0" Opacity="0.4"/>
+              </Border.Effect>
+              <StackPanel>
+
+                <!-- Preset rows -->
+                <ItemsControl ItemsSource="{Binding DataContext.StylePresets, ElementName=ColorDropdownRoot}"
+                              Visibility="{Binding DataContext.HasStylePresets, ElementName=ColorDropdownRoot, Converter={StaticResource BoolToVisibility}}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Button Style="{StaticResource PresetMenuItemBtn}"
+                              Command="{Binding DataContext.ApplyPresetCommand, ElementName=ColorDropdownRoot}"
+                              CommandParameter="{Binding Index}">
+                        <Grid>
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="22"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="16"/>
+                          </Grid.ColumnDefinitions>
+                          <Ellipse Grid.Column="0" Width="12" Height="12" Fill="{Binding Brush}"
+                                   VerticalAlignment="Center"/>
+                          <TextBlock Grid.Column="1"
+                                     Text="{Binding Name}"
+                                     Foreground="{DynamicResource PrimaryText}"
+                                     FontSize="12"
+                                     VerticalAlignment="Center"/>
+                          <TextBlock Grid.Column="2"
+                                     Text="&#x2713;"
+                                     FontSize="11"
+                                     Foreground="{DynamicResource ToolBtnCheckedBorder}"
+                                     VerticalAlignment="Center"
+                                     HorizontalAlignment="Center"
+                                     Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibility}}"/>
+                        </Grid>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Divider -->
+                <Rectangle Height="1"
+                           Fill="{DynamicResource DividerColor}"
+                           Margin="4,3"
+                           Visibility="{Binding DataContext.HasStylePresets, ElementName=ColorDropdownRoot, Converter={StaticResource BoolToVisibility}}"/>
+
+                <!-- Custom colour -->
+                <Button Style="{StaticResource PresetMenuItemBtn}"
+                        Command="{Binding DataContext.PickColorCommand, ElementName=ColorDropdownRoot}">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE790;"
+                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               FontSize="12"
+                               Foreground="{DynamicResource PrimaryText}"
+                               VerticalAlignment="Center"
+                               Width="22"/>
+                    <TextBlock Text="Custom colour…"
+                               Foreground="{DynamicResource PrimaryText}"
+                               FontSize="12"
+                               VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Button>
+
+              </StackPanel>
+            </Border>
+          </Popup>
+        </Grid>
 
       </StackPanel>
     </Border>

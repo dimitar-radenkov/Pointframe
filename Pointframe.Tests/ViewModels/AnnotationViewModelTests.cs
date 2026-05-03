@@ -685,13 +685,253 @@ public sealed class AnnotationViewModelTests
     }
 
     // Concrete subclass so we can instantiate the abstract-like partial base
-    private sealed partial class TestAnnotationViewModel(AnnotationGeometryService geom, IEventAggregator? eventAggregator = null)
-        : AnnotationViewModel(
-            geom,
-            NullLogger<AnnotationViewModel>.Instance,
-            Mock.Of<IUserSettingsService>(s => s.Current == new UserSettings()),
-            eventAggregator ?? new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance))
-    { }
+    private sealed partial class TestAnnotationViewModel : AnnotationViewModel
+    {
+        public TestAnnotationViewModel(
+            AnnotationGeometryService geom,
+            IEventAggregator? eventAggregator = null,
+            IUserSettingsService? settingsService = null)
+            : base(
+                geom,
+                NullLogger<AnnotationViewModel>.Instance,
+                settingsService ?? Mock.Of<IUserSettingsService>(s => s.Current == new UserSettings()),
+                eventAggregator ?? new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance))
+        { }
+    }
+
+    // -----------------------------------------------------------------------
+    // Style Preset tests
+    // -----------------------------------------------------------------------
+
+    private static Mock<IUserSettingsService> MakeSettingsMockWithPresets(UserSettings? settings = null)
+    {
+        var s = settings ?? new UserSettings
+        {
+            StylePresets =
+            [
+                new() { Name = "Red Bold", Color = "#FFFF0000", StrokeThickness = 4.0 },
+                new() { Name = "Blue", Color = "#FF1E90FF", StrokeThickness = 2.5 },
+            ],
+        };
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(x => x.Current).Returns(s);
+        mock.Setup(x => x.Update(It.IsAny<Action<UserSettings>>()))
+            .Callback<Action<UserSettings>>(a => a(s));
+        return mock;
+    }
+
+    [Fact]
+    public void ApplyPreset_ValidIndex_SetsActiveColor()
+    {
+        // Arrange
+        var settingsMock = MakeSettingsMockWithPresets();
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+
+        // Act
+        vm.ApplyPresetCommand.Execute(0);
+
+        // Assert
+        Assert.Equal(Colors.Red, vm.ActiveColor);
+    }
+
+    [Fact]
+    public void ApplyPreset_ValidIndex_SetsStrokeThickness()
+    {
+        // Arrange
+        var settingsMock = MakeSettingsMockWithPresets();
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+
+        // Act
+        vm.ApplyPresetCommand.Execute(0);
+
+        // Assert
+        Assert.Equal(4.0, vm.StrokeThickness);
+    }
+
+    [Fact]
+    public void ApplyPreset_ValidIndex_SetsActivePresetIndex()
+    {
+        // Arrange
+        var settingsMock = MakeSettingsMockWithPresets();
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+
+        // Act
+        vm.ApplyPresetCommand.Execute(1);
+
+        // Assert
+        Assert.Equal(1, vm.ActivePresetIndex);
+    }
+
+    [Fact]
+    public void ApplyPreset_ValidIndex_CallsSettingsUpdate()
+    {
+        // Arrange
+        var settingsMock = MakeSettingsMockWithPresets();
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+
+        // Act
+        vm.ApplyPresetCommand.Execute(0);
+
+        // Assert
+        settingsMock.Verify(x => x.Update(It.IsAny<Action<UserSettings>>()), Times.Once);
+    }
+
+    [Fact]
+    public void ApplyPreset_ValidIndex_SavesPresetColorAsDefault()
+    {
+        // Arrange
+        var settings = new UserSettings
+        {
+            StylePresets = [new() { Name = "Green", Color = "#FF22A422", StrokeThickness = 3.0 }],
+        };
+        var settingsMock = MakeSettingsMockWithPresets(settings);
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+
+        // Act
+        vm.ApplyPresetCommand.Execute(0);
+
+        // Assert — Update callback mutated the settings object
+        Assert.Equal("#FF22A422", settings.DefaultAnnotationColor);
+        Assert.Equal(3.0, settings.DefaultStrokeThickness);
+    }
+
+    [Fact]
+    public void ApplyPreset_InvalidIndex_DoesNotChangeColor()
+    {
+        // Arrange
+        var settingsMock = MakeSettingsMockWithPresets();
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+        var originalColor = vm.ActiveColor;
+
+        // Act
+        vm.ApplyPresetCommand.Execute(99);
+
+        // Assert
+        Assert.Equal(originalColor, vm.ActiveColor);
+    }
+
+    [Fact]
+    public void ApplyPreset_InvalidIndex_DoesNotCallSettingsUpdate()
+    {
+        // Arrange
+        var settingsMock = MakeSettingsMockWithPresets();
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+
+        // Act
+        vm.ApplyPresetCommand.Execute(99);
+
+        // Assert
+        settingsMock.Verify(x => x.Update(It.IsAny<Action<UserSettings>>()), Times.Never);
+    }
+
+    [Fact]
+    public void SetColorFromTag_ClearsActivePresetIndex()
+    {
+        // Arrange
+        var settingsMock = MakeSettingsMockWithPresets();
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+        vm.ApplyPresetCommand.Execute(0);
+        Assert.NotNull(vm.ActivePresetIndex);
+
+        // Act
+        vm.SetColorFromTag("Blue");
+
+        // Assert
+        Assert.Null(vm.ActivePresetIndex);
+    }
+
+    [Fact]
+    public void SetStrokeThicknessFromText_ClearsActivePresetIndex()
+    {
+        // Arrange
+        var settingsMock = MakeSettingsMockWithPresets();
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+        vm.ApplyPresetCommand.Execute(0);
+        Assert.NotNull(vm.ActivePresetIndex);
+
+        // Act
+        vm.SetStrokeThicknessFromText("3.0");
+
+        // Assert
+        Assert.Null(vm.ActivePresetIndex);
+    }
+
+    [Fact]
+    public void StylePresets_Count_MatchesSettingsPresets()
+    {
+        // Arrange
+        var settingsMock = MakeSettingsMockWithPresets();
+
+        // Act
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+
+        // Assert
+        Assert.Equal(2, vm.StylePresets.Count);
+        Assert.True(vm.HasStylePresets);
+    }
+
+    [Fact]
+    public void HasStylePresets_ReturnsFalse_WhenNoPresets()
+    {
+        // Arrange
+        var settings = new UserSettings { StylePresets = [] };
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(x => x.Current).Returns(settings);
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: mock.Object);
+
+        // Assert
+        Assert.False(vm.HasStylePresets);
+    }
+
+    [Fact]
+    public void ApplyPreset_PropertyChanged_FiresForActivePresetIndex()
+    {
+        // Arrange
+        var settingsMock = MakeSettingsMockWithPresets();
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+        vm.ActiveColor = Colors.Green; // ensure it differs from preset 0 (red) so PropertyChanged fires
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        // Act
+        vm.ApplyPresetCommand.Execute(0);
+
+        // Assert
+        Assert.Contains(nameof(vm.ActivePresetIndex), raised);
+        Assert.Contains(nameof(vm.ActiveColor), raised);
+        Assert.Contains(nameof(vm.StrokeThickness), raised);
+    }
+
+    [Fact]
+    public void ToggleColorMenu_TogglesIsColorMenuOpen()
+    {
+        // Arrange
+        var vm = new TestAnnotationViewModel(Geom());
+        Assert.False(vm.IsColorMenuOpen);
+
+        // Act / Assert
+        vm.ToggleColorMenuCommand.Execute(null);
+        Assert.True(vm.IsColorMenuOpen);
+
+        vm.ToggleColorMenuCommand.Execute(null);
+        Assert.False(vm.IsColorMenuOpen);
+    }
+
+    [Fact]
+    public void ApplyPreset_ClosesColorMenu()
+    {
+        // Arrange
+        var settingsMock = MakeSettingsMockWithPresets();
+        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
+        vm.ToggleColorMenuCommand.Execute(null);
+        Assert.True(vm.IsColorMenuOpen);
+
+        // Act
+        vm.ApplyPresetCommand.Execute(0);
+
+        // Assert
+        Assert.False(vm.IsColorMenuOpen);
+    }
 
     private sealed class GroupMessageRecorder
     {

@@ -39,4 +39,11 @@ public sealed class UserSettings
     public DateTime? LastAutoUpdateCheckUtc { get; set; } = null;
 
     public AppTheme Theme { get; set; } = AppTheme.System;
+
+    public List<AnnotationStylePreset> StylePresets { get; set; } =
+    [
+        new() { Name = "Red",   Color = "#FFFF0000", StrokeThickness = 2.5 },
+        new() { Name = "Blue",  Color = "#FF1E90FF", StrokeThickness = 2.5 },
+        new() { Name = "Black", Color = "#FF1A1A1A", StrokeThickness = 3.5 },
+    ];
 }

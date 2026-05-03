@@ -119,10 +119,12 @@ public partial class OverlayViewModel : AnnotationViewModel
     [RelayCommand]
     private void PickColor()
     {
+        IsColorMenuOpen = false;
         var selectedColor = _dialogService.PickColor(ActiveColor);
         if (selectedColor.HasValue)
         {
             ActiveColor = selectedColor.Value;
+            ActivePresetIndex = null;
         }
     }
 
