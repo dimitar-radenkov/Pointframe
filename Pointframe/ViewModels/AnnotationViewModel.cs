@@ -38,7 +38,7 @@ public partial class AnnotationViewModel : ObservableObject
         _strokeThickness = settings.Current.DefaultStrokeThickness;
 
         StylePresets = settings.Current.StylePresets
-            .Select((p, i) => new AnnotationPresetItemViewModel(i, p.Name, new SolidColorBrush(ParsePresetColor(p.Color)), this))
+            .Select((p, i) => new AnnotationPresetItemViewModel(i, p.Name, p.Color, p.StrokeThickness, new SolidColorBrush(ParsePresetColor(p.Color)), this))
             .ToList()
             .AsReadOnly();
     }
@@ -159,35 +159,28 @@ public partial class AnnotationViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ApplyPreset(int index)
+    private void ApplyPreset(AnnotationPresetItemViewModel presetItem)
     {
-        var presets = _settingsService.Current.StylePresets;
-        if (index < 0 || index >= presets.Count)
-        {
-            return;
-        }
-
-        var preset = presets[index];
         try
         {
-            ActiveColor = (Color)System.Windows.Media.ColorConverter.ConvertFromString(preset.Color);
+            ActiveColor = (Color)System.Windows.Media.ColorConverter.ConvertFromString(presetItem.Color);
         }
         catch
         {
             // keep existing color
         }
 
-        StrokeThickness = preset.StrokeThickness;
-        ActivePresetIndex = index;
+        StrokeThickness = presetItem.StrokeThickness;
+        ActivePresetIndex = presetItem.Index;
         IsColorMenuOpen = false;
 
         _settingsService.Update(s =>
         {
-            s.DefaultAnnotationColor = preset.Color;
-            s.DefaultStrokeThickness = preset.StrokeThickness;
+            s.DefaultAnnotationColor = presetItem.Color;
+            s.DefaultStrokeThickness = presetItem.StrokeThickness;
         });
 
-        _logger.LogDebug("Style preset applied: {Name} ({Color}, {Thickness}px)", preset.Name, preset.Color, preset.StrokeThickness);
+        _logger.LogDebug("Style preset applied: {Name} ({Color}, {Thickness}px)", presetItem.Name, presetItem.Color, presetItem.StrokeThickness);
     }
 
     private static Color ParsePresetColor(string hex)

@@ -137,7 +137,7 @@ public sealed class UserSettingsService : IUserSettingsService
             AutoUpdateCheckInterval = settings.AutoUpdateCheckInterval,
             LastAutoUpdateCheckUtc = settings.LastAutoUpdateCheckUtc,
             Theme = settings.Theme,
-            StylePresets = [.. settings.StylePresets.Select(p => new Pointframe.Models.AnnotationStylePreset
+            StylePresets = [.. (settings.StylePresets ?? []).Select(p => new Pointframe.Models.AnnotationStylePreset
             {
                 Name = p.Name,
                 Color = p.Color,

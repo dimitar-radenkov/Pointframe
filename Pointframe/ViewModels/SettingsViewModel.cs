@@ -64,7 +64,11 @@ public partial class SettingsViewModel : ObservableObject
         _defaultAnnotationColor = ParseAnnotationColorOrFallback(s.DefaultAnnotationColor);
         _stylePresets = new ObservableCollection<AnnotationStylePresetViewModel>(
             s.StylePresets.Select(p => new AnnotationStylePresetViewModel(p)));
-        _stylePresets.CollectionChanged += (_, _) => OnPropertyChanged(nameof(CanAddPreset));
+        _stylePresets.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(CanAddPreset));
+            AddPresetCommand.NotifyCanExecuteChanged();
+        };
     }
 
     public IReadOnlyList<SettingsSectionItem> Sections => SectionItems;
@@ -211,14 +215,12 @@ public partial class SettingsViewModel : ObservableObject
             Color = $"#{DefaultAnnotationColor.A:X2}{DefaultAnnotationColor.R:X2}{DefaultAnnotationColor.G:X2}{DefaultAnnotationColor.B:X2}",
             StrokeThickness = DefaultStrokeThickness,
         }));
-        AddPresetCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]
     private void RemovePreset(AnnotationStylePresetViewModel preset)
     {
         _stylePresets.Remove(preset);
-        AddPresetCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]

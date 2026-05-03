@@ -412,16 +412,16 @@
         <Rectangle Height="1" Fill="{DynamicResource DividerColor}" Margin="4,5"/>
 
         <!-- Color swatch with style-preset dropdown.
-             The button shows the active colour + a mini strip of preset dots so the
+             The button shows the active color + a mini strip of preset dots so the
              palette is visible at a glance without needing to open the menu. -->
         <Grid x:Name="ColorDropdownRoot" Width="34" Margin="0,1">
           <Button Width="34" Height="42" Cursor="Hand"
                   Style="{StaticResource ActionBtn}"
                   Command="{Binding ToggleColorMenuCommand}"
-                  ToolTip="Colour / Style presets">
+                  ToolTip="Color / Style presets">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
 
-              <!-- Active colour -->
+              <!-- Active color -->
               <Ellipse Width="18" Height="18"
                        Fill="{Binding ActiveBrush}"
                        HorizontalAlignment="Center"/>
@@ -471,7 +471,7 @@
                     <DataTemplate>
                       <Button Style="{StaticResource PresetMenuItemBtn}"
                               Command="{Binding DataContext.ApplyPresetCommand, ElementName=ColorDropdownRoot}"
-                              CommandParameter="{Binding Index}">
+                              CommandParameter="{Binding}">
                         <Grid>
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="22"/>

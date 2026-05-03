@@ -11,10 +11,12 @@ public sealed partial class AnnotationPresetItemViewModel : ObservableObject
 {
     private readonly AnnotationViewModel _parent;
 
-    public AnnotationPresetItemViewModel(int index, string name, SolidColorBrush brush, AnnotationViewModel parent)
+    public AnnotationPresetItemViewModel(int index, string name, string color, double strokeThickness, SolidColorBrush brush, AnnotationViewModel parent)
     {
         Index = index;
         Name = name;
+        Color = color;
+        StrokeThickness = strokeThickness;
         Brush = brush;
         _parent = parent;
         _parent.PropertyChanged += OnParentPropertyChanged;
@@ -22,6 +24,8 @@ public sealed partial class AnnotationPresetItemViewModel : ObservableObject
 
     public int Index { get; }
     public string Name { get; }
+    public string Color { get; }
+    public double StrokeThickness { get; }
     public SolidColorBrush Brush { get; }
     public bool IsActive => _parent.ActivePresetIndex == Index;
 

@@ -762,8 +762,7 @@
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
                             <TextBlock Text="Style Presets" Style="{StaticResource GroupTitle}"/>
-                            <TextBlock Text="Up to 5 colour and thickness shortcuts in the annotation toolbar."
-                                       Style="{StaticResource GroupDescription}"/>
+                            <TextBlock Style="{StaticResource GroupDescription}"><Run>Up to </Run><Run Text="{x:Static models:AnnotationStylePreset.MaxCount}" /><Run> color and thickness shortcuts in the annotation toolbar.</Run></TextBlock>
 
                             <ItemsControl ItemsSource="{Binding StylePresets}" Margin="0,14,0,0">
                                 <ItemsControl.ItemTemplate>
@@ -776,7 +775,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <!-- Colour swatch (click to pick) -->
+                                            <!-- Color swatch (click to pick) -->
                                             <Button Grid.Column="0"
                                                     Width="28" Height="28"
                                                     Margin="0,0,10,0"
@@ -785,7 +784,7 @@
                                                     Style="{StaticResource BrowseBtn}"
                                                     Command="{Binding DataContext.PickPresetColorCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                     CommandParameter="{Binding}"
-                                                    ToolTip="Click to change colour">
+                                                    ToolTip="Click to change color">
                                                 <Border Width="16" Height="16"
                                                         CornerRadius="8"
                                                         Background="{Binding ColorBrush}"
@@ -797,7 +796,7 @@
                                             <TextBox Grid.Column="1"
                                                      Margin="0,0,10,0"
                                                      Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                                                     MaxLength="24"
+                                                     MaxLength="{x:Static models:AnnotationStylePreset.MaxNameLength}"
                                                      VerticalContentAlignment="Center"/>
 
                                             <!-- Thickness -->
