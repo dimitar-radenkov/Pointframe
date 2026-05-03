@@ -55,7 +55,10 @@ public partial class AnnotationViewModel : ObservableObject
     partial void OnSelectedToolChanged(AnnotationTool value)
     {
         if (value != AnnotationTool.ColorPicker)
+        {
             _previousTool = value;
+        }
+
         _logger.LogDebug("Tool selected: {Tool}", value);
     }
 

@@ -10,14 +10,12 @@ internal sealed class PixelRulerShapeHandler : IAnnotationShapeHandler
 {
     private readonly Func<ShapeParameters?> _getShapeParameters;
     private Canvas? _container;
-    private Canvas? _hostCanvas;
 
     public PixelRulerShapeHandler(Func<ShapeParameters?> getShapeParameters)
         => _getShapeParameters = getShapeParameters;
 
     public void Begin(Point point, SolidColorBrush brush, double thickness, Canvas canvas)
     {
-        _hostCanvas = canvas;
         _container = new Canvas { IsHitTestVisible = false };
         Canvas.SetLeft(_container, 0);
         Canvas.SetTop(_container, 0);
@@ -45,7 +43,6 @@ internal sealed class PixelRulerShapeHandler : IAnnotationShapeHandler
         Rebuild(p);
         trackElement(_container);
         _container = null;
-        _hostCanvas = null;
     }
 
     public void Cancel(Canvas canvas)
@@ -56,7 +53,6 @@ internal sealed class PixelRulerShapeHandler : IAnnotationShapeHandler
         }
 
         _container = null;
-        _hostCanvas = null;
     }
 
     private void Rebuild(PixelRulerShapeParameters p)
@@ -95,7 +91,10 @@ internal sealed class PixelRulerShapeHandler : IAnnotationShapeHandler
 
         if (dipLen < 5)
         {
-            AddLabel(p, dipLen, brush);
+            var shortPixelDx = dx * p.DpiX;
+            var shortPixelDy = dy * p.DpiY;
+            var shortPixelLen = Math.Sqrt(shortPixelDx * shortPixelDx + shortPixelDy * shortPixelDy);
+            AddLabel(p, shortPixelLen, brush);
             return;
         }
 
