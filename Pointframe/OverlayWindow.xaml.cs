@@ -86,7 +86,17 @@ public partial class OverlayWindow : Window
             () => _vm.DpiX,
             () => _vm.DpiY));
         _renderer = new AnnotationCanvasRenderer(AnnotationCanvas, _vm, el => _vm.TrackElement(el), loggerFactory.CreateLogger<AnnotationCanvasRenderer>());
-        _annotationInteractionController = new AnnotationCanvasInteractionController(AnnotationCanvas, _vm, _renderer);
+        _annotationInteractionController = new AnnotationCanvasInteractionController(
+            AnnotationCanvas, _vm, _renderer,
+            onColorPicked: (color, pt) =>
+            {
+                SyncToolbarToSelectedTool();
+                AnnotationCanvas.Cursor = _vm.SelectedTool == AnnotationTool.Text ? Cursors.IBeam : Cursors.Cross;
+                var hex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+                System.Windows.Clipboard.SetText(hex);
+                ShowOcrToast($"Copied {hex}");
+            },
+            onLoupePositionChanged: pt => UpdateLoupe(pt));
         _undoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleUndoGroup);
         _redoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRedoGroup);
         _vm.CloseRequested += Close;
@@ -227,11 +237,6 @@ public partial class OverlayWindow : Window
             Canvas.SetTop(OcrLassoRect, sel.Y + y);
             OcrLassoRect.Width = w;
             OcrLassoRect.Height = h;
-            return;
-        }
-
-        if (!_vm.IsDragging)
-        {
             return;
         }
 
@@ -498,6 +503,13 @@ public partial class OverlayWindow : Window
                     _vm.IsTextLassoActive = false;
                     OcrLassoRect.Visibility = Visibility.Collapsed;
                     _lassoStart = null;
+                }
+                else if (_vm.SelectedTool == AnnotationTool.ColorPicker)
+                {
+                    _vm.RevertToPreviousTool();
+                    SyncToolbarToSelectedTool();
+                    UpdateLoupe(null);
+                    AnnotationCanvas.Cursor = Cursors.Cross;
                 }
                 else
                 {

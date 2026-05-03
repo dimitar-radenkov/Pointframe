@@ -47,9 +47,6 @@ public partial class OverlayViewModel : AnnotationViewModel
 
     public Int32Rect SelectionScreenBoundsPixels { get; private set; } = Int32Rect.Empty;
 
-    public double DpiX { get; set; } = 1.0;
-    public double DpiY { get; set; } = 1.0;
-
     [ObservableProperty]
     private string _sizeLabel = string.Empty;
 

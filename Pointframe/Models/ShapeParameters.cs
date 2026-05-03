@@ -59,3 +59,11 @@ public sealed record CalloutShapeParameters(
     Color Fill,
     Color Stroke,
     double Thickness) : ShapeParameters;
+
+public sealed record PixelRulerShapeParameters(
+    Point P1,
+    Point P2,
+    Color Color,
+    double Thickness,
+    double DpiX,
+    double DpiY) : ShapeParameters;
