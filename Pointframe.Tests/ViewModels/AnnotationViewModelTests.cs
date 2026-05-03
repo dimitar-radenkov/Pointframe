@@ -728,7 +728,7 @@ public sealed class AnnotationViewModelTests
         var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
 
         // Act
-        vm.ApplyPresetCommand.Execute(0);
+        vm.ApplyPresetCommand.Execute(vm.StylePresets[0]);
 
         // Assert
         Assert.Equal(Colors.Red, vm.ActiveColor);
@@ -742,7 +742,7 @@ public sealed class AnnotationViewModelTests
         var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
 
         // Act
-        vm.ApplyPresetCommand.Execute(0);
+        vm.ApplyPresetCommand.Execute(vm.StylePresets[0]);
 
         // Assert
         Assert.Equal(4.0, vm.StrokeThickness);
@@ -756,7 +756,7 @@ public sealed class AnnotationViewModelTests
         var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
 
         // Act
-        vm.ApplyPresetCommand.Execute(1);
+        vm.ApplyPresetCommand.Execute(vm.StylePresets[1]);
 
         // Assert
         Assert.Equal(1, vm.ActivePresetIndex);
@@ -770,7 +770,7 @@ public sealed class AnnotationViewModelTests
         var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
 
         // Act
-        vm.ApplyPresetCommand.Execute(0);
+        vm.ApplyPresetCommand.Execute(vm.StylePresets[0]);
 
         // Assert
         settingsMock.Verify(x => x.Update(It.IsAny<Action<UserSettings>>()), Times.Once);
@@ -788,40 +788,11 @@ public sealed class AnnotationViewModelTests
         var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
 
         // Act
-        vm.ApplyPresetCommand.Execute(0);
+        vm.ApplyPresetCommand.Execute(vm.StylePresets[0]);
 
         // Assert — Update callback mutated the settings object
         Assert.Equal("#FF22A422", settings.DefaultAnnotationColor);
         Assert.Equal(3.0, settings.DefaultStrokeThickness);
-    }
-
-    [Fact]
-    public void ApplyPreset_InvalidIndex_DoesNotChangeColor()
-    {
-        // Arrange
-        var settingsMock = MakeSettingsMockWithPresets();
-        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
-        var originalColor = vm.ActiveColor;
-
-        // Act
-        vm.ApplyPresetCommand.Execute(99);
-
-        // Assert
-        Assert.Equal(originalColor, vm.ActiveColor);
-    }
-
-    [Fact]
-    public void ApplyPreset_InvalidIndex_DoesNotCallSettingsUpdate()
-    {
-        // Arrange
-        var settingsMock = MakeSettingsMockWithPresets();
-        var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
-
-        // Act
-        vm.ApplyPresetCommand.Execute(99);
-
-        // Assert
-        settingsMock.Verify(x => x.Update(It.IsAny<Action<UserSettings>>()), Times.Never);
     }
 
     [Fact]
@@ -830,7 +801,7 @@ public sealed class AnnotationViewModelTests
         // Arrange
         var settingsMock = MakeSettingsMockWithPresets();
         var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
-        vm.ApplyPresetCommand.Execute(0);
+        vm.ApplyPresetCommand.Execute(vm.StylePresets[0]);
         Assert.NotNull(vm.ActivePresetIndex);
 
         // Act
@@ -846,7 +817,7 @@ public sealed class AnnotationViewModelTests
         // Arrange
         var settingsMock = MakeSettingsMockWithPresets();
         var vm = new TestAnnotationViewModel(Geom(), settingsService: settingsMock.Object);
-        vm.ApplyPresetCommand.Execute(0);
+        vm.ApplyPresetCommand.Execute(vm.StylePresets[0]);
         Assert.NotNull(vm.ActivePresetIndex);
 
         // Act
@@ -894,7 +865,7 @@ public sealed class AnnotationViewModelTests
         vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
 
         // Act
-        vm.ApplyPresetCommand.Execute(0);
+        vm.ApplyPresetCommand.Execute(vm.StylePresets[0]);
 
         // Assert
         Assert.Contains(nameof(vm.ActivePresetIndex), raised);
@@ -927,7 +898,7 @@ public sealed class AnnotationViewModelTests
         Assert.True(vm.IsColorMenuOpen);
 
         // Act
-        vm.ApplyPresetCommand.Execute(0);
+        vm.ApplyPresetCommand.Execute(vm.StylePresets[0]);
 
         // Assert
         Assert.False(vm.IsColorMenuOpen);
