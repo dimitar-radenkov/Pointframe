@@ -762,7 +762,8 @@
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
                             <TextBlock Text="Style Presets" Style="{StaticResource GroupTitle}"/>
-                            <TextBlock Style="{StaticResource GroupDescription}"><Run>Up to </Run><Run Text="{x:Static models:AnnotationStylePreset.MaxCount}" /><Run> color and thickness shortcuts in the annotation toolbar.</Run></TextBlock>
+                            <TextBlock Text="Up to 5 color and thickness shortcuts in the annotation toolbar."
+                                       Style="{StaticResource GroupDescription}"/>
 
                             <ItemsControl ItemsSource="{Binding StylePresets}" Margin="0,14,0,0">
                                 <ItemsControl.ItemTemplate>
