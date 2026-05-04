@@ -93,10 +93,12 @@ internal sealed class AnnotationCanvasInteractionController
         _onAnnotationCommitted();
     }
 
-    private Point ClampToCanvas(Point point) =>
-        new(
-            Math.Clamp(point.X, 0d, _canvas.ActualWidth),
-            Math.Clamp(point.Y, 0d, _canvas.ActualHeight));
+    private Point ClampToCanvas(Point point)
+    {
+        var maxX = _canvas.ActualWidth > 0d ? _canvas.ActualWidth : double.PositiveInfinity;
+        var maxY = _canvas.ActualHeight > 0d ? _canvas.ActualHeight : double.PositiveInfinity;
+        return new(Math.Clamp(point.X, 0d, maxX), Math.Clamp(point.Y, 0d, maxY));
+    }
 
     public void Cancel()
     {
