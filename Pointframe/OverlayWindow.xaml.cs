@@ -130,6 +130,16 @@ public partial class OverlayWindow : Window
     internal void InitializeFromSelectionSession(SelectionSessionResult selectionSession)
     {
         ArgumentNullException.ThrowIfNull(selectionSession);
+        // Set window bounds before Show() so WPF creates the HWND directly on the target monitor.
+        // If bounds are deferred to OnSourceInitialized, the HWND is first created on the primary
+        // monitor, WPF caps Width to that monitor's physical width, and the value reads back wrong
+        // (e.g. 2560 DIPs → 1724 on a 148.5% DPI primary monitor instead of the correct 2560).
+        // SelectionMonitorWindow uses the same pattern: it sets bounds in its constructor,
+        // which also runs before Show().
+        Left = selectionSession.HostBoundsDips.Left;
+        Top = selectionSession.HostBoundsDips.Top;
+        Width = selectionSession.HostBoundsDips.Width;
+        Height = selectionSession.HostBoundsDips.Height;
         _pendingSelectionSession = selectionSession;
     }
 

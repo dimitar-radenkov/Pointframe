@@ -52,7 +52,8 @@ internal static class SelectionSession
                 hostBoundsDips,
                 hostBoundsPixels,
                 monitorScale,
-                monitorScale);
+                monitorScale,
+                loggerFactory.CreateLogger<SelectionMonitorWindow>());
 
             window.SelectionCompleted += result =>
             {

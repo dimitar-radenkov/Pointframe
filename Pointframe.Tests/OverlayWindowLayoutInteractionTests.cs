@@ -98,6 +98,34 @@ public sealed class OverlayWindowLayoutInteractionTests
     }
 
     [Fact]
+    public void LayoutDimStrips_WhenSelectionExceedsWindowBounds_ClampsWidthsToZero()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var context = CreateContext();
+            try
+            {
+                context.Window.Width = 300;
+                context.Window.Height = 200;
+                // Selection extends 100px beyond the right and bottom edges
+                var selection = new Rect(50, 30, 350, 270);
+
+                InvokePrivate(context.Window, "LayoutDimStrips", selection);
+
+                var dimBottom = Assert.IsType<Rectangle>(context.Window.FindName("DimBottom"));
+                var dimRight = Assert.IsType<Rectangle>(context.Window.FindName("DimRight"));
+
+                Assert.Equal(0, dimBottom.Height);
+                Assert.Equal(0, dimRight.Width);
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        });
+    }
+
+    [Fact]
     public void EnterAnnotatingSession_WithRecordingDisabled_HidesRecordButtonsAndShowsCanvas()
     {
         StaTestHelper.Run(() =>

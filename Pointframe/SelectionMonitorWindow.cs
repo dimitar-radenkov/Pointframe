@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Microsoft.Extensions.Logging;
 using Cursors = System.Windows.Input.Cursors;
 using Rectangle = System.Windows.Shapes.Rectangle;
 
@@ -22,6 +23,7 @@ internal sealed class SelectionMonitorWindow : Window
     private readonly string _monitorName;
     private readonly double _dpiScaleX;
     private readonly double _dpiScaleY;
+    private readonly ILogger<SelectionMonitorWindow> _logger;
     private Point? _dragStart;
 
     internal SelectionMonitorWindow(
@@ -30,7 +32,8 @@ internal sealed class SelectionMonitorWindow : Window
         Rect hostBoundsDips,
         Int32Rect hostBoundsPixels,
         double dpiScaleX,
-        double dpiScaleY)
+        double dpiScaleY,
+        ILogger<SelectionMonitorWindow>? logger = null)
     {
         _monitorName = monitorName;
         _monitorSnapshot = monitorSnapshot;
@@ -38,6 +41,7 @@ internal sealed class SelectionMonitorWindow : Window
         _hostBoundsPixels = hostBoundsPixels;
         _dpiScaleX = dpiScaleX;
         _dpiScaleY = dpiScaleY;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SelectionMonitorWindow>.Instance;
 
         Title = nameof(SelectionMonitorWindow);
         WindowStyle = WindowStyle.None;
@@ -121,6 +125,13 @@ internal sealed class SelectionMonitorWindow : Window
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         _dragStart = e.GetPosition(_root);
+        _logger.LogDebug(
+            "Drag start: monitor={Monitor} start={X:F1},{Y:F1} windowSize={W:F1}×{H:F1}",
+            _monitorName,
+            _dragStart.Value.X,
+            _dragStart.Value.Y,
+            _hostBoundsDips.Width,
+            _hostBoundsDips.Height);
         _root.CaptureMouse();
         _selectionBorder.Visibility = Visibility.Visible;
         _sizeLabelBorder.Visibility = Visibility.Visible;
@@ -155,9 +166,31 @@ internal sealed class SelectionMonitorWindow : Window
         _dragStart = null;
         _root.ReleaseMouseCapture();
 
+        var rawRight = Math.Max(start.X, end.X);
+        var rawBottom = Math.Max(start.Y, end.Y);
         var selectionRect = CreateSelectionRect(start, end);
+
+        if (rawRight > _hostBoundsDips.Width - 1d || rawBottom > _hostBoundsDips.Height - 1d)
+        {
+            _logger.LogDebug(
+                "Selection clamped to monitor bounds: monitor={Monitor} rawEnd={RawX:F1},{RawY:F1} clampedRight={CR:F1} clampedBottom={CB:F1} windowSize={W:F1}×{H:F1}",
+                _monitorName,
+                rawRight,
+                rawBottom,
+                selectionRect.Right,
+                selectionRect.Bottom,
+                _hostBoundsDips.Width,
+                _hostBoundsDips.Height);
+        }
+
         if (selectionRect.Width < MinimumSelectionSize || selectionRect.Height < MinimumSelectionSize)
         {
+            _logger.LogDebug(
+                "Selection too small, cancelling: monitor={Monitor} size={W:F1}×{H:F1} minimum={Min}",
+                _monitorName,
+                selectionRect.Width,
+                selectionRect.Height,
+                MinimumSelectionSize);
             SelectionCanceled?.Invoke();
             e.Handled = true;
             base.OnMouseLeftButtonUp(e);
@@ -166,6 +199,18 @@ internal sealed class SelectionMonitorWindow : Window
 
         var selectionBoundsPixels = GetScreenPixelBounds(selectionRect);
         var selectionBackground = CreateSelectionBackground(selectionBoundsPixels);
+
+        _logger.LogDebug(
+            "Selection committed: monitor={Monitor} selectionDips={SX:F1},{SY:F1},{SW:F1},{SH:F1} selectionPx={PX},{PY},{PW},{PH}",
+            _monitorName,
+            selectionRect.X,
+            selectionRect.Y,
+            selectionRect.Width,
+            selectionRect.Height,
+            selectionBoundsPixels.X,
+            selectionBoundsPixels.Y,
+            selectionBoundsPixels.Width,
+            selectionBoundsPixels.Height);
 
         SelectionCompleted?.Invoke(new SelectionSessionResult(
             _monitorName,
@@ -203,13 +248,13 @@ internal sealed class SelectionMonitorWindow : Window
         Canvas.SetTop(_sizeLabelBorder, labelY);
     }
 
-    private static Rect CreateSelectionRect(Point start, Point end)
+    private Rect CreateSelectionRect(Point start, Point end)
     {
-        return new Rect(
-            Math.Min(start.X, end.X),
-            Math.Min(start.Y, end.Y),
-            Math.Abs(end.X - start.X),
-            Math.Abs(end.Y - start.Y));
+        var left = Math.Max(0d, Math.Min(start.X, end.X));
+        var top = Math.Max(0d, Math.Min(start.Y, end.Y));
+        var right = Math.Min(_hostBoundsDips.Width - 1d, Math.Max(start.X, end.X));
+        var bottom = Math.Min(_hostBoundsDips.Height - 1d, Math.Max(start.Y, end.Y));
+        return new Rect(left, top, Math.Max(0d, right - left), Math.Max(0d, bottom - top));
     }
 
     private Int32Rect GetScreenPixelBounds(Rect localRect)

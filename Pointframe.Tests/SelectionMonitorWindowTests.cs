@@ -46,16 +46,46 @@ public sealed class SelectionMonitorWindowTests
     [Fact]
     public void CreateSelectionRect_UsesMinAndAbsoluteDimensions()
     {
-        var rect = (Rect)InvokePrivateStatic(
-            typeof(SelectionMonitorWindow),
-            "CreateSelectionRect",
-            new Point(30, 40),
-            new Point(10, 5));
+        StaTestHelper.Run(() =>
+        {
+            var window = CreateWindow();
+            try
+            {
+                var rect = (Rect)InvokePrivate(window, "CreateSelectionRect", new Point(30, 40), new Point(10, 5));
 
-        Assert.Equal(10d, rect.X);
-        Assert.Equal(5d, rect.Y);
-        Assert.Equal(20d, rect.Width);
-        Assert.Equal(35d, rect.Height);
+                Assert.Equal(10d, rect.X);
+                Assert.Equal(5d, rect.Y);
+                Assert.Equal(20d, rect.Width);
+                Assert.Equal(35d, rect.Height);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void CreateSelectionRect_ClampsToWindowBounds_WhenPointsExceedBounds()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var window = CreateWindow();
+            try
+            {
+                // Window is 320×180. Drag end point exceeds both axes.
+                var rect = (Rect)InvokePrivate(window, "CreateSelectionRect", new Point(50, 60), new Point(400, 250));
+
+                Assert.Equal(50d, rect.X);
+                Assert.Equal(60d, rect.Y);
+                Assert.Equal(269d, rect.Width);   // clamped: (320-1) - 50 = 319 - 50
+                Assert.Equal(119d, rect.Height);  // clamped: (180-1) - 60 = 179 - 60
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
     }
 
     [Fact]
@@ -235,13 +265,6 @@ public sealed class SelectionMonitorWindowTests
         {
             RoutedEvent = Keyboard.PreviewKeyDownEvent,
         };
-    }
-
-    private static object InvokePrivateStatic(Type type, string methodName, params object[] args)
-    {
-        var method = type.GetMethod(methodName, BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        return method.Invoke(null, args)!;
     }
 
     private static object InvokePrivate(object target, string methodName, params object[] args)

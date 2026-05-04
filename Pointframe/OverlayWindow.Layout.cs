@@ -83,6 +83,17 @@ public partial class OverlayWindow
         bool allowRecording,
         SelectionSessionMode sessionMode)
     {
+        _logger.LogDebug(
+            "EnterAnnotatingSession: selectionRect={SX:F1},{SY:F1},{SW:F1},{SH:F1} windowSize={WW:F1}×{WH:F1} mode={Mode} allowRecording={AllowRecording}",
+            selectionRect.X,
+            selectionRect.Y,
+            selectionRect.Width,
+            selectionRect.Height,
+            Width,
+            Height,
+            sessionMode,
+            allowRecording);
+
         _selectionSessionMode = sessionMode;
         RecordBtn.Visibility = allowRecording ? Visibility.Visible : Visibility.Collapsed;
         CompactRecordBtn.Visibility = allowRecording ? Visibility.Visible : Visibility.Collapsed;
@@ -180,6 +191,10 @@ public partial class OverlayWindow
 
         if (hostBounds.Width <= 0d || hostBounds.Height <= 0d)
         {
+            _logger.LogWarning(
+                "RehostAnnotatingOverlay: computed hostBounds are degenerate ({W:F1}×{H:F1}), falling back to full overlay",
+                hostBounds.Width,
+                hostBounds.Height);
             hostBounds = overlayBounds;
             return selectionRect;
         }
@@ -215,27 +230,59 @@ public partial class OverlayWindow
 
     private void LayoutDimStrips(Rect selectionRect)
     {
+        var rawDimTopH = selectionRect.Top;
+        var rawDimBottomH = Height - selectionRect.Bottom;
+        var rawDimLeftW = selectionRect.Left;
+        var rawDimRightW = Width - selectionRect.Right;
+
+        if (rawDimTopH < 0d || rawDimBottomH < 0d || rawDimLeftW < 0d || rawDimRightW < 0d)
+        {
+            _logger.LogWarning(
+                "LayoutDimStrips: selection overflows window — selectionRect={SX:F1},{SY:F1},{SW:F1},{SH:F1} windowSize={WW:F1}×{WH:F1} rawStrips T={T:F1} B={B:F1} L={L:F1} R={R:F1}",
+                selectionRect.X,
+                selectionRect.Y,
+                selectionRect.Width,
+                selectionRect.Height,
+                Width,
+                Height,
+                rawDimTopH,
+                rawDimBottomH,
+                rawDimLeftW,
+                rawDimRightW);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "LayoutDimStrips: selectionRect={SX:F1},{SY:F1},{SW:F1},{SH:F1} windowSize={WW:F1}×{WH:F1}",
+                selectionRect.X,
+                selectionRect.Y,
+                selectionRect.Width,
+                selectionRect.Height,
+                Width,
+                Height);
+        }
+
         DimTop.SetValue(Canvas.LeftProperty, 0d);
         DimTop.SetValue(Canvas.TopProperty, 0d);
         DimTop.Width = Width;
-        DimTop.Height = selectionRect.Top;
+        DimTop.Height = Math.Max(0d, selectionRect.Top);
         DimTop.Visibility = Visibility.Visible;
 
         DimBottom.SetValue(Canvas.LeftProperty, 0d);
         DimBottom.SetValue(Canvas.TopProperty, selectionRect.Bottom);
         DimBottom.Width = Width;
-        DimBottom.Height = Height - selectionRect.Bottom;
+        DimBottom.Height = Math.Max(0d, Height - selectionRect.Bottom);
         DimBottom.Visibility = Visibility.Visible;
 
         DimLeft.SetValue(Canvas.LeftProperty, 0d);
         DimLeft.SetValue(Canvas.TopProperty, selectionRect.Top);
-        DimLeft.Width = selectionRect.Left;
+        DimLeft.Width = Math.Max(0d, selectionRect.Left);
         DimLeft.Height = selectionRect.Height;
         DimLeft.Visibility = Visibility.Visible;
 
         DimRight.SetValue(Canvas.LeftProperty, selectionRect.Right);
         DimRight.SetValue(Canvas.TopProperty, selectionRect.Top);
-        DimRight.Width = Width - selectionRect.Right;
+        DimRight.Width = Math.Max(0d, Width - selectionRect.Right);
         DimRight.Height = selectionRect.Height;
         DimRight.Visibility = Visibility.Visible;
     }
