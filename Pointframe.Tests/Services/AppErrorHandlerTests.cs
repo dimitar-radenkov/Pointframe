@@ -16,7 +16,7 @@ public sealed class AppErrorHandlerTests
         StaTestHelper.Run(() =>
         {
             var messageBoxMock = new Mock<IMessageBoxService>();
-            var handler = new AppErrorHandler(NullLogger<AppErrorHandler>.Instance, messageBoxMock.Object);
+            var handler = new AppErrorHandler(NullLogger<AppErrorHandler>.Instance, messageBoxMock.Object, Mock.Of<ITelemetryService>());
             var args = CreateDispatcherUnhandledExceptionArgs(new InvalidOperationException("boom"));
 
             InvokePrivate(handler, "OnDispatcherUnhandledException", handler, args);
@@ -50,7 +50,7 @@ public sealed class AppErrorHandlerTests
     {
         StaTestHelper.Run(() =>
         {
-            var handler = new AppErrorHandler(NullLogger<AppErrorHandler>.Instance, Mock.Of<IMessageBoxService>());
+            var handler = new AppErrorHandler(NullLogger<AppErrorHandler>.Instance, Mock.Of<IMessageBoxService>(), Mock.Of<ITelemetryService>());
             var args = new UnobservedTaskExceptionEventArgs(new AggregateException(new InvalidOperationException("boom")));
 
             InvokePrivate(handler, "OnUnobservedTaskException", handler, args);

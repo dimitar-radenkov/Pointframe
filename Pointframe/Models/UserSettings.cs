@@ -46,4 +46,10 @@ public sealed class UserSettings
         new() { Name = "Blue",  Color = "#FF1E90FF", StrokeThickness = 2.5 },
         new() { Name = "Black", Color = "#FF1A1A1A", StrokeThickness = 3.5 },
     ];
+
+    /// <summary>
+    /// Anonymous install identifier generated once on first run.
+    /// Used for telemetry to count unique installs without tracking identity.
+    /// </summary>
+    public string? InstallId { get; set; }
 }

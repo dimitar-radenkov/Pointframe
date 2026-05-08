@@ -143,5 +143,6 @@ public sealed class UserSettingsService : IUserSettingsService
                 Color = p.Color,
                 StrokeThickness = p.StrokeThickness,
             })],
+            InstallId = settings.InstallId,
         };
 }
