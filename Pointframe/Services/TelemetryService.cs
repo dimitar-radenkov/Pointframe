@@ -37,6 +37,12 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
         _logger = _loggerFactory.CreateLogger("Pointframe.Telemetry");
     }
 
+    internal TelemetryService(ILogger logger, IUserSettingsService userSettings)
+    {
+        _userSettings = userSettings;
+        _logger = logger;
+    }
+
     public void TrackEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
     {
         if (_logger is null)
