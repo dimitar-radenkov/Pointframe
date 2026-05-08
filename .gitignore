@@ -372,4 +372,8 @@ MigrationBackup/
 
 # ffmpeg binary — downloaded by developer locally, not committed
 /Pointframe/Assets/ffmpeg/ffmpeg.exe
+
+# Application Insights connection string — real value kept out of source control
+/Pointframe/appsettings.Local.json
+
 .playwright-mcp/

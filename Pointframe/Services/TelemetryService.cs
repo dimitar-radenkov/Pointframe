@@ -73,7 +73,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
         var scope = BuildScope(extra);
         using (_logger.BeginScope(scope))
         {
-            _logger.LogError("{microsoft.custom_event.name}", "unhandled_exception");
+            _logger.LogError(exception, "{microsoft.custom_event.name}", "unhandled_exception");
         }
     }
 

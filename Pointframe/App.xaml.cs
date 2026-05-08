@@ -49,6 +49,7 @@ public partial class App : Application
         var config = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+            .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false)
             .Build();
 
         var logPath = System.IO.Path.Combine(
@@ -417,7 +418,15 @@ public partial class App : Application
     {
         if (string.IsNullOrEmpty(_userSettings.Current.InstallId))
         {
-            _userSettings.Update(s => s.InstallId = Guid.NewGuid().ToString("N"));
+            try
+            {
+                _userSettings.Update(s => s.InstallId = Guid.NewGuid().ToString("N"));
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to persist install ID; telemetry will use an in-memory ID for this session.");
+                _userSettings.Current.InstallId = Guid.NewGuid().ToString("N");
+            }
         }
     }
 }

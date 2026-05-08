@@ -264,6 +264,7 @@ public partial class SettingsViewModel : ObservableObject
             AutoUpdateCheckInterval = AutoUpdateCheckInterval,
             LastAutoUpdateCheckUtc = _lastAutoUpdateCheckUtc,
             Theme = AppTheme,
+            InstallId = _settingsService.Current.InstallId,
         });
         RequestClose?.Invoke();
     }

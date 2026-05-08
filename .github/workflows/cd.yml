@@ -47,6 +47,14 @@ jobs:
           $display = $json.NuGetPackageVersion   # e.g. "1.2.5"
           echo "display=$display" >> $env:GITHUB_OUTPUT
 
+      - name: Inject Application Insights connection string
+        shell: pwsh
+        run: |
+          $file = 'Pointframe/appsettings.json'
+          $json = Get-Content $file | ConvertFrom-Json
+          $json.ApplicationInsights.ConnectionString = '${{ secrets.APP_INSIGHTS_CONNECTION_STRING }}'
+          $json | ConvertTo-Json -Depth 10 | Set-Content $file
+
       - name: Publish (self-contained single-file)
         run: >-
           dotnet publish Pointframe/Pointframe.csproj
