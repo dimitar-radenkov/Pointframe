@@ -258,7 +258,7 @@ To bump the version:
 - **Hardcodet.Wpf.TaskbarNotification** — system tray icon
 - **Nerdbank.GitVersioning** — automatic semantic versioning from git history
 - **xUnit** — unit tests
-
+- **Azure Monitor / OpenTelemetry** — anonymous usage telemetry (disabled when connection string is absent)
 ## 🤝 Contributing
 
 We welcome contributions! Whether it's reporting a bug, suggesting a feature, or submitting a pull request.
@@ -268,11 +268,49 @@ Pointframe is built on a very clean, modern stack (.NET 10, WPF, CommunityToolki
 2. Browse our [Planned Features](docs/planned-features.md) or look for issues tagged `good first issue`.
 3. Open a Pull Request!
 
-## Privacy
+## Privacy & Telemetry
 
-- Pointframe is local-first and does not use telemetry.
-- Screenshots, recordings, and OCR processing stay on your machine.
-- Update checks only contact GitHub Releases to look for newer versions.
+Pointframe collects **anonymous, privacy-safe usage telemetry** to help understand how the app is used and catch errors early. No personal data is ever collected.
+
+### What is collected
+
+| Event | Properties |
+|---|---|
+| `app_started` | — |
+| `capture_completed` | `tool` (copy / save / pin) |
+| `recording_completed` | `has_audio`, `duration_seconds` |
+| `recording_cancelled` | — |
+| `gif_export_requested` | — |
+| `ocr_used` | — |
+| `settings_saved` | — |
+| `update_check_triggered` | `source` (auto / manual) |
+| `update_download_started` | — |
+| `update_download_completed` | — |
+| `update_download_cancelled` | — |
+| `unhandled_exception` | `exception_type`, `context` |
+
+Every event includes an `install_id` — a random GUID generated once on first launch and stored locally. It is used only to count unique installs; it cannot be traced back to a person.
+
+**Nothing leaves your machine except these anonymised events.** Screenshots, recordings, and OCR output are never transmitted anywhere.
+
+### Opting out
+
+Telemetry is disabled automatically when the `ApplicationInsights:ConnectionString` value in `appsettings.json` is empty (which is the default in the source repository). Only official builds distributed via the installer include the real connection string.
+
+### For contributors
+
+To enable telemetry locally during development, create `Pointframe/appsettings.Local.json` (gitignored):
+
+```json
+{
+  "ApplicationInsights": {
+    "ConnectionString": "<your-connection-string>"
+  }
+}
+```
+
+To set up your own Azure Application Insights resource, follow the [Azure Monitor setup guide](https://learn.microsoft.com/en-us/azure/azure-monitor/app/create-workspace-resource).
+
 
 ## Support
 
