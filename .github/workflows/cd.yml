@@ -55,6 +55,13 @@ jobs:
           $json.ApplicationInsights.ConnectionString = '${{ secrets.APP_INSIGHTS_CONNECTION_STRING }}'
           $json | ConvertTo-Json -Depth 10 | Set-Content $file
 
+      - name: Verify connection string was injected
+        shell: pwsh
+        run: |
+          $len = ((Get-Content 'Pointframe/appsettings.json' | ConvertFrom-Json).ApplicationInsights.ConnectionString).Length
+          if ($len -eq 0) { Write-Error "APP_INSIGHTS_CONNECTION_STRING secret is empty or not set"; exit 1 }
+          Write-Host "Connection string length: $len (secret injected successfully)"
+
       - name: Publish (self-contained single-file)
         run: >-
           dotnet publish Pointframe/Pointframe.csproj
