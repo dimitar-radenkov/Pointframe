@@ -20,8 +20,9 @@ public partial class RecordingAnnotationViewModel : AnnotationViewModel
         IAnnotationGeometryService geometry,
         ILogger<RecordingAnnotationViewModel> logger,
         IUserSettingsService settings,
-        IEventAggregator eventAggregator)
-        : base(geometry, logger, settings, eventAggregator)
+        IEventAggregator eventAggregator,
+        ITelemetryService telemetry)
+        : base(geometry, logger, settings, eventAggregator, telemetry)
     {
         SelectedTool = AnnotationTool.Pen;
     }

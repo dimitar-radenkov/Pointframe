@@ -27,6 +27,7 @@ public partial class OverlayWindow : Window
     private readonly IMessageBoxService _messageBox;
     private readonly IFileSystemService _fileSystem;
     private readonly IOcrService _ocrService;
+    private readonly ITelemetryService _telemetry;
     private readonly RecordingAnnotationViewModel _recordingAnnotationViewModel;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IEventSubscription _redoSubscription;
@@ -60,6 +61,7 @@ public partial class OverlayWindow : Window
         IMessageBoxService messageBox,
         IFileSystemService fileSystem,
         IOcrService ocrService,
+        ITelemetryService telemetry,
         RecordingAnnotationViewModel recordingAnnotationViewModel)
     {
         _vm = vm;
@@ -74,6 +76,7 @@ public partial class OverlayWindow : Window
         _messageBox = messageBox;
         _fileSystem = fileSystem;
         _ocrService = ocrService;
+        _telemetry = telemetry;
         _recordingAnnotationViewModel = recordingAnnotationViewModel;
         InitializeComponent();
         DataContext = _vm;
@@ -441,6 +444,7 @@ public partial class OverlayWindow : Window
         }
 
         System.Windows.Clipboard.SetText(text);
+        _telemetry.TrackEvent("ocr_used");
         ShowOcrToast("\u2713 Text copied to clipboard");
     }
 

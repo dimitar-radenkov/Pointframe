@@ -54,12 +54,16 @@ public partial class OverlayWindow
         catch (System.IO.FileNotFoundException ex)
         {
             Visibility = Visibility.Visible;
+            _telemetry.TrackEvent("ffmpeg_missing");
             _messageBox.ShowWarning(ex.Message, "ffmpeg not found");
             return;
         }
 
+        _telemetry.TrackEvent("recording_started", new System.Collections.Generic.Dictionary<string, string> { ["type"] = "region" });
+
         if (_userSettings.Current.RecordMicrophone && !_recorder.IsRecordingMicrophoneEnabled)
         {
+            _telemetry.TrackEvent("microphone_unavailable");
             _messageBox.ShowWarning(
                 "Microphone recording is enabled, but no compatible microphone device was available. The recording will continue without microphone audio.",
                 "Microphone unavailable");

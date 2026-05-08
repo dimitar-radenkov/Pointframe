@@ -344,7 +344,8 @@ public sealed class RecordingOverlayWindowTests
             new AnnotationGeometryService(),
             NullLogger<RecordingAnnotationViewModel>.Instance,
             userSettingsMock.Object,
-            eventAggregator);
+            eventAggregator,
+            Mock.Of<ITelemetryService>());
 
         var geometry = CreateGeometry(isFullScreenCapture);
         var window = new RecordingOverlayWindow(

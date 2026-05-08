@@ -110,7 +110,6 @@ public partial class App : Application
             {
                 ["version"] = version.ToString(),
                 ["os_build"] = Environment.OSVersion.Version.ToString(),
-                ["install_id"] = _userSettings.Current.InstallId ?? string.Empty,
             });
         }
 
@@ -132,6 +131,7 @@ public partial class App : Application
             _autoUpdate,
             _userSettings,
             _host.Services.GetRequiredService<IGifExportService>(),
+            _telemetry,
             onNewSnip: _captureLaunch.StartRegionSnip,
             onWholeScreenSnip: _captureLaunch.StartWholeScreenSnip,
             onOpenImage: () => Dispatcher.InvokeAsync(OpenImage, System.Windows.Threading.DispatcherPriority.ApplicationIdle),
@@ -212,6 +212,7 @@ public partial class App : Application
         sp.GetRequiredService<IMessageBoxService>(),
         sp.GetRequiredService<IFileSystemService>(),
         sp.GetRequiredService<IOcrService>(),
+        sp.GetRequiredService<ITelemetryService>(),
         sp.GetRequiredService<RecordingAnnotationViewModel>());
 
     protected override void OnExit(ExitEventArgs e)
@@ -282,6 +283,7 @@ public partial class App : Application
         try
         {
             var bitmap = _imageFileService.LoadForAnnotation(selectedPath);
+            _telemetry.TrackEvent("open_image_used");
             ShowOverlayFromImage(bitmap, selectedPath);
         }
         catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException or NotSupportedException or IOException or UnauthorizedAccessException)
@@ -388,6 +390,8 @@ public partial class App : Application
 
     private ValueTask HandleUpdateAvailable(UpdateAvailableMessage message)
     {
+        var v = message.Result.LatestVersion;
+        _telemetry.TrackEvent("update_available", new Dictionary<string, string> { ["version"] = $"{v.Major}.{v.Minor}.{v.Build}" });
         _trayIconManager.HandleUpdateAvailable(message.Result);
         return ValueTask.CompletedTask;
     }

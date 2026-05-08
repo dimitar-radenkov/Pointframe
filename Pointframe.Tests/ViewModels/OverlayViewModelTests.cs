@@ -34,7 +34,8 @@ public sealed class OverlayViewModelTests
             dialogService ?? Mock.Of<IDialogService>(),
             Mock.Of<IClipboardService>(),
             Mock.Of<IFileSystemService>(),
-            Mock.Of<IEventAggregator>());
+            Mock.Of<IEventAggregator>(),
+            Mock.Of<ITelemetryService>());
     }
 
     private static OverlayViewModel Vm(
@@ -50,7 +51,8 @@ public sealed class OverlayViewModelTests
             dialogMock?.Object ?? Mock.Of<IDialogService>(),
             clipboardMock?.Object ?? Mock.Of<IClipboardService>(),
             fileSystemMock?.Object ?? Mock.Of<IFileSystemService>(),
-            Mock.Of<IEventAggregator>());
+            Mock.Of<IEventAggregator>(),
+            Mock.Of<ITelemetryService>());
     }
 
     [Fact]

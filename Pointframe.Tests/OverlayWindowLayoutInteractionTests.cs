@@ -219,7 +219,8 @@ public sealed class OverlayWindowLayoutInteractionTests
             Mock.Of<IDialogService>(),
             Mock.Of<IClipboardService>(),
             Mock.Of<IFileSystemService>(),
-            eventAggregator);
+            eventAggregator,
+            Mock.Of<ITelemetryService>());
 
         var recorderMock = new Mock<IScreenRecordingService>();
         recorderMock.SetupGet(service => service.IsRecording).Returns(false);
@@ -236,7 +237,8 @@ public sealed class OverlayWindowLayoutInteractionTests
             new AnnotationGeometryService(),
             NullLogger<RecordingAnnotationViewModel>.Instance,
             userSettingsMock.Object,
-            eventAggregator);
+            eventAggregator,
+            Mock.Of<ITelemetryService>());
 
         var window = new OverlayWindow(
             viewModel,
@@ -254,6 +256,7 @@ public sealed class OverlayWindowLayoutInteractionTests
             Mock.Of<IMessageBoxService>(),
             Mock.Of<IFileSystemService>(),
             Mock.Of<IOcrService>(),
+            Mock.Of<ITelemetryService>(),
             recordingAnnotationViewModel);
 
         return new TestContext(window, viewModel, eventAggregator);

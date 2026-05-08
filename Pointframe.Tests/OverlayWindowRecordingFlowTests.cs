@@ -136,7 +136,8 @@ public sealed class OverlayWindowRecordingFlowTests
             Mock.Of<IDialogService>(),
             Mock.Of<IClipboardService>(),
             fileSystemMock.Object,
-            eventAggregator);
+            eventAggregator,
+            Mock.Of<ITelemetryService>());
 
         var recorderMock = new Mock<IScreenRecordingService>();
         recorderMock.SetupGet(service => service.IsRecording).Returns(false);
@@ -157,7 +158,8 @@ public sealed class OverlayWindowRecordingFlowTests
             new AnnotationGeometryService(),
             NullLogger<RecordingAnnotationViewModel>.Instance,
             userSettingsMock.Object,
-            eventAggregator);
+            eventAggregator,
+            Mock.Of<ITelemetryService>());
 
         var window = new OverlayWindow(
             viewModel,
@@ -175,6 +177,7 @@ public sealed class OverlayWindowRecordingFlowTests
             messageBoxMock.Object,
             fileSystemMock.Object,
             ocrServiceMock.Object,
+            Mock.Of<ITelemetryService>(),
             recordingAnnotationViewModel);
 
         return new TestContext(window, viewModel, recorderMock, fileSystemMock, messageBoxMock, eventAggregator);

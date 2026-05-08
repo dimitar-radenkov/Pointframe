@@ -15,6 +15,7 @@ public partial class OverlayViewModel : AnnotationViewModel
     private readonly IFileSystemService _fileSystemService;
     private readonly IUserSettingsService _settings;
     private readonly IEventAggregator _eventAggregator;
+    private readonly ITelemetryService _telemetry;
     private IOverlayBitmapCapture? _bitmapCapture;
 
     public OverlayViewModel(
@@ -24,14 +25,16 @@ public partial class OverlayViewModel : AnnotationViewModel
         IDialogService dialogService,
         IClipboardService clipboardService,
         IFileSystemService fileSystemService,
-        IEventAggregator eventAggregator)
-        : base(geometry, logger, settings, eventAggregator)
+        IEventAggregator eventAggregator,
+        ITelemetryService telemetry)
+        : base(geometry, logger, settings, eventAggregator, telemetry)
     {
         _clipboardService = clipboardService;
         _dialogService = dialogService;
         _fileSystemService = fileSystemService;
         _settings = settings;
         _eventAggregator = eventAggregator;
+        _telemetry = telemetry;
     }
 
     public enum Phase { Selecting, Annotating }
@@ -144,6 +147,7 @@ public partial class OverlayViewModel : AnnotationViewModel
             return;
         }
 
+        _telemetry.TrackEvent("capture_pinned");
         PinRequested?.Invoke(bitmapCapture.ComposeBitmap(restoreOverlayVisibilityAfterCapture: false));
     }
 }

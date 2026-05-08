@@ -315,6 +315,7 @@ public sealed class TrayIconManagerTests
             autoUpdate ?? Mock.Of<IAutoUpdateService>(),
             userSettings ?? Mock.Of<IUserSettingsService>(),
             gifExportService ?? Mock.Of<IGifExportService>(),
+            Mock.Of<ITelemetryService>(),
             onNewSnip: static () => { },
             onWholeScreenSnip: static () => { },
             onOpenImage: static () => { },

@@ -13,6 +13,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
     private readonly IUpdateDownloadService _downloadService;
     private readonly IMessageBoxService _messageBox;
     private readonly ILogger<AutoUpdateService> _logger;
+    private readonly ITelemetryService _telemetry;
 
     public AutoUpdateService(
         IEventAggregator eventAggregator,
@@ -20,7 +21,8 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         IUserSettingsService userSettings,
         IUpdateDownloadService downloadService,
         IMessageBoxService messageBox,
-        ILogger<AutoUpdateService> logger)
+        ILogger<AutoUpdateService> logger,
+        ITelemetryService telemetry)
     {
         _eventAggregator = eventAggregator;
         _updateService = updateService;
@@ -28,6 +30,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         _downloadService = downloadService;
         _messageBox = messageBox;
         _logger = logger;
+        _telemetry = telemetry;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -94,9 +97,11 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
                 $"Version {v.Major}.{v.Minor}.{v.Build} is available. Download and install now?",
                 "Update Available"))
         {
+            _telemetry.TrackEvent("update_dismissed", new Dictionary<string, string> { ["version"] = $"{v.Major}.{v.Minor}.{v.Build}" });
             return;
         }
 
+        _telemetry.TrackEvent("update_confirmed", new Dictionary<string, string> { ["version"] = $"{v.Major}.{v.Minor}.{v.Build}" });
         var fileName = ResolveInstallerFileName(result.DownloadUrl, v);
         var destPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
         var succeeded = await _downloadService.Show(result.DownloadUrl, destPath);

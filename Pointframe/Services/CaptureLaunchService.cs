@@ -16,6 +16,7 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
     private readonly IFileSystemService _fileSystem;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CaptureLaunchService> _logger;
+    private readonly ITelemetryService _telemetry;
 
     public CaptureLaunchService(
         IServiceProvider services,
@@ -23,7 +24,8 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         IMessageBoxService messageBox,
         IFileSystemService fileSystem,
         ILoggerFactory loggerFactory,
-        ILogger<CaptureLaunchService> logger)
+        ILogger<CaptureLaunchService> logger,
+        ITelemetryService telemetry)
     {
         _services = services;
         _userSettings = userSettings;
@@ -31,17 +33,20 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         _fileSystem = fileSystem;
         _loggerFactory = loggerFactory;
         _logger = logger;
+        _telemetry = telemetry;
     }
 
     public void StartRegionSnip()
     {
         _logger.LogDebug("Region snip started");
+        _telemetry.TrackEvent("snip_started", new Dictionary<string, string> { ["type"] = "region" });
         LaunchCapture(wholeScreen: false);
     }
 
     public void StartWholeScreenSnip()
     {
         _logger.LogDebug("Whole-screen snip started");
+        _telemetry.TrackEvent("snip_started", new Dictionary<string, string> { ["type"] = "whole_screen" });
         LaunchCapture(wholeScreen: true);
     }
 
@@ -50,6 +55,7 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         var delay = _userSettings.Current.CaptureDelaySeconds;
         if (delay > 0)
         {
+            _telemetry.TrackEvent("capture_delay_used", new Dictionary<string, string> { ["delay_seconds"] = delay.ToString() });
             new CountdownWindow(delay, () => ShowSelectionOverlay(wholeScreen)).Show();
             return;
         }
@@ -114,12 +120,16 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         }
         catch (FileNotFoundException ex)
         {
+            _telemetry.TrackEvent("ffmpeg_missing");
             _messageBox.ShowWarning(ex.Message, "ffmpeg not found");
             return;
         }
 
+        _telemetry.TrackEvent("recording_started", new Dictionary<string, string> { ["type"] = "whole_screen" });
+
         if (_userSettings.Current.RecordMicrophone && !recorder.IsRecordingMicrophoneEnabled)
         {
+            _telemetry.TrackEvent("microphone_unavailable");
             _messageBox.ShowWarning(
                 "Microphone recording is enabled, but no compatible microphone device was available. The recording will continue without microphone audio.",
                 "Microphone unavailable");

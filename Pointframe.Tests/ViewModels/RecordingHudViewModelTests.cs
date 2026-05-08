@@ -35,7 +35,8 @@ public sealed class RecordingHudViewModelTests
             new AnnotationGeometryService(),
             NullLogger<RecordingAnnotationViewModel>.Instance,
             settingsMock.Object,
-            aggregator);
+            aggregator,
+            Mock.Of<ITelemetryService>());
     }
 
     [Fact]

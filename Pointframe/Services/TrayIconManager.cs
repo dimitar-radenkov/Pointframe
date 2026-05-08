@@ -22,6 +22,7 @@ internal sealed class TrayIconManager : ITrayIconManager
     private readonly IAutoUpdateService _autoUpdate;
     private readonly IUserSettingsService _userSettings;
     private readonly IGifExportService _gifExportService;
+    private readonly ITelemetryService _telemetry;
     private readonly Action _onNewSnip;
     private readonly Action _onWholeScreenSnip;
     private readonly Action _onOpenImage;
@@ -47,6 +48,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         IAutoUpdateService autoUpdate,
         IUserSettingsService userSettings,
         IGifExportService gifExportService,
+        ITelemetryService telemetry,
         Action onNewSnip,
         Action onWholeScreenSnip,
         Action onOpenImage,
@@ -61,6 +63,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         _autoUpdate = autoUpdate;
         _userSettings = userSettings;
         _gifExportService = gifExportService;
+        _telemetry = telemetry;
         _onNewSnip = onNewSnip;
         _onWholeScreenSnip = onWholeScreenSnip;
         _onOpenImage = onOpenImage;
@@ -327,6 +330,7 @@ internal sealed class TrayIconManager : ITrayIconManager
     {
         var menuItem = (WpfMenuItem)sender;
         menuItem.IsEnabled = false;
+        _telemetry.TrackEvent("update_check_manual");
 
         try
         {
@@ -395,6 +399,7 @@ internal sealed class TrayIconManager : ITrayIconManager
 
         var gifPath = Path.ChangeExtension(recentRecording.OutputPath, ".gif");
         menuItem.IsEnabled = false;
+        _telemetry.TrackEvent("gif_export_started");
 
         try
         {
@@ -408,6 +413,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         catch (Exception ex)
         {
             _logger.LogError(ex, "GIF export from recent recordings failed for {Path}", recentRecording.OutputPath);
+            _telemetry.TrackException(ex, "gif_export");
             _messageBox.ShowWarning("The GIF export failed. Please try again.", "Export to GIF");
         }
         finally

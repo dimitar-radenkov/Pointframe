@@ -8,10 +8,13 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
 {
     private readonly ILogger? _logger;
     private readonly ILoggerFactory? _loggerFactory;
+    private readonly IUserSettingsService _userSettings;
     private bool _disposed;
 
-    public TelemetryService(IConfiguration configuration)
+    public TelemetryService(IConfiguration configuration, IUserSettingsService userSettings)
     {
+        _userSettings = userSettings;
+
         var connectionString = configuration["ApplicationInsights:ConnectionString"];
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -41,16 +44,10 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
             return;
         }
 
-        if (properties is null or { Count: 0 })
+        var scope = BuildScope(properties);
+        using (_logger.BeginScope(scope))
         {
             _logger.LogInformation("{microsoft.custom_event.name}", name);
-        }
-        else
-        {
-            using (_logger.BeginScope(properties.ToDictionary(kvp => kvp.Key, kvp => (object?)kvp.Value)))
-            {
-                _logger.LogInformation("{microsoft.custom_event.name}", name);
-            }
         }
     }
 
@@ -61,20 +58,37 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
             return;
         }
 
-        var props = new Dictionary<string, object?>
-        {
-            ["exception_type"] = exception.GetType().Name,
-        };
-
+        var extra = new Dictionary<string, string> { ["exception_type"] = exception.GetType().Name };
         if (context is not null)
         {
-            props["context"] = context;
+            extra["context"] = context;
         }
 
-        using (_logger.BeginScope(props))
+        var scope = BuildScope(extra);
+        using (_logger.BeginScope(scope))
         {
             _logger.LogError("{microsoft.custom_event.name}", "unhandled_exception");
         }
+    }
+
+    private Dictionary<string, object?> BuildScope(IReadOnlyDictionary<string, string>? properties)
+    {
+        var scope = new Dictionary<string, object?>();
+        var installId = _userSettings.Current.InstallId;
+        if (!string.IsNullOrEmpty(installId))
+        {
+            scope["install_id"] = installId;
+        }
+
+        if (properties is { Count: > 0 })
+        {
+            foreach (var kvp in properties)
+            {
+                scope[kvp.Key] = kvp.Value;
+            }
+        }
+
+        return scope;
     }
 
     public void Flush()

@@ -251,7 +251,8 @@ public sealed class AnnotationCanvasRendererTests
             new AnnotationGeometryService(),
             NullLogger<AnnotationViewModel>.Instance,
             settings,
-            new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance));
+            new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance),
+            Mock.Of<ITelemetryService>());
 
         return new AnnotationCanvasRenderer(canvas, vm, tracked.Add, NullLogger<AnnotationCanvasRenderer>.Instance);
     }

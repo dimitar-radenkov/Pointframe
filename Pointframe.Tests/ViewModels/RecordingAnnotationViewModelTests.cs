@@ -19,7 +19,8 @@ public sealed class RecordingAnnotationViewModelTests
             new AnnotationGeometryService(),
             NullLogger<RecordingAnnotationViewModel>.Instance,
             settingsMock.Object,
-            Mock.Of<IEventAggregator>());
+            Mock.Of<IEventAggregator>(),
+            Mock.Of<ITelemetryService>());
     }
 
     [Fact]

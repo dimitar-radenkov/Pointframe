@@ -15,16 +15,20 @@ public partial class AnnotationViewModel : ObservableObject
     private readonly IUserSettingsService _settingsService;
     protected readonly ILogger _logger;
 
+    private readonly ITelemetryService _telemetry;
+
     public AnnotationViewModel(
         IAnnotationGeometryService geometry,
         ILogger logger,
         IUserSettingsService settings,
-        IEventAggregator eventAggregator)
+        IEventAggregator eventAggregator,
+        ITelemetryService telemetry)
     {
         _eventAggregator = eventAggregator;
         _geometry = geometry;
         _logger = logger;
         _settingsService = settings;
+        _telemetry = telemetry;
 
         try
         {
@@ -302,6 +306,10 @@ public partial class AnnotationViewModel : ObservableObject
             _redoStack.Clear();
             UndoCount = _undoStack.Count;
             RedoCount = 0;
+            _telemetry.TrackEvent("annotation_committed", new Dictionary<string, string>
+            {
+                ["tool"] = SelectedTool.ToString(),
+            });
         }
 
         _currentGroup = null;

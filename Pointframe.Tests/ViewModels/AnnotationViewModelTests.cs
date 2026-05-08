@@ -685,19 +685,17 @@ public sealed class AnnotationViewModelTests
     }
 
     // Concrete subclass so we can instantiate the abstract-like partial base
-    private sealed partial class TestAnnotationViewModel : AnnotationViewModel
-    {
-        public TestAnnotationViewModel(
-            AnnotationGeometryService geom,
-            IEventAggregator? eventAggregator = null,
-            IUserSettingsService? settingsService = null)
-            : base(
-                geom,
-                NullLogger<AnnotationViewModel>.Instance,
-                settingsService ?? Mock.Of<IUserSettingsService>(s => s.Current == new UserSettings()),
-                eventAggregator ?? new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance))
+    private sealed class TestAnnotationViewModel(
+        AnnotationGeometryService geom,
+        IEventAggregator? eventAggregator = null,
+        IUserSettingsService? settingsService = null)
+        : AnnotationViewModel(
+            geom,
+            NullLogger<AnnotationViewModel>.Instance,
+            settingsService ?? Mock.Of<IUserSettingsService>(s => s.Current == new UserSettings()),
+            eventAggregator ?? new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance),
+            Mock.Of<ITelemetryService>())
         { }
-    }
 
     // -----------------------------------------------------------------------
     // Style Preset tests

@@ -158,7 +158,8 @@ public sealed class AnnotationCanvasInteractionControllerTests
             new AnnotationGeometryService(),
             NullLogger<AnnotationViewModel>.Instance,
             settings,
-            new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance));
+            new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance),
+            Mock.Of<ITelemetryService>());
         renderer = new AnnotationCanvasRenderer(canvas, viewModel, viewModel.TrackElement, NullLogger<AnnotationCanvasRenderer>.Instance);
 
         return new AnnotationCanvasInteractionController(canvas, viewModel, renderer, () => counter.Value++);

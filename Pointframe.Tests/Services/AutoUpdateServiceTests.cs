@@ -29,7 +29,8 @@ public sealed class AutoUpdateServiceTests
             userSettings.Object,
             downloadService.Object,
             messageBox.Object,
-            NullLogger<AutoUpdateService>.Instance);
+            NullLogger<AutoUpdateService>.Instance,
+            Mock.Of<ITelemetryService>());
     }
 
     private static Mock<IUserSettingsService> SettingsMock(UpdateCheckInterval interval = UpdateCheckInterval.Never)
