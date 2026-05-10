@@ -172,7 +172,7 @@ public sealed class TrayIconManagerTests
             InvokePrivate(manager, "OpenRecentRecordingFolder_Click", menuItem, new RoutedEventArgs());
 
             processMock.Verify(process => process.Start(It.Is<ProcessStartInfo>(info =>
-                info.FileName == "explorer.exe" && info.Arguments == @"C:\temp")), Times.Once);
+                info.FileName == "explorer.exe" && info.Arguments == "\"C:\\temp\"")), Times.Once);
         });
     }
 
@@ -292,7 +292,7 @@ public sealed class TrayIconManagerTests
             InvokePrivate(manager, "OpenLogsFolder_Click", new object(), new RoutedEventArgs());
 
             processMock.Verify(process => process.Start(It.Is<ProcessStartInfo>(info =>
-                info.FileName == "explorer.exe" && info.Arguments == AppPaths.LogsDirectory)), Times.Once);
+                info.FileName == "explorer.exe" && info.Arguments == $"\"{AppPaths.LogsDirectory}\"")), Times.Once);
         });
     }
 

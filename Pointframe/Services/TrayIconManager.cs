@@ -482,7 +482,7 @@ internal sealed class TrayIconManager : ITrayIconManager
 
     private void OpenFolder(string path)
     {
-        _processService.Start(new ProcessStartInfo("explorer.exe", path));
+        _processService.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\""));
     }
 
     private void SimulateUiError_Click(object sender, RoutedEventArgs e)
