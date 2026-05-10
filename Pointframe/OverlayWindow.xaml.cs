@@ -32,6 +32,7 @@ public partial class OverlayWindow : Window
     private readonly ILoggerFactory _loggerFactory;
     private readonly IEventSubscription _redoSubscription;
     private readonly IEventSubscription _undoSubscription;
+    private readonly Func<BitmapSource, BeautifierWindow> _beautifierWindowFactory;
     private AnnotationCanvasRenderer _renderer = null!;
     private AnnotationCanvasInteractionController _annotationInteractionController = null!;
     private Point? _lassoStart;
@@ -44,6 +45,7 @@ public partial class OverlayWindow : Window
     private string? _annotatingMonitorName;
     private BitmapSource? _annotatingMonitorSnapshot;
     private BitmapSource? _pendingPinnedBitmap;
+    private BeautifierWindow? _pendingBeautifierWindow;
     private bool _closeLeavesRecorderRunning;
     private SelectionSessionMode _selectionSessionMode = SelectionSessionMode.Region;
     private SelectionSessionResult? _pendingSelectionSession;
@@ -62,7 +64,8 @@ public partial class OverlayWindow : Window
         IFileSystemService fileSystem,
         IOcrService ocrService,
         ITelemetryService telemetry,
-        RecordingAnnotationViewModel recordingAnnotationViewModel)
+        RecordingAnnotationViewModel recordingAnnotationViewModel,
+        Func<BitmapSource, BeautifierWindow> beautifierWindowFactory)
     {
         _vm = vm;
         _screenCapture = screenCapture;
@@ -78,6 +81,7 @@ public partial class OverlayWindow : Window
         _ocrService = ocrService;
         _telemetry = telemetry;
         _recordingAnnotationViewModel = recordingAnnotationViewModel;
+        _beautifierWindowFactory = beautifierWindowFactory;
         InitializeComponent();
         DataContext = _vm;
         _vm.SetBitmapCapture(new OverlayBitmapCapture(
@@ -104,6 +108,7 @@ public partial class OverlayWindow : Window
         _redoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRedoGroup);
         _vm.CloseRequested += Close;
         _vm.PinRequested += DoPin;
+        _vm.BeautifyRequested += DoBeautify;
 
         KeyDown += Window_KeyDown;
 
@@ -341,6 +346,8 @@ public partial class OverlayWindow : Window
     {
         var pendingPinnedBitmap = _pendingPinnedBitmap;
         _pendingPinnedBitmap = null;
+        var pendingBeautifierWindow = _pendingBeautifierWindow;
+        _pendingBeautifierWindow = null;
         CloseAnnotatingBackdropWindows();
 
         _undoSubscription.Dispose();
@@ -371,6 +378,21 @@ public partial class OverlayWindow : Window
                     }
 
                     pinned.Show();
+                }));
+        }
+
+        if (pendingBeautifierWindow is not null)
+        {
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.ApplicationIdle,
+                new Action(() =>
+                {
+                    if (System.Windows.Application.Current is App app)
+                    {
+                        app.RegisterAutomationWindow(pendingBeautifierWindow);
+                    }
+
+                    pendingBeautifierWindow.Show();
                 }));
         }
     }
@@ -407,6 +429,13 @@ public partial class OverlayWindow : Window
     private void DoPin(BitmapSource bitmap)
     {
         _pendingPinnedBitmap = bitmap;
+        Visibility = Visibility.Hidden;
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(Close));
+    }
+
+    private void DoBeautify(BitmapSource bitmap)
+    {
+        _pendingBeautifierWindow = _beautifierWindowFactory(bitmap);
         Visibility = Visibility.Hidden;
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(Close));
     }

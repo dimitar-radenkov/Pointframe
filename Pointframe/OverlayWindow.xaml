@@ -600,6 +600,17 @@
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding BeautifyCommand}" ToolTip="Beautify screenshot"
+                AutomationProperties.AutomationId="OverlayWindow.Beautify">
+          <StackPanel>
+            <TextBlock Text="&#xE771;" Style="{StaticResource FluentActionIconText}"/>
+            <TextBlock Text="Beautify" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
                 Command="{Binding PinCommand}" ToolTip="Pin to screen"
                 AutomationProperties.AutomationId="OverlayWindow.Pin">
           <StackPanel>
@@ -682,6 +693,14 @@
               <TextBlock Text="A" FontSize="7" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,1"/>
             </Grid>
           </Border>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding BeautifyCommand}" ToolTip="Beautify screenshot"
+                AutomationProperties.AutomationId="OverlayWindow.CompactBeautify">
+          <TextBlock Text="&#xE771;" Style="{StaticResource FluentActionIconText}"/>
         </Button>
 
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>

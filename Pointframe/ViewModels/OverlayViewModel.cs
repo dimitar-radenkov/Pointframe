@@ -88,6 +88,7 @@ public partial class OverlayViewModel : AnnotationViewModel
 
     public event Action? CloseRequested;
     public event Action<BitmapSource>? PinRequested;
+    public event Action<BitmapSource>? BeautifyRequested;
 
     internal void SetBitmapCapture(IOverlayBitmapCapture bitmapCapture)
     {
@@ -149,5 +150,19 @@ public partial class OverlayViewModel : AnnotationViewModel
 
         _telemetry.TrackEvent("capture_pinned");
         PinRequested?.Invoke(bitmapCapture.ComposeBitmap(restoreOverlayVisibilityAfterCapture: false));
+    }
+
+    [RelayCommand]
+    private void Beautify()
+    {
+        var bitmapCapture = _bitmapCapture;
+        if (bitmapCapture is null)
+        {
+            _logger.LogWarning("Beautify requested before overlay bitmap capture was attached");
+            return;
+        }
+
+        _telemetry.TrackEvent("beautify_opened");
+        BeautifyRequested?.Invoke(bitmapCapture.ComposeBitmap(restoreOverlayVisibilityAfterCapture: false));
     }
 }

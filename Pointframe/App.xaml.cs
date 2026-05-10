@@ -182,6 +182,14 @@ public partial class App : Application
         services.AddTransient<OverlayViewModel>();
         services.AddTransient<RecordingAnnotationViewModel>();
         services.AddTransient<OverlayWindow>(CreateOverlayWindow);
+        services.AddTransient<BeautifierViewModel>();
+        services.AddSingleton<BeautifierRenderService>();
+        services.AddTransient<Func<BitmapSource, BeautifierWindow>>(sp => bitmap =>
+        {
+            var window = new BeautifierWindow(sp.GetRequiredService<BeautifierViewModel>());
+            window.Initialize(bitmap);
+            return window;
+        });
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<SettingsWindow>();
         services.AddTransient<Func<IScreenRecordingService, string, RecordingHudViewModel>>(sp =>
@@ -220,7 +228,8 @@ public partial class App : Application
         sp.GetRequiredService<IFileSystemService>(),
         sp.GetRequiredService<IOcrService>(),
         sp.GetRequiredService<ITelemetryService>(),
-        sp.GetRequiredService<RecordingAnnotationViewModel>());
+        sp.GetRequiredService<RecordingAnnotationViewModel>(),
+        sp.GetRequiredService<Func<BitmapSource, BeautifierWindow>>());
 
     protected override void OnExit(ExitEventArgs e)
     {
