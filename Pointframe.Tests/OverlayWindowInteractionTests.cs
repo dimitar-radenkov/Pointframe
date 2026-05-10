@@ -298,7 +298,8 @@ public sealed class OverlayWindowInteractionTests
             fileSystemMock.Object,
             ocrServiceMock.Object,
             Mock.Of<ITelemetryService>(),
-            recordingAnnotationViewModel);
+            recordingAnnotationViewModel,
+            _ => throw new NotImplementedException());
 
         return new TestContext(
             window,

@@ -1,3 +1,4 @@
+global using Pointframe.Models;
 global using Brushes = System.Windows.Media.Brushes;
 global using Color = System.Windows.Media.Color;
 global using KeyEventArgs = System.Windows.Input.KeyEventArgs;

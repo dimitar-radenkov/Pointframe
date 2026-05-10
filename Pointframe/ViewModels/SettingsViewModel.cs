@@ -3,7 +3,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Pointframe.Models;
 using Pointframe.Services;
 
 namespace Pointframe.ViewModels;

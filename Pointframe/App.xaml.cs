@@ -241,6 +241,7 @@ public partial class App : Application
                 ["session_minutes"] = ((int)(DateTime.UtcNow - _sessionStartTime).TotalMinutes).ToString(),
             });
         }
+
         _updateAvailableSubscription?.Dispose();
         _recordingCompletedSubscription?.Dispose();
         _captureCompletedSubscription?.Dispose();
@@ -427,6 +428,7 @@ public partial class App : Application
         {
             props = new Dictionary<string, string> { ["duration_seconds"] = ((int)duration.TotalSeconds).ToString() };
         }
+
         _telemetry.TrackEvent("recording_completed", props);
         return ValueTask.CompletedTask;
     }

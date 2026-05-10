@@ -257,7 +257,8 @@ public sealed class OverlayWindowLayoutInteractionTests
             Mock.Of<IFileSystemService>(),
             Mock.Of<IOcrService>(),
             Mock.Of<ITelemetryService>(),
-            recordingAnnotationViewModel);
+            recordingAnnotationViewModel,
+            _ => throw new NotImplementedException());
 
         return new TestContext(window, viewModel, eventAggregator);
     }

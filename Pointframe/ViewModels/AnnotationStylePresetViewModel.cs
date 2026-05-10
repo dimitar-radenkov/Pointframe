@@ -1,6 +1,5 @@
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Pointframe.Models;
 
 namespace Pointframe.ViewModels;
 

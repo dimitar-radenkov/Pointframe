@@ -178,7 +178,8 @@ public sealed class OverlayWindowRecordingFlowTests
             fileSystemMock.Object,
             ocrServiceMock.Object,
             Mock.Of<ITelemetryService>(),
-            recordingAnnotationViewModel);
+            recordingAnnotationViewModel,
+            _ => throw new NotImplementedException());
 
         return new TestContext(window, viewModel, recorderMock, fileSystemMock, messageBoxMock, eventAggregator);
     }
