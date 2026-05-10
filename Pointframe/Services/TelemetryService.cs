@@ -11,6 +11,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
     private readonly IUserSettingsService _userSettings;
     private readonly string _appVersion;
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
+    private readonly object _syncRoot = new();
     private volatile string? _lastEventName;
     private bool _disposed;
 
@@ -57,7 +58,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
 
     public void TrackEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
     {
-        if (_logger is null)
+        if (_logger is null || _disposed)
         {
             return;
         }
@@ -72,7 +73,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
 
     public void TrackException(Exception exception, string? context = null)
     {
-        if (_logger is null)
+        if (_logger is null || _disposed)
         {
             return;
         }
@@ -92,7 +93,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
         var scope = BuildScope(extra);
         using (_logger.BeginScope(scope))
         {
-            _logger.LogError(exception, "{microsoft.custom_event.name}", "unhandled_exception");
+            _logger.LogError("{microsoft.custom_event.name}", "unhandled_exception");
         }
     }
 
@@ -123,18 +124,20 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
 
     public void Flush()
     {
-        // Azure Monitor flushes pending telemetry when the LoggerFactory is disposed.
-        // Disposing before host shutdown is handled via IDisposable registration.
+        Dispose();
     }
 
     public void Dispose()
     {
-        if (_disposed)
+        lock (_syncRoot)
         {
-            return;
-        }
+            if (_disposed)
+            {
+                return;
+            }
 
-        _disposed = true;
-        _loggerFactory?.Dispose();
+            _disposed = true;
+            _loggerFactory?.Dispose();
+        }
     }
 }

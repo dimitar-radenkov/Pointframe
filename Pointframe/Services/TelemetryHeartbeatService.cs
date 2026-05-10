@@ -6,7 +6,7 @@ namespace Pointframe.Services;
 
 public sealed class TelemetryHeartbeatService : BackgroundService
 {
-    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromHours(4);
 
     private readonly ITelemetryService _telemetry;
     private readonly ILogger<TelemetryHeartbeatService> _logger;

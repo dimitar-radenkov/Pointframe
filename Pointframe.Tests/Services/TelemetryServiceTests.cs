@@ -12,6 +12,7 @@ public sealed class TelemetryServiceTests
     {
         public LogLevel Level { get; init; }
         public string Message { get; init; } = string.Empty;
+        public Exception? Exception { get; init; }
         public Dictionary<string, object?> Scope { get; init; } = [];
     }
 
@@ -56,6 +57,7 @@ public sealed class TelemetryServiceTests
             {
                 Level = logLevel,
                 Message = formatter(state, exception),
+                Exception = exception,
                 Scope = new Dictionary<string, object?>(_currentScope),
             });
         }
@@ -263,6 +265,20 @@ public sealed class TelemetryServiceTests
 
         // Assert
         Assert.Equal(LogLevel.Error, logger.Entries[0].Level);
+    }
+
+    [Fact]
+    public void TrackException_DoesNotForwardExceptionObjectToRemoteLogger()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        // Act
+        sut.TrackException(new InvalidOperationException("local-only details"));
+
+        // Assert
+        Assert.Null(logger.Entries[0].Exception);
     }
 
     [Fact]

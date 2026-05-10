@@ -282,6 +282,21 @@ public sealed class TrayIconManagerTests
     }
 
     [Fact]
+    public void OpenLogsFolder_Click_OpensLocalLogsFolder()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var processMock = new Mock<IProcessService>();
+            var manager = CreateManager(processService: processMock.Object);
+
+            InvokePrivate(manager, "OpenLogsFolder_Click", new object(), new RoutedEventArgs());
+
+            processMock.Verify(process => process.Start(It.Is<ProcessStartInfo>(info =>
+                info.FileName == "explorer.exe" && info.Arguments == AppPaths.LogsDirectory)), Times.Once);
+        });
+    }
+
+    [Fact]
     public void OpenRecentRecording_Click_WithInvalidSender_DoesNothing()
     {
         StaTestHelper.Run(() =>

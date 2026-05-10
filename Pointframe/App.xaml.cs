@@ -54,10 +54,6 @@ public partial class App : Application
             .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false)
             .Build();
 
-        var logPath = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Pointframe", "logs", "pointframe-.log");
-
         Log.Logger = new LoggerConfiguration()
 #if DEBUG
             .MinimumLevel.Debug()
@@ -65,7 +61,7 @@ public partial class App : Application
             .MinimumLevel.Information()
 #endif
             .WriteTo.File(
-                logPath,
+                AppPaths.RollingLogPath,
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: config.GetValue<int>("Logging:RetainedFileCountLimit", 7),
                 outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
@@ -241,8 +237,8 @@ public partial class App : Application
         _captureCompletedSubscription?.Dispose();
         _globalHotkey.Dispose();
         _trayIconManager?.Dispose();
-        _telemetry?.Flush();
         _host.StopAsync().GetAwaiter().GetResult();
+        _telemetry?.Flush();
         _host.Dispose();
         base.OnExit(e);
         Log.CloseAndFlush();

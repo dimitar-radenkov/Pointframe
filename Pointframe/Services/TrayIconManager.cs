@@ -155,6 +155,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         contextMenu.Items.Add(new WpfSeparator());
         contextMenu.Items.Add(CreateTrayMenuItem("Settings", Settings_Click));
         contextMenu.Items.Add(CreateTrayMenuItem("Check for Updates", CheckForUpdates_Click));
+        contextMenu.Items.Add(CreateTrayMenuItem("Open Logs Folder", OpenLogsFolder_Click));
         contextMenu.Items.Add(CreateTrayMenuItem("About", About_Click));
         contextMenu.Items.Add(new WpfSeparator());
         contextMenu.Items.Add(CreateTrayMenuItem("Exit", Exit_Click));
@@ -178,6 +179,11 @@ internal sealed class TrayIconManager : ITrayIconManager
     private void About_Click(object sender, RoutedEventArgs e) => _onShowAbout();
     private void OpenImage_Click(object sender, RoutedEventArgs e) => _onOpenImage();
     private void Exit_Click(object sender, RoutedEventArgs e) => WpfApplication.Current.Shutdown();
+    private void OpenLogsFolder_Click(object sender, RoutedEventArgs e)
+    {
+        Directory.CreateDirectory(AppPaths.LogsDirectory);
+        OpenFolder(AppPaths.LogsDirectory);
+    }
 
     private void InitializeRecentCapturesMenu()
     {

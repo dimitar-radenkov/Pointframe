@@ -270,30 +270,41 @@ Pointframe is built on a very clean, modern stack (.NET 10, WPF, CommunityToolki
 
 ## Privacy & Telemetry
 
-Pointframe collects **anonymous, privacy-safe usage telemetry** to help understand how the app is used and catch errors early. No personal data is ever collected.
+Pointframe collects **anonymous, privacy-safe usage telemetry** in official builds to help understand how the app is used and catch errors early. Screenshots, recordings, OCR output, file names, file paths, exception messages, and stack traces are not sent as telemetry.
 
 ### What is collected
 
 | Event | Properties |
 |---|---|
-| `app_started` | — |
-| `capture_completed` | `tool` (copy / save / pin) |
-| `recording_completed` | `has_audio`, `duration_seconds` |
-| `recording_cancelled` | — |
-| `gif_export_requested` | — |
+| `app_started` | `version`, `os_build`, `screen_count` |
+| `startup_completed` | `duration_ms` |
+| `app_heartbeat` | `uptime_minutes` (sent about every 4 hours while the tray app remains open) |
+| `app_closed` | `session_minutes` |
+| `snip_started` | `type` (region / whole_screen), `source` (tray / hotkey) |
+| `snip_cancelled` | `type` (region / whole_screen) |
+| `capture_delay_used` | `delay_seconds` |
+| `capture_completed` | `action` (copy) |
+| `capture_pinned` | — |
+| `open_image_used` | — |
+| `annotation_committed` | `tool` |
+| `recording_started` | `type` (region / whole_screen) |
+| `recording_completed` | `duration_seconds` when available |
+| `ffmpeg_missing` | — |
+| `microphone_unavailable` | — |
+| `gif_export_started` | — |
+| `gif_export_completed` | `success`, `duration_seconds` |
 | `ocr_used` | — |
-| `settings_saved` | — |
-| `update_check_triggered` | `source` (auto / manual) |
-| `update_download_started` | — |
-| `update_download_completed` | — |
-| `update_download_cancelled` | — |
-| `unhandled_exception` | `exception_type`, `context` |
+| `update_check_manual` | — |
+| `update_available` | `version` |
+| `update_confirmed` | `version` |
+| `update_dismissed` | `version` |
+| `unhandled_exception` | `exception_type`, `context`, `last_action` when available |
 
-Every event includes an `install_id` and the app `version`. The install ID is a random GUID generated once on first launch and stored locally. It is used only to count unique installs; it cannot be traced back to a person.
+Every event includes an app `version`, a per-run `session_id`, and an `install_id` when one is available. The install ID is a random GUID generated once on first launch and stored locally. It is used only to count unique installs; it is not tied to an account or identity.
 
-**Nothing leaves your machine except these anonymised events.** Screenshots, recordings, and OCR output are never transmitted anywhere.
+**Nothing leaves your machine except these anonymised events.** Screenshots, recordings, OCR output, file names, and file paths are never transmitted. Local diagnostic logs are stored under `%LOCALAPPDATA%\Pointframe\logs\` and may include local paths to help troubleshoot issues; they are not uploaded automatically.
 
-### Opting out
+### Source builds
 
 Telemetry is disabled automatically when the `ApplicationInsights:ConnectionString` value in `appsettings.json` is empty (which is the default in the source repository). Only official builds distributed via the installer include the real connection string.
 
