@@ -30,6 +30,7 @@ public partial class App : Application
     private IAppErrorHandler _errorHandler = null!;
     private ITrayIconManager _trayIconManager = null!;
     private ICaptureLaunchService _captureLaunch = null!;
+    private IActivationTelemetryService _activationTelemetry = null!;
     private IEventSubscription? _updateAvailableSubscription;
     private IEventSubscription? _recordingCompletedSubscription;
     private IEventSubscription? _captureCompletedSubscription;
@@ -88,6 +89,7 @@ public partial class App : Application
         _errorHandler = _host.Services.GetRequiredService<IAppErrorHandler>();
         _captureLaunch = _host.Services.GetRequiredService<ICaptureLaunchService>();
         _telemetry = _host.Services.GetRequiredService<ITelemetryService>();
+        _activationTelemetry = _host.Services.GetRequiredService<IActivationTelemetryService>();
         _themeService.Apply(_userSettings.Current.Theme);
         if (!automationLaunchOptions.IsAutomationMode)
         {
@@ -158,6 +160,7 @@ public partial class App : Application
     private static void ConfigureServices(IServiceCollection services)
     {
         services.AddSingleton<ITelemetryService, TelemetryService>();
+        services.AddSingleton<IActivationTelemetryService, ActivationTelemetryService>();
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<IAppVersionService, AppVersionService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
@@ -423,23 +426,14 @@ public partial class App : Application
     private ValueTask HandleRecordingCompleted(RecordingCompletedMessage message)
     {
         _trayIconManager.HandleRecordingCompleted(message.OutputPath, message.ElapsedText);
-        Dictionary<string, string>? props = null;
-        if (TimeSpan.TryParseExact(message.ElapsedText, @"mm\:ss", null, out var duration))
-        {
-            props = new Dictionary<string, string> { ["duration_seconds"] = ((int)duration.TotalSeconds).ToString() };
-        }
-
-        _telemetry.TrackEvent("recording_completed", props);
+        _activationTelemetry.TrackRecordingCompleted(message.ElapsedText);
         return ValueTask.CompletedTask;
     }
 
     private ValueTask HandleCaptureCompleted(CaptureCompletedMessage message)
     {
         _trayIconManager.HandleCaptureCompleted(message.OutputPath);
-        _telemetry.TrackEvent("capture_completed", new Dictionary<string, string>
-        {
-            ["action"] = "copy",
-        });
+        _activationTelemetry.TrackCaptureCompleted();
         return ValueTask.CompletedTask;
     }
 
@@ -449,13 +443,25 @@ public partial class App : Application
         {
             try
             {
-                _userSettings.Update(s => s.InstallId = Guid.NewGuid().ToString("N"));
+                _userSettings.Update(s =>
+                {
+                    s.InstallId = Guid.NewGuid().ToString("N");
+                    s.InstallCreatedUtc = DateTime.UtcNow;
+                });
             }
             catch (Exception ex)
             {
                 Log.Warning(ex, "Failed to persist install ID; telemetry will use an in-memory ID for this session.");
                 _userSettings.Current.InstallId = Guid.NewGuid().ToString("N");
+                _userSettings.Current.InstallCreatedUtc = DateTime.UtcNow;
             }
+
+            return;
+        }
+
+        if (_userSettings.Current.InstallCreatedUtc is null)
+        {
+            _userSettings.Update(s => s.InstallCreatedUtc = DateTime.UtcNow);
         }
     }
 }

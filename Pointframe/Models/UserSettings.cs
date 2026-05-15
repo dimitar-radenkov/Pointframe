@@ -52,4 +52,10 @@ public sealed class UserSettings
     /// Used for telemetry to count unique installs without tracking identity.
     /// </summary>
     public string? InstallId { get; set; }
+
+    public DateTime? InstallCreatedUtc { get; set; }
+
+    public bool FirstCaptureCompletedTracked { get; set; }
+
+    public bool FirstRecordingCompletedTracked { get; set; }
 }

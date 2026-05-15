@@ -143,5 +143,8 @@ public sealed class UserSettingsService : IUserSettingsService
                 StrokeThickness = p.StrokeThickness,
             })],
             InstallId = settings.InstallId,
+            InstallCreatedUtc = settings.InstallCreatedUtc,
+            FirstCaptureCompletedTracked = settings.FirstCaptureCompletedTracked,
+            FirstRecordingCompletedTracked = settings.FirstRecordingCompletedTracked,
         };
 }
