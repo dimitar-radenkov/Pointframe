@@ -458,11 +458,6 @@ public partial class App : Application
 
             return;
         }
-
-        if (_userSettings.Current.InstallCreatedUtc is null)
-        {
-            _userSettings.Update(s => s.InstallCreatedUtc = DateTime.UtcNow);
-        }
     }
 }
 

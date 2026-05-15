@@ -488,6 +488,33 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void Save_PreservesActivationTelemetryFields()
+    {
+        var installCreatedUtc = new DateTime(2026, 5, 1, 12, 0, 0, DateTimeKind.Utc);
+        var current = new UserSettings
+        {
+            InstallId = "install-123",
+            InstallCreatedUtc = installCreatedUtc,
+            FirstCaptureCompletedTracked = true,
+            FirstRecordingCompletedTracked = true,
+        };
+
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(current);
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>(), CreateMicrophoneDeviceService());
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.NotNull(saved);
+        Assert.Equal(current.InstallId, saved!.InstallId);
+        Assert.Equal(current.InstallCreatedUtc, saved.InstallCreatedUtc);
+        Assert.Equal(current.FirstCaptureCompletedTracked, saved.FirstCaptureCompletedTracked);
+        Assert.Equal(current.FirstRecordingCompletedTracked, saved.FirstRecordingCompletedTracked);
+    }
+
+    [Fact]
     public void Sections_ProvideSingleSourceOfTruthForHeaderMetadata()
     {
         var vm = CreateVm();

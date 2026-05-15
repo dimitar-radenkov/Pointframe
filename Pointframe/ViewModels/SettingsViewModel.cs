@@ -237,6 +237,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         var c = DefaultAnnotationColor;
         var clampedRecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(RecordingCursorHighlightSize);
+        var currentSettings = _settingsService.Current;
         RecordingCursorHighlightSize = clampedRecordingCursorHighlightSize;
 
         _settingsService.Save(new UserSettings
@@ -263,7 +264,10 @@ public partial class SettingsViewModel : ObservableObject
             AutoUpdateCheckInterval = AutoUpdateCheckInterval,
             LastAutoUpdateCheckUtc = _lastAutoUpdateCheckUtc,
             Theme = AppTheme,
-            InstallId = _settingsService.Current.InstallId,
+            InstallId = currentSettings.InstallId,
+            InstallCreatedUtc = currentSettings.InstallCreatedUtc,
+            FirstCaptureCompletedTracked = currentSettings.FirstCaptureCompletedTracked,
+            FirstRecordingCompletedTracked = currentSettings.FirstRecordingCompletedTracked,
         });
         RequestClose?.Invoke();
     }
