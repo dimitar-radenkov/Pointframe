@@ -924,6 +924,9 @@
                                               SelectedValue="{Binding AutoUpdateCheckInterval}"
                                               SelectedValuePath="Tag">
                                         <ComboBoxItem Content="Never" Tag="{x:Static models:UpdateCheckInterval.Never}"/>
+                                        <ComboBoxItem Content="Every 2 hours" Tag="{x:Static models:UpdateCheckInterval.EveryTwoHours}"/>
+                                        <ComboBoxItem Content="Every 6 hours" Tag="{x:Static models:UpdateCheckInterval.EverySixHours}"/>
+                                        <ComboBoxItem Content="Every 12 hours" Tag="{x:Static models:UpdateCheckInterval.EveryTwelveHours}"/>
                                         <ComboBoxItem Content="Every day" Tag="{x:Static models:UpdateCheckInterval.EveryDay}"/>
                                         <ComboBoxItem Content="Every 2 days" Tag="{x:Static models:UpdateCheckInterval.EveryTwoDays}"/>
                                         <ComboBoxItem Content="Every 3 days" Tag="{x:Static models:UpdateCheckInterval.EveryThreeDays}"/>

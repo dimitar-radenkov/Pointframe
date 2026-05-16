@@ -230,17 +230,20 @@ public sealed class AutoUpdateServiceTests
     }
 
     [Theory]
-    [InlineData(UpdateCheckInterval.EveryDay, 1)]
-    [InlineData(UpdateCheckInterval.EveryTwoDays, 2)]
-    [InlineData(UpdateCheckInterval.EveryThreeDays, 3)]
-    public void GetTimerInterval_MapsIntervalsToExpectedDays(UpdateCheckInterval interval, int expectedDays)
+    [InlineData(UpdateCheckInterval.EveryTwoHours, 2)]
+    [InlineData(UpdateCheckInterval.EverySixHours, 6)]
+    [InlineData(UpdateCheckInterval.EveryTwelveHours, 12)]
+    [InlineData(UpdateCheckInterval.EveryDay, 24)]
+    [InlineData(UpdateCheckInterval.EveryTwoDays, 48)]
+    [InlineData(UpdateCheckInterval.EveryThreeDays, 72)]
+    public void GetTimerInterval_MapsIntervalsToExpectedHours(UpdateCheckInterval interval, int expectedHours)
     {
         var method = typeof(AutoUpdateService).GetMethod("GetTimerInterval", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         Assert.NotNull(method);
 
         var result = (TimeSpan)method.Invoke(null, [interval])!;
 
-        Assert.Equal(TimeSpan.FromDays(expectedDays), result);
+        Assert.Equal(TimeSpan.FromHours(expectedHours), result);
     }
 
     [Fact]

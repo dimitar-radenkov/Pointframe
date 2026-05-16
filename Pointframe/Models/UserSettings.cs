@@ -35,7 +35,7 @@ public sealed class UserSettings
 
     public HotkeyModifiers WholeScreenRecordHotkeyModifiers { get; set; } = HotkeyModifiers.Ctrl | HotkeyModifiers.Shift; // Ctrl+Shift+R
 
-    public UpdateCheckInterval AutoUpdateCheckInterval { get; set; } = UpdateCheckInterval.EveryDay;
+    public UpdateCheckInterval AutoUpdateCheckInterval { get; set; } = UpdateCheckInterval.EveryTwoHours;
     public DateTime? LastAutoUpdateCheckUtc { get; set; } = null;
 
     public AppTheme Theme { get; set; } = AppTheme.System;

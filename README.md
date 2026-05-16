@@ -159,7 +159,7 @@ Open **Settings** from the tray icon to configure:
 | Setting | Description |
 |---|---|
 | Theme | App appearance: Light, Dark, or System (follows Windows) |
-| Auto-update check interval | How often to check for new releases: Every day / Every 2 days / Every 3 days / Never |
+| Auto-update check interval | How often to check for new releases: Every 2 hours / Every 6 hours / Every 12 hours / Every day / Every 2 days / Every 3 days / Never |
 
 ## Keyboard shortcuts
 

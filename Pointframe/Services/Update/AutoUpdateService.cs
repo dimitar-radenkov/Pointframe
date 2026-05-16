@@ -138,6 +138,9 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
     private static TimeSpan GetTimerInterval(UpdateCheckInterval interval) =>
         interval switch
         {
+            UpdateCheckInterval.EveryTwoHours => TimeSpan.FromHours(2),
+            UpdateCheckInterval.EverySixHours => TimeSpan.FromHours(6),
+            UpdateCheckInterval.EveryTwelveHours => TimeSpan.FromHours(12),
             UpdateCheckInterval.EveryDay => TimeSpan.FromDays(1),
             UpdateCheckInterval.EveryTwoDays => TimeSpan.FromDays(2),
             UpdateCheckInterval.EveryThreeDays => TimeSpan.FromDays(3),
