@@ -297,6 +297,68 @@ public sealed class TrayIconManagerTests
     }
 
     [Fact]
+    public void OpenSnipsFolder_Click_UsesConfiguredScreenshotPath()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var processMock = new Mock<IProcessService>();
+            var userSettings = new UserSettings
+            {
+                ScreenshotSavePath = Path.Combine(Path.GetTempPath(), $"pointframe-snips-{Guid.NewGuid():N}"),
+            };
+            var userSettingsMock = new Mock<IUserSettingsService>();
+            userSettingsMock.SetupGet(service => service.Current).Returns(userSettings);
+            var manager = CreateManager(processService: processMock.Object, userSettings: userSettingsMock.Object);
+
+            try
+            {
+                InvokePrivate(manager, "OpenSnipsFolder_Click", new object(), new RoutedEventArgs());
+
+                processMock.Verify(process => process.Start(It.Is<ProcessStartInfo>(info =>
+                    info.FileName == "explorer.exe" && info.Arguments == $"\"{userSettings.ScreenshotSavePath}\"")), Times.Once);
+            }
+            finally
+            {
+                if (Directory.Exists(userSettings.ScreenshotSavePath))
+                {
+                    Directory.Delete(userSettings.ScreenshotSavePath);
+                }
+            }
+        });
+    }
+
+    [Fact]
+    public void OpenVideosFolder_Click_UsesConfiguredRecordingPath()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var processMock = new Mock<IProcessService>();
+            var userSettings = new UserSettings
+            {
+                RecordingOutputPath = Path.Combine(Path.GetTempPath(), $"pointframe-videos-{Guid.NewGuid():N}"),
+            };
+            var userSettingsMock = new Mock<IUserSettingsService>();
+            userSettingsMock.SetupGet(service => service.Current).Returns(userSettings);
+            var manager = CreateManager(processService: processMock.Object, userSettings: userSettingsMock.Object);
+
+            try
+            {
+                InvokePrivate(manager, "OpenVideosFolder_Click", new object(), new RoutedEventArgs());
+
+                processMock.Verify(process => process.Start(It.Is<ProcessStartInfo>(info =>
+                    info.FileName == "explorer.exe" && info.Arguments == $"\"{userSettings.RecordingOutputPath}\"")), Times.Once);
+            }
+            finally
+            {
+                if (Directory.Exists(userSettings.RecordingOutputPath))
+                {
+                    Directory.Delete(userSettings.RecordingOutputPath);
+                }
+            }
+        });
+    }
+
+    [Fact]
     public void OpenRecentRecording_Click_WithInvalidSender_DoesNothing()
     {
         StaTestHelper.Run(() =>
@@ -309,6 +371,115 @@ public sealed class TrayIconManagerTests
             InvokePrivate(manager, "OpenRecentRecording_Click", new object(), new RoutedEventArgs());
 
             processMock.Verify(process => process.Start(It.IsAny<ProcessStartInfo>()), Times.Never);
+        });
+    }
+
+    [Fact]
+    public void ClearRecentCaptures_Click_EmptiesCapturesAndRebuildsMen()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var manager = CreateManager();
+            var captures = (List<string>)GetField(manager, "_recentCaptures")!;
+            captures.Add("C:\\test1.png");
+            captures.Add("C:\\test2.png");
+
+            InvokePrivate(manager, "ClearRecentCaptures_Click", new object(), new RoutedEventArgs());
+
+            Assert.Empty(captures);
+        });
+    }
+
+    [Fact]
+    public void ClearRecentRecordings_Click_EmptiesRecordingsAndRebuildsMenu()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var manager = CreateManager();
+            var recordingsField = manager.GetType().GetField("_recentRecordings", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(recordingsField);
+            var recordings = (System.Collections.IList)recordingsField.GetValue(manager)!;
+            
+            var rec1 = CreateRecentRecordingItem("C:\\test1.mp4", "00:05");
+            var rec2 = CreateRecentRecordingItem("C:\\test2.mp4", "00:10");
+            recordings.Add(rec1);
+            recordings.Add(rec2);
+
+            InvokePrivate(manager, "ClearRecentRecordings_Click", new object(), new RoutedEventArgs());
+
+            Assert.Empty(recordings);
+        });
+    }
+
+    [Fact]
+    public void RebuildRecentCapturesMenu_WhenEmpty_ShowsOpenSnipsFolderShortcut()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var manager = CreateManager();
+            var menuItem = new System.Windows.Controls.MenuItem();
+            SetField(manager, "_recentCapturesMenuItem", menuItem);
+
+            InvokePrivate(manager, "RebuildRecentCapturesMenu");
+
+            Assert.True(HasMenuItemHeader(menuItem, "No recent captures"));
+            Assert.True(HasMenuItemHeader(menuItem, "Open Snips folder"));
+        });
+    }
+
+    [Fact]
+    public void RebuildRecentCapturesMenu_WhenNotEmpty_HidesOpenSnipsFolderShortcut()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var manager = CreateManager();
+            var menuItem = new System.Windows.Controls.MenuItem();
+            SetField(manager, "_recentCapturesMenuItem", menuItem);
+
+            var captures = (List<string>)GetField(manager, "_recentCaptures")!;
+            captures.Add(@"C:\temp\snip-1.png");
+
+            InvokePrivate(manager, "RebuildRecentCapturesMenu");
+
+            Assert.False(HasMenuItemHeader(menuItem, "Open Snips folder"));
+            Assert.True(HasMenuItemHeader(menuItem, "Clear recent captures"));
+        });
+    }
+
+    [Fact]
+    public void RebuildRecentRecordingsMenu_WhenEmpty_ShowsOpenVideosFolderShortcut()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var manager = CreateManager();
+            var menuItem = new System.Windows.Controls.MenuItem();
+            SetField(manager, "_recentRecordingsMenuItem", menuItem);
+
+            InvokePrivate(manager, "RebuildRecentRecordingsMenu");
+
+            Assert.True(HasMenuItemHeader(menuItem, "No recent recordings"));
+            Assert.True(HasMenuItemHeader(menuItem, "Open Videos folder"));
+        });
+    }
+
+    [Fact]
+    public void RebuildRecentRecordingsMenu_WhenNotEmpty_HidesOpenVideosFolderShortcut()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var manager = CreateManager();
+            var menuItem = new System.Windows.Controls.MenuItem();
+            SetField(manager, "_recentRecordingsMenuItem", menuItem);
+
+            var recordingsField = manager.GetType().GetField("_recentRecordings", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(recordingsField);
+            var recordings = (System.Collections.IList)recordingsField.GetValue(manager)!;
+            recordings.Add(CreateRecentRecordingItem(@"C:\temp\rec-1.mp4", "00:06"));
+
+            InvokePrivate(manager, "RebuildRecentRecordingsMenu");
+
+            Assert.False(HasMenuItemHeader(menuItem, "Open Videos folder"));
+            Assert.True(HasMenuItemHeader(menuItem, "Clear recent recordings"));
         });
     }
 
@@ -378,5 +549,19 @@ public sealed class TrayIconManagerTests
 
             await Task.Delay(25);
         }
+    }
+
+    private static bool HasMenuItemHeader(System.Windows.Controls.MenuItem menuItem, string expectedHeader)
+    {
+        foreach (var item in menuItem.Items)
+        {
+            if (item is System.Windows.Controls.MenuItem child &&
+                string.Equals(child.Header?.ToString(), expectedHeader, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
