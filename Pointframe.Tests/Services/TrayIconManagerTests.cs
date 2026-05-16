@@ -375,7 +375,7 @@ public sealed class TrayIconManagerTests
     }
 
     [Fact]
-    public void ClearRecentCaptures_Click_EmptiesCapturesAndRebuildsMen()
+    public void ClearRecentCaptures_Click_EmptiesCaptures()
     {
         StaTestHelper.Run(() =>
         {
@@ -391,7 +391,7 @@ public sealed class TrayIconManagerTests
     }
 
     [Fact]
-    public void ClearRecentRecordings_Click_EmptiesRecordingsAndRebuildsMenu()
+    public void ClearRecentRecordings_Click_EmptiesRecordings()
     {
         StaTestHelper.Run(() =>
         {
@@ -480,6 +480,22 @@ public sealed class TrayIconManagerTests
 
             Assert.False(HasMenuItemHeader(menuItem, "Open Videos folder"));
             Assert.True(HasMenuItemHeader(menuItem, "Clear recent recordings"));
+        });
+    }
+
+    [Fact]
+    public void OpenConfiguredFolder_WhenPathIsInvalid_ShowsWarning()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var messageBoxMock = new Mock<IMessageBoxService>();
+            var manager = CreateManager(messageBox: messageBoxMock.Object);
+
+            InvokePrivate(manager, "OpenConfiguredFolder", "bad\0path");
+
+            messageBoxMock.Verify(service => service.ShowWarning(
+                "Could not open the configured folder. Please verify the path in Settings.",
+                "Open Folder"), Times.Once);
         });
     }
 

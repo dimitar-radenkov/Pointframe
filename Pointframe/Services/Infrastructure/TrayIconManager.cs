@@ -272,25 +272,21 @@ internal sealed class TrayIconManager : ITrayIconManager
                 VerticalAlignment = System.Windows.VerticalAlignment.Center,
                 Margin = new System.Windows.Thickness(0, 0, 8, 0),
                 Cursor = System.Windows.Input.Cursors.Hand,
-            };
-            textBlock.MouseLeftButtonDown += (_, _) => OpenRecentCapture_Click(new WpfMenuItem { Tag = capturePath }, new System.Windows.RoutedEventArgs());
-
-            var button = new System.Windows.Controls.Button
-            {
-                Content = "📁",
-                Width = 32,
-                Height = 28,
-                Padding = new System.Windows.Thickness(4),
-                ToolTip = "Open folder",
                 Tag = capturePath,
-                Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(230, 245, 230)),
-                BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 200, 180)),
-                BorderThickness = new System.Windows.Thickness(1),
-                Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 100, 0)),
             };
-            button.MouseEnter += (s, _) => ((System.Windows.Controls.Button)s).Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 240, 200));
-            button.MouseLeave += (s, _) => ((System.Windows.Controls.Button)s).Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(230, 245, 230));
-            button.Click += (_, _) => OpenRecentCaptureFolder_Click(new WpfMenuItem { Tag = capturePath }, new System.Windows.RoutedEventArgs());
+            textBlock.MouseLeftButtonDown += (_, args) =>
+            {
+                OpenRecentCapture_Click(textBlock, new RoutedEventArgs());
+                args.Handled = true;
+            };
+
+            var button = CreateRecentActionButton("📁", "Open folder", capturePath, "Open capture folder");
+            System.Windows.Automation.AutomationProperties.SetName(button, "Open capture folder");
+            button.Click += (_, args) =>
+            {
+                OpenRecentCaptureFolder_Click(button, new RoutedEventArgs());
+                args.Handled = true;
+            };
 
             panel.Children.Add(textBlock);
             panel.Children.Add(button);
@@ -300,26 +296,13 @@ internal sealed class TrayIconManager : ITrayIconManager
                 Header = panel,
                 Tag = capturePath,
             };
+            menuItem.Click += OpenRecentCapture_Click;
             _recentCapturesMenuItem.Items.Add(menuItem);
         }
 
         _recentCapturesMenuItem.Items.Add(new WpfSeparator());
         var clearRecent = CreateTrayMenuItem("Clear recent captures", ClearRecentCaptures_Click);
         _recentCapturesMenuItem.Items.Add(clearRecent);
-    }
-
-    private static WpfMenuItem CreateRecentCaptureActionMenuItem(
-        string header,
-        RoutedEventHandler clickHandler,
-        string capturePath)
-    {
-        var menuItem = new WpfMenuItem
-        {
-            Header = header,
-            Tag = capturePath,
-        };
-        menuItem.Click += clickHandler;
-        return menuItem;
     }
 
     private void InitializeRecentRecordingsMenu()
@@ -374,43 +357,32 @@ internal sealed class TrayIconManager : ITrayIconManager
                 VerticalAlignment = System.Windows.VerticalAlignment.Center,
                 Margin = new System.Windows.Thickness(0, 0, 6, 0),
                 Cursor = System.Windows.Input.Cursors.Hand,
-            };
-            textBlock.MouseLeftButtonDown += (_, _) => OpenRecentRecording_Click(new WpfMenuItem { Tag = recentRecording }, new System.Windows.RoutedEventArgs());
-
-            var gifButton = new System.Windows.Controls.Button
-            {
-                Content = "🎬",
-                Width = 32,
-                Height = 28,
-                Padding = new System.Windows.Thickness(4),
-                ToolTip = "Export to GIF",
                 Tag = recentRecording,
-                Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(230, 240, 255)),
-                BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 200, 220)),
-                BorderThickness = new System.Windows.Thickness(1),
-                Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 80, 160)),
-                Margin = new System.Windows.Thickness(0, 0, 4, 0),
             };
-            gifButton.MouseEnter += (s, _) => ((System.Windows.Controls.Button)s).Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 230, 255));
-            gifButton.MouseLeave += (s, _) => ((System.Windows.Controls.Button)s).Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(230, 240, 255));
-            gifButton.Click += (_, _) => ExportRecentRecordingGif_Click(new WpfMenuItem { Tag = recentRecording }, new System.Windows.RoutedEventArgs());
-
-            var folderButton = new System.Windows.Controls.Button
+            textBlock.MouseLeftButtonDown += (_, args) =>
             {
-                Content = "📁",
-                Width = 32,
-                Height = 28,
-                Padding = new System.Windows.Thickness(4),
-                ToolTip = "Open folder",
-                Tag = recentRecording,
-                Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(230, 245, 230)),
-                BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 200, 180)),
-                BorderThickness = new System.Windows.Thickness(1),
-                Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 100, 0)),
+                OpenRecentRecording_Click(textBlock, new RoutedEventArgs());
+                args.Handled = true;
             };
-            folderButton.MouseEnter += (s, _) => ((System.Windows.Controls.Button)s).Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 240, 200));
-            folderButton.MouseLeave += (s, _) => ((System.Windows.Controls.Button)s).Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(230, 245, 230));
-            folderButton.Click += (_, _) => OpenRecentRecordingFolder_Click(new WpfMenuItem { Tag = recentRecording }, new System.Windows.RoutedEventArgs());
+
+            var gifButton = CreateRecentActionButton(
+                "🎬",
+                "Export to GIF",
+                recentRecording,
+                "Export recording to GIF",
+                new System.Windows.Thickness(0, 0, 4, 0));
+            gifButton.Click += (_, args) =>
+            {
+                ExportRecentRecordingGif_Click(gifButton, new RoutedEventArgs());
+                args.Handled = true;
+            };
+
+            var folderButton = CreateRecentActionButton("📁", "Open folder", recentRecording, "Open recording folder");
+            folderButton.Click += (_, args) =>
+            {
+                OpenRecentRecordingFolder_Click(folderButton, new RoutedEventArgs());
+                args.Handled = true;
+            };
 
             panel.Children.Add(textBlock);
             panel.Children.Add(gifButton);
@@ -421,6 +393,7 @@ internal sealed class TrayIconManager : ITrayIconManager
                 Header = panel,
                 Tag = recentRecording,
             };
+            menuItem.Click += OpenRecentRecording_Click;
             _recentRecordingsMenuItem.Items.Add(menuItem);
         }
 
@@ -429,23 +402,9 @@ internal sealed class TrayIconManager : ITrayIconManager
         _recentRecordingsMenuItem.Items.Add(clearRecent);
     }
 
-    private static WpfMenuItem CreateRecentRecordingActionMenuItem(
-        string header,
-        RoutedEventHandler clickHandler,
-        RecentRecordingItem recentRecording)
-    {
-        var menuItem = new WpfMenuItem
-        {
-            Header = header,
-            Tag = recentRecording,
-        };
-        menuItem.Click += clickHandler;
-        return menuItem;
-    }
-
     private void OpenRecentCapture_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not WpfMenuItem { Tag: string capturePath })
+        if (!TryGetTaggedValue(sender, out string capturePath))
         {
             return;
         }
@@ -455,7 +414,7 @@ internal sealed class TrayIconManager : ITrayIconManager
 
     private void OpenRecentCaptureFolder_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not WpfMenuItem { Tag: string capturePath })
+        if (!TryGetTaggedValue(sender, out string capturePath))
         {
             return;
         }
@@ -503,7 +462,7 @@ internal sealed class TrayIconManager : ITrayIconManager
 
     private void OpenRecentRecording_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not WpfMenuItem { Tag: RecentRecordingItem recentRecording })
+        if (!TryGetTaggedValue(sender, out RecentRecordingItem recentRecording))
         {
             return;
         }
@@ -513,7 +472,7 @@ internal sealed class TrayIconManager : ITrayIconManager
 
     private void OpenRecentRecordingFolder_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not WpfMenuItem { Tag: RecentRecordingItem recentRecording })
+        if (!TryGetTaggedValue(sender, out RecentRecordingItem recentRecording))
         {
             return;
         }
@@ -527,7 +486,7 @@ internal sealed class TrayIconManager : ITrayIconManager
 
     private async void ExportRecentRecordingGif_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not WpfMenuItem { Tag: RecentRecordingItem recentRecording } menuItem)
+        if (!TryGetTaggedValue(sender, out RecentRecordingItem recentRecording) || sender is not UIElement senderElement)
         {
             return;
         }
@@ -539,7 +498,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         }
 
         var gifPath = Path.ChangeExtension(recentRecording.OutputPath, ".gif");
-        menuItem.IsEnabled = false;
+        senderElement.IsEnabled = false;
         _telemetry.TrackEvent("gif_export_started");
 
         var sw = Stopwatch.StartNew();
@@ -568,7 +527,7 @@ internal sealed class TrayIconManager : ITrayIconManager
                 ["success"] = success ? "true" : "false",
                 ["duration_seconds"] = ((int)sw.Elapsed.TotalSeconds).ToString(),
             });
-            menuItem.IsEnabled = true;
+            senderElement.IsEnabled = true;
         }
     }
 
@@ -627,8 +586,60 @@ internal sealed class TrayIconManager : ITrayIconManager
             return;
         }
 
-        Directory.CreateDirectory(path);
-        OpenFolder(path);
+        try
+        {
+            Directory.CreateDirectory(path);
+            OpenFolder(path);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to open configured folder: {Path}", path);
+            _messageBox.ShowWarning(
+                "Could not open the configured folder. Please verify the path in Settings.",
+                "Open Folder");
+        }
+    }
+
+    private static bool TryGetTaggedValue<T>(object sender, out T value)
+    {
+        if (sender is FrameworkElement { Tag: T taggedValue })
+        {
+            value = taggedValue;
+            return true;
+        }
+
+        value = default!;
+        return false;
+    }
+
+    private static System.Windows.Controls.Button CreateRecentActionButton(
+        string content,
+        string tooltip,
+        object tag,
+        string automationName,
+        System.Windows.Thickness? margin = null)
+    {
+        var button = new System.Windows.Controls.Button
+        {
+            Content = content,
+            Width = 32,
+            Height = 28,
+            Padding = new System.Windows.Thickness(4),
+            ToolTip = tooltip,
+            Tag = tag,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Margin = margin ?? new System.Windows.Thickness(0),
+            Opacity = 0.88,
+        };
+
+        button.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, System.Windows.SystemColors.ControlLightBrushKey);
+        button.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, System.Windows.SystemColors.ActiveBorderBrushKey);
+        button.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, System.Windows.SystemColors.ControlTextBrushKey);
+        System.Windows.Automation.AutomationProperties.SetName(button, automationName);
+
+        button.MouseEnter += (_, _) => button.Opacity = 1.0;
+        button.MouseLeave += (_, _) => button.Opacity = 0.88;
+        return button;
     }
 
     private void SimulateUiError_Click(object sender, RoutedEventArgs e)
