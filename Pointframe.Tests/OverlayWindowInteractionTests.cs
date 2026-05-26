@@ -203,6 +203,32 @@ public sealed class OverlayWindowInteractionTests
     }
 
     [Fact]
+    public void HandleOverlayShortcut_CloseShortcut_WorksInSelectingPhase()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var settings = new UserSettings
+            {
+                DefaultAnnotationColor = "#FFFF0000",
+                RecordingOutputPath = @"C:\\recordings",
+                ScreenshotSavePath = @"C:\\shots",
+                OverlayCloseHotkey = 0x41, // A
+                OverlayCloseHotkeyModifiers = HotkeyModifiers.Ctrl,
+            };
+            var context = CreateContext(userSettings: settings);
+            try
+            {
+                var handled = Assert.IsType<bool>(InvokePrivate(context.Window, "HandleOverlayShortcut", Key.A, ModifierKeys.Control));
+                Assert.True(handled);
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        });
+    }
+
+    [Fact]
     public void HandleOverlayShortcut_UsesConfiguredCopyShortcut()
     {
         StaTestHelper.Run(() =>

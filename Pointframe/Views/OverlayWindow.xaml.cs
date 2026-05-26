@@ -545,6 +545,39 @@ public partial class OverlayWindow : Window
 
     private bool HandleOverlayShortcut(Key key, ModifierKeys modifiers)
     {
+        var shortcuts = _userSettings.Current;
+        if (MatchesShortcut(key, modifiers, shortcuts.OverlayCloseHotkey, shortcuts.OverlayCloseHotkeyModifiers))
+        {
+            if (_vm.CurrentPhase == OverlayViewModel.Phase.Annotating)
+            {
+                if (ShortcutsPopup.Visibility == Visibility.Visible)
+                {
+                    ShortcutsPopup.Visibility = Visibility.Collapsed;
+                    return true;
+                }
+
+                if (_vm.IsTextLassoActive)
+                {
+                    _vm.IsTextLassoActive = false;
+                    OcrLassoRect.Visibility = Visibility.Collapsed;
+                    _lassoStart = null;
+                    return true;
+                }
+
+                if (_vm.SelectedTool == AnnotationTool.ColorPicker)
+                {
+                    _vm.RevertToPreviousTool();
+                    SyncToolbarToSelectedTool();
+                    UpdateLoupe(null);
+                    AnnotationCanvas.Cursor = _vm.SelectedTool == AnnotationTool.Text ? Cursors.IBeam : Cursors.Cross;
+                    return true;
+                }
+            }
+
+            Close();
+            return true;
+        }
+
         if (_vm.CurrentPhase != OverlayViewModel.Phase.Annotating)
         {
             return false;
@@ -576,7 +609,6 @@ public partial class OverlayWindow : Window
             }
         }
 
-        var shortcuts = _userSettings.Current;
         if (MatchesShortcut(key, modifiers, shortcuts.OverlayToggleShortcutsHotkey, shortcuts.OverlayToggleShortcutsHotkeyModifiers))
         {
             ToggleShortcutsPopup();
@@ -620,12 +652,6 @@ public partial class OverlayWindow : Window
                 _vm.RedoCommand.Execute(null);
             }
 
-            return true;
-        }
-
-        if (MatchesShortcut(key, modifiers, shortcuts.OverlayCloseHotkey, shortcuts.OverlayCloseHotkeyModifiers))
-        {
-            Close();
             return true;
         }
 

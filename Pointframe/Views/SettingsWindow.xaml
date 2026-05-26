@@ -1063,6 +1063,13 @@
                                 </Border>
                             </StackPanel>
 
+                            <TextBlock Text="{Binding OverlayShortcutConflictMessage}"
+                                       Foreground="#B00020"
+                                       FontSize="11"
+                                       Margin="0,10,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding HasOverlayShortcutConflict, Converter={StaticResource BoolToVis}}"/>
+
                                 <StackPanel x:Name="OverlayShortcutRecordingPanel"
                                     Orientation="Horizontal"
                                     Focusable="True"

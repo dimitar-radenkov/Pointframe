@@ -199,6 +199,10 @@ public partial class SettingsViewModel : ObservableObject
     private string _overlayShortcutCaptureDisplayName = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOverlayShortcutConflict))]
+    private string _overlayShortcutConflictMessage = string.Empty;
+
+    [ObservableProperty]
     private bool _isCapturingWholeScreenRecordHotkey;
 
     [ObservableProperty]
@@ -229,6 +233,7 @@ public partial class SettingsViewModel : ObservableObject
     public string OverlayRedoHotkeyDisplayName => BuildHotkeyDisplayName(OverlayRedoHotkey, OverlayRedoHotkeyModifiers);
     public string OverlayToggleShortcutsHotkeyDisplayName => BuildHotkeyDisplayName(OverlayToggleShortcutsHotkey, OverlayToggleShortcutsHotkeyModifiers);
     public string OverlayCloseHotkeyDisplayName => BuildHotkeyDisplayName(OverlayCloseHotkey, OverlayCloseHotkeyModifiers);
+    public bool HasOverlayShortcutConflict => !string.IsNullOrWhiteSpace(OverlayShortcutConflictMessage);
     public string SelectedSectionDisplayName => SelectedSectionItem.DisplayName;
     public string SelectedSectionDescription => SelectedSectionItem.Description;
     public IReadOnlyList<string> AvailableMicrophoneDevices => _availableMicrophoneDevices;
@@ -392,6 +397,7 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        OverlayShortcutConflictMessage = string.Empty;
         OverlayShortcutCaptureTarget = shortcutKey;
         OverlayShortcutCaptureDisplayName = OverlayShortcutLabel(shortcutKey);
         IsCapturingOverlayShortcut = true;
@@ -403,11 +409,13 @@ public partial class SettingsViewModel : ObservableObject
         IsCapturingOverlayShortcut = false;
         OverlayShortcutCaptureTarget = string.Empty;
         OverlayShortcutCaptureDisplayName = string.Empty;
+        OverlayShortcutConflictMessage = string.Empty;
     }
 
     [RelayCommand]
     private void ResetOverlayShortcut(string shortcutKey)
     {
+        OverlayShortcutConflictMessage = string.Empty;
         var defaults = new UserSettings();
         switch (shortcutKey)
         {
@@ -440,6 +448,13 @@ public partial class SettingsViewModel : ObservableObject
 
     internal void ApplyOverlayShortcutCapture(uint vk, HotkeyModifiers modifiers)
     {
+        if (TryFindOverlayShortcutOwner(vk, modifiers, out var owner) && owner != OverlayShortcutCaptureTarget)
+        {
+            OverlayShortcutConflictMessage = $"{BuildHotkeyDisplayName(vk, modifiers)} is already assigned to {OverlayShortcutLabel(owner)}.";
+            return;
+        }
+
+        OverlayShortcutConflictMessage = string.Empty;
         switch (OverlayShortcutCaptureTarget)
         {
             case "OverlayCopy":
@@ -471,6 +486,48 @@ public partial class SettingsViewModel : ObservableObject
         }
 
         CancelCapturingOverlayShortcut();
+    }
+
+    private bool TryFindOverlayShortcutOwner(uint vk, HotkeyModifiers modifiers, out string owner)
+    {
+        if (OverlayCopyHotkey == vk && OverlayCopyHotkeyModifiers == modifiers)
+        {
+            owner = "OverlayCopy";
+            return true;
+        }
+
+        if (OverlaySaveAsHotkey == vk && OverlaySaveAsHotkeyModifiers == modifiers)
+        {
+            owner = "OverlaySaveAs";
+            return true;
+        }
+
+        if (OverlayUndoHotkey == vk && OverlayUndoHotkeyModifiers == modifiers)
+        {
+            owner = "OverlayUndo";
+            return true;
+        }
+
+        if (OverlayRedoHotkey == vk && OverlayRedoHotkeyModifiers == modifiers)
+        {
+            owner = "OverlayRedo";
+            return true;
+        }
+
+        if (OverlayToggleShortcutsHotkey == vk && OverlayToggleShortcutsHotkeyModifiers == modifiers)
+        {
+            owner = "OverlayToggleShortcuts";
+            return true;
+        }
+
+        if (OverlayCloseHotkey == vk && OverlayCloseHotkeyModifiers == modifiers)
+        {
+            owner = "OverlayClose";
+            return true;
+        }
+
+        owner = string.Empty;
+        return false;
     }
 
     [RelayCommand]
@@ -524,6 +581,7 @@ public partial class SettingsViewModel : ObservableObject
                 IsCapturingOverlayShortcut = false;
                 OverlayShortcutCaptureTarget = string.Empty;
                 OverlayShortcutCaptureDisplayName = string.Empty;
+                OverlayShortcutConflictMessage = string.Empty;
                 break;
         }
     }
@@ -569,6 +627,7 @@ public partial class SettingsViewModel : ObservableObject
         IsCapturingOverlayShortcut = false;
         OverlayShortcutCaptureTarget = string.Empty;
         OverlayShortcutCaptureDisplayName = string.Empty;
+        OverlayShortcutConflictMessage = string.Empty;
         AutoUpdateCheckInterval = defaults.AutoUpdateCheckInterval;
         AppTheme = defaults.Theme;
     }

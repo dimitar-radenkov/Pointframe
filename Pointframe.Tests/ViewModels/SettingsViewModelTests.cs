@@ -1,4 +1,5 @@
 using Moq;
+using System.Reflection;
 using Pointframe.Models;
 using Pointframe.Services;
 using Pointframe.ViewModels;
@@ -77,6 +78,21 @@ public sealed class SettingsViewModelTests
         Assert.True(vm.IsCapturingOverlayShortcut);
         Assert.Equal("OverlayRedo", vm.OverlayShortcutCaptureTarget);
         Assert.Equal("Redo", vm.OverlayShortcutCaptureDisplayName);
+    }
+
+    [Fact]
+    public void ApplyOverlayShortcutCapture_WhenDuplicate_ShowsConflict_AndKeepsCaptureMode()
+    {
+        var vm = CreateVm();
+        vm.StartCapturingOverlayShortcutCommand.Execute("OverlaySaveAs");
+
+        var applyMethod = typeof(SettingsViewModel).GetMethod("ApplyOverlayShortcutCapture", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        Assert.NotNull(applyMethod);
+        applyMethod!.Invoke(vm, [0x43u, HotkeyModifiers.Ctrl]); // duplicates default OverlayCopy (Ctrl+C)
+
+        Assert.True(vm.IsCapturingOverlayShortcut);
+        Assert.True(vm.HasOverlayShortcutConflict);
+        Assert.Contains("already assigned", vm.OverlayShortcutConflictMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
