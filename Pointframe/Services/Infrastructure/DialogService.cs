@@ -30,7 +30,7 @@ public sealed class DialogService : IDialogService
         using var dialog = new Forms.SaveFileDialog
         {
             Title = "Save screenshot",
-            Filter = "PNG image (*.png)|*.png|JPEG image (*.jpg)|*.jpg|Bitmap image (*.bmp)|*.bmp",
+            Filter = "PNG image (*.png)|*.png",
             DefaultExt = "png",
             AddExtension = true,
             InitialDirectory = initialDirectory,

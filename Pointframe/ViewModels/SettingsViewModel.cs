@@ -368,7 +368,15 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void StartRecordingHotkey() => IsRecordingHotkey = true;
+    private void StartRecordingHotkey()
+    {
+        IsCapturingWholeScreenRecordHotkey = false;
+        IsCapturingOverlayShortcut = false;
+        OverlayShortcutCaptureTarget = string.Empty;
+        OverlayShortcutCaptureDisplayName = string.Empty;
+        OverlayShortcutConflictMessage = string.Empty;
+        IsRecordingHotkey = true;
+    }
 
     [RelayCommand]
     private void ResetHotkey()
@@ -379,7 +387,15 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void StartCapturingWholeScreenRecordHotkey() => IsCapturingWholeScreenRecordHotkey = true;
+    private void StartCapturingWholeScreenRecordHotkey()
+    {
+        IsRecordingHotkey = false;
+        IsCapturingOverlayShortcut = false;
+        OverlayShortcutCaptureTarget = string.Empty;
+        OverlayShortcutCaptureDisplayName = string.Empty;
+        OverlayShortcutConflictMessage = string.Empty;
+        IsCapturingWholeScreenRecordHotkey = true;
+    }
 
     [RelayCommand]
     private void ResetRecordHotkey()
@@ -397,6 +413,8 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        IsRecordingHotkey = false;
+        IsCapturingWholeScreenRecordHotkey = false;
         OverlayShortcutConflictMessage = string.Empty;
         OverlayShortcutCaptureTarget = shortcutKey;
         OverlayShortcutCaptureDisplayName = OverlayShortcutLabel(shortcutKey);

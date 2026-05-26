@@ -957,44 +957,56 @@
                                 <TextBlock Grid.Row="3" Grid.Column="0" Text="Copy snip" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
                                 <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding OverlayCopyHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
                                 <Button Grid.Row="3" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayCopy"/>
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayCopy"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlayCopy.Change"/>
                                 <Button Grid.Row="3" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayCopy"/>
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayCopy"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlayCopy.Reset"/>
 
                                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Save As" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
                                 <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding OverlaySaveAsHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
                                 <Button Grid.Row="4" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlaySaveAs"/>
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlaySaveAs"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlaySaveAs.Change"/>
                                 <Button Grid.Row="4" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlaySaveAs"/>
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlaySaveAs"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlaySaveAs.Reset"/>
 
                                 <TextBlock Grid.Row="5" Grid.Column="0" Text="Undo" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
                                 <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding OverlayUndoHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
                                 <Button Grid.Row="5" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayUndo"/>
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayUndo"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlayUndo.Change"/>
                                 <Button Grid.Row="5" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayUndo"/>
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayUndo"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlayUndo.Reset"/>
 
                                 <TextBlock Grid.Row="6" Grid.Column="0" Text="Redo" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
                                 <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding OverlayRedoHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
                                 <Button Grid.Row="6" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayRedo"/>
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayRedo"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlayRedo.Change"/>
                                 <Button Grid.Row="6" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayRedo"/>
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayRedo"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlayRedo.Reset"/>
 
                                 <TextBlock Grid.Row="7" Grid.Column="0" Text="Show/hide overlay shortcuts" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
                                 <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding OverlayToggleShortcutsHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
                                 <Button Grid.Row="7" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayToggleShortcuts"/>
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayToggleShortcuts"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlayToggleShortcuts.Change"/>
                                 <Button Grid.Row="7" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayToggleShortcuts"/>
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayToggleShortcuts"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlayToggleShortcuts.Reset"/>
 
                                 <TextBlock Grid.Row="8" Grid.Column="0" Text="Close overlay" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
                                 <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding OverlayCloseHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
                                 <Button Grid.Row="8" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayClose"/>
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayClose"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlayClose.Change"/>
                                 <Button Grid.Row="8" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
-                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayClose"/>
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayClose"
+                                        AutomationProperties.AutomationId="SettingsWindow.Shortcut.OverlayClose.Reset"/>
                             </Grid>
 
                             <StackPanel x:Name="ShortcutsRegionHotkeyRecordingPanel"

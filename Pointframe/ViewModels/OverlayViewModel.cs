@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -55,6 +56,26 @@ public partial class OverlayViewModel : AnnotationViewModel
 
     [ObservableProperty]
     private bool _isTextLassoActive;
+
+    public string OverlayCopyHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlayCopyHotkey, _settings.Current.OverlayCopyHotkeyModifiers);
+    public string OverlaySaveAsHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlaySaveAsHotkey, _settings.Current.OverlaySaveAsHotkeyModifiers);
+    public string OverlayUndoHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlayUndoHotkey, _settings.Current.OverlayUndoHotkeyModifiers);
+    public string OverlayRedoHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlayRedoHotkey, _settings.Current.OverlayRedoHotkeyModifiers);
+    public string OverlayToggleShortcutsHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlayToggleShortcutsHotkey, _settings.Current.OverlayToggleShortcutsHotkeyModifiers);
+    public string OverlayCloseHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlayCloseHotkey, _settings.Current.OverlayCloseHotkeyModifiers);
+
+    public string CopyToolTip => $"Copy to clipboard ({OverlayCopyHotkeyDisplayName})";
+    public string SaveAsToolTip => $"Save As ({OverlaySaveAsHotkeyDisplayName})";
+    public string UndoToolTip => $"Undo ({OverlayUndoHotkeyDisplayName})";
+    public string RedoToolTip => $"Redo ({OverlayRedoHotkeyDisplayName})";
+    public string CloseToolTip => $"Close ({OverlayCloseHotkeyDisplayName})";
+
+    public string PopupToggleShortcutsText => $"{OverlayToggleShortcutsHotkeyDisplayName}: Toggle shortcuts";
+    public string PopupCopyText => $"{OverlayCopyHotkeyDisplayName}: Copy";
+    public string PopupSaveAsText => $"{OverlaySaveAsHotkeyDisplayName}: Save As";
+    public string PopupUndoText => $"{OverlayUndoHotkeyDisplayName}: Undo";
+    public string PopupRedoText => $"{OverlayRedoHotkeyDisplayName}: Redo";
+    public string PopupCloseText => $"{OverlayCloseHotkeyDisplayName}: Close";
 
     public void InitializeAnnotatingSession(Rect selection, double pixelScaleX, double pixelScaleY)
     {
@@ -172,6 +193,33 @@ public partial class OverlayViewModel : AnnotationViewModel
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         encoder.Save(outputStream);
         _ = _eventAggregator.Publish(new CaptureCompletedMessage(savePath));
+    }
+
+    private static string BuildHotkeyDisplayName(uint vk, HotkeyModifiers modifiers)
+    {
+        if (vk == 0)
+        {
+            return "Not set";
+        }
+
+        var parts = new List<string>();
+        if (modifiers.HasFlag(HotkeyModifiers.Ctrl))
+        {
+            parts.Add("Ctrl");
+        }
+
+        if (modifiers.HasFlag(HotkeyModifiers.Shift))
+        {
+            parts.Add("Shift");
+        }
+
+        if (modifiers.HasFlag(HotkeyModifiers.Alt))
+        {
+            parts.Add("Alt");
+        }
+
+        parts.Add(vk == 0x2C ? "Print Screen" : KeyInterop.KeyFromVirtualKey((int)vk).ToString());
+        return string.Join("+", parts);
     }
 
     [RelayCommand]
