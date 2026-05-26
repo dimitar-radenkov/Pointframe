@@ -539,6 +539,7 @@ public partial class OverlayWindow : Window
     {
         if (HandleOverlayShortcut(e.Key, e.KeyboardDevice.Modifiers))
         {
+            e.Handled = true;
             return;
         }
     }

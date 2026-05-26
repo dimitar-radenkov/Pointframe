@@ -139,6 +139,7 @@ public sealed class OverlayWindowInteractionTests
                 Assert.False(context.ViewModel.IsTextLassoActive);
                 Assert.Equal(Visibility.Collapsed, lassoRect.Visibility);
                 Assert.Null(GetPrivateField<Point?>(context.Window, "_lassoStart"));
+                Assert.True(args.Handled);
             }
             finally
             {

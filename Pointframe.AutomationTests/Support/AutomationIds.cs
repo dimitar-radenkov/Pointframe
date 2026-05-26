@@ -12,6 +12,7 @@ internal static class AutomationIds
     public const string SettingsWindowSectionCapture = "SettingsWindow.Section.Capture";
     public const string SettingsWindowSectionRecording = "SettingsWindow.Section.Recording";
     public const string SettingsWindowSectionAnnotation = "SettingsWindow.Section.Annotation";
+    public const string SettingsWindowSectionShortcuts = "SettingsWindow.Section.Shortcuts";
     public const string SettingsWindowSectionApp = "SettingsWindow.Section.App";
     public const string SettingsWindowCaptureContent = "SettingsWindow.CaptureContent";
     public const string SettingsWindowRecordingContent = "SettingsWindow.RecordingContent";
@@ -27,11 +28,14 @@ internal static class AutomationIds
     public const string OverlayWindowRecord = "OverlayWindow.Record";
     public const string OverlayWindowCompactRecord = "OverlayWindow.CompactRecord";
     public const string OverlayWindowCopy = "OverlayWindow.Copy";
+    public const string OverlayWindowSaveAs = "OverlayWindow.SaveAs";
     public const string OverlayWindowCompactCopy = "OverlayWindow.CompactCopy";
+    public const string OverlayWindowCompactSaveAs = "OverlayWindow.CompactSaveAs";
     public const string OverlayWindowPin = "OverlayWindow.Pin";
     public const string OverlayWindowCompactPin = "OverlayWindow.CompactPin";
     public const string OverlayWindowClose = "OverlayWindow.Close";
     public const string OverlayWindowCompactClose = "OverlayWindow.CompactClose";
+    public const string OverlayWindowShortcutsPopup = "OverlayWindow.ShortcutsPopup";
     public const string OverlayWindowToolArrow = "OverlayWindow.Tool.Arrow";
     public const string OverlayWindowToolLine = "OverlayWindow.Tool.Line";
     public const string OverlayWindowToolRectangle = "OverlayWindow.Tool.Rectangle";
