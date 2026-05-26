@@ -197,6 +197,164 @@ public partial class SettingsWindow : Window
         RecordHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
     }
 
+    private void ShortcutsRegionHotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        UpdateShortcutsRegionHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+    }
+
+    private void ShortcutsRegionHotkeyCapture_PreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        UpdateShortcutsRegionHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+    }
+
+    private void ShortcutsRegionHotkeyRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if ((bool)e.NewValue)
+        {
+            ShortcutsCaptureHotkeyCurrentInput.Text = "—";
+            _hotkeyService.BeginKeyCaptureMode(OnCaptureHotkeyKeyPressed);
+            Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Input,
+                () => Keyboard.Focus(ShortcutsRegionHotkeyRecordingPanel));
+        }
+        else
+        {
+            _hotkeyService.EndKeyCaptureMode();
+        }
+    }
+
+    private void UpdateShortcutsRegionHotkeyCurrentInput(ModifierKeys modifiers)
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        if ((modifiers & ModifierKeys.Control) != 0)
+        {
+            parts.Add("Ctrl");
+        }
+
+        if ((modifiers & ModifierKeys.Shift) != 0)
+        {
+            parts.Add("Shift");
+        }
+
+        if ((modifiers & ModifierKeys.Alt) != 0)
+        {
+            parts.Add("Alt");
+        }
+
+        ShortcutsCaptureHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
+    }
+
+    private void ShortcutsRecordHotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        UpdateShortcutsRecordHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+    }
+
+    private void ShortcutsRecordHotkeyCapture_PreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        UpdateShortcutsRecordHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+    }
+
+    private void ShortcutsRecordHotkeyRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if ((bool)e.NewValue)
+        {
+            ShortcutsRecordHotkeyCurrentInput.Text = "—";
+            _hotkeyService.BeginKeyCaptureMode(OnRecordHotkeyKeyPressed);
+            Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Input,
+                () => Keyboard.Focus(ShortcutsRecordHotkeyRecordingPanel));
+        }
+        else
+        {
+            _hotkeyService.EndKeyCaptureMode();
+        }
+    }
+
+    private void UpdateShortcutsRecordHotkeyCurrentInput(ModifierKeys modifiers)
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        if ((modifiers & ModifierKeys.Control) != 0)
+        {
+            parts.Add("Ctrl");
+        }
+
+        if ((modifiers & ModifierKeys.Shift) != 0)
+        {
+            parts.Add("Shift");
+        }
+
+        if ((modifiers & ModifierKeys.Alt) != 0)
+        {
+            parts.Add("Alt");
+        }
+
+        ShortcutsRecordHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
+    }
+
+    private void OverlayShortcutCapture_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        UpdateOverlayShortcutCurrentInput(e.KeyboardDevice.Modifiers);
+    }
+
+    private void OverlayShortcutCapture_PreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        UpdateOverlayShortcutCurrentInput(e.KeyboardDevice.Modifiers);
+    }
+
+    private void OverlayShortcutRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if ((bool)e.NewValue)
+        {
+            OverlayShortcutCurrentInput.Text = "—";
+            _hotkeyService.BeginKeyCaptureMode(OnOverlayShortcutKeyPressed);
+            Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Input,
+                () => Keyboard.Focus(OverlayShortcutRecordingPanel));
+        }
+        else
+        {
+            _hotkeyService.EndKeyCaptureMode();
+        }
+    }
+
+    private void OnOverlayShortcutKeyPressed(uint vk, HotkeyModifiers modifiers)
+    {
+        if (vk == NativeMethods.VK_ESCAPE)
+        {
+            _vm.CancelCapturingOverlayShortcutCommand.Execute(null);
+            return;
+        }
+
+        _vm.ApplyOverlayShortcutCapture(vk, modifiers);
+    }
+
+    private void UpdateOverlayShortcutCurrentInput(ModifierKeys modifiers)
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        if ((modifiers & ModifierKeys.Control) != 0)
+        {
+            parts.Add("Ctrl");
+        }
+
+        if ((modifiers & ModifierKeys.Shift) != 0)
+        {
+            parts.Add("Shift");
+        }
+
+        if ((modifiers & ModifierKeys.Alt) != 0)
+        {
+            parts.Add("Alt");
+        }
+
+        OverlayShortcutCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
+    }
+
     private void SectionNavigation_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         ContentScrollViewer?.ScrollToHome();

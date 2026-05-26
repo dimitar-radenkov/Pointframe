@@ -25,6 +25,25 @@ public sealed class DialogService : IDialogService
             : null;
     }
 
+    public string? PickSaveImageFile(string initialDirectory, string suggestedFileName)
+    {
+        using var dialog = new Forms.SaveFileDialog
+        {
+            Title = "Save screenshot",
+            Filter = "PNG image (*.png)|*.png|JPEG image (*.jpg)|*.jpg|Bitmap image (*.bmp)|*.bmp",
+            DefaultExt = "png",
+            AddExtension = true,
+            InitialDirectory = initialDirectory,
+            FileName = suggestedFileName,
+            OverwritePrompt = true,
+            CheckPathExists = true,
+        };
+
+        using var owner = CreateDialogOwner();
+        var result = dialog.ShowDialog(owner);
+        return result == Forms.DialogResult.OK ? dialog.FileName : null;
+    }
+
     public string? PickFolder(string initialPath, string description)
     {
         using var dialog = new Forms.FolderBrowserDialog

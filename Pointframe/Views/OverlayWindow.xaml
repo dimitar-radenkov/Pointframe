@@ -584,6 +584,17 @@
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding SaveAsCommand}" ToolTip="Save As (Ctrl+Shift+S)"
+                AutomationProperties.AutomationId="OverlayWindow.SaveAs">
+          <StackPanel>
+            <TextBlock Text="&#xE792;" Style="{StaticResource FluentActionIconText}"/>
+            <TextBlock Text="Save As" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
                 Command="{Binding CopyTextCommand}" ToolTip="Copy text from screenshot (OCR)">
           <StackPanel>
             <Border Width="15" Height="15" BorderBrush="{DynamicResource PrimaryText}" BorderThickness="1.2" CornerRadius="1.5" HorizontalAlignment="Center">
@@ -685,6 +696,14 @@
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
+          Command="{Binding SaveAsCommand}" ToolTip="Save As (Ctrl+Shift+S)"
+          AutomationProperties.AutomationId="OverlayWindow.CompactSaveAs">
+          <TextBlock Text="&#xE792;" Style="{StaticResource FluentActionIconText}"/>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
                 Command="{Binding CopyTextCommand}" ToolTip="Copy text from screenshot (OCR)">
           <Border Width="15" Height="15" BorderBrush="{DynamicResource PrimaryText}" BorderThickness="1.2" CornerRadius="1.5" HorizontalAlignment="Center">
             <Grid>
@@ -739,6 +758,30 @@
       <TextBlock x:Name="OcrToastText"
                  Foreground="White" FontSize="12"
                  FontFamily="Segoe UI" FontWeight="SemiBold"/>
+    </Border>
+
+    <Border x:Name="ShortcutsPopup"
+            Background="{DynamicResource ToolbarBackground}"
+            BorderBrush="{DynamicResource ToolbarBorder}"
+            BorderThickness="1"
+            CornerRadius="8"
+            MinWidth="220"
+            Padding="12"
+            Visibility="Collapsed"
+            Panel.ZIndex="120"
+          Canvas.Top="24"
+            AutomationProperties.AutomationId="OverlayWindow.ShortcutsPopup">
+      <Border.Effect>
+        <DropShadowEffect Color="#444444" BlurRadius="10" ShadowDepth="0" Opacity="0.4"/>
+      </Border.Effect>
+      <StackPanel>
+        <TextBlock Text="Shortcuts" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}"/>
+        <TextBlock Text="F1: Toggle shortcuts" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,0"/>
+        <TextBlock Text="Ctrl+C: Copy" FontSize="11" Foreground="{DynamicResource SecondaryText}"/>
+        <TextBlock Text="Ctrl+Shift+S: Save As" FontSize="11" Foreground="{DynamicResource SecondaryText}"/>
+        <TextBlock Text="Ctrl+Z / Ctrl+Y: Undo / Redo" FontSize="11" Foreground="{DynamicResource SecondaryText}"/>
+        <TextBlock Text="Esc: Close" FontSize="11" Foreground="{DynamicResource SecondaryText}"/>
+      </StackPanel>
     </Border>
 
     <!-- Color picker loupe -->

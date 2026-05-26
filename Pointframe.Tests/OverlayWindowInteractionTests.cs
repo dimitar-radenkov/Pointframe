@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -128,6 +129,7 @@ public sealed class OverlayWindowInteractionTests
             {
                 var lassoRect = Assert.IsType<Rectangle>(context.Window.FindName("OcrLassoRect"));
                 lassoRect.Visibility = Visibility.Visible;
+                context.ViewModel.InitializeAnnotatingSession(new Rect(0d, 0d, 100d, 80d), 1d, 1d);
                 context.ViewModel.IsTextLassoActive = true;
                 SetPrivateField(context.Window, "_lassoStart", new Point(12d, 14d));
 
@@ -137,6 +139,94 @@ public sealed class OverlayWindowInteractionTests
                 Assert.False(context.ViewModel.IsTextLassoActive);
                 Assert.Equal(Visibility.Collapsed, lassoRect.Visibility);
                 Assert.Null(GetPrivateField<Point?>(context.Window, "_lassoStart"));
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        });
+    }
+
+    [Fact]
+    public void HandleOverlayShortcut_F1_TogglesShortcutsPopupVisibility()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var context = CreateContext();
+            try
+            {
+                context.ViewModel.InitializeAnnotatingSession(new Rect(10d, 10d, 100d, 80d), 1d, 1d);
+                var popup = Assert.IsType<Border>(context.Window.FindName("ShortcutsPopup"));
+                Assert.Equal(Visibility.Collapsed, popup.Visibility);
+
+                var opened = Assert.IsType<bool>(InvokePrivate(context.Window, "HandleOverlayShortcut", Key.F1, ModifierKeys.None));
+                Assert.True(opened);
+                Assert.Equal(Visibility.Visible, popup.Visibility);
+
+                var closed = Assert.IsType<bool>(InvokePrivate(context.Window, "HandleOverlayShortcut", Key.F1, ModifierKeys.None));
+                Assert.True(closed);
+                Assert.Equal(Visibility.Collapsed, popup.Visibility);
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        });
+    }
+
+    [Fact]
+    public void HandleOverlayShortcut_CtrlShiftS_ExecutesSaveAsCommand()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var context = CreateContext();
+            try
+            {
+                context.ViewModel.InitializeAnnotatingSession(new Rect(0d, 0d, 120d, 90d), 1d, 1d);
+                var captureMock = new Mock<IOverlayBitmapCapture>();
+                captureMock.Setup(c => c.ComposeBitmap()).Returns(CreateBitmap());
+                context.ViewModel.SetBitmapCapture(captureMock.Object);
+                context.DialogMock.Setup(d => d.PickSaveImageFile(It.IsAny<string>(), It.IsAny<string>())).Returns(@"D:\exports\saved-as.png");
+                context.FileSystemMock.Setup(f => f.OpenWrite(@"D:\exports\saved-as.png")).Returns(new MemoryStream());
+
+                var handled = Assert.IsType<bool>(InvokePrivate(context.Window, "HandleOverlayShortcut", Key.S, ModifierKeys.Control | ModifierKeys.Shift));
+
+                Assert.True(handled);
+                context.DialogMock.Verify(d => d.PickSaveImageFile(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+                context.FileSystemMock.Verify(f => f.OpenWrite(@"D:\exports\saved-as.png"), Times.Once);
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        });
+    }
+
+    [Fact]
+    public void HandleOverlayShortcut_UsesConfiguredCopyShortcut()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var settings = new UserSettings
+            {
+                DefaultAnnotationColor = "#FFFF0000",
+                RecordingOutputPath = @"C:\\recordings",
+                ScreenshotSavePath = @"C:\\shots",
+                OverlayCopyHotkey = 0x58, // X
+                OverlayCopyHotkeyModifiers = HotkeyModifiers.Alt,
+            };
+            var context = CreateContext(userSettings: settings);
+            try
+            {
+                context.ViewModel.InitializeAnnotatingSession(new Rect(0d, 0d, 120d, 90d), 1d, 1d);
+                var captureMock = new Mock<IOverlayBitmapCapture>();
+                captureMock.Setup(c => c.ComposeBitmap()).Returns(CreateBitmap());
+                context.ViewModel.SetBitmapCapture(captureMock.Object);
+
+                var handled = Assert.IsType<bool>(InvokePrivate(context.Window, "HandleOverlayShortcut", Key.X, ModifierKeys.Alt));
+
+                Assert.True(handled);
+                captureMock.Verify(c => c.ComposeBitmap(), Times.Once);
             }
             finally
             {
@@ -230,18 +320,18 @@ public sealed class OverlayWindowInteractionTests
         });
     }
 
-    private static TestContext CreateContext(bool isRecorderRecording = false)
+    private static TestContext CreateContext(bool isRecorderRecording = false, UserSettings? userSettings = null)
     {
         var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
 
-        var userSettings = new UserSettings
+        var effectiveUserSettings = userSettings ?? new UserSettings
         {
             DefaultAnnotationColor = "#FFFF0000",
             RecordingOutputPath = @"C:\\recordings",
             ScreenshotSavePath = @"C:\\shots",
         };
         var userSettingsMock = new Mock<IUserSettingsService>();
-        userSettingsMock.SetupGet(service => service.Current).Returns(userSettings);
+        userSettingsMock.SetupGet(service => service.Current).Returns(effectiveUserSettings);
 
         var clipboardMock = new Mock<IClipboardService>();
         var fileSystemMock = new Mock<IFileSystemService>();
@@ -306,6 +396,8 @@ public sealed class OverlayWindowInteractionTests
             viewModel,
             recorderMock,
             ocrServiceMock,
+            dialogMock,
+            fileSystemMock,
             eventAggregator);
     }
 
@@ -365,6 +457,8 @@ public sealed class OverlayWindowInteractionTests
         OverlayViewModel ViewModel,
         Mock<IScreenRecordingService> RecorderMock,
         Mock<IOcrService> OcrServiceMock,
+        Mock<IDialogService> DialogMock,
+        Mock<IFileSystemService> FileSystemMock,
         DefaultEventAggregator EventAggregator)
     {
         public void Dispose()

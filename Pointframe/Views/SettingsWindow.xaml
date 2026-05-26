@@ -199,6 +199,9 @@
                                 <DataTrigger Binding="{Binding Section}" Value="{x:Static models:SettingsSection.Annotation}">
                                     <Setter Property="AutomationProperties.AutomationId" Value="SettingsWindow.Section.Annotation"/>
                                 </DataTrigger>
+                                <DataTrigger Binding="{Binding Section}" Value="{x:Static models:SettingsSection.Shortcuts}">
+                                    <Setter Property="AutomationProperties.AutomationId" Value="SettingsWindow.Section.Shortcuts"/>
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding Section}" Value="{x:Static models:SettingsSection.App}">
                                     <Setter Property="AutomationProperties.AutomationId" Value="SettingsWindow.Section.App"/>
                                 </DataTrigger>
@@ -418,6 +421,7 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
                 </StackPanel>
 
                 <StackPanel Visibility="{Binding IsRecordingSectionSelected, Converter={StaticResource BoolToVis}}"
@@ -867,6 +871,240 @@
                                                Margin="0,10,0,0"/>
                                 </StackPanel>
                             </Border>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding IsShortcutsSectionSelected, Converter={StaticResource BoolToVis}}"
+                            AutomationProperties.AutomationId="SettingsWindow.ShortcutsContent">
+                    <Border Style="{StaticResource GroupCard}"
+                            AutomationProperties.AutomationId="SettingsWindow.ShortcutsReference">
+                        <StackPanel>
+                            <TextBlock Text="Shortcuts" Style="{StaticResource GroupTitle}"/>
+                            <TextBlock Text="All currently used keyboard shortcuts in one place."
+                                       Style="{StaticResource GroupDescription}"/>
+
+                            <Grid Margin="0,18,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Start region snip" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,0,10,0"/>
+                                <TextBlock Grid.Row="0"
+                                           Grid.Column="1"
+                                           Text="{Binding RegionCaptureHotkeyDisplayName}"
+                                       Style="{StaticResource RowDescription}"
+                                           AutomationProperties.AutomationId="SettingsWindow.Shortcut.RegionSnip"/>
+                                <Button Grid.Row="0"
+                                    Grid.Column="2"
+                                    Content="Change"
+                                    Style="{StaticResource BrowseBtn}"
+                                    Margin="8,0,0,0"
+                                    Command="{Binding StartRecordingHotkeyCommand}"
+                                    AutomationProperties.AutomationId="SettingsWindow.Shortcut.RegionSnip.Change"/>
+                                <Button Grid.Row="0"
+                                    Grid.Column="3"
+                                    Content="Reset"
+                                    Style="{StaticResource BrowseBtn}"
+                                    Margin="8,0,0,0"
+                                    Command="{Binding ResetHotkeyCommand}"
+                                    AutomationProperties.AutomationId="SettingsWindow.Shortcut.RegionSnip.Reset"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Start whole-screen recording" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
+                                <TextBlock Grid.Row="1"
+                                           Grid.Column="1"
+                                           Text="{Binding WholeScreenRecordHotkeyDisplayName}"
+                                           Style="{StaticResource RowDescription}"
+                                           Margin="0,10,0,0"
+                                           AutomationProperties.AutomationId="SettingsWindow.Shortcut.WholeScreenRecord"/>
+                                <Button Grid.Row="1"
+                                    Grid.Column="2"
+                                    Content="Change"
+                                    Style="{StaticResource BrowseBtn}"
+                                    Margin="8,10,0,0"
+                                    Command="{Binding StartCapturingWholeScreenRecordHotkeyCommand}"
+                                    AutomationProperties.AutomationId="SettingsWindow.Shortcut.WholeScreenRecord.Change"/>
+                                <Button Grid.Row="1"
+                                    Grid.Column="3"
+                                    Content="Reset"
+                                    Style="{StaticResource BrowseBtn}"
+                                    Margin="8,10,0,0"
+                                    Command="{Binding ResetRecordHotkeyCommand}"
+                                    AutomationProperties.AutomationId="SettingsWindow.Shortcut.WholeScreenRecord.Reset"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Whole-screen snip (legacy)" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
+                                <TextBlock Grid.Row="2"
+                                           Grid.Column="1"
+                                           Text="Shift+Print Screen (when region shortcut is Print Screen)"
+                                           Style="{StaticResource RowDescription}"
+                                       Margin="0,10,0,0"
+                                       Grid.ColumnSpan="3"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Copy snip" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding OverlayCopyHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
+                                <Button Grid.Row="3" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayCopy"/>
+                                <Button Grid.Row="3" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayCopy"/>
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Save As" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding OverlaySaveAsHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
+                                <Button Grid.Row="4" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlaySaveAs"/>
+                                <Button Grid.Row="4" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlaySaveAs"/>
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Undo" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
+                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding OverlayUndoHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
+                                <Button Grid.Row="5" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayUndo"/>
+                                <Button Grid.Row="5" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayUndo"/>
+
+                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Redo" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
+                                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding OverlayRedoHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
+                                <Button Grid.Row="6" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayRedo"/>
+                                <Button Grid.Row="6" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayRedo"/>
+
+                                <TextBlock Grid.Row="7" Grid.Column="0" Text="Show/hide overlay shortcuts" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
+                                <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding OverlayToggleShortcutsHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
+                                <Button Grid.Row="7" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayToggleShortcuts"/>
+                                <Button Grid.Row="7" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayToggleShortcuts"/>
+
+                                <TextBlock Grid.Row="8" Grid.Column="0" Text="Close overlay" Style="{StaticResource RowTitle}" TextWrapping="Wrap" Margin="0,10,10,0"/>
+                                <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding OverlayCloseHotkeyDisplayName}" Style="{StaticResource RowDescription}" Margin="0,10,0,0"/>
+                                <Button Grid.Row="8" Grid.Column="2" Content="Change" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding StartCapturingOverlayShortcutCommand}" CommandParameter="OverlayClose"/>
+                                <Button Grid.Row="8" Grid.Column="3" Content="Reset" Style="{StaticResource BrowseBtn}" Margin="8,10,0,0"
+                                    Command="{Binding ResetOverlayShortcutCommand}" CommandParameter="OverlayClose"/>
+                            </Grid>
+
+                            <StackPanel x:Name="ShortcutsRegionHotkeyRecordingPanel"
+                                        Orientation="Horizontal"
+                                        Focusable="True"
+                                        Margin="0,16,0,0"
+                                        Visibility="{Binding IsRecordingHotkey, Converter={StaticResource BoolToVis}}"
+                                        PreviewKeyDown="ShortcutsRegionHotkeyCapture_PreviewKeyDown"
+                                        PreviewKeyUp="ShortcutsRegionHotkeyCapture_PreviewKeyUp"
+                                        IsVisibleChanged="ShortcutsRegionHotkeyRecordingPanel_IsVisibleChanged">
+                                <Border BorderBrush="{DynamicResource HotkeyRecordingBorder}"
+                                        BorderThickness="2"
+                                        CornerRadius="6"
+                                        Padding="12,10"
+                                        Background="{DynamicResource HotkeyRecordingBackground}">
+                                    <StackPanel>
+                                        <TextBlock Text="Press shortcut for Start region snip"
+                                                   Foreground="{DynamicResource HotkeyRecordingText}"
+                                                   FontSize="11"
+                                                   Opacity="0.75"/>
+                                        <TextBlock x:Name="ShortcutsCaptureHotkeyCurrentInput"
+                                                   Text="—"
+                                                   Foreground="{DynamicResource HotkeyRecordingText}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="16"
+                                                   FontWeight="Bold"
+                                                   Margin="0,5,0,5"/>
+                                        <TextBlock Text="Esc to cancel"
+                                                   Foreground="{DynamicResource HotkeyRecordingText}"
+                                                   FontSize="10"
+                                                   Opacity="0.6"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel x:Name="ShortcutsRecordHotkeyRecordingPanel"
+                                        Orientation="Horizontal"
+                                        Focusable="True"
+                                        Margin="0,16,0,0"
+                                        Visibility="{Binding IsCapturingWholeScreenRecordHotkey, Converter={StaticResource BoolToVis}}"
+                                        PreviewKeyDown="ShortcutsRecordHotkeyCapture_PreviewKeyDown"
+                                        PreviewKeyUp="ShortcutsRecordHotkeyCapture_PreviewKeyUp"
+                                        IsVisibleChanged="ShortcutsRecordHotkeyRecordingPanel_IsVisibleChanged">
+                                <Border BorderBrush="{DynamicResource HotkeyRecordingBorder}"
+                                        BorderThickness="2"
+                                        CornerRadius="6"
+                                        Padding="12,10"
+                                        Background="{DynamicResource HotkeyRecordingBackground}">
+                                    <StackPanel>
+                                        <TextBlock Text="Press shortcut for Start whole-screen recording"
+                                                   Foreground="{DynamicResource HotkeyRecordingText}"
+                                                   FontSize="11"
+                                                   Opacity="0.75"/>
+                                        <TextBlock x:Name="ShortcutsRecordHotkeyCurrentInput"
+                                                   Text="—"
+                                                   Foreground="{DynamicResource HotkeyRecordingText}"
+                                                   FontFamily="Consolas"
+                                                   FontSize="16"
+                                                   FontWeight="Bold"
+                                                   Margin="0,5,0,5"/>
+                                        <TextBlock Text="Esc to cancel"
+                                                   Foreground="{DynamicResource HotkeyRecordingText}"
+                                                   FontSize="10"
+                                                   Opacity="0.6"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                                <StackPanel x:Name="OverlayShortcutRecordingPanel"
+                                    Orientation="Horizontal"
+                                    Focusable="True"
+                                    Margin="0,16,0,0"
+                                    Visibility="{Binding IsCapturingOverlayShortcut, Converter={StaticResource BoolToVis}}"
+                                    PreviewKeyDown="OverlayShortcutCapture_PreviewKeyDown"
+                                    PreviewKeyUp="OverlayShortcutCapture_PreviewKeyUp"
+                                    IsVisibleChanged="OverlayShortcutRecordingPanel_IsVisibleChanged">
+                                <Border BorderBrush="{DynamicResource HotkeyRecordingBorder}"
+                                    BorderThickness="2"
+                                    CornerRadius="6"
+                                    Padding="12,10"
+                                    Background="{DynamicResource HotkeyRecordingBackground}">
+                                    <StackPanel>
+                                    <TextBlock Text="Press shortcut for"
+                                           Foreground="{DynamicResource HotkeyRecordingText}"
+                                           FontSize="11"
+                                           Opacity="0.75"/>
+                                    <TextBlock Text="{Binding OverlayShortcutCaptureDisplayName}"
+                                           Foreground="{DynamicResource HotkeyRecordingText}"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Margin="0,4,0,2"/>
+                                    <TextBlock x:Name="OverlayShortcutCurrentInput"
+                                           Text="—"
+                                           Foreground="{DynamicResource HotkeyRecordingText}"
+                                           FontFamily="Consolas"
+                                           FontSize="16"
+                                           FontWeight="Bold"
+                                           Margin="0,5,0,5"/>
+                                    <TextBlock Text="Esc to cancel"
+                                           Foreground="{DynamicResource HotkeyRecordingText}"
+                                           FontSize="10"
+                                           Opacity="0.6"/>
+                                    </StackPanel>
+                                </Border>
+                                <Button Content="Cancel"
+                                    Style="{StaticResource BrowseBtn}"
+                                    Command="{Binding CancelCapturingOverlayShortcutCommand}"
+                                    Margin="10,0,0,0"
+                                    VerticalAlignment="Center"/>
+                                </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

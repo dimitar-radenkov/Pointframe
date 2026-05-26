@@ -284,6 +284,47 @@ public sealed class SettingsWindowTests
     }
 
     [Fact]
+    public void SettingsWindow_ContainsShortcutsReference()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var window = CreateWindow();
+            window.Show();
+            window.UpdateLayout();
+
+            var navigation = FindByAutomationId<ListBox>(window, "SettingsWindow.SectionNavigation");
+            Assert.NotNull(navigation);
+            navigation!.SelectedValue = SettingsSection.Shortcuts;
+            window.UpdateLayout();
+
+            var shortcutsContent = FindByAutomationId<StackPanel>(window, "SettingsWindow.ShortcutsContent");
+            Assert.NotNull(shortcutsContent);
+            Assert.Equal(Visibility.Visible, shortcutsContent!.Visibility);
+
+            Assert.NotNull(FindByAutomationId<Border>(window, "SettingsWindow.ShortcutsReference"));
+            Assert.NotNull(FindByAutomationId<TextBlock>(window, "SettingsWindow.Shortcut.RegionSnip"));
+            Assert.NotNull(FindByAutomationId<TextBlock>(window, "SettingsWindow.Shortcut.WholeScreenRecord"));
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void SectionNavigation_ContainsShortcutsSection()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var window = CreateWindow();
+            window.Show();
+            window.UpdateLayout();
+
+            Assert.NotNull(FindByAutomationId<ListBoxItem>(window, "SettingsWindow.Section.Shortcuts"));
+
+            window.Close();
+        });
+    }
+
+    [Fact]
     public void SectionNavigation_SelectedValue_UpdatesSelectedSection()
     {
         StaTestHelper.Run(() =>

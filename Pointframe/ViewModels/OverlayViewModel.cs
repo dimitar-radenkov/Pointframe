@@ -108,16 +108,70 @@ public partial class OverlayViewModel : AnnotationViewModel
         var finalBitmap = bitmapCapture.ComposeBitmap();
         _clipboardService.SetImage(finalBitmap);
 
+        if (_settings.Current.AutoSaveScreenshots)
+        {
+            _ = SaveBitmapToDefaultFolder(finalBitmap);
+        }
+
+        CloseRequested?.Invoke();
+    }
+
+    [RelayCommand]
+    private void Save()
+    {
+        var bitmapCapture = _bitmapCapture;
+        if (bitmapCapture is null)
+        {
+            _logger.LogWarning("Save requested before overlay bitmap capture was attached");
+            return;
+        }
+
+        var finalBitmap = bitmapCapture.ComposeBitmap();
+        _ = SaveBitmapToDefaultFolder(finalBitmap);
+        CloseRequested?.Invoke();
+    }
+
+    [RelayCommand]
+    private void SaveAs()
+    {
+        var bitmapCapture = _bitmapCapture;
+        if (bitmapCapture is null)
+        {
+            _logger.LogWarning("Save As requested before overlay bitmap capture was attached");
+            return;
+        }
+
+        var finalBitmap = bitmapCapture.ComposeBitmap();
+        var saveDirectory = _settings.Current.ScreenshotSavePath;
+        _fileSystemService.CreateDirectory(saveDirectory);
+
+        var suggestedFileName = $"Snip_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+        var savePath = _dialogService.PickSaveImageFile(saveDirectory, suggestedFileName);
+        if (string.IsNullOrWhiteSpace(savePath))
+        {
+            return;
+        }
+
+        SaveBitmapToPath(finalBitmap, savePath);
+        CloseRequested?.Invoke();
+    }
+
+    private string SaveBitmapToDefaultFolder(BitmapSource bitmap)
+    {
         var saveDirectory = _settings.Current.ScreenshotSavePath;
         _fileSystemService.CreateDirectory(saveDirectory);
         var savePath = _fileSystemService.CombinePath(saveDirectory, $"Snip_{DateTime.Now:yyyyMMdd_HHmmss}.png");
+        SaveBitmapToPath(bitmap, savePath);
+        return savePath;
+    }
+
+    private void SaveBitmapToPath(BitmapSource bitmap, string savePath)
+    {
         using var outputStream = _fileSystemService.OpenWrite(savePath);
         var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(finalBitmap));
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
         encoder.Save(outputStream);
         _ = _eventAggregator.Publish(new CaptureCompletedMessage(savePath));
-
-        CloseRequested?.Invoke();
     }
 
     [RelayCommand]

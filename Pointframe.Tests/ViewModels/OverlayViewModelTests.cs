@@ -278,6 +278,87 @@ public sealed class OverlayViewModelTests
     }
 
     [Fact]
+    public void SaveCommand_WritesPngFile_AndRequestsClose()
+    {
+        var settingsMock = new Mock<IUserSettingsService>();
+        settingsMock.SetupGet(s => s.Current).Returns(new UserSettings
+        {
+            ScreenshotSavePath = @"C:\Shots"
+        });
+        var fileSystemMock = new Mock<IFileSystemService>();
+        using var outputStream = new MemoryStream();
+        fileSystemMock.Setup(f => f.CombinePath(@"C:\Shots", It.IsRegex(@"^Snip_\d{8}_\d{6}\.png$"))).Returns(@"C:\Shots\Snip_20260318_123456.png");
+        fileSystemMock.Setup(f => f.OpenWrite(@"C:\Shots\Snip_20260318_123456.png")).Returns(outputStream);
+        var captureMock = new Mock<IOverlayBitmapCapture>();
+        captureMock.Setup(c => c.ComposeBitmap()).Returns(CreateBitmap());
+        var vm = Vm(settingsMock, fileSystemMock: fileSystemMock);
+        var closed = false;
+        vm.CloseRequested += () => closed = true;
+        vm.SetBitmapCapture(captureMock.Object);
+
+        vm.SaveCommand.Execute(null);
+
+        fileSystemMock.Verify(f => f.CreateDirectory(@"C:\Shots"), Times.Once);
+        fileSystemMock.Verify(f => f.CombinePath(@"C:\Shots", It.IsRegex(@"^Snip_\d{8}_\d{6}\.png$")), Times.Once);
+        fileSystemMock.Verify(f => f.OpenWrite(@"C:\Shots\Snip_20260318_123456.png"), Times.Once);
+        Assert.True(closed);
+    }
+
+    [Fact]
+    public void SaveAsCommand_WhenDialogReturnsPath_WritesFile_AndRequestsClose()
+    {
+        var settingsMock = new Mock<IUserSettingsService>();
+        settingsMock.SetupGet(s => s.Current).Returns(new UserSettings
+        {
+            ScreenshotSavePath = @"C:\Shots"
+        });
+        var dialogMock = new Mock<IDialogService>();
+        dialogMock.Setup(d => d.PickSaveImageFile(@"C:\Shots", It.IsRegex(@"^Snip_\d{8}_\d{6}\.png$")))
+            .Returns(@"D:\Exports\capture.png");
+        var fileSystemMock = new Mock<IFileSystemService>();
+        using var outputStream = new MemoryStream();
+        fileSystemMock.Setup(f => f.OpenWrite(@"D:\Exports\capture.png")).Returns(outputStream);
+        var captureMock = new Mock<IOverlayBitmapCapture>();
+        captureMock.Setup(c => c.ComposeBitmap()).Returns(CreateBitmap());
+        var vm = Vm(settingsMock, dialogMock: dialogMock, fileSystemMock: fileSystemMock);
+        var closed = false;
+        vm.CloseRequested += () => closed = true;
+        vm.SetBitmapCapture(captureMock.Object);
+
+        vm.SaveAsCommand.Execute(null);
+
+        fileSystemMock.Verify(f => f.CreateDirectory(@"C:\Shots"), Times.Once);
+        dialogMock.Verify(d => d.PickSaveImageFile(@"C:\Shots", It.IsRegex(@"^Snip_\d{8}_\d{6}\.png$")), Times.Once);
+        fileSystemMock.Verify(f => f.OpenWrite(@"D:\Exports\capture.png"), Times.Once);
+        Assert.True(closed);
+    }
+
+    [Fact]
+    public void SaveAsCommand_WhenDialogCancelled_DoesNotWriteFile_AndDoesNotClose()
+    {
+        var settingsMock = new Mock<IUserSettingsService>();
+        settingsMock.SetupGet(s => s.Current).Returns(new UserSettings
+        {
+            ScreenshotSavePath = @"C:\Shots"
+        });
+        var dialogMock = new Mock<IDialogService>();
+        dialogMock.Setup(d => d.PickSaveImageFile(@"C:\Shots", It.IsRegex(@"^Snip_\d{8}_\d{6}\.png$")))
+            .Returns((string?)null);
+        var fileSystemMock = new Mock<IFileSystemService>();
+        var captureMock = new Mock<IOverlayBitmapCapture>();
+        captureMock.Setup(c => c.ComposeBitmap()).Returns(CreateBitmap());
+        var vm = Vm(settingsMock, dialogMock: dialogMock, fileSystemMock: fileSystemMock);
+        var closed = false;
+        vm.CloseRequested += () => closed = true;
+        vm.SetBitmapCapture(captureMock.Object);
+
+        vm.SaveAsCommand.Execute(null);
+
+        fileSystemMock.Verify(f => f.OpenWrite(It.IsAny<string>()), Times.Never);
+        Assert.False(closed);
+    }
+
+    [Fact]
     public void CopyTextCommand_TogglesIsTextLassoActive()
     {
         // Arrange

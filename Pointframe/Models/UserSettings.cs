@@ -35,6 +35,30 @@ public sealed class UserSettings
 
     public HotkeyModifiers WholeScreenRecordHotkeyModifiers { get; set; } = HotkeyModifiers.Ctrl | HotkeyModifiers.Shift; // Ctrl+Shift+R
 
+    public uint OverlayCopyHotkey { get; set; } = 0x43; // VK_C
+
+    public HotkeyModifiers OverlayCopyHotkeyModifiers { get; set; } = HotkeyModifiers.Ctrl;
+
+    public uint OverlaySaveAsHotkey { get; set; } = 0x53; // VK_S
+
+    public HotkeyModifiers OverlaySaveAsHotkeyModifiers { get; set; } = HotkeyModifiers.Ctrl | HotkeyModifiers.Shift;
+
+    public uint OverlayUndoHotkey { get; set; } = 0x5A; // VK_Z
+
+    public HotkeyModifiers OverlayUndoHotkeyModifiers { get; set; } = HotkeyModifiers.Ctrl;
+
+    public uint OverlayRedoHotkey { get; set; } = 0x59; // VK_Y
+
+    public HotkeyModifiers OverlayRedoHotkeyModifiers { get; set; } = HotkeyModifiers.Ctrl;
+
+    public uint OverlayToggleShortcutsHotkey { get; set; } = 0x70; // VK_F1
+
+    public HotkeyModifiers OverlayToggleShortcutsHotkeyModifiers { get; set; } = HotkeyModifiers.None;
+
+    public uint OverlayCloseHotkey { get; set; } = 0x1B; // VK_ESCAPE
+
+    public HotkeyModifiers OverlayCloseHotkeyModifiers { get; set; } = HotkeyModifiers.None;
+
     public UpdateCheckInterval AutoUpdateCheckInterval { get; set; } = UpdateCheckInterval.EveryTwoHours;
     public DateTime? LastAutoUpdateCheckUtc { get; set; } = null;
 

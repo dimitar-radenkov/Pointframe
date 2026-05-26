@@ -16,6 +16,7 @@ public partial class SettingsViewModel : ObservableObject
         new(SettingsSection.Capture, "Capture", "Screenshot folders, timing, and the capture shortcut."),
         new(SettingsSection.Recording, "Recording", "Output options, cursor effects, and advanced recording defaults."),
         new(SettingsSection.Annotation, "Annotation", "Default annotation appearance and preview."),
+        new(SettingsSection.Shortcuts, "Shortcuts", "See all capture, recording, and overlay keyboard shortcuts."),
         new(SettingsSection.App, "App", "Appearance, update checks, and reset actions."),
     ];
 
@@ -53,6 +54,18 @@ public partial class SettingsViewModel : ObservableObject
         _regionCaptureHotkeyModifiers = s.RegionCaptureHotkeyModifiers;
         _wholeScreenRecordHotkey = s.WholeScreenRecordHotkey;
         _wholeScreenRecordHotkeyModifiers = s.WholeScreenRecordHotkeyModifiers;
+        _overlayCopyHotkey = s.OverlayCopyHotkey;
+        _overlayCopyHotkeyModifiers = s.OverlayCopyHotkeyModifiers;
+        _overlaySaveAsHotkey = s.OverlaySaveAsHotkey;
+        _overlaySaveAsHotkeyModifiers = s.OverlaySaveAsHotkeyModifiers;
+        _overlayUndoHotkey = s.OverlayUndoHotkey;
+        _overlayUndoHotkeyModifiers = s.OverlayUndoHotkeyModifiers;
+        _overlayRedoHotkey = s.OverlayRedoHotkey;
+        _overlayRedoHotkeyModifiers = s.OverlayRedoHotkeyModifiers;
+        _overlayToggleShortcutsHotkey = s.OverlayToggleShortcutsHotkey;
+        _overlayToggleShortcutsHotkeyModifiers = s.OverlayToggleShortcutsHotkeyModifiers;
+        _overlayCloseHotkey = s.OverlayCloseHotkey;
+        _overlayCloseHotkeyModifiers = s.OverlayCloseHotkeyModifiers;
         _autoUpdateCheckInterval = s.AutoUpdateCheckInterval;
         _appTheme = s.Theme;
         _originalTheme = s.Theme;
@@ -129,6 +142,63 @@ public partial class SettingsViewModel : ObservableObject
     private HotkeyModifiers _wholeScreenRecordHotkeyModifiers;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlayCopyHotkeyDisplayName))]
+    private uint _overlayCopyHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlayCopyHotkeyDisplayName))]
+    private HotkeyModifiers _overlayCopyHotkeyModifiers;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlaySaveAsHotkeyDisplayName))]
+    private uint _overlaySaveAsHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlaySaveAsHotkeyDisplayName))]
+    private HotkeyModifiers _overlaySaveAsHotkeyModifiers;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlayUndoHotkeyDisplayName))]
+    private uint _overlayUndoHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlayUndoHotkeyDisplayName))]
+    private HotkeyModifiers _overlayUndoHotkeyModifiers;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlayRedoHotkeyDisplayName))]
+    private uint _overlayRedoHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlayRedoHotkeyDisplayName))]
+    private HotkeyModifiers _overlayRedoHotkeyModifiers;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlayToggleShortcutsHotkeyDisplayName))]
+    private uint _overlayToggleShortcutsHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlayToggleShortcutsHotkeyDisplayName))]
+    private HotkeyModifiers _overlayToggleShortcutsHotkeyModifiers;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlayCloseHotkeyDisplayName))]
+    private uint _overlayCloseHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverlayCloseHotkeyDisplayName))]
+    private HotkeyModifiers _overlayCloseHotkeyModifiers;
+
+    [ObservableProperty]
+    private bool _isCapturingOverlayShortcut;
+
+    [ObservableProperty]
+    private string _overlayShortcutCaptureTarget = string.Empty;
+
+    [ObservableProperty]
+    private string _overlayShortcutCaptureDisplayName = string.Empty;
+
+    [ObservableProperty]
     private bool _isCapturingWholeScreenRecordHotkey;
 
     [ObservableProperty]
@@ -144,6 +214,7 @@ public partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsCaptureSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsRecordingSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsAnnotationSectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsShortcutsSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsAppSectionSelected))]
     private SettingsSection _selectedSection = SettingsSection.Capture;
 
@@ -152,6 +223,12 @@ public partial class SettingsViewModel : ObservableObject
 
     public string RegionCaptureHotkeyDisplayName => BuildHotkeyDisplayName(RegionCaptureHotkey, RegionCaptureHotkeyModifiers);
     public string WholeScreenRecordHotkeyDisplayName => BuildHotkeyDisplayName(WholeScreenRecordHotkey, WholeScreenRecordHotkeyModifiers);
+    public string OverlayCopyHotkeyDisplayName => BuildHotkeyDisplayName(OverlayCopyHotkey, OverlayCopyHotkeyModifiers);
+    public string OverlaySaveAsHotkeyDisplayName => BuildHotkeyDisplayName(OverlaySaveAsHotkey, OverlaySaveAsHotkeyModifiers);
+    public string OverlayUndoHotkeyDisplayName => BuildHotkeyDisplayName(OverlayUndoHotkey, OverlayUndoHotkeyModifiers);
+    public string OverlayRedoHotkeyDisplayName => BuildHotkeyDisplayName(OverlayRedoHotkey, OverlayRedoHotkeyModifiers);
+    public string OverlayToggleShortcutsHotkeyDisplayName => BuildHotkeyDisplayName(OverlayToggleShortcutsHotkey, OverlayToggleShortcutsHotkeyModifiers);
+    public string OverlayCloseHotkeyDisplayName => BuildHotkeyDisplayName(OverlayCloseHotkey, OverlayCloseHotkeyModifiers);
     public string SelectedSectionDisplayName => SelectedSectionItem.DisplayName;
     public string SelectedSectionDescription => SelectedSectionItem.Description;
     public IReadOnlyList<string> AvailableMicrophoneDevices => _availableMicrophoneDevices;
@@ -159,6 +236,7 @@ public partial class SettingsViewModel : ObservableObject
     public bool IsCaptureSectionSelected => SelectedSection == SettingsSection.Capture;
     public bool IsRecordingSectionSelected => SelectedSection == SettingsSection.Recording;
     public bool IsAnnotationSectionSelected => SelectedSection == SettingsSection.Annotation;
+    public bool IsShortcutsSectionSelected => SelectedSection == SettingsSection.Shortcuts;
     public bool IsAppSectionSelected => SelectedSection == SettingsSection.App;
 
     partial void OnDefaultAnnotationColorChanged(Color value) =>
@@ -261,6 +339,18 @@ public partial class SettingsViewModel : ObservableObject
             RegionCaptureHotkeyModifiers = RegionCaptureHotkeyModifiers,
             WholeScreenRecordHotkey = WholeScreenRecordHotkey,
             WholeScreenRecordHotkeyModifiers = WholeScreenRecordHotkeyModifiers,
+            OverlayCopyHotkey = OverlayCopyHotkey,
+            OverlayCopyHotkeyModifiers = OverlayCopyHotkeyModifiers,
+            OverlaySaveAsHotkey = OverlaySaveAsHotkey,
+            OverlaySaveAsHotkeyModifiers = OverlaySaveAsHotkeyModifiers,
+            OverlayUndoHotkey = OverlayUndoHotkey,
+            OverlayUndoHotkeyModifiers = OverlayUndoHotkeyModifiers,
+            OverlayRedoHotkey = OverlayRedoHotkey,
+            OverlayRedoHotkeyModifiers = OverlayRedoHotkeyModifiers,
+            OverlayToggleShortcutsHotkey = OverlayToggleShortcutsHotkey,
+            OverlayToggleShortcutsHotkeyModifiers = OverlayToggleShortcutsHotkeyModifiers,
+            OverlayCloseHotkey = OverlayCloseHotkey,
+            OverlayCloseHotkeyModifiers = OverlayCloseHotkeyModifiers,
             AutoUpdateCheckInterval = AutoUpdateCheckInterval,
             LastAutoUpdateCheckUtc = _lastAutoUpdateCheckUtc,
             Theme = AppTheme,
@@ -292,6 +382,95 @@ public partial class SettingsViewModel : ObservableObject
         WholeScreenRecordHotkey = 0x52; // VK_R
         WholeScreenRecordHotkeyModifiers = HotkeyModifiers.Ctrl | HotkeyModifiers.Shift;
         IsCapturingWholeScreenRecordHotkey = false;
+    }
+
+    [RelayCommand]
+    private void StartCapturingOverlayShortcut(string shortcutKey)
+    {
+        if (string.IsNullOrWhiteSpace(shortcutKey))
+        {
+            return;
+        }
+
+        OverlayShortcutCaptureTarget = shortcutKey;
+        OverlayShortcutCaptureDisplayName = OverlayShortcutLabel(shortcutKey);
+        IsCapturingOverlayShortcut = true;
+    }
+
+    [RelayCommand]
+    private void CancelCapturingOverlayShortcut()
+    {
+        IsCapturingOverlayShortcut = false;
+        OverlayShortcutCaptureTarget = string.Empty;
+        OverlayShortcutCaptureDisplayName = string.Empty;
+    }
+
+    [RelayCommand]
+    private void ResetOverlayShortcut(string shortcutKey)
+    {
+        var defaults = new UserSettings();
+        switch (shortcutKey)
+        {
+            case "OverlayCopy":
+                OverlayCopyHotkey = defaults.OverlayCopyHotkey;
+                OverlayCopyHotkeyModifiers = defaults.OverlayCopyHotkeyModifiers;
+                break;
+            case "OverlaySaveAs":
+                OverlaySaveAsHotkey = defaults.OverlaySaveAsHotkey;
+                OverlaySaveAsHotkeyModifiers = defaults.OverlaySaveAsHotkeyModifiers;
+                break;
+            case "OverlayUndo":
+                OverlayUndoHotkey = defaults.OverlayUndoHotkey;
+                OverlayUndoHotkeyModifiers = defaults.OverlayUndoHotkeyModifiers;
+                break;
+            case "OverlayRedo":
+                OverlayRedoHotkey = defaults.OverlayRedoHotkey;
+                OverlayRedoHotkeyModifiers = defaults.OverlayRedoHotkeyModifiers;
+                break;
+            case "OverlayToggleShortcuts":
+                OverlayToggleShortcutsHotkey = defaults.OverlayToggleShortcutsHotkey;
+                OverlayToggleShortcutsHotkeyModifiers = defaults.OverlayToggleShortcutsHotkeyModifiers;
+                break;
+            case "OverlayClose":
+                OverlayCloseHotkey = defaults.OverlayCloseHotkey;
+                OverlayCloseHotkeyModifiers = defaults.OverlayCloseHotkeyModifiers;
+                break;
+        }
+    }
+
+    internal void ApplyOverlayShortcutCapture(uint vk, HotkeyModifiers modifiers)
+    {
+        switch (OverlayShortcutCaptureTarget)
+        {
+            case "OverlayCopy":
+                OverlayCopyHotkey = vk;
+                OverlayCopyHotkeyModifiers = modifiers;
+                break;
+            case "OverlaySaveAs":
+                OverlaySaveAsHotkey = vk;
+                OverlaySaveAsHotkeyModifiers = modifiers;
+                break;
+            case "OverlayUndo":
+                OverlayUndoHotkey = vk;
+                OverlayUndoHotkeyModifiers = modifiers;
+                break;
+            case "OverlayRedo":
+                OverlayRedoHotkey = vk;
+                OverlayRedoHotkeyModifiers = modifiers;
+                break;
+            case "OverlayToggleShortcuts":
+                OverlayToggleShortcutsHotkey = vk;
+                OverlayToggleShortcutsHotkeyModifiers = modifiers;
+                break;
+            case "OverlayClose":
+                OverlayCloseHotkey = vk;
+                OverlayCloseHotkeyModifiers = modifiers;
+                break;
+            default:
+                return;
+        }
+
+        CancelCapturingOverlayShortcut();
     }
 
     [RelayCommand]
@@ -329,6 +508,23 @@ public partial class SettingsViewModel : ObservableObject
                 AutoUpdateCheckInterval = defaults.AutoUpdateCheckInterval;
                 AppTheme = defaults.Theme;
                 break;
+            case SettingsSection.Shortcuts:
+                OverlayCopyHotkey = defaults.OverlayCopyHotkey;
+                OverlayCopyHotkeyModifiers = defaults.OverlayCopyHotkeyModifiers;
+                OverlaySaveAsHotkey = defaults.OverlaySaveAsHotkey;
+                OverlaySaveAsHotkeyModifiers = defaults.OverlaySaveAsHotkeyModifiers;
+                OverlayUndoHotkey = defaults.OverlayUndoHotkey;
+                OverlayUndoHotkeyModifiers = defaults.OverlayUndoHotkeyModifiers;
+                OverlayRedoHotkey = defaults.OverlayRedoHotkey;
+                OverlayRedoHotkeyModifiers = defaults.OverlayRedoHotkeyModifiers;
+                OverlayToggleShortcutsHotkey = defaults.OverlayToggleShortcutsHotkey;
+                OverlayToggleShortcutsHotkeyModifiers = defaults.OverlayToggleShortcutsHotkeyModifiers;
+                OverlayCloseHotkey = defaults.OverlayCloseHotkey;
+                OverlayCloseHotkeyModifiers = defaults.OverlayCloseHotkeyModifiers;
+                IsCapturingOverlayShortcut = false;
+                OverlayShortcutCaptureTarget = string.Empty;
+                OverlayShortcutCaptureDisplayName = string.Empty;
+                break;
         }
     }
 
@@ -358,6 +554,21 @@ public partial class SettingsViewModel : ObservableObject
         WholeScreenRecordHotkey = defaults.WholeScreenRecordHotkey;
         WholeScreenRecordHotkeyModifiers = defaults.WholeScreenRecordHotkeyModifiers;
         IsCapturingWholeScreenRecordHotkey = false;
+        OverlayCopyHotkey = defaults.OverlayCopyHotkey;
+        OverlayCopyHotkeyModifiers = defaults.OverlayCopyHotkeyModifiers;
+        OverlaySaveAsHotkey = defaults.OverlaySaveAsHotkey;
+        OverlaySaveAsHotkeyModifiers = defaults.OverlaySaveAsHotkeyModifiers;
+        OverlayUndoHotkey = defaults.OverlayUndoHotkey;
+        OverlayUndoHotkeyModifiers = defaults.OverlayUndoHotkeyModifiers;
+        OverlayRedoHotkey = defaults.OverlayRedoHotkey;
+        OverlayRedoHotkeyModifiers = defaults.OverlayRedoHotkeyModifiers;
+        OverlayToggleShortcutsHotkey = defaults.OverlayToggleShortcutsHotkey;
+        OverlayToggleShortcutsHotkeyModifiers = defaults.OverlayToggleShortcutsHotkeyModifiers;
+        OverlayCloseHotkey = defaults.OverlayCloseHotkey;
+        OverlayCloseHotkeyModifiers = defaults.OverlayCloseHotkeyModifiers;
+        IsCapturingOverlayShortcut = false;
+        OverlayShortcutCaptureTarget = string.Empty;
+        OverlayShortcutCaptureDisplayName = string.Empty;
         AutoUpdateCheckInterval = defaults.AutoUpdateCheckInterval;
         AppTheme = defaults.Theme;
     }
@@ -385,6 +596,20 @@ public partial class SettingsViewModel : ObservableObject
 
     private static string VkToKeyName(uint vk) =>
         vk == 0x2C ? "Print Screen" : KeyInterop.KeyFromVirtualKey((int)vk).ToString();
+
+    private static string OverlayShortcutLabel(string shortcutKey)
+    {
+        return shortcutKey switch
+        {
+            "OverlayCopy" => "Copy snip",
+            "OverlaySaveAs" => "Save As",
+            "OverlayUndo" => "Undo",
+            "OverlayRedo" => "Redo",
+            "OverlayToggleShortcuts" => "Show/hide overlay shortcuts",
+            "OverlayClose" => "Close overlay",
+            _ => "Shortcut",
+        };
+    }
 
     private static string BuildHotkeyDisplayName(uint vk, HotkeyModifiers modifiers)
     {

@@ -537,56 +537,173 @@ public partial class OverlayWindow : Window
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        switch (e.Key)
+        if (HandleOverlayShortcut(e.Key, e.KeyboardDevice.Modifiers))
         {
-            case Key.Escape:
-                if (_vm.IsTextLassoActive)
-                {
-                    _vm.IsTextLassoActive = false;
-                    OcrLassoRect.Visibility = Visibility.Collapsed;
-                    _lassoStart = null;
-                }
-                else if (_vm.SelectedTool == AnnotationTool.ColorPicker)
-                {
-                    _vm.RevertToPreviousTool();
-                    SyncToolbarToSelectedTool();
-                    UpdateLoupe(null);
-                    AnnotationCanvas.Cursor = _vm.SelectedTool == AnnotationTool.Text ? Cursors.IBeam : Cursors.Cross;
-                }
-                else
-                {
-                    Close();
-                }
-
-                break;
-#if DEBUG
-            case Key.F12 when e.KeyboardDevice.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift):
-                throw new InvalidOperationException("Debug-only UI recovery smoke test.");
-#endif
-            case Key.C when e.KeyboardDevice.Modifiers == ModifierKeys.Control
-                         && _vm.CurrentPhase == OverlayViewModel.Phase.Annotating:
-                if (_vm.CopyCommand.CanExecute(null))
-                {
-                    _vm.CopyCommand.Execute(null);
-                }
-
-                break;
-            case Key.Z when e.KeyboardDevice.Modifiers == ModifierKeys.Control
-                         && _vm.CurrentPhase == OverlayViewModel.Phase.Annotating:
-                if (_vm.UndoCommand.CanExecute(null))
-                {
-                    _vm.UndoCommand.Execute(null);
-                }
-
-                break;
-            case Key.Y when e.KeyboardDevice.Modifiers == ModifierKeys.Control
-                         && _vm.CurrentPhase == OverlayViewModel.Phase.Annotating:
-                if (_vm.RedoCommand.CanExecute(null))
-                {
-                    _vm.RedoCommand.Execute(null);
-                }
-
-                break;
+            return;
         }
+    }
+
+    private bool HandleOverlayShortcut(Key key, ModifierKeys modifiers)
+    {
+        if (_vm.CurrentPhase != OverlayViewModel.Phase.Annotating)
+        {
+            return false;
+        }
+
+        if (key == Key.Escape)
+        {
+            if (ShortcutsPopup.Visibility == Visibility.Visible)
+            {
+                ShortcutsPopup.Visibility = Visibility.Collapsed;
+                return true;
+            }
+
+            if (_vm.IsTextLassoActive)
+            {
+                _vm.IsTextLassoActive = false;
+                OcrLassoRect.Visibility = Visibility.Collapsed;
+                _lassoStart = null;
+                return true;
+            }
+
+            if (_vm.SelectedTool == AnnotationTool.ColorPicker)
+            {
+                _vm.RevertToPreviousTool();
+                SyncToolbarToSelectedTool();
+                UpdateLoupe(null);
+                AnnotationCanvas.Cursor = _vm.SelectedTool == AnnotationTool.Text ? Cursors.IBeam : Cursors.Cross;
+                return true;
+            }
+        }
+
+        var shortcuts = _userSettings.Current;
+        if (MatchesShortcut(key, modifiers, shortcuts.OverlayToggleShortcutsHotkey, shortcuts.OverlayToggleShortcutsHotkeyModifiers))
+        {
+            ToggleShortcutsPopup();
+            return true;
+        }
+
+        if (MatchesShortcut(key, modifiers, shortcuts.OverlayCopyHotkey, shortcuts.OverlayCopyHotkeyModifiers))
+        {
+            if (_vm.CopyCommand.CanExecute(null))
+            {
+                _vm.CopyCommand.Execute(null);
+            }
+
+            return true;
+        }
+
+        if (MatchesShortcut(key, modifiers, shortcuts.OverlaySaveAsHotkey, shortcuts.OverlaySaveAsHotkeyModifiers))
+        {
+            if (_vm.SaveAsCommand.CanExecute(null))
+            {
+                _vm.SaveAsCommand.Execute(null);
+            }
+
+            return true;
+        }
+
+        if (MatchesShortcut(key, modifiers, shortcuts.OverlayUndoHotkey, shortcuts.OverlayUndoHotkeyModifiers))
+        {
+            if (_vm.UndoCommand.CanExecute(null))
+            {
+                _vm.UndoCommand.Execute(null);
+            }
+
+            return true;
+        }
+
+        if (MatchesShortcut(key, modifiers, shortcuts.OverlayRedoHotkey, shortcuts.OverlayRedoHotkeyModifiers))
+        {
+            if (_vm.RedoCommand.CanExecute(null))
+            {
+                _vm.RedoCommand.Execute(null);
+            }
+
+            return true;
+        }
+
+        if (MatchesShortcut(key, modifiers, shortcuts.OverlayCloseHotkey, shortcuts.OverlayCloseHotkeyModifiers))
+        {
+            Close();
+            return true;
+        }
+
+#if DEBUG
+        if (key == Key.F12 && modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            throw new InvalidOperationException("Debug-only UI recovery smoke test.");
+        }
+#endif
+
+        return false;
+    }
+
+    private static bool MatchesShortcut(Key key, ModifierKeys pressedModifiers, uint configuredKey, HotkeyModifiers configuredModifiers)
+    {
+        if (configuredKey == 0)
+        {
+            return false;
+        }
+
+        return key == KeyInterop.KeyFromVirtualKey((int)configuredKey)
+               && pressedModifiers == ToModifierKeys(configuredModifiers);
+    }
+
+    private static ModifierKeys ToModifierKeys(HotkeyModifiers modifiers)
+    {
+        var result = ModifierKeys.None;
+        if (modifiers.HasFlag(HotkeyModifiers.Ctrl))
+        {
+            result |= ModifierKeys.Control;
+        }
+
+        if (modifiers.HasFlag(HotkeyModifiers.Shift))
+        {
+            result |= ModifierKeys.Shift;
+        }
+
+        if (modifiers.HasFlag(HotkeyModifiers.Alt))
+        {
+            result |= ModifierKeys.Alt;
+        }
+
+        return result;
+    }
+
+    private void ToggleShortcutsPopup()
+    {
+        if (ShortcutsPopup.Visibility == Visibility.Visible)
+        {
+            ShortcutsPopup.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        ShortcutsPopup.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var popupSize = ShortcutsPopup.DesiredSize;
+        var popupWidth = Math.Max(ShortcutsPopup.MinWidth, popupSize.Width);
+        var popupHeight = popupSize.Height;
+
+        var preferredLeft = Width - popupWidth - 16d;
+        var preferredTop = 24d;
+
+        if (AnnotToolbar.Visibility == Visibility.Visible)
+        {
+            AnnotToolbar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            var toolbarSize = AnnotToolbar.RenderSize.Width > 0d && AnnotToolbar.RenderSize.Height > 0d
+                ? AnnotToolbar.RenderSize
+                : AnnotToolbar.DesiredSize;
+            var toolbarLeft = Canvas.GetLeft(AnnotToolbar);
+            var toolbarTop = Canvas.GetTop(AnnotToolbar);
+
+            preferredLeft = toolbarLeft - popupWidth - 12d;
+            preferredTop = toolbarTop + ((toolbarSize.Height - popupHeight) / 2d);
+        }
+
+        var left = Math.Max(16d, Math.Min(preferredLeft, Width - popupWidth - 16d));
+        var top = Math.Max(16d, Math.Min(preferredTop, Height - popupHeight - 16d));
+        Canvas.SetLeft(ShortcutsPopup, left);
+        Canvas.SetTop(ShortcutsPopup, top);
+        ShortcutsPopup.Visibility = Visibility.Visible;
     }
 }

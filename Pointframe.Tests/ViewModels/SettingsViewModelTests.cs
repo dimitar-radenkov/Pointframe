@@ -45,6 +45,41 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void Save_PersistsOverlayShortcutSettings()
+    {
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(new UserSettings());
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>(), CreateMicrophoneDeviceService());
+
+        vm.OverlayCopyHotkey = 0x58u; // X
+        vm.OverlayCopyHotkeyModifiers = HotkeyModifiers.Alt;
+        vm.OverlaySaveAsHotkey = 0x41u; // A
+        vm.OverlaySaveAsHotkeyModifiers = HotkeyModifiers.Ctrl;
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.NotNull(saved);
+        Assert.Equal(0x58u, saved!.OverlayCopyHotkey);
+        Assert.Equal(HotkeyModifiers.Alt, saved.OverlayCopyHotkeyModifiers);
+        Assert.Equal(0x41u, saved.OverlaySaveAsHotkey);
+        Assert.Equal(HotkeyModifiers.Ctrl, saved.OverlaySaveAsHotkeyModifiers);
+    }
+
+    [Fact]
+    public void StartCapturingOverlayShortcutCommand_SetsCaptureState()
+    {
+        var vm = CreateVm();
+
+        vm.StartCapturingOverlayShortcutCommand.Execute("OverlayRedo");
+
+        Assert.True(vm.IsCapturingOverlayShortcut);
+        Assert.Equal("OverlayRedo", vm.OverlayShortcutCaptureTarget);
+        Assert.Equal("Redo", vm.OverlayShortcutCaptureDisplayName);
+    }
+
+    [Fact]
     public void LoadsFromSettings_CaptureDelaySeconds()
     {
         // Arrange
