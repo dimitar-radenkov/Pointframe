@@ -82,6 +82,7 @@ public sealed class AutoUpdateServiceTests
         await sut.StopAsync(CancellationToken.None);
 
         Assert.Equal(new Version(9, 9, 0), message.Result.LatestVersion);
+        Assert.True(message.IsStartupCheck);
     }
 
     [Fact]

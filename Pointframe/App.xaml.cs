@@ -419,8 +419,14 @@ public partial class App : Application
     {
         var v = message.Result.LatestVersion;
         _telemetry.TrackEvent("update_available", new Dictionary<string, string> { ["version"] = $"{v.Major}.{v.Minor}.{v.Build}" });
-        _trayIconManager.HandleUpdateAvailable(message.Result);
-        return ValueTask.CompletedTask;
+
+        if (Dispatcher.CheckAccess())
+        {
+            ShowUpdateAvailable(message);
+            return ValueTask.CompletedTask;
+        }
+
+        return new ValueTask(Dispatcher.InvokeAsync(() => ShowUpdateAvailable(message)).Task);
     }
 
     private ValueTask HandleRecordingCompleted(RecordingCompletedMessage message)
@@ -458,6 +464,21 @@ public partial class App : Application
 
             return;
         }
+    }
+
+    private void ShowUpdateAvailable(UpdateAvailableMessage message)
+    {
+        var v = message.Result.LatestVersion;
+        _trayIconManager.HandleUpdateAvailable(message.Result);
+
+        if (!message.IsStartupCheck)
+        {
+            return;
+        }
+
+        _messageBox.ShowInformation(
+            $"Version {v.Major}.{v.Minor}.{v.Build} is available. Use the tray notification or 'Check for Updates' from the tray menu to install it.",
+            "Update Available");
     }
 }
 

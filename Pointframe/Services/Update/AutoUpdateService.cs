@@ -37,7 +37,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         _logger.LogInformation("Auto-update: running startup check");
         try
         {
-            await CheckAndNotifyAsync(stoppingToken).ConfigureAwait(false);
+            await CheckAndNotifyAsync(isStartupCheck: true, stoppingToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -73,7 +73,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
                 _logger.LogInformation("Auto-update: running periodic check");
                 try
                 {
-                    await CheckAndNotifyAsync(stoppingToken).ConfigureAwait(false);
+                    await CheckAndNotifyAsync(isStartupCheck: false, stoppingToken).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -112,14 +112,14 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         }
     }
 
-    private async Task CheckAndNotifyAsync(CancellationToken cancellationToken)
+    private async Task CheckAndNotifyAsync(bool isStartupCheck, CancellationToken cancellationToken)
     {
         _logger.LogDebug("Auto-update: checking for updates");
         var result = await _updateService.CheckForUpdates(cancellationToken);
         if (result.IsUpdateAvailable)
         {
             _logger.LogInformation("Auto-update: update available ({Version})", result.LatestVersion);
-            await _eventAggregator.Publish(new UpdateAvailableMessage(result)).ConfigureAwait(false);
+            await _eventAggregator.Publish(new UpdateAvailableMessage(result, isStartupCheck)).ConfigureAwait(false);
         }
         else
         {
