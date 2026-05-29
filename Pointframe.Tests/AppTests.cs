@@ -73,7 +73,7 @@ public sealed class AppTests
     }
 
     [Fact]
-    public void ShowUpdateAvailable_PeriodicCheck_DoesNotShowStartupMessage()
+    public void ShowUpdateAvailable_PeriodicCheck_ShowsMessageAndTrayNotification()
     {
         StaTestHelper.Run(() =>
         {
@@ -88,7 +88,11 @@ public sealed class AppTests
             InvokeShowUpdateAvailable(app, new UpdateAvailableMessage(update, IsStartupCheck: false));
 
             trayIconManager.Verify(service => service.HandleUpdateAvailable(update), Times.Once);
-            messageBox.Verify(service => service.ShowInformation(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            messageBox.Verify(
+                service => service.ShowInformation(
+                    It.Is<string>(text => text.Contains("1.2.3", StringComparison.Ordinal)),
+                    "Update Available"),
+                Times.Once);
         });
     }
 

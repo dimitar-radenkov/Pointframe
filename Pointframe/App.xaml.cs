@@ -471,11 +471,6 @@ public partial class App : Application
         var v = message.Result.LatestVersion;
         _trayIconManager.HandleUpdateAvailable(message.Result);
 
-        if (!message.IsStartupCheck)
-        {
-            return;
-        }
-
         _messageBox.ShowInformation(
             $"Version {v.Major}.{v.Minor}.{v.Build} is available. Use the tray notification or 'Check for Updates' from the tray menu to install it.",
             "Update Available");
