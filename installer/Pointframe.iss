@@ -8,7 +8,7 @@
 ; ============================================================
 
 #define AppName      "Pointframe"
-#define AppPublisher "Dimitris"
+#define AppPublisher "Dimitar Radenkov"
 ; AppVersion can be overridden at compile time: iscc /DAppVersion=1.2.0 Pointframe.iss
 #ifndef AppVersion
   #define AppVersion "1.0.0"

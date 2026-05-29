@@ -378,3 +378,4 @@ MigrationBackup/
 
 .playwright-mcp/
 *.lscache
+/.understand-anything
