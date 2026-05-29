@@ -33,7 +33,7 @@ public sealed class AutoUpdateServiceTests
             Mock.Of<ITelemetryService>());
     }
 
-    private static Mock<IUserSettingsService> SettingsMock(UpdateCheckInterval interval = UpdateCheckInterval.Never)
+    private static Mock<IUserSettingsService> SettingsMock(UpdateCheckInterval interval = UpdateCheckInterval.EveryTwoHours)
     {
         var settings = new UserSettings { AutoUpdateCheckInterval = interval };
         var mock = new Mock<IUserSettingsService>();
@@ -280,8 +280,31 @@ public sealed class AutoUpdateServiceTests
         await Task.Delay(50);
         await sut.StopAsync(CancellationToken.None);
 
-        // Only the startup check — no periodic ticks
-        updateService.Verify(s => s.CheckForUpdates(It.IsAny<CancellationToken>()), Times.Once);
+        updateService.Verify(s => s.CheckForUpdates(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_IntervalNever_DoesNotUpdateLastCheckTimestamp()
+    {
+        var updateService = new Mock<IUpdateService>();
+        updateService
+            .Setup(s => s.CheckForUpdates(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(NoUpdate);
+
+        var settingsMock = SettingsMock(UpdateCheckInterval.Never);
+        var sut = CreateService(
+            new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance),
+            updateService,
+            settingsMock,
+            new Mock<IUpdateDownloadService>(),
+            new Mock<IMessageBoxService>());
+
+        await sut.StartAsync(CancellationToken.None);
+        await Task.Delay(50);
+        await sut.StopAsync(CancellationToken.None);
+
+        Assert.Null(settingsMock.Object.Current.LastAutoUpdateCheckUtc);
+        settingsMock.Verify(s => s.Update(It.IsAny<Action<UserSettings>>()), Times.Never);
     }
 
     private sealed class UpdateAvailableRecorder

@@ -34,6 +34,13 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var interval = _userSettings.Current.AutoUpdateCheckInterval;
+        if (interval == UpdateCheckInterval.Never)
+        {
+            _logger.LogInformation("Auto-update: startup check skipped (interval = Never)");
+            return;
+        }
+
         _logger.LogInformation("Auto-update: running startup check");
         try
         {
@@ -45,13 +52,6 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         }
 
         UpdateLastCheckedUtc();
-
-        var interval = _userSettings.Current.AutoUpdateCheckInterval;
-        if (interval == UpdateCheckInterval.Never)
-        {
-            _logger.LogInformation("Auto-update: periodic loop not started (interval = Never)");
-            return;
-        }
 
         var timerInterval = GetTimerInterval(interval);
         _logger.LogInformation(
