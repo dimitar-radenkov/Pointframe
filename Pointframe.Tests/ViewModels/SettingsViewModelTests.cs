@@ -770,4 +770,49 @@ public sealed class SettingsViewModelTests
         Assert.Equal(string.Empty, vm.OverlayShortcutCaptureTarget);
         Assert.Equal(string.Empty, vm.OverlayShortcutConflictMessage);
     }
+
+    [Fact]
+    public void ResetCurrentSectionCommand_CaptureSection_ResetsWatermarkFields()
+    {
+        var vm = CreateVm();
+        vm.SelectedSection = SettingsSection.Capture;
+        vm.WatermarkEnabled = true;
+        vm.WatermarkTemplate = "custom";
+        vm.WatermarkPosition = WatermarkPosition.TopLeft;
+        vm.WatermarkFontSize = 42d;
+        vm.WatermarkApplyToCopy = false;
+        vm.WatermarkApplyToSave = false;
+
+        vm.ResetCurrentSectionCommand.Execute(null);
+
+        var defaults = new UserSettings().ScreenshotWatermark;
+        Assert.Equal(defaults.Enabled, vm.WatermarkEnabled);
+        Assert.Equal(defaults.Template, vm.WatermarkTemplate);
+        Assert.Equal(defaults.Position, vm.WatermarkPosition);
+        Assert.Equal(defaults.FontSize, vm.WatermarkFontSize);
+        Assert.Equal(defaults.ApplyToCopy, vm.WatermarkApplyToCopy);
+        Assert.Equal(defaults.ApplyToSave, vm.WatermarkApplyToSave);
+    }
+
+    [Fact]
+    public void RestoreDefaultsCommand_ResetsWatermarkFields()
+    {
+        var vm = CreateVm();
+        vm.WatermarkEnabled = true;
+        vm.WatermarkTemplate = "custom";
+        vm.WatermarkPosition = WatermarkPosition.TopLeft;
+        vm.WatermarkFontSize = 42d;
+        vm.WatermarkApplyToCopy = false;
+        vm.WatermarkApplyToSave = false;
+
+        vm.RestoreDefaultsCommand.Execute(null);
+
+        var defaults = new UserSettings().ScreenshotWatermark;
+        Assert.Equal(defaults.Enabled, vm.WatermarkEnabled);
+        Assert.Equal(defaults.Template, vm.WatermarkTemplate);
+        Assert.Equal(defaults.Position, vm.WatermarkPosition);
+        Assert.Equal(defaults.FontSize, vm.WatermarkFontSize);
+        Assert.Equal(defaults.ApplyToCopy, vm.WatermarkApplyToCopy);
+        Assert.Equal(defaults.ApplyToSave, vm.WatermarkApplyToSave);
+    }
 }

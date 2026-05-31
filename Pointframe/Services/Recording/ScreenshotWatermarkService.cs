@@ -24,6 +24,7 @@ public sealed class ScreenshotWatermarkService : IScreenshotWatermarkService
         var width = source.PixelWidth;
         var height = source.PixelHeight;
         var foreground = ParseColor(settings.ColorHex, Colors.White);
+        var fontSize = settings.FontSize > 0d ? settings.FontSize : new ScreenshotWatermarkSettings().FontSize;
 
         var typeface = new Typeface(
             new System.Windows.Media.FontFamily("Segoe UI"),
@@ -36,7 +37,7 @@ public sealed class ScreenshotWatermarkService : IScreenshotWatermarkService
             CultureInfo.CurrentCulture,
             System.Windows.FlowDirection.LeftToRight,
             typeface,
-            settings.FontSize,
+            fontSize,
             new SolidColorBrush(foreground),
             1.0);
 

@@ -599,6 +599,12 @@ public partial class SettingsViewModel : ObservableObject
                 ScreenshotSavePath = defaults.ScreenshotSavePath;
                 AutoSaveScreenshots = defaults.AutoSaveScreenshots;
                 CaptureDelaySeconds = defaults.CaptureDelaySeconds;
+                WatermarkEnabled = defaults.ScreenshotWatermark.Enabled;
+                WatermarkTemplate = defaults.ScreenshotWatermark.Template;
+                WatermarkPosition = defaults.ScreenshotWatermark.Position;
+                WatermarkFontSize = defaults.ScreenshotWatermark.FontSize;
+                WatermarkApplyToCopy = defaults.ScreenshotWatermark.ApplyToCopy;
+                WatermarkApplyToSave = defaults.ScreenshotWatermark.ApplyToSave;
                 RegionCaptureHotkey = defaults.RegionCaptureHotkey;
                 RegionCaptureHotkeyModifiers = defaults.RegionCaptureHotkeyModifiers;
                 IsRecordingHotkey = false;
@@ -662,6 +668,12 @@ public partial class SettingsViewModel : ObservableObject
         RecordingClickRippleEnabled = defaults.RecordingClickRippleEnabled;
         RecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(defaults.RecordingCursorHighlightSize);
         CaptureDelaySeconds = defaults.CaptureDelaySeconds;
+        WatermarkEnabled = defaults.ScreenshotWatermark.Enabled;
+        WatermarkTemplate = defaults.ScreenshotWatermark.Template;
+        WatermarkPosition = defaults.ScreenshotWatermark.Position;
+        WatermarkFontSize = defaults.ScreenshotWatermark.FontSize;
+        WatermarkApplyToCopy = defaults.ScreenshotWatermark.ApplyToCopy;
+        WatermarkApplyToSave = defaults.ScreenshotWatermark.ApplyToSave;
         DefaultAnnotationColor = ParseAnnotationColorOrFallback(defaults.DefaultAnnotationColor);
         DefaultStrokeThickness = defaults.DefaultStrokeThickness;
         ResetStylePresets(defaults.StylePresets);

@@ -91,6 +91,27 @@ public sealed class ScreenshotWatermarkServiceLayoutTests
         });
     }
 
+    [Fact]
+    public void Apply_WhenFontSizeIsNonPositive_UsesFallbackWithoutThrowing()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var sut = new ScreenshotWatermarkService();
+            var source = CreateBitmap(width: 200, height: 120);
+            var settings = new ScreenshotWatermarkSettings
+            {
+                Template = "wm",
+                FontSize = 0d,
+                BackgroundEnabled = false
+            };
+
+            var result = sut.Apply(source, settings);
+
+            Assert.Equal(source.PixelWidth, result.PixelWidth);
+            Assert.Equal(source.PixelHeight, result.PixelHeight);
+        });
+    }
+
     [Theory]
     [InlineData(WatermarkPosition.TopLeft, 16, 16)]
     [InlineData(WatermarkPosition.TopRight, 784, 16)]
