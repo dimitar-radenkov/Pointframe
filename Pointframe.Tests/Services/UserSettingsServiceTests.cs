@@ -31,7 +31,7 @@ public sealed class UserSettingsServiceTests : IDisposable
 
         Assert.NotSame(original, sut.Current);
         Assert.Null(original.LastAutoUpdateCheckUtc);
-        Assert.False(original.AutoSaveScreenshots);
+        Assert.True(original.AutoSaveScreenshots);
         Assert.Equal(expectedTimestamp, sut.Current.LastAutoUpdateCheckUtc);
         Assert.True(sut.Current.AutoSaveScreenshots);
 

@@ -7,7 +7,7 @@ public sealed class UserSettings
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Pointframe", "Screenshots");
 
-    public bool AutoSaveScreenshots { get; set; } = false;
+    public bool AutoSaveScreenshots { get; set; } = true;
 
     public string RecordingOutputPath { get; set; } =
         System.IO.Path.Combine(
