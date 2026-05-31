@@ -392,6 +392,7 @@ public sealed class OverlayViewModelTests
         captureMock.Setup(c => c.ComposeBitmap()).Returns(source);
         var settings = new UserSettings
         {
+            AutoSaveScreenshots = false,
             ScreenshotWatermark = new ScreenshotWatermarkSettings { Enabled = true, ApplyToCopy = true }
         };
         var vm = VmWithWatermark(settings, watermarkMock, clipboardMock: clipboardMock);
@@ -413,6 +414,7 @@ public sealed class OverlayViewModelTests
         captureMock.Setup(c => c.ComposeBitmap()).Returns(source);
         var settings = new UserSettings
         {
+            AutoSaveScreenshots = false,
             ScreenshotWatermark = new ScreenshotWatermarkSettings { Enabled = false, ApplyToCopy = true }
         };
         var vm = VmWithWatermark(settings, watermarkMock, clipboardMock: clipboardMock);

@@ -239,6 +239,7 @@ public sealed class OverlayWindowInteractionTests
                 DefaultAnnotationColor = "#FFFF0000",
                 RecordingOutputPath = @"C:\\recordings",
                 ScreenshotSavePath = @"C:\\shots",
+                AutoSaveScreenshots = false,
                 OverlayCopyHotkey = 0x58, // X
                 OverlayCopyHotkeyModifiers = HotkeyModifiers.Alt,
             };
