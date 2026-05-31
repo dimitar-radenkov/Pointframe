@@ -321,16 +321,11 @@
                                     <TextBlock Text="Wait before the overlay opens so menus and hover states stay visible."
                                                Style="{StaticResource RowDescription}"/>
                                 </StackPanel>
-                                <ComboBox Grid.Row="0"
-                                          Grid.Column="1"
-                                          Width="140"
-                                          Style="{StaticResource CompactComboBox}"
-                                          SelectedItem="{Binding CaptureDelaySeconds}">
-                                    <sys:Int32>0</sys:Int32>
-                                    <sys:Int32>3</sys:Int32>
-                                    <sys:Int32>5</sys:Int32>
-                                    <sys:Int32>10</sys:Int32>
-                                </ComboBox>
+                                <TextBox
+    Grid.Row="0"
+    Grid.Column="1"
+    Width="140"
+    Text="{Binding CaptureDelaySeconds, UpdateSourceTrigger=PropertyChanged}" />
 
                                 <Border Grid.Row="1"
                                         Grid.ColumnSpan="2"
