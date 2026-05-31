@@ -1,3 +1,9 @@
+global using System.IO;
+global using System.Runtime.InteropServices;
+global using System.Windows.Media.Imaging;
+global using CommunityToolkit.Mvvm.ComponentModel;
+global using CommunityToolkit.Mvvm.Input;
+global using Microsoft.Extensions.Logging;
 global using Pointframe.Models;
 global using Brushes = System.Windows.Media.Brushes;
 global using Color = System.Windows.Media.Color;

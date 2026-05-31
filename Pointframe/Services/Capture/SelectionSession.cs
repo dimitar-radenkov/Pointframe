@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Pointframe.Services;
 using Forms = System.Windows.Forms;
 

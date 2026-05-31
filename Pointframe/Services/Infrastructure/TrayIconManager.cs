@@ -1,9 +1,6 @@
 using System.Diagnostics;
-using System.IO;
 using System.Windows;
-using System.Windows.Media.Imaging;
 using Hardcodet.Wpf.TaskbarNotification;
-using Microsoft.Extensions.Logging;
 using WpfApplication = System.Windows.Application;
 using WpfContextMenu = System.Windows.Controls.ContextMenu;
 using WpfMenuItem = System.Windows.Controls.MenuItem;

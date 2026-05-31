@@ -1,7 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.IO;
-using Microsoft.Extensions.Logging;
 
 namespace Pointframe.Services;
 

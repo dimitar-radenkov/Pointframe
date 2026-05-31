@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using NAudio.CoreAudioApi;
 
 namespace Pointframe.Services;

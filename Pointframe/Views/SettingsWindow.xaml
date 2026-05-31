@@ -844,6 +844,83 @@
 
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
+                            <TextBlock Text="Watermark" Style="{StaticResource GroupTitle}"/>
+                            <TextBlock Text="Automatically stamp a date/time watermark onto screenshots when copying or saving. Tokens: {datetime}, {date}, {time}, {timezone}."
+                                       Style="{StaticResource GroupDescription}"/>
+
+                            <CheckBox Content="Enable screenshot watermark"
+                                      Margin="0,14,0,0"
+                                      IsChecked="{Binding WatermarkEnabled}"
+                                      Foreground="{DynamicResource PrimaryText}"
+                                      AutomationProperties.AutomationId="SettingsWindow.WatermarkEnabled"/>
+
+                            <Grid Margin="0,14,0,0" IsEnabled="{Binding WatermarkEnabled}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="320"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,16,0">
+                                    <TextBlock Text="Text template" Style="{StaticResource RowTitle}"/>
+                                    <TextBlock Text="The text rendered onto the screenshot."
+                                               Style="{StaticResource RowDescription}"/>
+                                </StackPanel>
+                                <TextBox Grid.Row="0"
+                                         Grid.Column="1"
+                                         Text="{Binding WatermarkTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                         MaxLength="{x:Static models:ScreenshotWatermarkSettings.MaxTemplateLength}"
+                                         AutomationProperties.AutomationId="SettingsWindow.WatermarkTemplate"/>
+
+                                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,14,16,0">
+                                    <TextBlock Text="Position" Style="{StaticResource RowTitle}"/>
+                                    <TextBlock Text="Where the watermark is placed on the image."
+                                               Style="{StaticResource RowDescription}"/>
+                                </StackPanel>
+                                <ComboBox Grid.Row="1"
+                                          Grid.Column="1"
+                                          Margin="0,14,0,0"
+                                          ItemsSource="{Binding WatermarkPositions}"
+                                          SelectedItem="{Binding WatermarkPosition}"
+                                          AutomationProperties.AutomationId="SettingsWindow.WatermarkPosition"/>
+
+                                <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,14,16,0">
+                                    <TextBlock Text="Font size" Style="{StaticResource RowTitle}"/>
+                                    <TextBlock Text="Watermark text size in pixels."
+                                               Style="{StaticResource RowDescription}"/>
+                                </StackPanel>
+                                <TextBox Grid.Row="2"
+                                         Grid.Column="1"
+                                         Width="80"
+                                         HorizontalAlignment="Left"
+                                         Margin="0,14,0,0"
+                                         Text="{Binding WatermarkFontSize, UpdateSourceTrigger=PropertyChanged}"
+                                         PreviewTextInput="DoubleInput_PreviewTextInput"
+                                         DataObject.Pasting="DoubleInput_Pasting"
+                                         AutomationProperties.AutomationId="SettingsWindow.WatermarkFontSize"/>
+
+                                <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Margin="0,14,0,0">
+                                    <CheckBox Content="Apply when copying to clipboard"
+                                              IsChecked="{Binding WatermarkApplyToCopy}"
+                                              Foreground="{DynamicResource PrimaryText}"
+                                              AutomationProperties.AutomationId="SettingsWindow.WatermarkApplyToCopy"/>
+                                    <CheckBox Content="Apply when saving to a file"
+                                              Margin="0,8,0,0"
+                                              IsChecked="{Binding WatermarkApplyToSave}"
+                                              Foreground="{DynamicResource PrimaryText}"
+                                              AutomationProperties.AutomationId="SettingsWindow.WatermarkApplyToSave"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource GroupCard}">
+                        <StackPanel>
                             <TextBlock Text="Preview" Style="{StaticResource GroupTitle}"/>
                             <TextBlock Text="See the current annotation defaults before saving."
                                        Style="{StaticResource GroupDescription}"/>

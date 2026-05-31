@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Pointframe.Services.Messaging;
 
 namespace Pointframe.Services;

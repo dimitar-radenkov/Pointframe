@@ -1,14 +1,12 @@
-using System.IO;
 using System.Windows;
-using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Pointframe.Automation;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
+using Pointframe.Services.Recording;
 using Pointframe.ViewModels;
 using Serilog;
 using Application = System.Windows.Application;
@@ -187,6 +185,7 @@ public partial class App : Application
         services.AddTransient<OverlayWindow>(CreateOverlayWindow);
         services.AddTransient<BeautifierViewModel>();
         services.AddSingleton<BeautifierRenderService>();
+        services.AddSingleton<IScreenshotWatermarkService, ScreenshotWatermarkService>();
         services.AddTransient<Func<BitmapSource, BeautifierWindow>>(sp => bitmap =>
         {
             var window = new BeautifierWindow(sp.GetRequiredService<BeautifierViewModel>());

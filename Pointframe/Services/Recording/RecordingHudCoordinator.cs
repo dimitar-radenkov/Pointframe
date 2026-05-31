@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
-using Microsoft.Extensions.Logging;
 using Pointframe.ViewModels;
 
 namespace Pointframe.Services;

@@ -35,7 +35,8 @@ public sealed class OverlayViewModelTests
             Mock.Of<IClipboardService>(),
             Mock.Of<IFileSystemService>(),
             Mock.Of<IEventAggregator>(),
-            Mock.Of<ITelemetryService>());
+            Mock.Of<ITelemetryService>(),
+            Mock.Of<IScreenshotWatermarkService>());
     }
 
     private static OverlayViewModel Vm(
@@ -52,7 +53,8 @@ public sealed class OverlayViewModelTests
             clipboardMock?.Object ?? Mock.Of<IClipboardService>(),
             fileSystemMock?.Object ?? Mock.Of<IFileSystemService>(),
             Mock.Of<IEventAggregator>(),
-            Mock.Of<ITelemetryService>());
+            Mock.Of<ITelemetryService>(),
+            Mock.Of<IScreenshotWatermarkService>());
     }
 
     [Fact]
@@ -356,6 +358,96 @@ public sealed class OverlayViewModelTests
 
         fileSystemMock.Verify(f => f.OpenWrite(It.IsAny<string>()), Times.Never);
         Assert.False(closed);
+    }
+
+    private static OverlayViewModel VmWithWatermark(
+        UserSettings settings,
+        Mock<IScreenshotWatermarkService> watermarkMock,
+        Mock<IClipboardService>? clipboardMock = null,
+        Mock<IFileSystemService>? fileSystemMock = null)
+    {
+        var settingsMock = new Mock<IUserSettingsService>();
+        settingsMock.SetupGet(s => s.Current).Returns(settings);
+        return new OverlayViewModel(
+            new AnnotationGeometryService(),
+            NullLogger<OverlayViewModel>.Instance,
+            settingsMock.Object,
+            Mock.Of<IDialogService>(),
+            clipboardMock?.Object ?? Mock.Of<IClipboardService>(),
+            fileSystemMock?.Object ?? Mock.Of<IFileSystemService>(),
+            Mock.Of<IEventAggregator>(),
+            Mock.Of<ITelemetryService>(),
+            watermarkMock.Object);
+    }
+
+    [Fact]
+    public void CopyCommand_WhenWatermarkEnabledForCopy_AppliesWatermarkToClipboard()
+    {
+        var source = CreateBitmap();
+        var watermarked = CreateBitmap();
+        var watermarkMock = new Mock<IScreenshotWatermarkService>();
+        watermarkMock.Setup(w => w.Apply(source, It.IsAny<ScreenshotWatermarkSettings>())).Returns(watermarked);
+        var clipboardMock = new Mock<IClipboardService>();
+        var captureMock = new Mock<IOverlayBitmapCapture>();
+        captureMock.Setup(c => c.ComposeBitmap()).Returns(source);
+        var settings = new UserSettings
+        {
+            ScreenshotWatermark = new ScreenshotWatermarkSettings { Enabled = true, ApplyToCopy = true }
+        };
+        var vm = VmWithWatermark(settings, watermarkMock, clipboardMock: clipboardMock);
+        vm.SetBitmapCapture(captureMock.Object);
+
+        vm.CopyCommand.Execute(null);
+
+        watermarkMock.Verify(w => w.Apply(source, settings.ScreenshotWatermark), Times.Once);
+        clipboardMock.Verify(c => c.SetImage(watermarked), Times.Once);
+    }
+
+    [Fact]
+    public void CopyCommand_WhenWatermarkDisabled_DoesNotApplyWatermark()
+    {
+        var source = CreateBitmap();
+        var watermarkMock = new Mock<IScreenshotWatermarkService>();
+        var clipboardMock = new Mock<IClipboardService>();
+        var captureMock = new Mock<IOverlayBitmapCapture>();
+        captureMock.Setup(c => c.ComposeBitmap()).Returns(source);
+        var settings = new UserSettings
+        {
+            ScreenshotWatermark = new ScreenshotWatermarkSettings { Enabled = false, ApplyToCopy = true }
+        };
+        var vm = VmWithWatermark(settings, watermarkMock, clipboardMock: clipboardMock);
+        vm.SetBitmapCapture(captureMock.Object);
+
+        vm.CopyCommand.Execute(null);
+
+        watermarkMock.Verify(w => w.Apply(It.IsAny<BitmapSource>(), It.IsAny<ScreenshotWatermarkSettings>()), Times.Never);
+        clipboardMock.Verify(c => c.SetImage(source), Times.Once);
+    }
+
+    [Fact]
+    public void SaveCommand_WhenWatermarkEnabledForSave_AppliesWatermarkBeforeWriting()
+    {
+        var source = CreateBitmap();
+        var watermarked = CreateBitmap();
+        var watermarkMock = new Mock<IScreenshotWatermarkService>();
+        watermarkMock.Setup(w => w.Apply(source, It.IsAny<ScreenshotWatermarkSettings>())).Returns(watermarked);
+        var fileSystemMock = new Mock<IFileSystemService>();
+        using var outputStream = new MemoryStream();
+        fileSystemMock.Setup(f => f.CombinePath(@"C:\Shots", It.IsRegex(@"^Snip_\d{8}_\d{6}\.png$"))).Returns(@"C:\Shots\Snip.png");
+        fileSystemMock.Setup(f => f.OpenWrite(@"C:\Shots\Snip.png")).Returns(outputStream);
+        var captureMock = new Mock<IOverlayBitmapCapture>();
+        captureMock.Setup(c => c.ComposeBitmap()).Returns(source);
+        var settings = new UserSettings
+        {
+            ScreenshotSavePath = @"C:\Shots",
+            ScreenshotWatermark = new ScreenshotWatermarkSettings { Enabled = true, ApplyToSave = true }
+        };
+        var vm = VmWithWatermark(settings, watermarkMock, fileSystemMock: fileSystemMock);
+        vm.SetBitmapCapture(captureMock.Object);
+
+        vm.SaveCommand.Execute(null);
+
+        watermarkMock.Verify(w => w.Apply(source, settings.ScreenshotWatermark), Times.Once);
     }
 
     [Fact]

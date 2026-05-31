@@ -1,9 +1,5 @@
 using System.Diagnostics;
-using System.IO;
 using System.Net.Http;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
-using Microsoft.Extensions.Logging;
 using Pointframe.Services;
 
 namespace Pointframe.ViewModels;

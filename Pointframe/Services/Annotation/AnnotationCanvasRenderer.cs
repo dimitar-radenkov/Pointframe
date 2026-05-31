@@ -1,8 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using Microsoft.Extensions.Logging;
 using Pointframe.Services.Handlers;
 using Pointframe.ViewModels;
 

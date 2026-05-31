@@ -374,7 +374,8 @@ public sealed class OverlayWindowInteractionTests
             clipboardMock.Object,
             fileSystemMock.Object,
             eventAggregator,
-            Mock.Of<ITelemetryService>());
+            Mock.Of<ITelemetryService>(),
+            Mock.Of<IScreenshotWatermarkService>());
 
         var recorderMock = new Mock<IScreenRecordingService>();
         recorderMock.SetupGet(service => service.IsRecording).Returns(isRecorderRecording);

@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices.WindowsRuntime;
-using System.Windows.Media.Imaging;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 

@@ -1,5 +1,4 @@
 using System.Runtime.ExceptionServices;
-using Microsoft.Extensions.Logging;
 
 namespace Pointframe.Services.Messaging;
 

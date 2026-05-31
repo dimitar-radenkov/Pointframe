@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Threading;
-using Microsoft.Extensions.Logging;
 using Serilog;
 using WpfApplication = System.Windows.Application;
 

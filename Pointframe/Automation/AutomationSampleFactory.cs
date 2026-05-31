@@ -1,6 +1,4 @@
-using System.IO;
 using System.Windows;
-using System.Windows.Media.Imaging;
 using Forms = System.Windows.Forms;
 
 namespace Pointframe.Automation;

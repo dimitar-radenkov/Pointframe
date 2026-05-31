@@ -1,7 +1,5 @@
-using System.IO;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Pointframe.Services.Messaging;
 using Pointframe.ViewModels;
 using Forms = System.Windows.Forms;

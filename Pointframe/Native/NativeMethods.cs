@@ -1,5 +1,3 @@
-using System.Runtime.InteropServices;
-
 namespace Pointframe;
 
 internal static class NativeMethods

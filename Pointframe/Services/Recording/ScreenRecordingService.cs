@@ -1,10 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Drawing.Imaging;
-using System.IO;
-using System.Runtime.InteropServices;
 using System.Threading.Channels;
-using Microsoft.Extensions.Logging;
 
 namespace Pointframe.Services;
 

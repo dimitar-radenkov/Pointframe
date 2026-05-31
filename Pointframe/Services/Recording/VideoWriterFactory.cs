@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-
 namespace Pointframe.Services;
 
 public sealed class VideoWriterFactory : IVideoWriterFactory

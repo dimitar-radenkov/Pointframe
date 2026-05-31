@@ -71,6 +71,8 @@ public sealed class UserSettings
         new() { Name = "Black", Color = "#FF1A1A1A", StrokeThickness = 3.5 },
     ];
 
+    public ScreenshotWatermarkSettings ScreenshotWatermark { get; set; } = new();
+
     /// <summary>
     /// Anonymous install identifier generated once on first run.
     /// Used for telemetry to count unique installs without tracking identity.

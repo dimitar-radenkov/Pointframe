@@ -1,9 +1,5 @@
 using System.Windows;
 using System.Windows.Input;
-using System.Windows.Media.Imaging;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
-using Microsoft.Extensions.Logging;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 
@@ -17,6 +13,7 @@ public partial class OverlayViewModel : AnnotationViewModel
     private readonly IUserSettingsService _settings;
     private readonly IEventAggregator _eventAggregator;
     private readonly ITelemetryService _telemetry;
+    private readonly IScreenshotWatermarkService _watermarkService;
     private IOverlayBitmapCapture? _bitmapCapture;
 
     public OverlayViewModel(
@@ -27,7 +24,8 @@ public partial class OverlayViewModel : AnnotationViewModel
         IClipboardService clipboardService,
         IFileSystemService fileSystemService,
         IEventAggregator eventAggregator,
-        ITelemetryService telemetry)
+        ITelemetryService telemetry,
+        IScreenshotWatermarkService watermarkService)
         : base(geometry, logger, settings, eventAggregator, telemetry)
     {
         _clipboardService = clipboardService;
@@ -36,6 +34,7 @@ public partial class OverlayViewModel : AnnotationViewModel
         _settings = settings;
         _eventAggregator = eventAggregator;
         _telemetry = telemetry;
+        _watermarkService = watermarkService;
     }
 
     public enum Phase { Selecting, Annotating }
@@ -127,11 +126,11 @@ public partial class OverlayViewModel : AnnotationViewModel
         }
 
         var finalBitmap = bitmapCapture.ComposeBitmap();
-        _clipboardService.SetImage(finalBitmap);
+        _clipboardService.SetImage(ApplyWatermarkForCopy(finalBitmap));
 
         if (_settings.Current.AutoSaveScreenshots)
         {
-            _ = SaveBitmapToDefaultFolder(finalBitmap);
+            _ = SaveBitmapToDefaultFolder(ApplyWatermarkForSave(finalBitmap));
         }
 
         CloseRequested?.Invoke();
@@ -148,7 +147,7 @@ public partial class OverlayViewModel : AnnotationViewModel
         }
 
         var finalBitmap = bitmapCapture.ComposeBitmap();
-        _ = SaveBitmapToDefaultFolder(finalBitmap);
+        _ = SaveBitmapToDefaultFolder(ApplyWatermarkForSave(finalBitmap));
         CloseRequested?.Invoke();
     }
 
@@ -173,8 +172,30 @@ public partial class OverlayViewModel : AnnotationViewModel
             return;
         }
 
-        SaveBitmapToPath(finalBitmap, savePath);
+        SaveBitmapToPath(ApplyWatermarkForSave(finalBitmap), savePath);
         CloseRequested?.Invoke();
+    }
+
+    private BitmapSource ApplyWatermarkForCopy(BitmapSource bitmap)
+    {
+        var watermark = _settings.Current.ScreenshotWatermark;
+        if (watermark is { Enabled: true, ApplyToCopy: true })
+        {
+            return _watermarkService.Apply(bitmap, watermark);
+        }
+
+        return bitmap;
+    }
+
+    private BitmapSource ApplyWatermarkForSave(BitmapSource bitmap)
+    {
+        var watermark = _settings.Current.ScreenshotWatermark;
+        if (watermark is { Enabled: true, ApplyToSave: true })
+        {
+            return _watermarkService.Apply(bitmap, watermark);
+        }
+
+        return bitmap;
     }
 
     private string SaveBitmapToDefaultFolder(BitmapSource bitmap)

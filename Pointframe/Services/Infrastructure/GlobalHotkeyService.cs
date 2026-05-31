@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
-using Microsoft.Extensions.Logging;
 using WpfApplication = System.Windows.Application;
 
 namespace Pointframe.Services;

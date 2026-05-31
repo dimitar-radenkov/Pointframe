@@ -1,5 +1,3 @@
-using System.Windows.Media.Imaging;
-
 namespace Pointframe.Services;
 
 public sealed class ClipboardService : IClipboardService

@@ -137,7 +137,8 @@ public sealed class OverlayWindowRecordingFlowTests
             Mock.Of<IClipboardService>(),
             fileSystemMock.Object,
             eventAggregator,
-            Mock.Of<ITelemetryService>());
+            Mock.Of<ITelemetryService>(),
+            Mock.Of<IScreenshotWatermarkService>());
 
         var recorderMock = new Mock<IScreenRecordingService>();
         recorderMock.SetupGet(service => service.IsRecording).Returns(false);

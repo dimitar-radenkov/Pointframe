@@ -1,9 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using Microsoft.Extensions.Logging;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 using Pointframe.ViewModels;

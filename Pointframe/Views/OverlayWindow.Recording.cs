@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Threading;
-using Microsoft.Extensions.Logging;
 using Forms = System.Windows.Forms;
 
 namespace Pointframe;
