@@ -4,19 +4,18 @@ namespace Pointframe.Services;
 
 internal static class WatermarkTokenResolver
 {
-    public static string Resolve(string template, DateTimeOffset timestamp)
+    public static string Resolve(WatermarkTextTemplate template, DateTimeOffset timestamp)
     {
-        if (string.IsNullOrEmpty(template))
-        {
-            return string.Empty;
-        }
-
         var culture = CultureInfo.CurrentCulture;
-        return template
-            .Replace("{datetime}", timestamp.ToString("g", culture), StringComparison.OrdinalIgnoreCase)
-            .Replace("{date}", timestamp.ToString("d", culture), StringComparison.OrdinalIgnoreCase)
-            .Replace("{time}", timestamp.ToString("t", culture), StringComparison.OrdinalIgnoreCase)
-            .Replace("{timezone}", FormatOffset(timestamp.Offset), StringComparison.OrdinalIgnoreCase);
+        return template switch
+        {
+            WatermarkTextTemplate.DateTime => timestamp.ToString("g", culture),
+            WatermarkTextTemplate.DateOnly => timestamp.ToString("d", culture),
+            WatermarkTextTemplate.TimeOnly => timestamp.ToString("t", culture),
+            WatermarkTextTemplate.TimezoneOnly => FormatOffset(timestamp.Offset),
+            WatermarkTextTemplate.DateTimeWithTimezone => $"{timestamp.ToString("g", culture)} {FormatOffset(timestamp.Offset)}",
+            _ => timestamp.ToString("g", culture),
+        };
     }
 
     private static string FormatOffset(TimeSpan offset)

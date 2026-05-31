@@ -2,10 +2,8 @@ namespace Pointframe.Models;
 
 public sealed class ScreenshotWatermarkSettings
 {
-    public const int MaxTemplateLength = 120;
-
     public bool Enabled { get; set; }
-    public string Template { get; set; } = "{datetime}";
+    public WatermarkTextTemplate TextTemplate { get; set; } = WatermarkTextTemplate.DateTime;
     public WatermarkPosition Position { get; set; } = WatermarkPosition.BottomRight;
     public double FontSize { get; set; } = 18;
     public string ColorHex { get; set; } = "#FFFFFFFF";

@@ -845,7 +845,7 @@
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
                             <TextBlock Text="Watermark" Style="{StaticResource GroupTitle}"/>
-                            <TextBlock Text="Automatically stamp a date/time watermark onto screenshots when copying or saving. Tokens: {datetime}, {date}, {time}, {timezone}."
+                            <TextBlock Text="Automatically stamp a date/time watermark onto screenshots when copying or saving."
                                        Style="{StaticResource GroupDescription}"/>
 
                             <CheckBox Content="Enable screenshot watermark"
@@ -867,15 +867,15 @@
                                 </Grid.RowDefinitions>
 
                                 <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,16,0">
-                                    <TextBlock Text="Text template" Style="{StaticResource RowTitle}"/>
-                                    <TextBlock Text="The text rendered onto the screenshot."
+                                    <TextBlock Text="Text format" Style="{StaticResource RowTitle}"/>
+                                    <TextBlock Text="Choose the watermark text pattern from predefined options."
                                                Style="{StaticResource RowDescription}"/>
                                 </StackPanel>
-                                <TextBox Grid.Row="0"
-                                         Grid.Column="1"
-                                         Text="{Binding WatermarkTemplate, UpdateSourceTrigger=PropertyChanged}"
-                                         MaxLength="{x:Static models:ScreenshotWatermarkSettings.MaxTemplateLength}"
-                                         AutomationProperties.AutomationId="SettingsWindow.WatermarkTemplate"/>
+                                <ComboBox Grid.Row="0"
+                                          Grid.Column="1"
+                                          ItemsSource="{Binding WatermarkTextTemplates}"
+                                          SelectedItem="{Binding WatermarkTextTemplate}"
+                                          AutomationProperties.AutomationId="SettingsWindow.WatermarkTextTemplate"/>
 
                                 <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,14,16,0">
                                     <TextBlock Text="Position" Style="{StaticResource RowTitle}"/>

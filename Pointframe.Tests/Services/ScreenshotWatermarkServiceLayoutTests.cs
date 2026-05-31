@@ -27,7 +27,7 @@ public sealed class ScreenshotWatermarkServiceLayoutTests
     }
 
     [Fact]
-    public void Apply_WhenResolvedTemplateIsEmpty_ReturnsOriginalBitmap()
+    public void Apply_WhenTemplateSelectionIsTimezone_RendersWatermark()
     {
         StaTestHelper.Run(() =>
         {
@@ -35,12 +35,12 @@ public sealed class ScreenshotWatermarkServiceLayoutTests
             var source = CreateBitmap();
             var settings = new ScreenshotWatermarkSettings
             {
-                Template = "   "
+                TextTemplate = WatermarkTextTemplate.TimezoneOnly,
             };
 
             var result = sut.Apply(source, settings);
 
-            Assert.Same(source, result);
+            Assert.NotSame(source, result);
         });
     }
 
@@ -53,7 +53,7 @@ public sealed class ScreenshotWatermarkServiceLayoutTests
             var source = CreateBitmap(width: 240, height: 140);
             var settings = new ScreenshotWatermarkSettings
             {
-                Template = "wm",
+                TextTemplate = WatermarkTextTemplate.DateTime,
                 Position = WatermarkPosition.TopLeft,
                 Margin = 8,
                 FontSize = 20,
@@ -79,7 +79,7 @@ public sealed class ScreenshotWatermarkServiceLayoutTests
             var source = CreateBitmap(width: 200, height: 120);
             var settings = new ScreenshotWatermarkSettings
             {
-                Template = "wm",
+                TextTemplate = WatermarkTextTemplate.DateTime,
                 ColorHex = "not-a-color",
                 BackgroundEnabled = false
             };
@@ -100,7 +100,7 @@ public sealed class ScreenshotWatermarkServiceLayoutTests
             var source = CreateBitmap(width: 200, height: 120);
             var settings = new ScreenshotWatermarkSettings
             {
-                Template = "wm",
+                TextTemplate = WatermarkTextTemplate.DateTime,
                 FontSize = 0d,
                 BackgroundEnabled = false
             };

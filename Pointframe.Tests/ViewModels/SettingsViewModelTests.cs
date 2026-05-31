@@ -777,7 +777,7 @@ public sealed class SettingsViewModelTests
         var vm = CreateVm();
         vm.SelectedSection = SettingsSection.Capture;
         vm.WatermarkEnabled = true;
-        vm.WatermarkTemplate = "custom";
+        vm.WatermarkTextTemplate = WatermarkTextTemplate.TimezoneOnly;
         vm.WatermarkPosition = WatermarkPosition.TopLeft;
         vm.WatermarkFontSize = 42d;
         vm.WatermarkApplyToCopy = false;
@@ -787,7 +787,7 @@ public sealed class SettingsViewModelTests
 
         var defaults = new UserSettings().ScreenshotWatermark;
         Assert.Equal(defaults.Enabled, vm.WatermarkEnabled);
-        Assert.Equal(defaults.Template, vm.WatermarkTemplate);
+        Assert.Equal(defaults.TextTemplate, vm.WatermarkTextTemplate);
         Assert.Equal(defaults.Position, vm.WatermarkPosition);
         Assert.Equal(defaults.FontSize, vm.WatermarkFontSize);
         Assert.Equal(defaults.ApplyToCopy, vm.WatermarkApplyToCopy);
@@ -799,7 +799,7 @@ public sealed class SettingsViewModelTests
     {
         var vm = CreateVm();
         vm.WatermarkEnabled = true;
-        vm.WatermarkTemplate = "custom";
+        vm.WatermarkTextTemplate = WatermarkTextTemplate.TimezoneOnly;
         vm.WatermarkPosition = WatermarkPosition.TopLeft;
         vm.WatermarkFontSize = 42d;
         vm.WatermarkApplyToCopy = false;
@@ -809,7 +809,7 @@ public sealed class SettingsViewModelTests
 
         var defaults = new UserSettings().ScreenshotWatermark;
         Assert.Equal(defaults.Enabled, vm.WatermarkEnabled);
-        Assert.Equal(defaults.Template, vm.WatermarkTemplate);
+        Assert.Equal(defaults.TextTemplate, vm.WatermarkTextTemplate);
         Assert.Equal(defaults.Position, vm.WatermarkPosition);
         Assert.Equal(defaults.FontSize, vm.WatermarkFontSize);
         Assert.Equal(defaults.ApplyToCopy, vm.WatermarkApplyToCopy);

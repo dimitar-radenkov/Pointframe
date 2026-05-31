@@ -40,6 +40,7 @@ public sealed class UserSettingsService : IUserSettingsService
             var loaded = JsonSerializer.Deserialize<UserSettings>(json);
             if (loaded is not null)
             {
+                loaded.ScreenshotWatermark ??= new Pointframe.Models.ScreenshotWatermarkSettings();
                 _logger.LogInformation("Settings loaded from {Path}", _settingsPath);
                 return loaded;
             }
@@ -165,7 +166,7 @@ public sealed class UserSettingsService : IUserSettingsService
         return new Pointframe.Models.ScreenshotWatermarkSettings
         {
             Enabled = source.Enabled,
-            Template = source.Template,
+            TextTemplate = source.TextTemplate,
             Position = source.Position,
             FontSize = source.FontSize,
             ColorHex = source.ColorHex,

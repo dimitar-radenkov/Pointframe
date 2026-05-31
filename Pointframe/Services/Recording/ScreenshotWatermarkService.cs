@@ -15,7 +15,7 @@ public sealed class ScreenshotWatermarkService : IScreenshotWatermarkService
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(settings);
 
-        var text = WatermarkTokenResolver.Resolve(settings.Template, DateTimeOffset.Now);
+        var text = WatermarkTokenResolver.Resolve(settings.TextTemplate, DateTimeOffset.Now);
         if (string.IsNullOrWhiteSpace(text))
         {
             return source;

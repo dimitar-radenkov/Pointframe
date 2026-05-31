@@ -75,7 +75,7 @@ public partial class SettingsViewModel : ObservableObject
         var watermark = s.ScreenshotWatermark ?? new ScreenshotWatermarkSettings();
         _watermarkOther = watermark;
         _watermarkEnabled = watermark.Enabled;
-        _watermarkTemplate = watermark.Template;
+        _watermarkTextTemplate = watermark.TextTemplate;
         _watermarkPosition = watermark.Position;
         _watermarkFontSize = watermark.FontSize;
         _watermarkApplyToCopy = watermark.ApplyToCopy;
@@ -127,7 +127,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _watermarkEnabled;
 
     [ObservableProperty]
-    private string _watermarkTemplate = "{datetime}";
+    private WatermarkTextTemplate _watermarkTextTemplate;
+
+    public IReadOnlyList<WatermarkTextTemplate> WatermarkTextTemplates { get; } = Enum.GetValues<WatermarkTextTemplate>();
 
     [ObservableProperty]
     private WatermarkPosition _watermarkPosition;
@@ -368,7 +370,7 @@ public partial class SettingsViewModel : ObservableObject
             ScreenshotWatermark = new ScreenshotWatermarkSettings
             {
                 Enabled = WatermarkEnabled,
-                Template = WatermarkTemplate,
+                TextTemplate = WatermarkTextTemplate,
                 Position = WatermarkPosition,
                 FontSize = WatermarkFontSize,
                 ApplyToCopy = WatermarkApplyToCopy,
@@ -600,7 +602,7 @@ public partial class SettingsViewModel : ObservableObject
                 AutoSaveScreenshots = defaults.AutoSaveScreenshots;
                 CaptureDelaySeconds = defaults.CaptureDelaySeconds;
                 WatermarkEnabled = defaults.ScreenshotWatermark.Enabled;
-                WatermarkTemplate = defaults.ScreenshotWatermark.Template;
+                WatermarkTextTemplate = defaults.ScreenshotWatermark.TextTemplate;
                 WatermarkPosition = defaults.ScreenshotWatermark.Position;
                 WatermarkFontSize = defaults.ScreenshotWatermark.FontSize;
                 WatermarkApplyToCopy = defaults.ScreenshotWatermark.ApplyToCopy;
@@ -669,7 +671,7 @@ public partial class SettingsViewModel : ObservableObject
         RecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(defaults.RecordingCursorHighlightSize);
         CaptureDelaySeconds = defaults.CaptureDelaySeconds;
         WatermarkEnabled = defaults.ScreenshotWatermark.Enabled;
-        WatermarkTemplate = defaults.ScreenshotWatermark.Template;
+        WatermarkTextTemplate = defaults.ScreenshotWatermark.TextTemplate;
         WatermarkPosition = defaults.ScreenshotWatermark.Position;
         WatermarkFontSize = defaults.ScreenshotWatermark.FontSize;
         WatermarkApplyToCopy = defaults.ScreenshotWatermark.ApplyToCopy;
