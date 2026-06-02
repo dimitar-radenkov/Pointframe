@@ -38,8 +38,6 @@ change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
 change-title-escapes: '\<*_&'
 
 template: |
-  ## What's Changed
-
   $CHANGES
 
-  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$TAG
+  Full Changelog: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$TAG
