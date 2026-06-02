@@ -21,10 +21,19 @@ Description: |-
 Moniker: pointframe
 Tags:
   - annotation
+  - blur
+  - free
+  - gif
+  - markup
+  - mp4
   - ocr
+  - open-source
   - screen-capture
+  - screencast
   - screen-recorder
   - screenshot
+  - snipping
+  - text-recognition
   - windows
   - wpf
 ReleaseNotes: First Pointframe-branded winget package submission.
