@@ -135,21 +135,8 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.display }}
           files: installer/output/Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe
-          generate_release_notes: true
+          body: |
+            Pointframe ${{ steps.version.outputs.display }}
 
-      - name: Patch release body ($TAG placeholder)
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $tag = "v${{ steps.version.outputs.display }}"
-          $body = gh release view $tag --json body --jq '.body'
-          if ($body -match '\$TAG') {
-            $patched = $body -replace '\$TAG', $tag
-            $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-            [IO.File]::WriteAllText($notesFile, $patched)
-            gh release edit $tag --notes-file $notesFile
-            Write-Host "Patched `$TAG placeholder → $tag"
-          } else {
-            Write-Host "No `$TAG placeholder found in release body."
-          }
+            - Installer refresh and maintenance release.
+            - For the full list of commits, see Compare in this release page.
