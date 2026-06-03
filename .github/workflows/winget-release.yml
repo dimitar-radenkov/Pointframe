@@ -87,3 +87,66 @@ jobs:
           installers-regex: 'x64-Setup\.exe$'
           fork-user: dimitar-radenkov
           token: ${{ secrets.WINGET_TOKEN }}
+
+      - name: Pin LicenseUrl and clear stale review threads
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $id         = 'DimitarRadenkov.Pointframe'
+          $version    = '${{ steps.version.outputs.display }}'
+          $tag        = '${{ steps.version.outputs.tag }}'
+          $forkUser   = 'dimitar-radenkov'
+          $localePath = "manifests/d/DimitarRadenkov/Pointframe/$version/$id.locale.en-US.yaml"
+
+          # WinGet Releaser runs `komac update`, which regenerates LicenseUrl
+          # from GitHub repository metadata on every submission. That always
+          # yields the mutable default-branch link (blob/HEAD/LICENSE). The
+          # winget-pkgs Copilot reviewer flags it as non-reproducible and leaves
+          # an unresolved review thread, which blocks auto-merge with
+          # "All comments must be resolved." Pin it to the immutable release tag.
+          $refs = gh api "repos/$forkUser/winget-pkgs/git/matching-refs/heads/$id-$version-" | ConvertFrom-Json
+          if (-not $refs) {
+            Write-Output "::warning::No submission branch matching '$id-$version-*'; skipping LicenseUrl pin."
+            exit 0
+          }
+          $branch = ($refs | Select-Object -Last 1).ref -replace '^refs/heads/'
+          Write-Output "Submission branch: $branch"
+
+          $file = gh api "repos/$forkUser/winget-pkgs/contents/$localePath`?ref=$branch" | ConvertFrom-Json
+          $raw  = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($file.content -replace '\s', '')))
+          if ($raw -match 'blob/HEAD/LICENSE') {
+            $patched = $raw -replace 'blob/HEAD/LICENSE', "blob/$tag/LICENSE"
+            $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($patched))
+            gh api -X PUT "repos/$forkUser/winget-pkgs/contents/$localePath" `
+              -f message="Pin LicenseUrl to $tag" `
+              -f content="$b64" `
+              -f sha="$($file.sha)" `
+              -f branch="$branch" | Out-Null
+            Write-Output "Pinned LicenseUrl -> blob/$tag/LICENSE"
+          }
+          else {
+            Write-Output "LicenseUrl already immutable; nothing to pin."
+          }
+
+          # If Copilot already reviewed the blob/HEAD revision, its thread stays
+          # unresolved and keeps blocking the merge even after the fix lands, so
+          # resolve the bot's threads (a PR author may resolve threads on their
+          # own PR). If the patch above beat the review, there is nothing to do.
+          $number = gh pr list --repo microsoft/winget-pkgs --head $branch --state open --json number --jq '.[0].number'
+          if (-not $number) {
+            Write-Output "No open PR found for $branch; review threads (if any) will apply to the fixed manifest."
+            exit 0
+          }
+
+          $query = 'query($n:Int!){repository(owner:"microsoft",name:"winget-pkgs"){pullRequest(number:$n){reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{author{login}}}}}}}}'
+          $nodes = (gh api graphql -F n=$number -f query=$query | ConvertFrom-Json).data.repository.pullRequest.reviewThreads.nodes
+          foreach ($t in $nodes) {
+            if ($t.isResolved) { continue }
+            if ($t.comments.nodes[0].author.login -notlike '*opilot*') { continue }
+            $mutation = 'mutation($tid:ID!){resolveReviewThread(input:{threadId:$tid}){thread{isResolved}}}'
+            gh api graphql -f tid="$($t.id)" -f query=$mutation | Out-Null
+            Write-Output "Resolved Copilot review thread on PR #$number"
+          }
