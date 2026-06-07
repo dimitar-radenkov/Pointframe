@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Reflection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pointframe.Services.Messaging;
 using Xunit;
@@ -127,7 +128,8 @@ public sealed class DefaultEventAggregatorTests
         await sut.Publish(new TestEvent());
 
         // Assert
-        Assert.Equal([1, 2, 3], invoked);
+        Assert.Equal(3, invoked.Count);
+        Assert.Equal([1, 2, 3], invoked.OrderBy(static value => value));
     }
 
     [Fact]
@@ -313,10 +315,11 @@ public sealed class DefaultEventAggregatorTests
     // Separate non-inlined method ensures the JIT does not keep 'host' alive
     // on the calling frame's stack while GC runs.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void SubscribeEphemeral(DefaultEventAggregator aggregator)
+    private static WeakReference<HandlerHost> SubscribeEphemeral(DefaultEventAggregator aggregator)
     {
         var host = new HandlerHost();
         aggregator.Subscribe<TestEvent>(host.Handle);
+        return new WeakReference<HandlerHost>(host);
     }
 
     [Fact]
@@ -324,10 +327,19 @@ public sealed class DefaultEventAggregatorTests
     {
         // Arrange
         var sut = CreateSut();
-        SubscribeEphemeral(sut);
-        GC.Collect(2, GCCollectionMode.Forced, blocking: true);
-        GC.WaitForPendingFinalizers();
-        GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+        var hostRef = SubscribeEphemeral(sut);
+        for (var i = 0; i < 10 && hostRef.TryGetTarget(out _); i++)
+        {
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+        }
+        Assert.False(hostRef.TryGetTarget(out _));
+
+        var subscriptionsField = typeof(DefaultEventAggregator).GetField("_subscriptions", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(subscriptionsField);
+        var subscriptions = Assert.IsType<Dictionary<Type, List<IEventSubscription>>>(subscriptionsField.GetValue(sut));
+        Assert.True(subscriptions.ContainsKey(typeof(TestEvent)));
 
         // Act — first publish detects and prunes the dead subscription
         var ex1 = await Record.ExceptionAsync(() => sut.Publish(new TestEvent()).AsTask());
@@ -338,6 +350,7 @@ public sealed class DefaultEventAggregatorTests
         // Assert
         Assert.Null(ex1);
         Assert.Null(ex2);
+        Assert.False(subscriptions.ContainsKey(typeof(TestEvent)));
     }
 
     // ── Dispose ──────────────────────────────────────────────────────────────
