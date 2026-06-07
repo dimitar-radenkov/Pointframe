@@ -129,7 +129,7 @@ public sealed class DefaultEventAggregatorTests
 
         // Assert
         Assert.Equal(3, invoked.Count);
-        Assert.Equal([1, 2, 3], invoked.OrderBy(static value => value));
+        Assert.Equal([1, 2, 3], invoked.OrderBy(static value => value).ToList());
     }
 
     [Fact]
