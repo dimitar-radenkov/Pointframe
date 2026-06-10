@@ -138,6 +138,17 @@ public sealed class FFMpegVideoWriterTests
     }
 
     [Fact]
+    public void BuildArguments_SetsOneSecondKeyframeInterval()
+    {
+        var args = new List<string>();
+        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", null);
+
+        var gopIndex = args.IndexOf("-g");
+        Assert.True(gopIndex >= 0);
+        Assert.Equal("20", args[gopIndex + 1]);
+    }
+
+    [Fact]
     public void BuildArguments_WithMicrophone_AddsDirectShowAudioInput()
     {
         var args = new List<string>();
