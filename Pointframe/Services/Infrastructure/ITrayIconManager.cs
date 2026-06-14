@@ -4,6 +4,8 @@ internal interface ITrayIconManager : IDisposable
 {
     void Initialize();
 
+    void DismissTransientUi();
+
     void AddDebugMenuItems();
 
     void HandleUpdateAvailable(Models.UpdateCheckResult result);

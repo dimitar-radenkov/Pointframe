@@ -97,6 +97,9 @@ public sealed class FFMpegVideoWriter : IVideoWriter
         args.Add("23");
         args.Add("-pix_fmt");
         args.Add("yuv420p");
+        // Keyframe every second so stream-copy trims can cut close to the requested point.
+        args.Add("-g");
+        args.Add($"{fps}");
 
         if (hasMicrophone)
         {

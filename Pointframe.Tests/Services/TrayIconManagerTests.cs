@@ -177,6 +177,55 @@ public sealed class TrayIconManagerTests
     }
 
     [Fact]
+    public void TrimRecentRecording_Click_WhenRecordingMissing_ShowsWarning()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var messageBoxMock = new Mock<IMessageBoxService>();
+            var trimRequested = false;
+            var manager = CreateManager(
+                messageBox: messageBoxMock.Object,
+                onTrimRecording: _ => trimRequested = true);
+
+            var missingPath = Path.Combine(Path.GetTempPath(), $"missing-{Guid.NewGuid()}.mp4");
+            var recentRecording = CreateRecentRecordingItem(missingPath, "00:07");
+            var menuItem = new System.Windows.Controls.MenuItem { Tag = recentRecording };
+
+            InvokePrivate(manager, "TrimRecentRecording_Click", menuItem, new RoutedEventArgs());
+
+            messageBoxMock.Verify(service => service.ShowWarning(
+                "The recording file could not be found.",
+                "Trim Recording"), Times.Once);
+            Assert.False(trimRequested);
+        });
+    }
+
+    [Fact]
+    public void TrimRecentRecording_Click_WhenRecordingExists_InvokesTrimCallback()
+    {
+        StaTestHelper.Run(() =>
+        {
+            string? trimmedPath = null;
+            var manager = CreateManager(onTrimRecording: path => trimmedPath = path);
+
+            var tempMp4 = Path.GetTempFileName();
+            var recentRecording = CreateRecentRecordingItem(tempMp4, "00:09");
+            var menuItem = new System.Windows.Controls.MenuItem { Tag = recentRecording };
+
+            try
+            {
+                InvokePrivate(manager, "TrimRecentRecording_Click", menuItem, new RoutedEventArgs());
+
+                Assert.Equal(tempMp4, trimmedPath);
+            }
+            finally
+            {
+                File.Delete(tempMp4);
+            }
+        });
+    }
+
+    [Fact]
     public void ExportRecentRecordingGif_Click_WhenRecordingMissing_ShowsWarning()
     {
         StaTestHelper.Run(() =>
@@ -506,7 +555,8 @@ public sealed class TrayIconManagerTests
         IAppVersionService? appVersionService = null,
         IAutoUpdateService? autoUpdate = null,
         IUserSettingsService? userSettings = null,
-        IGifExportService? gifExportService = null)
+        IGifExportService? gifExportService = null,
+        Action<string>? onTrimRecording = null)
     {
         return new TrayIconManager(
             NullLogger<TrayIconManager>.Instance,
@@ -521,6 +571,7 @@ public sealed class TrayIconManagerTests
             onNewSnip: static () => { },
             onWholeScreenSnip: static () => { },
             onOpenImage: static () => { },
+            onTrimRecording: onTrimRecording ?? (static _ => { }),
             onShowSettings: static () => { },
             onShowAbout: static () => { });
     }

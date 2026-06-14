@@ -22,6 +22,7 @@ internal sealed class TrayIconManager : ITrayIconManager
     private readonly Action _onNewSnip;
     private readonly Action _onWholeScreenSnip;
     private readonly Action _onOpenImage;
+    private readonly Action<string> _onTrimRecording;
     private readonly Action _onShowSettings;
     private readonly Action _onShowAbout;
 
@@ -48,6 +49,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         Action onNewSnip,
         Action onWholeScreenSnip,
         Action onOpenImage,
+        Action<string> onTrimRecording,
         Action onShowSettings,
         Action onShowAbout)
     {
@@ -63,6 +65,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         _onNewSnip = onNewSnip;
         _onWholeScreenSnip = onWholeScreenSnip;
         _onOpenImage = onOpenImage;
+        _onTrimRecording = onTrimRecording;
         _onShowSettings = onShowSettings;
         _onShowAbout = onShowAbout;
     }
@@ -134,6 +137,22 @@ internal sealed class TrayIconManager : ITrayIconManager
         };
         simulateUiErrorMenuItem.Click += SimulateUiError_Click;
         contextMenu.Items.Insert(Math.Max(0, contextMenu.Items.Count - 1), simulateUiErrorMenuItem);
+    }
+
+    public void DismissTransientUi()
+    {
+        if (_trayIcon?.ContextMenu is not { } contextMenu)
+        {
+            return;
+        }
+
+        // Ensure any open tray menus/submenus are closed before app windows are shown.
+        foreach (var item in contextMenu.Items.OfType<WpfMenuItem>())
+        {
+            item.IsSubmenuOpen = false;
+        }
+
+        contextMenu.IsOpen = false;
     }
 
     public void Dispose()
@@ -362,6 +381,18 @@ internal sealed class TrayIconManager : ITrayIconManager
                 args.Handled = true;
             };
 
+            var trimButton = CreateRecentActionButton(
+                "✂️",
+                "Trim video",
+                recentRecording,
+                "Trim recording",
+                new System.Windows.Thickness(0, 0, 4, 0));
+            trimButton.Click += (_, args) =>
+            {
+                TrimRecentRecording_Click(trimButton, new RoutedEventArgs());
+                args.Handled = true;
+            };
+
             var gifButton = CreateRecentActionButton(
                 "🎬",
                 "Export to GIF",
@@ -382,6 +413,7 @@ internal sealed class TrayIconManager : ITrayIconManager
             };
 
             panel.Children.Add(textBlock);
+            panel.Children.Add(trimButton);
             panel.Children.Add(gifButton);
             panel.Children.Add(folderButton);
 
@@ -479,6 +511,24 @@ internal sealed class TrayIconManager : ITrayIconManager
         {
             OpenFolder(directory);
         }
+    }
+
+    private void TrimRecentRecording_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetTaggedValue(sender, out RecentRecordingItem recentRecording))
+        {
+            return;
+        }
+
+        if (!File.Exists(recentRecording.OutputPath))
+        {
+            _messageBox.ShowWarning("The recording file could not be found.", "Trim Recording");
+            return;
+        }
+
+        _telemetry.TrackEvent("video_trim_opened");
+        DismissTransientUi();
+        _onTrimRecording(recentRecording.OutputPath);
     }
 
     private async void ExportRecentRecordingGif_Click(object sender, RoutedEventArgs e)

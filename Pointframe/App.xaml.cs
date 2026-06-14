@@ -136,6 +136,7 @@ public partial class App : Application
             onNewSnip: () => _captureLaunch.StartRegionSnip("tray"),
             onWholeScreenSnip: () => _captureLaunch.StartWholeScreenSnip("tray"),
             onOpenImage: () => Dispatcher.InvokeAsync(OpenImage, System.Windows.Threading.DispatcherPriority.ApplicationIdle),
+            onTrimRecording: ShowTrimWindow,
             onShowSettings: ShowSettingsWindow,
             onShowAbout: ShowAboutWindow);
         _trayIconManager.Initialize();
@@ -178,6 +179,12 @@ public partial class App : Application
         services.AddTransient<IVideoWriterFactory, VideoWriterFactory>();
         services.AddTransient<IScreenRecordingService, ScreenRecordingService>();
         services.AddSingleton<IGifExportService, GifExportService>();
+        services.AddSingleton<IVideoTrimService, VideoTrimService>();
+        services.AddTransient<Func<string, TrimViewModel>>(sp => inputPath => new TrimViewModel(
+            inputPath,
+            sp.GetRequiredService<IVideoTrimService>(),
+            sp.GetRequiredService<ITelemetryService>(),
+            sp.GetRequiredService<ILogger<TrimViewModel>>()));
         services.AddSingleton<IAnnotationGeometryService, AnnotationGeometryService>();
         services.AddSingleton<IOcrService, WindowsOcrService>();
         services.AddTransient<OverlayViewModel>();
@@ -324,6 +331,19 @@ public partial class App : Application
                 "The selected image could not be opened. Please try a different file.",
                 "Open Image");
         }
+    }
+
+    private void ShowTrimWindow(string inputPath)
+    {
+        _trayIconManager.DismissTransientUi();
+
+        var vm = _host.Services.GetRequiredService<Func<string, TrimViewModel>>()(inputPath);
+        vm.TrimCompleted += (outputPath, trimmedDuration) =>
+            _trayIconManager.HandleRecordingCompleted(outputPath, trimmedDuration.ToString(@"mm\:ss"));
+
+        var window = new TrimWindow(vm);
+        RegisterAutomationWindow(window);
+        window.Show();
     }
 
     private void ShowSettingsWindow()
