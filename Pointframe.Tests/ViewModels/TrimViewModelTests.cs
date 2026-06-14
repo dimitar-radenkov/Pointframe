@@ -124,6 +124,39 @@ public sealed class TrimViewModelTests
         Assert.True(closed);
     }
 
+    [Fact]
+    public async Task CancelCommand_WhileTrimming_CancelsAndClosesAfterCancellation()
+    {
+        var trimService = new Mock<IVideoTrimService>();
+        trimService
+            .Setup(s => s.Trim(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .Returns<string, string, TimeSpan, TimeSpan, CancellationToken>(async (_, _, _, _, ct) =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            });
+
+        var vm = CreateViewModel(trimService.Object);
+        vm.SetMediaDuration(TimeSpan.FromSeconds(10));
+
+        var closed = false;
+        vm.RequestClose += () => closed = true;
+
+        var saveTask = vm.SaveTrimCommand.ExecuteAsync(null);
+
+        while (!vm.IsTrimming)
+        {
+            await Task.Yield();
+        }
+
+        vm.CancelCommand.Execute(null);
+
+        await saveTask;
+
+        Assert.True(closed);
+        Assert.False(vm.IsTrimming);
+        Assert.Equal("Trim canceled.", vm.StatusText);
+    }
+
     private static TrimViewModel CreateViewModel(IVideoTrimService? trimService = null, string? inputPath = null)
     {
         return new TrimViewModel(

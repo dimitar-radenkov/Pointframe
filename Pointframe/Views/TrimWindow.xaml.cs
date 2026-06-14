@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Threading;
 using Pointframe.ViewModels;
 
@@ -37,6 +38,7 @@ public partial class TrimWindow : Window
         _positionTimer.Tick += PositionTimer_Tick;
 
         Player.Source = new Uri(vm.InputPath);
+        SetPlaybackState(false);
         Loaded += TrimWindow_Loaded;
         Closed += (_, _) =>
         {
@@ -62,9 +64,8 @@ public partial class TrimWindow : Window
         // scrubbed the preview to the end handle, so seek back to the start.
         Player.Play();
         Player.Pause();
-        _isPlaying = false;
         _isPrimingPreview = false;
-        PlayPauseButton.Content = "▶";
+        SetPlaybackState(false);
         SeekTo(_vm.StartSeconds);
         _positionTimer.Start();
     }
@@ -86,10 +87,8 @@ public partial class TrimWindow : Window
         // Loop playback within the selected trim range so the preview reflects the result.
         if (_isPlaying && position >= _vm.EndSeconds)
         {
-            Player.Pause();
-            _isPlaying = false;
-            PlayPauseButton.Content = "▶";
             SeekTo(_vm.StartSeconds);
+            Player.Play();
             return;
         }
 
@@ -107,8 +106,7 @@ public partial class TrimWindow : Window
         if (_isPlaying)
         {
             Player.Pause();
-            _isPlaying = false;
-            PlayPauseButton.Content = "▶";
+            SetPlaybackState(false);
             return;
         }
 
@@ -119,8 +117,7 @@ public partial class TrimWindow : Window
         }
 
         Player.Play();
-        _isPlaying = true;
-        PlayPauseButton.Content = "⏸";
+        SetPlaybackState(true);
     }
 
     private void PositionSlider_DragStarted(object sender, System.Windows.Controls.Primitives.DragStartedEventArgs e)
@@ -193,5 +190,12 @@ public partial class TrimWindow : Window
 
         _isPrimingPreview = true;
         Player.Play();
+    }
+
+    private void SetPlaybackState(bool isPlaying)
+    {
+        _isPlaying = isPlaying;
+        PlayPauseButton.Content = isPlaying ? "⏸" : "▶";
+        AutomationProperties.SetName(PlayPauseButton, isPlaying ? "Pause preview" : "Play preview");
     }
 }

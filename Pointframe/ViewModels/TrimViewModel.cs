@@ -9,6 +9,8 @@ public partial class TrimViewModel : ObservableObject
     private readonly IVideoTrimService _trimService;
     private readonly ITelemetryService _telemetry;
     private readonly ILogger<TrimViewModel> _logger;
+    private CancellationTokenSource? _trimCancellationSource;
+    private bool _closeWhenTrimCanceled;
 
     public string InputPath { get; }
 
@@ -84,11 +86,15 @@ public partial class TrimViewModel : ObservableObject
     {
         var outputPath = VideoTrimService.GetDefaultOutputPath(InputPath);
         var trimmedDuration = TimeSpan.FromSeconds(EndSeconds - StartSeconds);
+        using var trimCancellationSource = new CancellationTokenSource();
+        _trimCancellationSource = trimCancellationSource;
+        _closeWhenTrimCanceled = false;
 
         IsTrimming = true;
         StatusText = "Trimming…";
         _telemetry.TrackEvent("video_trim_started");
 
+        var canceled = false;
         var success = true;
         try
         {
@@ -96,10 +102,21 @@ public partial class TrimViewModel : ObservableObject
                 InputPath,
                 outputPath,
                 TimeSpan.FromSeconds(StartSeconds),
-                TimeSpan.FromSeconds(EndSeconds)).ConfigureAwait(true);
+                TimeSpan.FromSeconds(EndSeconds),
+                trimCancellationSource.Token).ConfigureAwait(true);
 
             TrimCompleted?.Invoke(outputPath, trimmedDuration);
             RequestClose?.Invoke();
+        }
+        catch (OperationCanceledException) when (trimCancellationSource.IsCancellationRequested)
+        {
+            success = false;
+            canceled = true;
+            StatusText = "Trim canceled.";
+            if (_closeWhenTrimCanceled)
+            {
+                RequestClose?.Invoke();
+            }
         }
         catch (Exception ex)
         {
@@ -110,16 +127,35 @@ public partial class TrimViewModel : ObservableObject
         }
         finally
         {
+            _trimCancellationSource = null;
+            _closeWhenTrimCanceled = false;
             _telemetry.TrackEvent("video_trim_completed", new Dictionary<string, string>
             {
                 ["success"] = success ? "true" : "false",
+                ["canceled"] = canceled ? "true" : "false",
             });
             IsTrimming = false;
         }
     }
 
     [RelayCommand]
-    private void Cancel() => RequestClose?.Invoke();
+    private void Cancel()
+    {
+        if (IsTrimming)
+        {
+            if (_trimCancellationSource is null)
+            {
+                return;
+            }
+
+            _closeWhenTrimCanceled = true;
+            StatusText = "Canceling…";
+            _trimCancellationSource.Cancel();
+            return;
+        }
+
+        RequestClose?.Invoke();
+    }
 
     private static string FormatTime(double seconds) =>
         TimeSpan.FromSeconds(seconds).ToString(@"mm\:ss\.f");

@@ -126,8 +126,19 @@ public sealed partial class VideoTrimService : IVideoTrimService
 
         var consumeTask = ConsumeStderr(process);
 
-        await process.WaitForExitAsync(ct).ConfigureAwait(false);
-        await consumeTask.ConfigureAwait(false);
+        try
+        {
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await TerminateProcessIfRunning(process, "trim").ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            await consumeTask.ConfigureAwait(false);
+        }
 
         if (process.ExitCode != 0)
         {
@@ -184,8 +195,13 @@ public sealed partial class VideoTrimService : IVideoTrimService
             await process.WaitForExitAsync(ct).ConfigureAwait(false);
             return ParseDuration(stderr);
         }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (OperationCanceledException)
         {
+            await TerminateProcessIfRunning(process, "probe").ConfigureAwait(false);
             throw;
         }
         catch (Exception ex)
@@ -226,6 +242,24 @@ public sealed partial class VideoTrimService : IVideoTrimService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to read ffmpeg trim stderr");
+        }
+    }
+
+    private async Task TerminateProcessIfRunning(Process process, string operation)
+    {
+        try
+        {
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to terminate ffmpeg process after cancellation during {Operation}", operation);
         }
     }
 
