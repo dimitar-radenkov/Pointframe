@@ -139,6 +139,22 @@ internal sealed class TrayIconManager : ITrayIconManager
         contextMenu.Items.Insert(Math.Max(0, contextMenu.Items.Count - 1), simulateUiErrorMenuItem);
     }
 
+    public void DismissTransientUi()
+    {
+        if (_trayIcon?.ContextMenu is not { } contextMenu)
+        {
+            return;
+        }
+
+        // Ensure any open tray menus/submenus are closed before app windows are shown.
+        foreach (var item in contextMenu.Items.OfType<WpfMenuItem>())
+        {
+            item.IsSubmenuOpen = false;
+        }
+
+        contextMenu.IsOpen = false;
+    }
+
     public void Dispose()
     {
         _trayIcon?.Dispose();
@@ -511,6 +527,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         }
 
         _telemetry.TrackEvent("video_trim_opened");
+        DismissTransientUi();
         _onTrimRecording(recentRecording.OutputPath);
     }
 

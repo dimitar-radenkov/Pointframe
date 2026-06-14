@@ -8,6 +8,7 @@ public partial class TrimWindow : Window
 {
     private readonly TrimViewModel _vm;
     private readonly DispatcherTimer _positionTimer;
+    private bool _isPrimingPreview;
     private bool _isPlaying;
     private bool _isDraggingPosition;
 
@@ -36,11 +37,17 @@ public partial class TrimWindow : Window
         _positionTimer.Tick += PositionTimer_Tick;
 
         Player.Source = new Uri(vm.InputPath);
+        Loaded += TrimWindow_Loaded;
         Closed += (_, _) =>
         {
             _positionTimer.Stop();
             Player.Close();
         };
+    }
+
+    private void TrimWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        PrimePreviewFrame();
     }
 
     private void Player_MediaOpened(object sender, RoutedEventArgs e)
@@ -55,6 +62,9 @@ public partial class TrimWindow : Window
         // scrubbed the preview to the end handle, so seek back to the start.
         Player.Play();
         Player.Pause();
+        _isPlaying = false;
+        _isPrimingPreview = false;
+        PlayPauseButton.Content = "▶";
         SeekTo(_vm.StartSeconds);
         _positionTimer.Start();
     }
@@ -89,6 +99,11 @@ public partial class TrimWindow : Window
 
     private void PlayPause_Click(object sender, RoutedEventArgs e)
     {
+        if (_isPrimingPreview)
+        {
+            return;
+        }
+
         if (_isPlaying)
         {
             Player.Pause();
@@ -167,5 +182,16 @@ public partial class TrimWindow : Window
         Player.Position = TimeSpan.FromSeconds(seconds);
         PositionSlider.Value = seconds;
         PositionText.Text = TimeSpan.FromSeconds(seconds).ToString(@"mm\:ss\.f");
+    }
+
+    private void PrimePreviewFrame()
+    {
+        if (_isPrimingPreview || Player.Source is null || Player.NaturalDuration.HasTimeSpan)
+        {
+            return;
+        }
+
+        _isPrimingPreview = true;
+        Player.Play();
     }
 }

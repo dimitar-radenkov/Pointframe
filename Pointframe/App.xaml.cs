@@ -335,6 +335,8 @@ public partial class App : Application
 
     private void ShowTrimWindow(string inputPath)
     {
+        _trayIconManager.DismissTransientUi();
+
         var vm = _host.Services.GetRequiredService<Func<string, TrimViewModel>>()(inputPath);
         vm.TrimCompleted += (outputPath, trimmedDuration) =>
             _trayIconManager.HandleRecordingCompleted(outputPath, trimmedDuration.ToString(@"mm\:ss"));
