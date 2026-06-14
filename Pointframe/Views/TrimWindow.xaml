@@ -158,6 +158,7 @@
                             Grid.Column="0"
                             Content="▶"
                             AutomationProperties.Name="Play preview"
+                            ToolTip="Play preview"
                             Margin="0,0,10,0"
                             Style="{StaticResource IconButton}"
                             Click="PlayPause_Click"/>

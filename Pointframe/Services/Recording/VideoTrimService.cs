@@ -29,26 +29,34 @@ public sealed partial class VideoTrimService : IVideoTrimService
 
         _logger.LogInformation("Starting trim: {Input} → {Output} ({Start}–{End})", inputPath, outputPath, start, end);
 
-        // Stream copy gives an instant, lossless trim but only cuts on keyframes; if it fails or
-        // the cut lands too far from the requested start, fall back to a re-encode which is
-        // slower but frame-accurate.
-        if (await RunFfmpeg(ffmpegPath, inputPath, outputPath, start, end, reEncode: false, ct).ConfigureAwait(false) &&
-            await CopyTrimIsAccurate(ffmpegPath, outputPath, end - start, ct).ConfigureAwait(false))
+        try
         {
-            _logger.LogInformation("Trim complete (stream copy): {Output}", outputPath);
-            return;
+            // Stream copy gives an instant, lossless trim but only cuts on keyframes; if it fails or
+            // the cut lands too far from the requested start, fall back to a re-encode which is
+            // slower but frame-accurate.
+            if (await RunFfmpeg(ffmpegPath, inputPath, outputPath, start, end, reEncode: false, ct).ConfigureAwait(false) &&
+                await CopyTrimIsAccurate(ffmpegPath, outputPath, end - start, ct).ConfigureAwait(false))
+            {
+                _logger.LogInformation("Trim complete (stream copy): {Output}", outputPath);
+                return;
+            }
+
+            _logger.LogInformation("Stream-copy trim unusable for {Input}; retrying with re-encode", inputPath);
+            DeleteIfExists(outputPath);
+
+            if (!await RunFfmpeg(ffmpegPath, inputPath, outputPath, start, end, reEncode: true, ct).ConfigureAwait(false))
+            {
+                DeleteIfExists(outputPath);
+                throw new InvalidOperationException("ffmpeg failed to trim the recording.");
+            }
+
+            _logger.LogInformation("Trim complete (re-encode): {Output}", outputPath);
         }
-
-        _logger.LogInformation("Stream-copy trim unusable for {Input}; retrying with re-encode", inputPath);
-        DeleteIfExists(outputPath);
-
-        if (!await RunFfmpeg(ffmpegPath, inputPath, outputPath, start, end, reEncode: true, ct).ConfigureAwait(false))
+        catch (OperationCanceledException)
         {
             DeleteIfExists(outputPath);
-            throw new InvalidOperationException("ffmpeg failed to trim the recording.");
+            throw;
         }
-
-        _logger.LogInformation("Trim complete (re-encode): {Output}", outputPath);
     }
 
     internal static string GetDefaultOutputPath(string inputPath)

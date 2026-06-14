@@ -72,6 +72,8 @@ public partial class TrimWindow : Window
 
     private void Player_MediaFailed(object sender, ExceptionRoutedEventArgs e)
     {
+        _isPrimingPreview = false;
+        SetPlaybackState(false);
         _vm.StatusText = "Preview unavailable for this file.";
     }
 
@@ -196,6 +198,8 @@ public partial class TrimWindow : Window
     {
         _isPlaying = isPlaying;
         PlayPauseButton.Content = isPlaying ? "⏸" : "▶";
-        AutomationProperties.SetName(PlayPauseButton, isPlaying ? "Pause preview" : "Play preview");
+        var actionText = isPlaying ? "Pause preview" : "Play preview";
+        AutomationProperties.SetName(PlayPauseButton, actionText);
+        PlayPauseButton.ToolTip = actionText;
     }
 }
