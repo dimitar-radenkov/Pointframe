@@ -73,6 +73,8 @@ public sealed class UserSettings
 
     public ScreenshotWatermarkSettings ScreenshotWatermark { get; set; } = new();
 
+    public VideoWatermarkSettings? VideoWatermark { get; set; }
+
     /// <summary>
     /// Anonymous install identifier generated once on first run.
     /// Used for telemetry to count unique installs without tracking identity.

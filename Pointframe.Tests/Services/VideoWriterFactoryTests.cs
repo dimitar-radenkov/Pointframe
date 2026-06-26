@@ -1,5 +1,7 @@
 using System.IO;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
 
@@ -8,8 +10,12 @@ namespace Pointframe.Tests.Services;
 [Collection("FfmpegPathOverride")]
 public sealed class VideoWriterFactoryTests
 {
-    private static VideoWriterFactory CreateSut() =>
-        new(NullLogger<FFMpegVideoWriter>.Instance);
+    private static VideoWriterFactory CreateSut()
+    {
+        var settings = new Mock<IUserSettingsService>();
+        settings.SetupGet(service => service.Current).Returns(new UserSettings());
+        return new(NullLogger<FFMpegVideoWriter>.Instance, settings.Object);
+    }
 
     private static IDisposable UseFfmpegPathOverride(string? path)
     {

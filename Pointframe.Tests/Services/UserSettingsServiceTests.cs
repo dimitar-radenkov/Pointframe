@@ -80,6 +80,38 @@ public sealed class UserSettingsServiceTests : IDisposable
         Assert.NotNull(sut.Current);
     }
 
+        [Fact]
+        public void Load_WhenVideoWatermarkMissing_DefaultsToScreenshotWatermark()
+        {
+                var settingsPath = Path.Combine(_tempDirectory, "settings.json");
+                Directory.CreateDirectory(_tempDirectory);
+                File.WriteAllText(
+                        settingsPath,
+                        """
+                        {
+                            "ScreenshotWatermark": {
+                                "Enabled": true,
+                                "TextTemplate": 1,
+                                "Position": 0,
+                                "FontSize": 24,
+                                "ColorHex": "#FFABCDEF",
+                                "BackgroundEnabled": false,
+                                "Opacity": 0.7,
+                                "Margin": 21,
+                                "ApplyToCopy": true,
+                                "ApplyToSave": false
+                            }
+                        }
+                        """);
+
+                var sut = new UserSettingsService(NullLogger<UserSettingsService>.Instance, settingsPath);
+
+                Assert.NotNull(sut.Current.VideoWatermark);
+                Assert.True(sut.Current.VideoWatermark.Enabled);
+                Assert.Equal(24, sut.Current.VideoWatermark.FontSize);
+                Assert.Equal("#FFABCDEF", sut.Current.VideoWatermark.ColorHex);
+        }
+
     [Fact]
     public void Save_PersistsProvidedSettingsAndUpdatesCurrent()
     {
@@ -101,6 +133,37 @@ public sealed class UserSettingsServiceTests : IDisposable
         Assert.True(persisted!.AutoSaveScreenshots);
         Assert.Equal(3, persisted.CaptureDelaySeconds);
         Assert.Equal(60, persisted.RecordingFps);
+    }
+
+    [Fact]
+    public void Update_ClonesVideoWatermarkSettings()
+    {
+        var settingsPath = Path.Combine(_tempDirectory, "settings.json");
+        var sut = new UserSettingsService(NullLogger<UserSettingsService>.Instance, settingsPath);
+        sut.Save(new UserSettings
+        {
+            VideoWatermark = new VideoWatermarkSettings
+            {
+                Enabled = true,
+                FontSize = 20,
+                Margin = 14,
+                TextTemplate = WatermarkTextTemplate.TimeOnly,
+                Position = WatermarkPosition.TopRight,
+            },
+        });
+
+        sut.Update(settings =>
+        {
+            Assert.NotNull(settings.VideoWatermark);
+            settings.VideoWatermark!.FontSize = 30;
+        });
+        Assert.NotNull(sut.Current.VideoWatermark);
+        Assert.Equal(30, sut.Current.VideoWatermark!.FontSize);
+
+        var persisted = JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(settingsPath));
+        Assert.NotNull(persisted);
+        Assert.NotNull(persisted!.VideoWatermark);
+        Assert.Equal(30, persisted.VideoWatermark!.FontSize);
     }
 
     [Fact]

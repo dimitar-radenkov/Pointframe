@@ -815,4 +815,47 @@ public sealed class SettingsViewModelTests
         Assert.Equal(defaults.ApplyToCopy, vm.WatermarkApplyToCopy);
         Assert.Equal(defaults.ApplyToSave, vm.WatermarkApplyToSave);
     }
+
+    [Fact]
+    public void Save_UpdatesVideoWatermarkFromCurrentWatermarkUiValues()
+    {
+        var current = new UserSettings
+        {
+            VideoWatermark = new VideoWatermarkSettings
+            {
+                Enabled = true,
+                TextTemplate = WatermarkTextTemplate.TimeOnly,
+                Position = WatermarkPosition.TopLeft,
+                FontSize = 22d,
+                ColorHex = "#FF12AB34",
+                BackgroundEnabled = false,
+                Opacity = 0.8,
+                Margin = 11d,
+                ApplyToCopy = false,
+                ApplyToSave = false,
+            },
+        };
+
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(current);
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>(), CreateMicrophoneDeviceService());
+
+        vm.WatermarkEnabled = true;
+        vm.WatermarkTextTemplate = WatermarkTextTemplate.DateOnly;
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.NotNull(saved);
+        Assert.NotNull(saved!.VideoWatermark);
+        Assert.True(saved.VideoWatermark!.Enabled);
+        Assert.Equal(WatermarkTextTemplate.DateOnly, saved.VideoWatermark.TextTemplate);
+        Assert.Equal(vm.WatermarkPosition, saved.VideoWatermark.Position);
+        Assert.Equal(vm.WatermarkFontSize, saved.VideoWatermark.FontSize);
+        Assert.Equal(current.ScreenshotWatermark.ColorHex, saved.VideoWatermark.ColorHex);
+        Assert.Equal(current.ScreenshotWatermark.BackgroundEnabled, saved.VideoWatermark.BackgroundEnabled);
+        Assert.Equal(current.ScreenshotWatermark.Opacity, saved.VideoWatermark.Opacity);
+        Assert.Equal(current.ScreenshotWatermark.Margin, saved.VideoWatermark.Margin);
+    }
 }
