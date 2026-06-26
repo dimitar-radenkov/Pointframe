@@ -817,7 +817,7 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
-    public void Save_PreservesVideoWatermarkSettings()
+    public void Save_UpdatesVideoWatermarkFromCurrentWatermarkUiValues()
     {
         var current = new UserSettings
         {
@@ -850,12 +850,12 @@ public sealed class SettingsViewModelTests
         Assert.NotNull(saved);
         Assert.NotNull(saved!.VideoWatermark);
         Assert.True(saved.VideoWatermark!.Enabled);
-        Assert.Equal(WatermarkTextTemplate.TimeOnly, saved.VideoWatermark.TextTemplate);
-        Assert.Equal(WatermarkPosition.TopLeft, saved.VideoWatermark.Position);
-        Assert.Equal(22d, saved.VideoWatermark.FontSize);
-        Assert.Equal("#FF12AB34", saved.VideoWatermark.ColorHex);
-        Assert.False(saved.VideoWatermark.BackgroundEnabled);
-        Assert.Equal(0.8, saved.VideoWatermark.Opacity);
-        Assert.Equal(11d, saved.VideoWatermark.Margin);
+        Assert.Equal(WatermarkTextTemplate.DateOnly, saved.VideoWatermark.TextTemplate);
+        Assert.Equal(vm.WatermarkPosition, saved.VideoWatermark.Position);
+        Assert.Equal(vm.WatermarkFontSize, saved.VideoWatermark.FontSize);
+        Assert.Equal(current.ScreenshotWatermark.ColorHex, saved.VideoWatermark.ColorHex);
+        Assert.Equal(current.ScreenshotWatermark.BackgroundEnabled, saved.VideoWatermark.BackgroundEnabled);
+        Assert.Equal(current.ScreenshotWatermark.Opacity, saved.VideoWatermark.Opacity);
+        Assert.Equal(current.ScreenshotWatermark.Margin, saved.VideoWatermark.Margin);
     }
 }

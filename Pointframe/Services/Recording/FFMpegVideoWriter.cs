@@ -211,17 +211,14 @@ public sealed class FFMpegVideoWriter : IVideoWriter
                     FileName = ffmpegPath,
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                 },
             };
 
             process.StartInfo.ArgumentList.Add("-hide_banner");
-            process.StartInfo.ArgumentList.Add("-filters");
+            process.StartInfo.ArgumentList.Add("-h");
+            process.StartInfo.ArgumentList.Add("filter=drawtext");
 
             process.Start();
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
             if (!process.WaitForExit(3000))
             {
                 process.Kill();
@@ -229,8 +226,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter
                 return false;
             }
 
-            var combined = string.Concat(output, Environment.NewLine, error);
-            return combined.Contains("drawtext", StringComparison.OrdinalIgnoreCase);
+            return process.ExitCode == 0;
         }
         catch (Exception ex)
         {
