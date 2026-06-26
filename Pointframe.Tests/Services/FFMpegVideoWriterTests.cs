@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging.Abstractions;
+using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
 
@@ -183,6 +184,58 @@ public sealed class FFMpegVideoWriterTests
         FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", "Studio \"Mic\"");
 
         Assert.Contains("audio=Studio \"Mic\"", args);
+    }
+
+    [Fact]
+    public void BuildArguments_WhenDrawtextFilterProvided_AddsVideoFilter()
+    {
+        var args = new List<string>();
+
+        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", null, "drawtext=fontfile='C\\:/Windows/Fonts/segoeui.ttf':text='stamp'");
+
+        var vfIndex = args.IndexOf("-vf");
+        Assert.True(vfIndex >= 0);
+        Assert.Contains("drawtext=", args[vfIndex + 1]);
+    }
+
+    [Fact]
+    public void BuildArguments_WhenDrawtextFilterMissing_DoesNotAddVideoFilter()
+    {
+        var args = new List<string>();
+
+        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", null, null);
+
+        Assert.DoesNotContain("-vf", args);
+    }
+
+    [Fact]
+    public void BuildDrawtextFilter_EscapesColonPercentAndQuote()
+    {
+        var settings = new ScreenshotWatermarkSettings
+        {
+            Enabled = true,
+            TextTemplate = WatermarkTextTemplate.DateTime,
+            Position = WatermarkPosition.BottomRight,
+            FontSize = 18,
+            ColorHex = "#FFFFFFFF",
+            BackgroundEnabled = true,
+            Opacity = 1.0,
+            Margin = 16,
+        };
+
+        var escaped = FFMpegVideoWriter.EscapeDrawtextValue("A:B % C ' D");
+        Assert.Equal("A\\:B \\% C \\' D", escaped);
+
+        var filter = FFMpegVideoWriter.BuildDrawtextFilter(
+            settings,
+            new DateTimeOffset(2026, 3, 18, 14, 5, 9, TimeSpan.FromHours(2)),
+            "Pointframe",
+            @"C:\Windows\Fonts\segoeui.ttf");
+
+        Assert.Contains("drawtext=", filter);
+        Assert.Contains("fontfile='C\\:/Windows/Fonts/segoeui.ttf'", filter);
+        Assert.Contains(":x=w-tw-16", filter);
+        Assert.Contains(":y=h-th-16", filter);
     }
 
     private static string InvokeResolveFfmpegPath()

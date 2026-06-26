@@ -41,6 +41,7 @@ public sealed class UserSettingsService : IUserSettingsService
             if (loaded is not null)
             {
                 loaded.ScreenshotWatermark ??= new Pointframe.Models.ScreenshotWatermarkSettings();
+                loaded.VideoWatermark ??= CloneVideoWatermark(loaded.ScreenshotWatermark);
                 _logger.LogInformation("Settings loaded from {Path}", _settingsPath);
                 return loaded;
             }
@@ -153,17 +154,36 @@ public sealed class UserSettingsService : IUserSettingsService
                 Color = p.Color,
                 StrokeThickness = p.StrokeThickness,
             })],
-            ScreenshotWatermark = CloneWatermark(settings.ScreenshotWatermark),
+            ScreenshotWatermark = CloneScreenshotWatermark(settings.ScreenshotWatermark),
+            VideoWatermark = CloneVideoWatermark(settings.VideoWatermark),
             InstallId = settings.InstallId,
             InstallCreatedUtc = settings.InstallCreatedUtc,
             FirstCaptureCompletedTracked = settings.FirstCaptureCompletedTracked,
             FirstRecordingCompletedTracked = settings.FirstRecordingCompletedTracked,
         };
 
-    private static Pointframe.Models.ScreenshotWatermarkSettings CloneWatermark(Pointframe.Models.ScreenshotWatermarkSettings? source)
+    private static Pointframe.Models.ScreenshotWatermarkSettings CloneScreenshotWatermark(Pointframe.Models.WatermarkSettings? source)
     {
         source ??= new Pointframe.Models.ScreenshotWatermarkSettings();
         return new Pointframe.Models.ScreenshotWatermarkSettings
+        {
+            Enabled = source.Enabled,
+            TextTemplate = source.TextTemplate,
+            Position = source.Position,
+            FontSize = source.FontSize,
+            ColorHex = source.ColorHex,
+            BackgroundEnabled = source.BackgroundEnabled,
+            Opacity = source.Opacity,
+            Margin = source.Margin,
+            ApplyToCopy = source.ApplyToCopy,
+            ApplyToSave = source.ApplyToSave,
+        };
+    }
+
+    private static Pointframe.Models.VideoWatermarkSettings CloneVideoWatermark(Pointframe.Models.WatermarkSettings? source)
+    {
+        source ??= new Pointframe.Models.VideoWatermarkSettings();
+        return new Pointframe.Models.VideoWatermarkSettings
         {
             Enabled = source.Enabled,
             TextTemplate = source.TextTemplate,

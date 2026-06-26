@@ -351,6 +351,9 @@ public partial class SettingsViewModel : ObservableObject
         var c = DefaultAnnotationColor;
         var clampedRecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(RecordingCursorHighlightSize);
         var currentSettings = _settingsService.Current;
+        WatermarkSettings videoWatermark = currentSettings.VideoWatermark is not null
+            ? currentSettings.VideoWatermark
+            : currentSettings.ScreenshotWatermark;
         RecordingCursorHighlightSize = clampedRecordingCursorHighlightSize;
 
         _settingsService.Save(new UserSettings
@@ -379,6 +382,19 @@ public partial class SettingsViewModel : ObservableObject
                 BackgroundEnabled = _watermarkOther.BackgroundEnabled,
                 Opacity = _watermarkOther.Opacity,
                 Margin = _watermarkOther.Margin,
+            },
+            VideoWatermark = new VideoWatermarkSettings
+            {
+                Enabled = videoWatermark.Enabled,
+                TextTemplate = videoWatermark.TextTemplate,
+                Position = videoWatermark.Position,
+                FontSize = videoWatermark.FontSize,
+                ColorHex = videoWatermark.ColorHex,
+                BackgroundEnabled = videoWatermark.BackgroundEnabled,
+                Opacity = videoWatermark.Opacity,
+                Margin = videoWatermark.Margin,
+                ApplyToCopy = videoWatermark.ApplyToCopy,
+                ApplyToSave = videoWatermark.ApplyToSave,
             },
             DefaultAnnotationColor = $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}",
             DefaultStrokeThickness = DefaultStrokeThickness,
