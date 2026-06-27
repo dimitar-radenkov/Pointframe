@@ -133,6 +133,8 @@ public sealed class UserSettingsService : IUserSettingsService
             RegionCaptureHotkeyModifiers = settings.RegionCaptureHotkeyModifiers,
             WholeScreenRecordHotkey = settings.WholeScreenRecordHotkey,
             WholeScreenRecordHotkeyModifiers = settings.WholeScreenRecordHotkeyModifiers,
+            CleanWindowCaptureHotkey = settings.CleanWindowCaptureHotkey,
+            CleanWindowCaptureHotkeyModifiers = settings.CleanWindowCaptureHotkeyModifiers,
             OverlayCopyHotkey = settings.OverlayCopyHotkey,
             OverlayCopyHotkeyModifiers = settings.OverlayCopyHotkeyModifiers,
             OverlaySaveAsHotkey = settings.OverlaySaveAsHotkey,

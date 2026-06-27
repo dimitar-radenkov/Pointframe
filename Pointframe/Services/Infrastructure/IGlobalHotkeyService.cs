@@ -8,6 +8,8 @@ public interface IGlobalHotkeyService : IDisposable
 
     event Action WholeScreenRecordRequested;
 
+    event Action CleanWindowSnipRequested;
+
     void Register();
 
     /// <summary>

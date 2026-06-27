@@ -21,6 +21,7 @@ internal sealed class TrayIconManager : ITrayIconManager
     private readonly ITelemetryService _telemetry;
     private readonly Action _onNewSnip;
     private readonly Action _onWholeScreenSnip;
+    private readonly Action _onCleanWindowSnip;
     private readonly Action _onOpenImage;
     private readonly Action<string> _onTrimRecording;
     private readonly Action _onShowSettings;
@@ -48,6 +49,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         ITelemetryService telemetry,
         Action onNewSnip,
         Action onWholeScreenSnip,
+        Action onCleanWindowSnip,
         Action onOpenImage,
         Action<string> onTrimRecording,
         Action onShowSettings,
@@ -64,6 +66,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         _telemetry = telemetry;
         _onNewSnip = onNewSnip;
         _onWholeScreenSnip = onWholeScreenSnip;
+        _onCleanWindowSnip = onCleanWindowSnip;
         _onOpenImage = onOpenImage;
         _onTrimRecording = onTrimRecording;
         _onShowSettings = onShowSettings;
@@ -166,6 +169,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         var contextMenu = new WpfContextMenu();
         contextMenu.Items.Add(CreateTrayMenuItem("New Snip", NewSnip_Click));
         contextMenu.Items.Add(CreateTrayMenuItem("Whole screen snip", WholeScreenSnip_Click));
+        contextMenu.Items.Add(CreateTrayMenuItem("Clean window snip", CleanWindowSnip_Click));
         contextMenu.Items.Add(CreateTrayMenuItem("Open image...", OpenImage_Click));
         contextMenu.Items.Add(CreateOpenFoldersMenuItem());
         contextMenu.Items.Add(new WpfSeparator());
@@ -203,6 +207,7 @@ internal sealed class TrayIconManager : ITrayIconManager
     private void TrayIcon_LeftClick(object sender, RoutedEventArgs e) => _onNewSnip();
     private void NewSnip_Click(object sender, RoutedEventArgs e) => _onNewSnip();
     private void WholeScreenSnip_Click(object sender, RoutedEventArgs e) => _onWholeScreenSnip();
+    private void CleanWindowSnip_Click(object sender, RoutedEventArgs e) => _onCleanWindowSnip();
     private void Settings_Click(object sender, RoutedEventArgs e) => _onShowSettings();
     private void About_Click(object sender, RoutedEventArgs e) => _onShowAbout();
     private void OpenImage_Click(object sender, RoutedEventArgs e) => _onOpenImage();

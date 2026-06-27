@@ -94,4 +94,20 @@ public sealed class GlobalHotkeyServiceTests
 
         Assert.Equal(expected, result);
     }
+
+    [Fact]
+    public void CleanWindowSnipRequested_Event_CanBeSubscribedAndInvoked()
+    {
+        var svc = CreateService();
+        var raised = false;
+        svc.CleanWindowSnipRequested += () => raised = true;
+
+        var eventField = typeof(GlobalHotkeyService).GetField("CleanWindowSnipRequested", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(eventField);
+
+        var handler = (Action?)eventField!.GetValue(svc);
+        handler?.Invoke();
+
+        Assert.True(raised);
+    }
 }

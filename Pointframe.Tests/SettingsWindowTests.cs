@@ -163,6 +163,22 @@ public sealed class SettingsWindowTests
     }
 
     [Fact]
+    public void OnCleanWindowHotkeyKeyPressed_StoresNewHotkey()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var window = CreateWindow(out var viewModel);
+            viewModel.IsCapturingCleanWindowCaptureHotkey = true;
+
+            InvokeCallback(window, "OnCleanWindowHotkeyKeyPressed", (uint)KeyInterop.VirtualKeyFromKey(Key.W), HotkeyModifiers.Ctrl | HotkeyModifiers.Shift);
+
+            Assert.Equal((uint)KeyInterop.VirtualKeyFromKey(Key.W), viewModel.CleanWindowCaptureHotkey);
+            Assert.Equal(HotkeyModifiers.Ctrl | HotkeyModifiers.Shift, viewModel.CleanWindowCaptureHotkeyModifiers);
+            Assert.False(viewModel.IsCapturingCleanWindowCaptureHotkey);
+        });
+    }
+
+    [Fact]
     public void WholeScreenRecordHotkeyRecordingPanel_IsVisibleChanged_WhenVisible_FocusesPanel()
     {
         StaTestHelper.Run(() =>

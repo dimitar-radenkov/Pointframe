@@ -15,6 +15,8 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CaptureLaunchService> _logger;
     private readonly ITelemetryService _telemetry;
+    private readonly IWindowCaptureService _windowCaptureService;
+    private readonly BeautifierRenderService _beautifierRenderService;
 
     public CaptureLaunchService(
         IServiceProvider services,
@@ -23,7 +25,9 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         IFileSystemService fileSystem,
         ILoggerFactory loggerFactory,
         ILogger<CaptureLaunchService> logger,
-        ITelemetryService telemetry)
+        ITelemetryService telemetry,
+        IWindowCaptureService windowCaptureService,
+        BeautifierRenderService beautifierRenderService)
     {
         _services = services;
         _userSettings = userSettings;
@@ -32,6 +36,8 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         _loggerFactory = loggerFactory;
         _logger = logger;
         _telemetry = telemetry;
+        _windowCaptureService = windowCaptureService;
+        _beautifierRenderService = beautifierRenderService;
     }
 
     public void StartRegionSnip(string source = "tray")
@@ -46,6 +52,48 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         _logger.LogDebug("Whole-screen snip started");
         _telemetry.TrackEvent("snip_started", new Dictionary<string, string> { ["type"] = "whole_screen", ["source"] = source });
         LaunchCapture(wholeScreen: true);
+    }
+
+    public void StartCleanWindowSnip(string source = "tray")
+    {
+        _logger.LogDebug("Clean window snip started");
+        _telemetry.TrackEvent("snip_started", new Dictionary<string, string> { ["type"] = "window_clean", ["source"] = source });
+
+        var delay = _userSettings.Current.CaptureDelaySeconds;
+        if (delay > 0)
+        {
+            _telemetry.TrackEvent("capture_delay_used", new Dictionary<string, string> { ["delay_seconds"] = delay.ToString() });
+            new CountdownWindow(delay, () => ExecuteCleanWindowSnip()).Show();
+            return;
+        }
+
+        ExecuteCleanWindowSnip();
+    }
+
+    private void ExecuteCleanWindowSnip()
+    {
+
+        if (!_windowCaptureService.TryCaptureWindowUnderCursor(out var rawWindowBitmap) || rawWindowBitmap is null)
+        {
+            _messageBox.ShowWarning(
+                "Could not capture the window under the cursor. Move the cursor over a visible app window and try again.",
+                "Clean window snip");
+            return;
+        }
+
+        var beautified = _beautifierRenderService.Render(
+            rawWindowBitmap,
+            BeautifyBackground.White,
+            padding: 36,
+            cornerRadius: 12,
+            shadowEnabled: true,
+            shadowBlur: 28,
+            shadowOffsetY: 16,
+            shadowOpacity: 0.5);
+
+        var overlay = _services.GetRequiredService<OverlayWindow>();
+        overlay.InitializeFromImage(beautified, "window-capture://under-cursor", SelectionSessionMode.WindowClean);
+        DpiAwarenessScope.RunPerMonitorV2(() => overlay.Show());
     }
 
     private void LaunchCapture(bool wholeScreen)

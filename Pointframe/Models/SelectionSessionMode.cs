@@ -4,5 +4,6 @@ internal enum SelectionSessionMode
 {
     Region,
     FullScreen,
-    OpenedImage
+    OpenedImage,
+    WindowClean
 }

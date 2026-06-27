@@ -6,5 +6,7 @@ internal interface ICaptureLaunchService
 
     void StartWholeScreenSnip(string source = "tray");
 
+    void StartCleanWindowSnip(string source = "tray");
+
     void StartWholeScreenRecord();
 }
