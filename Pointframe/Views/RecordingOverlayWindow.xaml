@@ -458,7 +458,8 @@
                    FontFamily="Segoe UI"
                    FontWeight="Normal"
                    VerticalAlignment="Center"
-                   Margin="2,0,0,0"/>
+             Margin="2,0,0,0"
+             AutomationProperties.AutomationId="RecordingOverlayWindow.HudCompact"/>
 
         <Button Grid.Column="1"
                 Command="{Binding ExpandHudCommand}"
@@ -466,17 +467,8 @@
                 Width="28"
                 Height="24"
                 Margin="6,0,0,0"
+                Style="{StaticResource RecordingHudActionBtn}"
                 AutomationProperties.AutomationId="RecordingOverlayWindow.ExpandHud">
-          <Button.Style>
-            <Style TargetType="Button" BasedOn="{StaticResource RecordingHudActionBtn}">
-              <Setter Property="Visibility" Value="Collapsed"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=Border}, Path=IsMouseOver}" Value="True">
-                  <Setter Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </Button.Style>
           <TextBlock Text="&#xE70D;" Style="{StaticResource FluentActionIconText}" FontSize="13"/>
         </Button>
 
@@ -486,17 +478,8 @@
                 Width="28"
                 Height="24"
                 Margin="4,0,0,0"
+                Style="{StaticResource RecordingHudActionBtn}"
                 AutomationProperties.AutomationId="RecordingOverlayWindow.CompactStop">
-          <Button.Style>
-            <Style TargetType="Button" BasedOn="{StaticResource RecordingHudActionBtn}">
-              <Setter Property="Visibility" Value="Collapsed"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=Border}, Path=IsMouseOver}" Value="True">
-                  <Setter Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </Button.Style>
           <TextBlock Text="&#xE71A;" Style="{StaticResource FluentDangerIconText}" FontSize="13"/>
         </Button>
       </Grid>
