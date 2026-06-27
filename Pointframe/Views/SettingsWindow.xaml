@@ -240,11 +240,11 @@
                     </StackPanel>
                 </DockPanel>
 
-                <StackPanel Visibility="{Binding IsCaptureSectionSelected, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.AutomationId="SettingsWindow.CaptureContent">
+                <StackPanel Visibility="{Binding IsCaptureSectionSelected, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
-                            <TextBlock Text="Storage" Style="{StaticResource GroupTitle}"/>
+                            <TextBlock Text="Storage" Style="{StaticResource GroupTitle}"
+                                       AutomationProperties.AutomationId="SettingsWindow.CaptureContent"/>
                             <TextBlock Text="Choose where screenshots go and whether copied captures are also saved."
                                        Style="{StaticResource GroupDescription}"/>
 
@@ -419,11 +419,11 @@
 
                 </StackPanel>
 
-                <StackPanel Visibility="{Binding IsRecordingSectionSelected, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.AutomationId="SettingsWindow.RecordingContent">
+                <StackPanel Visibility="{Binding IsRecordingSectionSelected, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
-                            <TextBlock Text="Output" Style="{StaticResource GroupTitle}"/>
+                            <TextBlock Text="Output" Style="{StaticResource GroupTitle}"
+                                       AutomationProperties.AutomationId="SettingsWindow.RecordingContent"/>
                             <TextBlock Text="Control where recordings are saved and which format is used by default."
                                        Style="{StaticResource GroupDescription}"/>
 
@@ -700,11 +700,11 @@
                     </Border>
                 </StackPanel>
 
-                <StackPanel Visibility="{Binding IsAnnotationSectionSelected, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.AutomationId="SettingsWindow.AnnotationContent">
+                <StackPanel Visibility="{Binding IsAnnotationSectionSelected, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
-                            <TextBlock Text="Defaults" Style="{StaticResource GroupTitle}"/>
+                            <TextBlock Text="Defaults" Style="{StaticResource GroupTitle}"
+                                       AutomationProperties.AutomationId="SettingsWindow.AnnotationContent"/>
                             <TextBlock Text="Choose the look new annotation tools start with."
                                        Style="{StaticResource GroupDescription}"/>
 
@@ -1200,11 +1200,11 @@
                     </Border>
                 </StackPanel>
 
-                <StackPanel Visibility="{Binding IsAppSectionSelected, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.AutomationId="SettingsWindow.AppContent">
+                <StackPanel Visibility="{Binding IsAppSectionSelected, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
-                            <TextBlock Text="Appearance and updates" Style="{StaticResource GroupTitle}"/>
+                            <TextBlock Text="Appearance and updates" Style="{StaticResource GroupTitle}"
+                                       AutomationProperties.AutomationId="SettingsWindow.AppContent"/>
                             <TextBlock Text="Preview the app theme and choose how often updates are checked."
                                        Style="{StaticResource GroupDescription}"/>
 

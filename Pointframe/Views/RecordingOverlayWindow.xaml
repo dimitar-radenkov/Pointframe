@@ -422,14 +422,14 @@
       </StackPanel>
     </Border>
 
-    <Border x:Name="RecordingHudCompactPanel"
+        <Border x:Name="RecordingHudCompactPanel"
             Background="{DynamicResource ToolbarBackground}"
             CornerRadius="14"
             BorderBrush="{DynamicResource ToolbarBorder}"
             BorderThickness="1"
             Padding="7,5"
             SizeChanged="RecordingHudPanel_SizeChanged"
-            AutomationProperties.AutomationId="RecordingOverlayWindow.HudCompact">
+          AutomationProperties.AutomationId="RecordingOverlayWindow.HudCompactPanel">
       <Border.Style>
         <Style TargetType="Border">
           <Setter Property="Visibility" Value="Collapsed"/>
@@ -451,14 +451,15 @@
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Column="0"
+          <TextBlock Grid.Column="0"
                    Text="{Binding ElapsedText}"
                    Foreground="{DynamicResource PrimaryText}"
                    FontSize="12"
                    FontFamily="Segoe UI"
                    FontWeight="Normal"
                    VerticalAlignment="Center"
-                   Margin="2,0,0,0"/>
+             Margin="2,0,0,0"
+             AutomationProperties.AutomationId="RecordingOverlayWindow.HudCompact"/>
 
         <Button Grid.Column="1"
                 Command="{Binding ExpandHudCommand}"
@@ -468,14 +469,7 @@
                 Margin="6,0,0,0"
                 AutomationProperties.AutomationId="RecordingOverlayWindow.ExpandHud">
           <Button.Style>
-            <Style TargetType="Button" BasedOn="{StaticResource RecordingHudActionBtn}">
-              <Setter Property="Visibility" Value="Collapsed"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=Border}, Path=IsMouseOver}" Value="True">
-                  <Setter Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
+            <Style TargetType="Button" BasedOn="{StaticResource RecordingHudActionBtn}"/>
           </Button.Style>
           <TextBlock Text="&#xE70D;" Style="{StaticResource FluentActionIconText}" FontSize="13"/>
         </Button>
@@ -488,14 +482,7 @@
                 Margin="4,0,0,0"
                 AutomationProperties.AutomationId="RecordingOverlayWindow.CompactStop">
           <Button.Style>
-            <Style TargetType="Button" BasedOn="{StaticResource RecordingHudActionBtn}">
-              <Setter Property="Visibility" Value="Collapsed"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=Border}, Path=IsMouseOver}" Value="True">
-                  <Setter Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
+            <Style TargetType="Button" BasedOn="{StaticResource RecordingHudActionBtn}"/>
           </Button.Style>
           <TextBlock Text="&#xE71A;" Style="{StaticResource FluentDangerIconText}" FontSize="13"/>
         </Button>

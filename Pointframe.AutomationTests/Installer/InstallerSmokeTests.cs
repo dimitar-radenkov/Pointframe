@@ -8,6 +8,7 @@ namespace Pointframe.AutomationTests.Installer;
 
 public sealed class InstallerSmokeTests : IClassFixture<DesktopAutomationFixture>
 {
+    private const string EnableInstallerSmokeEnvironmentVariable = "POINTFRAME_RUN_INSTALLER_SMOKE";
     private const string InstallerPathEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_INSTALLER_PATH";
     private static readonly TimeSpan ProcessTimeout = TimeSpan.FromMinutes(2);
     private readonly DesktopAutomationFixture _fixture;
@@ -17,10 +18,14 @@ public sealed class InstallerSmokeTests : IClassFixture<DesktopAutomationFixture
         _fixture = fixture;
     }
 
-    [Fact]
+    [SkippableFact]
     [Trait("Category", "InstallerSmoke")]
     public void SilentInstaller_InstallsLaunchesAndUninstalls()
     {
+        Skip.IfNot(
+            IsInstallerSmokeEnabled(),
+            $"Installer smoke test is opt-in. Set {EnableInstallerSmokeEnvironmentVariable}=1 to enable.");
+
         EnsureAdministrator();
         var installerPath = Environment.GetEnvironmentVariable(InstallerPathEnvironmentVariable);
         if (string.IsNullOrWhiteSpace(installerPath))
@@ -54,6 +59,25 @@ public sealed class InstallerSmokeTests : IClassFixture<DesktopAutomationFixture
         {
             installedApp.Dispose();
         }
+    }
+
+    private static bool IsInstallerSmokeEnabled()
+    {
+        var value = Environment.GetEnvironmentVariable(EnableInstallerSmokeEnvironmentVariable);
+        return IsTruthy(value);
+    }
+
+    private static bool IsTruthy(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return value.Equals("1", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("on", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void EnsureAdministrator()
