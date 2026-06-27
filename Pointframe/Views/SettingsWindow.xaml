@@ -240,8 +240,7 @@
                     </StackPanel>
                 </DockPanel>
 
-                <StackPanel Visibility="{Binding IsCaptureSectionSelected, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.AutomationId="SettingsWindow.CaptureContent">
+                <StackPanel Visibility="{Binding IsCaptureSectionSelected, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
                             <TextBlock Text="Storage" Style="{StaticResource GroupTitle}"
@@ -420,8 +419,7 @@
 
                 </StackPanel>
 
-                <StackPanel Visibility="{Binding IsRecordingSectionSelected, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.AutomationId="SettingsWindow.RecordingContent">
+                <StackPanel Visibility="{Binding IsRecordingSectionSelected, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
                             <TextBlock Text="Output" Style="{StaticResource GroupTitle}"
@@ -702,8 +700,7 @@
                     </Border>
                 </StackPanel>
 
-                <StackPanel Visibility="{Binding IsAnnotationSectionSelected, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.AutomationId="SettingsWindow.AnnotationContent">
+                <StackPanel Visibility="{Binding IsAnnotationSectionSelected, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
                             <TextBlock Text="Defaults" Style="{StaticResource GroupTitle}"
@@ -1203,8 +1200,7 @@
                     </Border>
                 </StackPanel>
 
-                <StackPanel Visibility="{Binding IsAppSectionSelected, Converter={StaticResource BoolToVis}}"
-                            AutomationProperties.AutomationId="SettingsWindow.AppContent">
+                <StackPanel Visibility="{Binding IsAppSectionSelected, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
                             <TextBlock Text="Appearance and updates" Style="{StaticResource GroupTitle}"

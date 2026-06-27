@@ -422,14 +422,14 @@
       </StackPanel>
     </Border>
 
-    <Border x:Name="RecordingHudCompactPanel"
+        <Border x:Name="RecordingHudCompactPanel"
             Background="{DynamicResource ToolbarBackground}"
             CornerRadius="14"
             BorderBrush="{DynamicResource ToolbarBorder}"
             BorderThickness="1"
             Padding="7,5"
             SizeChanged="RecordingHudPanel_SizeChanged"
-            AutomationProperties.AutomationId="RecordingOverlayWindow.HudCompact">
+          AutomationProperties.AutomationId="RecordingOverlayWindow.HudCompactPanel">
       <Border.Style>
         <Style TargetType="Border">
           <Setter Property="Visibility" Value="Collapsed"/>
@@ -451,7 +451,7 @@
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Column="0"
+          <TextBlock Grid.Column="0"
                    Text="{Binding ElapsedText}"
                    Foreground="{DynamicResource PrimaryText}"
                    FontSize="12"
@@ -467,8 +467,10 @@
                 Width="28"
                 Height="24"
                 Margin="6,0,0,0"
-                Style="{StaticResource RecordingHudActionBtn}"
                 AutomationProperties.AutomationId="RecordingOverlayWindow.ExpandHud">
+          <Button.Style>
+            <Style TargetType="Button" BasedOn="{StaticResource RecordingHudActionBtn}"/>
+          </Button.Style>
           <TextBlock Text="&#xE70D;" Style="{StaticResource FluentActionIconText}" FontSize="13"/>
         </Button>
 
@@ -478,8 +480,10 @@
                 Width="28"
                 Height="24"
                 Margin="4,0,0,0"
-                Style="{StaticResource RecordingHudActionBtn}"
                 AutomationProperties.AutomationId="RecordingOverlayWindow.CompactStop">
+          <Button.Style>
+            <Style TargetType="Button" BasedOn="{StaticResource RecordingHudActionBtn}"/>
+          </Button.Style>
           <TextBlock Text="&#xE71A;" Style="{StaticResource FluentDangerIconText}" FontSize="13"/>
         </Button>
       </Grid>
