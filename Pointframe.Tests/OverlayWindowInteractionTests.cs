@@ -63,6 +63,28 @@ public sealed class OverlayWindowInteractionTests
     }
 
     [Fact]
+    public void InitializeFromImage_WithWindowCleanMode_PreservesSessionMode()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var context = CreateContext();
+            try
+            {
+                var image = CreateBitmap(32, 24);
+
+                context.Window.InitializeFromImage(image, @"C:\\images\\window-clean.png", SelectionSessionMode.WindowClean);
+
+                var sessionMode = GetPrivateField<SelectionSessionMode>(context.Window, "_selectionSessionMode");
+                Assert.Equal(SelectionSessionMode.WindowClean, sessionMode);
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        });
+    }
+
+    [Fact]
     public void InitializeFromSelectionSession_StoresPendingSession()
     {
         StaTestHelper.Run(() =>

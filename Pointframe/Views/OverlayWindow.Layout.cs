@@ -11,7 +11,10 @@ public partial class OverlayWindow
 {
     private void InitializeFromOpenedImage(BitmapSource openedImage)
     {
-        _selectionSessionMode = SelectionSessionMode.OpenedImage;
+        if (_selectionSessionMode != SelectionSessionMode.WindowClean)
+        {
+            _selectionSessionMode = SelectionSessionMode.OpenedImage;
+        }
         _openedImageDisplayRect = CalculateOpenedImageDisplayRect(openedImage);
         _openedImageScaleX = openedImage.PixelWidth / _openedImageDisplayRect.Width;
         _openedImageScaleY = openedImage.PixelHeight / _openedImageDisplayRect.Height;
@@ -30,7 +33,7 @@ public partial class OverlayWindow
             _openedImageScaleX,
             _openedImageScaleY,
             allowRecording: false,
-            SelectionSessionMode.OpenedImage);
+                _selectionSessionMode);
     }
 
     private Rect CalculateOpenedImageDisplayRect(BitmapSource openedImage)

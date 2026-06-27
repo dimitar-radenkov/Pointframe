@@ -35,6 +35,10 @@ public sealed class UserSettings
 
     public HotkeyModifiers WholeScreenRecordHotkeyModifiers { get; set; } = HotkeyModifiers.Ctrl | HotkeyModifiers.Shift; // Ctrl+Shift+R
 
+    public uint CleanWindowCaptureHotkey { get; set; } = 0x57; // VK_W
+
+    public HotkeyModifiers CleanWindowCaptureHotkeyModifiers { get; set; } = HotkeyModifiers.Ctrl | HotkeyModifiers.Shift; // Ctrl+Shift+W
+
     public uint OverlayCopyHotkey { get; set; } = 0x43; // VK_C
 
     public HotkeyModifiers OverlayCopyHotkeyModifiers { get; set; } = HotkeyModifiers.Ctrl;

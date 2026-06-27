@@ -53,6 +53,8 @@ public partial class SettingsViewModel : ObservableObject
         _regionCaptureHotkeyModifiers = s.RegionCaptureHotkeyModifiers;
         _wholeScreenRecordHotkey = s.WholeScreenRecordHotkey;
         _wholeScreenRecordHotkeyModifiers = s.WholeScreenRecordHotkeyModifiers;
+        _cleanWindowCaptureHotkey = s.CleanWindowCaptureHotkey;
+        _cleanWindowCaptureHotkeyModifiers = s.CleanWindowCaptureHotkeyModifiers;
         _overlayCopyHotkey = s.OverlayCopyHotkey;
         _overlayCopyHotkeyModifiers = s.OverlayCopyHotkeyModifiers;
         _overlaySaveAsHotkey = s.OverlaySaveAsHotkey;
@@ -172,6 +174,14 @@ public partial class SettingsViewModel : ObservableObject
     private HotkeyModifiers _wholeScreenRecordHotkeyModifiers;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CleanWindowCaptureHotkeyDisplayName))]
+    private uint _cleanWindowCaptureHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CleanWindowCaptureHotkeyDisplayName))]
+    private HotkeyModifiers _cleanWindowCaptureHotkeyModifiers;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OverlayCopyHotkeyDisplayName))]
     private uint _overlayCopyHotkey;
 
@@ -236,6 +246,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _isCapturingWholeScreenRecordHotkey;
 
     [ObservableProperty]
+    private bool _isCapturingCleanWindowCaptureHotkey;
+
+    [ObservableProperty]
     private UpdateCheckInterval _autoUpdateCheckInterval;
 
     [ObservableProperty]
@@ -257,6 +270,7 @@ public partial class SettingsViewModel : ObservableObject
 
     public string RegionCaptureHotkeyDisplayName => BuildHotkeyDisplayName(RegionCaptureHotkey, RegionCaptureHotkeyModifiers);
     public string WholeScreenRecordHotkeyDisplayName => BuildHotkeyDisplayName(WholeScreenRecordHotkey, WholeScreenRecordHotkeyModifiers);
+    public string CleanWindowCaptureHotkeyDisplayName => BuildHotkeyDisplayName(CleanWindowCaptureHotkey, CleanWindowCaptureHotkeyModifiers);
     public string OverlayCopyHotkeyDisplayName => BuildHotkeyDisplayName(OverlayCopyHotkey, OverlayCopyHotkeyModifiers);
     public string OverlaySaveAsHotkeyDisplayName => BuildHotkeyDisplayName(OverlaySaveAsHotkey, OverlaySaveAsHotkeyModifiers);
     public string OverlayUndoHotkeyDisplayName => BuildHotkeyDisplayName(OverlayUndoHotkey, OverlayUndoHotkeyModifiers);
@@ -400,6 +414,8 @@ public partial class SettingsViewModel : ObservableObject
             RegionCaptureHotkeyModifiers = RegionCaptureHotkeyModifiers,
             WholeScreenRecordHotkey = WholeScreenRecordHotkey,
             WholeScreenRecordHotkeyModifiers = WholeScreenRecordHotkeyModifiers,
+            CleanWindowCaptureHotkey = CleanWindowCaptureHotkey,
+            CleanWindowCaptureHotkeyModifiers = CleanWindowCaptureHotkeyModifiers,
             OverlayCopyHotkey = OverlayCopyHotkey,
             OverlayCopyHotkeyModifiers = OverlayCopyHotkeyModifiers,
             OverlaySaveAsHotkey = OverlaySaveAsHotkey,
@@ -427,6 +443,7 @@ public partial class SettingsViewModel : ObservableObject
     private void StartRecordingHotkey()
     {
         IsCapturingWholeScreenRecordHotkey = false;
+        IsCapturingCleanWindowCaptureHotkey = false;
         IsCapturingOverlayShortcut = false;
         OverlayShortcutCaptureTarget = string.Empty;
         OverlayShortcutCaptureDisplayName = string.Empty;
@@ -446,6 +463,7 @@ public partial class SettingsViewModel : ObservableObject
     private void StartCapturingWholeScreenRecordHotkey()
     {
         IsRecordingHotkey = false;
+        IsCapturingCleanWindowCaptureHotkey = false;
         IsCapturingOverlayShortcut = false;
         OverlayShortcutCaptureTarget = string.Empty;
         OverlayShortcutCaptureDisplayName = string.Empty;
@@ -454,11 +472,31 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void StartCapturingCleanWindowCaptureHotkey()
+    {
+        IsRecordingHotkey = false;
+        IsCapturingOverlayShortcut = false;
+        OverlayShortcutCaptureTarget = string.Empty;
+        OverlayShortcutCaptureDisplayName = string.Empty;
+        OverlayShortcutConflictMessage = string.Empty;
+        IsCapturingWholeScreenRecordHotkey = false;
+        IsCapturingCleanWindowCaptureHotkey = true;
+    }
+
+    [RelayCommand]
     private void ResetRecordHotkey()
     {
         WholeScreenRecordHotkey = 0x52; // VK_R
         WholeScreenRecordHotkeyModifiers = HotkeyModifiers.Ctrl | HotkeyModifiers.Shift;
         IsCapturingWholeScreenRecordHotkey = false;
+    }
+
+    [RelayCommand]
+    private void ResetCleanWindowCaptureHotkey()
+    {
+        CleanWindowCaptureHotkey = 0x57; // VK_W
+        CleanWindowCaptureHotkeyModifiers = HotkeyModifiers.Ctrl | HotkeyModifiers.Shift;
+        IsCapturingCleanWindowCaptureHotkey = false;
     }
 
     [RelayCommand]
@@ -471,6 +509,7 @@ public partial class SettingsViewModel : ObservableObject
 
         IsRecordingHotkey = false;
         IsCapturingWholeScreenRecordHotkey = false;
+        IsCapturingCleanWindowCaptureHotkey = false;
         OverlayShortcutConflictMessage = string.Empty;
         OverlayShortcutCaptureTarget = shortcutKey;
         OverlayShortcutCaptureDisplayName = OverlayShortcutLabel(shortcutKey);
@@ -635,6 +674,9 @@ public partial class SettingsViewModel : ObservableObject
                 WholeScreenRecordHotkey = defaults.WholeScreenRecordHotkey;
                 WholeScreenRecordHotkeyModifiers = defaults.WholeScreenRecordHotkeyModifiers;
                 IsCapturingWholeScreenRecordHotkey = false;
+                CleanWindowCaptureHotkey = defaults.CleanWindowCaptureHotkey;
+                CleanWindowCaptureHotkeyModifiers = defaults.CleanWindowCaptureHotkeyModifiers;
+                IsCapturingCleanWindowCaptureHotkey = false;
                 break;
             case SettingsSection.Annotation:
                 DefaultAnnotationColor = ParseAnnotationColorOrFallback(defaults.DefaultAnnotationColor);
@@ -698,6 +740,9 @@ public partial class SettingsViewModel : ObservableObject
         WholeScreenRecordHotkey = defaults.WholeScreenRecordHotkey;
         WholeScreenRecordHotkeyModifiers = defaults.WholeScreenRecordHotkeyModifiers;
         IsCapturingWholeScreenRecordHotkey = false;
+        CleanWindowCaptureHotkey = defaults.CleanWindowCaptureHotkey;
+        CleanWindowCaptureHotkeyModifiers = defaults.CleanWindowCaptureHotkeyModifiers;
+        IsCapturingCleanWindowCaptureHotkey = false;
         OverlayCopyHotkey = defaults.OverlayCopyHotkey;
         OverlayCopyHotkeyModifiers = defaults.OverlayCopyHotkeyModifiers;
         OverlaySaveAsHotkey = defaults.OverlaySaveAsHotkey;

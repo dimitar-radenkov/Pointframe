@@ -135,6 +135,7 @@ public partial class App : Application
             _telemetry,
             onNewSnip: () => _captureLaunch.StartRegionSnip("tray"),
             onWholeScreenSnip: () => _captureLaunch.StartWholeScreenSnip("tray"),
+            onCleanWindowSnip: () => _captureLaunch.StartCleanWindowSnip("tray"),
             onOpenImage: () => Dispatcher.InvokeAsync(OpenImage, System.Windows.Threading.DispatcherPriority.ApplicationIdle),
             onTrimRecording: ShowTrimWindow,
             onShowSettings: ShowSettingsWindow,
@@ -151,6 +152,7 @@ public partial class App : Application
         _globalHotkey.RegionSnipRequested += () => _captureLaunch.StartRegionSnip("hotkey");
         _globalHotkey.WholeScreenSnipRequested += () => _captureLaunch.StartWholeScreenSnip("hotkey");
         _globalHotkey.WholeScreenRecordRequested += _captureLaunch.StartWholeScreenRecord;
+        _globalHotkey.CleanWindowSnipRequested += () => _captureLaunch.StartCleanWindowSnip("hotkey");
         _globalHotkey.Register();
         _logger.LogInformation("Global hotkey registered");
         _host.StartAsync().GetAwaiter().GetResult();
@@ -176,6 +178,7 @@ public partial class App : Application
         services.AddSingleton<IAppErrorHandler, AppErrorHandler>();
         services.AddSingleton<ICaptureLaunchService, CaptureLaunchService>();
         services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
+        services.AddTransient<IWindowCaptureService, WindowCaptureService>();
         services.AddTransient<IVideoWriterFactory, VideoWriterFactory>();
         services.AddTransient<IScreenRecordingService, ScreenRecordingService>();
         services.AddSingleton<IGifExportService, GifExportService>();

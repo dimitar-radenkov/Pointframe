@@ -17,6 +17,7 @@ internal sealed class GlobalHotkeyService : IGlobalHotkeyService
     public event Action? RegionSnipRequested;
     public event Action? WholeScreenSnipRequested;
     public event Action? WholeScreenRecordRequested;
+    public event Action? CleanWindowSnipRequested;
 
     public GlobalHotkeyService(IUserSettingsService userSettings, ILogger<GlobalHotkeyService> logger)
     {
@@ -92,6 +93,14 @@ internal sealed class GlobalHotkeyService : IGlobalHotkeyService
             if (recordHotkey != 0 && kb.vkCode == recordHotkey && ModifiersMatch(recordModifiers, ctrlHeld, shiftHeld, altHeld))
             {
                 WpfApplication.Current.Dispatcher.InvokeAsync(() => WholeScreenRecordRequested?.Invoke());
+                return (IntPtr)1;
+            }
+
+            var cleanWindowHotkey = _userSettings.Current.CleanWindowCaptureHotkey;
+            var cleanWindowModifiers = _userSettings.Current.CleanWindowCaptureHotkeyModifiers;
+            if (cleanWindowHotkey != 0 && kb.vkCode == cleanWindowHotkey && ModifiersMatch(cleanWindowModifiers, ctrlHeld, shiftHeld, altHeld))
+            {
+                WpfApplication.Current.Dispatcher.InvokeAsync(() => CleanWindowSnipRequested?.Invoke());
                 return (IntPtr)1;
             }
 

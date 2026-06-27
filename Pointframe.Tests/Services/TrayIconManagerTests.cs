@@ -570,6 +570,7 @@ public sealed class TrayIconManagerTests
             Mock.Of<ITelemetryService>(),
             onNewSnip: static () => { },
             onWholeScreenSnip: static () => { },
+            onCleanWindowSnip: static () => { },
             onOpenImage: static () => { },
             onTrimRecording: onTrimRecording ?? (static _ => { }),
             onShowSettings: static () => { },

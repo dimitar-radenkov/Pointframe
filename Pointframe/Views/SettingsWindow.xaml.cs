@@ -170,6 +170,47 @@ public partial class SettingsWindow : Window
         _vm.IsCapturingWholeScreenRecordHotkey = false;
     }
 
+    private void CleanWindowHotkeyCapture_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        e.Handled = true;
+        UpdateCleanWindowHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+    }
+
+    private void CleanWindowHotkeyCapture_PreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        e.Handled = true;
+        UpdateCleanWindowHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+    }
+
+    private void CleanWindowHotkeyRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if ((bool)e.NewValue)
+        {
+            CleanWindowHotkeyCurrentInput.Text = "—";
+            _hotkeyService.BeginKeyCaptureMode(OnCleanWindowHotkeyKeyPressed);
+            Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Input,
+                () => Keyboard.Focus(CleanWindowHotkeyRecordingPanel));
+        }
+        else
+        {
+            _hotkeyService.EndKeyCaptureMode();
+        }
+    }
+
+    private void OnCleanWindowHotkeyKeyPressed(uint vk, HotkeyModifiers modifiers)
+    {
+        if (vk == NativeMethods.VK_ESCAPE)
+        {
+            _vm.IsCapturingCleanWindowCaptureHotkey = false;
+            return;
+        }
+
+        _vm.CleanWindowCaptureHotkeyModifiers = modifiers;
+        _vm.CleanWindowCaptureHotkey = vk;
+        _vm.IsCapturingCleanWindowCaptureHotkey = false;
+    }
+
     private void RecordHotkeyCapture_PreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
         e.Handled = true;
@@ -195,6 +236,76 @@ public partial class SettingsWindow : Window
         }
 
         RecordHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
+    }
+
+    private void ShortcutsCleanWindowHotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        UpdateShortcutsCleanWindowHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+    }
+
+    private void ShortcutsCleanWindowHotkeyCapture_PreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        UpdateShortcutsCleanWindowHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+    }
+
+    private void ShortcutsCleanWindowHotkeyRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if ((bool)e.NewValue)
+        {
+            ShortcutsCleanWindowHotkeyCurrentInput.Text = "—";
+            _hotkeyService.BeginKeyCaptureMode(OnCleanWindowHotkeyKeyPressed);
+            Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Input,
+                () => Keyboard.Focus(ShortcutsCleanWindowHotkeyRecordingPanel));
+        }
+        else
+        {
+            _hotkeyService.EndKeyCaptureMode();
+        }
+    }
+
+    private void UpdateShortcutsCleanWindowHotkeyCurrentInput(ModifierKeys modifiers)
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        if ((modifiers & ModifierKeys.Control) != 0)
+        {
+            parts.Add("Ctrl");
+        }
+
+        if ((modifiers & ModifierKeys.Shift) != 0)
+        {
+            parts.Add("Shift");
+        }
+
+        if ((modifiers & ModifierKeys.Alt) != 0)
+        {
+            parts.Add("Alt");
+        }
+
+        ShortcutsCleanWindowHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
+    }
+
+    private void UpdateCleanWindowHotkeyCurrentInput(ModifierKeys modifiers)
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        if ((modifiers & ModifierKeys.Control) != 0)
+        {
+            parts.Add("Ctrl");
+        }
+
+        if ((modifiers & ModifierKeys.Shift) != 0)
+        {
+            parts.Add("Shift");
+        }
+
+        if ((modifiers & ModifierKeys.Alt) != 0)
+        {
+            parts.Add("Alt");
+        }
+
+        CleanWindowHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
     }
 
     private void ShortcutsRegionHotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)

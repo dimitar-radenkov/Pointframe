@@ -123,13 +123,14 @@ public partial class OverlayWindow : Window
         };
     }
 
-    public void InitializeFromImage(BitmapSource bitmap, string sourcePath)
+    internal void InitializeFromImage(BitmapSource bitmap, string sourcePath, SelectionSessionMode sessionMode = SelectionSessionMode.OpenedImage)
     {
         ArgumentNullException.ThrowIfNull(bitmap);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
 
         _openedImage = bitmap;
         _openedImagePath = sourcePath;
+        _selectionSessionMode = sessionMode;
     }
 
     internal void InitializeFromSelectionSession(SelectionSessionResult selectionSession)

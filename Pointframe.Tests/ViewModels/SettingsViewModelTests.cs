@@ -632,6 +632,15 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void UserSettings_Default_CleanWindowCaptureHotkey_IsCtrlShiftW()
+    {
+        var settings = new UserSettings();
+
+        Assert.Equal(0x57u, settings.CleanWindowCaptureHotkey);
+        Assert.Equal(HotkeyModifiers.Ctrl | HotkeyModifiers.Shift, settings.CleanWindowCaptureHotkeyModifiers);
+    }
+
+    [Fact]
     public void LoadsFromSettings_WholeScreenRecordHotkey()
     {
         var vm = CreateVm(new UserSettings
@@ -659,6 +668,23 @@ public sealed class SettingsViewModelTests
 
         Assert.Equal(0x4Cu, saved?.WholeScreenRecordHotkey);
         Assert.Equal(HotkeyModifiers.Ctrl | HotkeyModifiers.Shift, saved?.WholeScreenRecordHotkeyModifiers);
+    }
+
+    [Fact]
+    public void Save_PersistsCleanWindowCaptureHotkey()
+    {
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(new UserSettings());
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>(), CreateMicrophoneDeviceService());
+        vm.CleanWindowCaptureHotkey = 0x4Eu; // 'N'
+        vm.CleanWindowCaptureHotkeyModifiers = HotkeyModifiers.Alt;
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal(0x4Eu, saved?.CleanWindowCaptureHotkey);
+        Assert.Equal(HotkeyModifiers.Alt, saved?.CleanWindowCaptureHotkeyModifiers);
     }
 
     [Fact]
