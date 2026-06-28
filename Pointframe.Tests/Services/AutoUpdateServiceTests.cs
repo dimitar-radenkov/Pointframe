@@ -1,4 +1,5 @@
 using System.Net.Http;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Pointframe.Models;
@@ -21,7 +22,8 @@ public sealed class AutoUpdateServiceTests
         Mock<IUpdateService> updateService,
         Mock<IUserSettingsService> userSettings,
         Mock<IUpdateDownloadService> downloadService,
-        Mock<IMessageBoxService> messageBox)
+        Mock<IMessageBoxService> messageBox,
+        TimeSpan? settingsPollInterval = null)
     {
         return new AutoUpdateService(
             eventAggregator,
@@ -30,7 +32,8 @@ public sealed class AutoUpdateServiceTests
             downloadService.Object,
             messageBox.Object,
             NullLogger<AutoUpdateService>.Instance,
-            Mock.Of<ITelemetryService>());
+            Mock.Of<ITelemetryService>(),
+            settingsPollInterval);
     }
 
     private static Mock<IUserSettingsService> SettingsMock(UpdateCheckInterval interval = UpdateCheckInterval.EveryTwoHours)
@@ -308,9 +311,10 @@ public sealed class AutoUpdateServiceTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_RuntimeIntervalChangeToNever_StopsFurtherChecks()
+    public async Task ExecuteAsync_RuntimeIntervalChangeToNever_StopsPeriodicLoopPromptly()
     {
         var callCount = 0;
+        var startupCheckCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var settings = new UserSettings
         {
             AutoUpdateCheckInterval = UpdateCheckInterval.EveryTwoHours,
@@ -330,6 +334,7 @@ public sealed class AutoUpdateServiceTests
                 if (callCount == 1)
                 {
                     settings.AutoUpdateCheckInterval = UpdateCheckInterval.Never;
+                    startupCheckCompleted.TrySetResult();
                 }
 
                 return NoUpdate;
@@ -340,10 +345,12 @@ public sealed class AutoUpdateServiceTests
             updateService,
             settingsMock,
             new Mock<IUpdateDownloadService>(),
-            new Mock<IMessageBoxService>());
+            new Mock<IMessageBoxService>(),
+            TimeSpan.FromMilliseconds(10));
 
         await sut.StartAsync(CancellationToken.None);
-        await Task.Delay(100);
+        await startupCheckCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await sut.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
         await sut.StopAsync(CancellationToken.None);
 
         Assert.Equal(1, callCount);
