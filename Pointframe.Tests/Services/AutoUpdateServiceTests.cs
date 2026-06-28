@@ -307,6 +307,49 @@ public sealed class AutoUpdateServiceTests
         settingsMock.Verify(s => s.Update(It.IsAny<Action<UserSettings>>()), Times.Never);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_RuntimeIntervalChangeToNever_StopsFurtherChecks()
+    {
+        var callCount = 0;
+        var settings = new UserSettings
+        {
+            AutoUpdateCheckInterval = UpdateCheckInterval.EveryTwoHours,
+        };
+
+        var settingsMock = new Mock<IUserSettingsService>();
+        settingsMock.SetupGet(s => s.Current).Returns(() => settings);
+        settingsMock.Setup(s => s.Update(It.IsAny<Action<UserSettings>>()))
+            .Callback<Action<UserSettings>>(mutate => mutate(settings));
+
+        var updateService = new Mock<IUpdateService>();
+        updateService
+            .Setup(s => s.CheckForUpdates(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                callCount++;
+                if (callCount == 1)
+                {
+                    settings.AutoUpdateCheckInterval = UpdateCheckInterval.Never;
+                }
+
+                return NoUpdate;
+            });
+
+        var sut = CreateService(
+            new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance),
+            updateService,
+            settingsMock,
+            new Mock<IUpdateDownloadService>(),
+            new Mock<IMessageBoxService>());
+
+        await sut.StartAsync(CancellationToken.None);
+        await Task.Delay(100);
+        await sut.StopAsync(CancellationToken.None);
+
+        Assert.Equal(1, callCount);
+        Assert.Equal(UpdateCheckInterval.Never, settings.AutoUpdateCheckInterval);
+    }
+
     private sealed class UpdateAvailableRecorder
     {
         public TaskCompletionSource<UpdateAvailableMessage> Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

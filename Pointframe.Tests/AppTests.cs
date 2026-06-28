@@ -55,12 +55,15 @@ public sealed class AppTests
         {
             var app = CreateAppWithoutRunning();
             var telemetry = new Mock<ITelemetryService>();
+            var trayIconManager = new Mock<ITrayIconManager>();
             var update = new UpdateCheckResult(true, new Version(1, 2, 3), "https://example.com/download.exe");
 
             SetField(app, "_telemetry", telemetry.Object);
+            SetField(app, "_trayIconManager", trayIconManager.Object);
 
             InvokeHandleUpdateAvailable(app, new UpdateAvailableMessage(update, IsStartupCheck: true));
 
+            trayIconManager.Verify(manager => manager.HandleUpdateAvailable(update), Times.Once);
             telemetry.Verify(
                 service => service.TrackEvent(
                     "update_available",
@@ -79,12 +82,15 @@ public sealed class AppTests
         {
             var app = CreateAppWithoutRunning();
             var telemetry = new Mock<ITelemetryService>();
+            var trayIconManager = new Mock<ITrayIconManager>();
             var update = new UpdateCheckResult(true, new Version(1, 2, 3), "https://example.com/download.exe");
 
             SetField(app, "_telemetry", telemetry.Object);
+            SetField(app, "_trayIconManager", trayIconManager.Object);
 
             InvokeHandleUpdateAvailable(app, new UpdateAvailableMessage(update, IsStartupCheck: false));
 
+            trayIconManager.Verify(manager => manager.HandleUpdateAvailable(update), Times.Once);
             telemetry.Verify(
                 service => service.TrackEvent(
                     "update_available",
