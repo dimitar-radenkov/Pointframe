@@ -5,6 +5,7 @@ namespace Pointframe.Services;
 
 public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
 {
+    private static readonly TimeSpan DefaultSettingsPollInterval = TimeSpan.FromSeconds(1);
     private readonly IEventAggregator _eventAggregator;
     private readonly IUpdateService _updateService;
     private readonly IUserSettingsService _userSettings;
@@ -12,6 +13,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
     private readonly IMessageBoxService _messageBox;
     private readonly ILogger<AutoUpdateService> _logger;
     private readonly ITelemetryService _telemetry;
+    private readonly TimeSpan _settingsPollInterval;
 
     public AutoUpdateService(
         IEventAggregator eventAggregator,
@@ -20,7 +22,8 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         IUpdateDownloadService downloadService,
         IMessageBoxService messageBox,
         ILogger<AutoUpdateService> logger,
-        ITelemetryService telemetry)
+        ITelemetryService telemetry,
+        TimeSpan? settingsPollInterval = null)
     {
         _eventAggregator = eventAggregator;
         _updateService = updateService;
@@ -29,6 +32,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         _messageBox = messageBox;
         _logger = logger;
         _telemetry = telemetry;
+        _settingsPollInterval = settingsPollInterval.GetValueOrDefault(DefaultSettingsPollInterval);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -52,23 +56,12 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
 
         UpdateLastCheckedUtc();
 
-        var timerInterval = GetTimerInterval(interval);
-        _logger.LogInformation(
-            "Auto-update: periodic loop started (interval = {Interval}, every {IntervalTime})",
-            interval,
-            timerInterval);
+        _logger.LogInformation("Auto-update: periodic loop started");
 
         try
         {
-            using var timer = new PeriodicTimer(timerInterval);
-            while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
+            while (await WaitForNextCheckAsync(stoppingToken).ConfigureAwait(false))
             {
-                if (_userSettings.Current.AutoUpdateCheckInterval == UpdateCheckInterval.Never)
-                {
-                    _logger.LogInformation("Auto-update: periodic loop stopped (interval changed to Never)");
-                    break;
-                }
-
                 _logger.LogInformation("Auto-update: running periodic check");
                 try
                 {
@@ -132,6 +125,55 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         {
             settings.LastAutoUpdateCheckUtc = DateTime.UtcNow;
         });
+    }
+
+    private async Task<bool> WaitForNextCheckAsync(CancellationToken stoppingToken)
+    {
+        while (true)
+        {
+            var interval = _userSettings.Current.AutoUpdateCheckInterval;
+            if (interval == UpdateCheckInterval.Never)
+            {
+                _logger.LogInformation("Auto-update: periodic loop stopped (interval changed to Never)");
+                return false;
+            }
+
+            var timerInterval = GetTimerInterval(interval);
+            _logger.LogInformation(
+                "Auto-update: waiting for next check (interval = {Interval}, every {IntervalTime})",
+                interval,
+                timerInterval);
+
+            var remaining = timerInterval;
+            while (remaining > TimeSpan.Zero)
+            {
+                var delay = remaining < _settingsPollInterval ? remaining : _settingsPollInterval;
+                await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
+
+                var currentInterval = _userSettings.Current.AutoUpdateCheckInterval;
+                if (currentInterval == UpdateCheckInterval.Never)
+                {
+                    _logger.LogInformation("Auto-update: periodic loop stopped (interval changed to Never)");
+                    return false;
+                }
+
+                if (currentInterval != interval)
+                {
+                    _logger.LogInformation(
+                        "Auto-update: periodic interval changed from {PreviousInterval} to {CurrentInterval}",
+                        interval,
+                        currentInterval);
+                    break;
+                }
+
+                remaining -= delay;
+            }
+
+            if (remaining <= TimeSpan.Zero)
+            {
+                return true;
+            }
+        }
     }
 
     private static TimeSpan GetTimerInterval(UpdateCheckInterval interval) =>
