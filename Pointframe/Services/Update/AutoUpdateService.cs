@@ -129,7 +129,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
 
     private async Task<bool> WaitForNextCheckAsync(CancellationToken stoppingToken)
     {
-        while (true)
+        while (!stoppingToken.IsCancellationRequested)
         {
             var interval = _userSettings.Current.AutoUpdateCheckInterval;
             if (interval == UpdateCheckInterval.Never)
@@ -174,6 +174,8 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
                 return true;
             }
         }
+
+        return false;
     }
 
     private static TimeSpan GetTimerInterval(UpdateCheckInterval interval) =>

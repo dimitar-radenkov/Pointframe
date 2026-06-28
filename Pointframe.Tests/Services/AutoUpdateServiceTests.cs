@@ -350,21 +350,11 @@ public sealed class AutoUpdateServiceTests
 
         await sut.StartAsync(CancellationToken.None);
         await startupCheckCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await GetExecuteTask(sut).WaitAsync(TimeSpan.FromSeconds(5));
+        await sut.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
         await sut.StopAsync(CancellationToken.None);
 
         Assert.Equal(1, callCount);
         Assert.Equal(UpdateCheckInterval.Never, settings.AutoUpdateCheckInterval);
-    }
-
-    private static Task GetExecuteTask(BackgroundService service)
-    {
-        var property = typeof(BackgroundService).GetProperty("ExecuteTask");
-        Assert.NotNull(property);
-
-        var executeTask = property.GetValue(service) as Task;
-        Assert.NotNull(executeTask);
-        return executeTask;
     }
 
     private sealed class UpdateAvailableRecorder

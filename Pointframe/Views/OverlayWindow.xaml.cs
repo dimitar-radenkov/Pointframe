@@ -485,6 +485,11 @@ public partial class OverlayWindow : Window
 
     private async void ShowOcrToast(string message)
     {
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
         if (!Dispatcher.CheckAccess())
         {
             await Dispatcher.InvokeAsync(() => ShowOcrToast(message));
@@ -506,6 +511,11 @@ public partial class OverlayWindow : Window
             Canvas.SetTop(OcrToast, selection.Y + ((selection.Height - toastSize.Height) / 2d));
         }
 
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
         OcrToast.Visibility = Visibility.Visible;
 
         await Task.Delay(1500).ConfigureAwait(false);
@@ -515,7 +525,15 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        await Dispatcher.InvokeAsync(() => OcrToast.Visibility = Visibility.Collapsed, DispatcherPriority.Normal);
+        await Dispatcher.InvokeAsync(() =>
+        {
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            OcrToast.Visibility = Visibility.Collapsed;
+        }, DispatcherPriority.Normal);
     }
 
     private void PositionOcrToastNearActionBar(Size toastSize)
