@@ -357,6 +357,92 @@ public sealed class OverlayWindowInteractionTests
     }
 
     [Fact]
+    public void DoLassoOcr_WhenNoTextDetected_TracksAttemptAndNoTextTelemetry()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var context = CreateContext();
+            try
+            {
+                SetRendererBackground(context.Window, CreateBitmap(30, 20), dpiX: 1d, dpiY: 1d);
+                context.OcrServiceMock
+                    .Setup(service => service.Recognize(It.IsAny<BitmapSource>()))
+                    .ReturnsAsync("   ");
+
+                var task = Assert.IsAssignableFrom<Task>(InvokePrivate(context.Window, "DoLassoOcr", new Rect(1d, 2d, 10d, 6d)));
+                task.GetAwaiter().GetResult();
+
+                context.TelemetryMock.Verify(
+                    telemetry => telemetry.TrackEvent(
+                        "ocr_attempted",
+                        It.Is<IReadOnlyDictionary<string, string>?>(props =>
+                            props != null
+                            && props["selection_width_px"] == "10"
+                            && props["selection_height_px"] == "6")),
+                    Times.Once);
+                context.TelemetryMock.Verify(
+                    telemetry => telemetry.TrackEvent(
+                        "ocr_no_text",
+                        It.Is<IReadOnlyDictionary<string, string>?>(props =>
+                            props != null
+                            && props["selection_width_px"] == "10"
+                            && props["selection_height_px"] == "6")),
+                    Times.Once);
+                context.TelemetryMock.Verify(
+                    telemetry => telemetry.TrackEvent("ocr_used", It.IsAny<IReadOnlyDictionary<string, string>?>()),
+                    Times.Never);
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        });
+    }
+
+    [Fact]
+    public void DoLassoOcr_WhenTextDetected_TracksAttemptAndUsedTelemetry()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var context = CreateContext();
+            try
+            {
+                SetRendererBackground(context.Window, CreateBitmap(32, 24), dpiX: 1d, dpiY: 1d);
+                context.OcrServiceMock
+                    .Setup(service => service.Recognize(It.IsAny<BitmapSource>()))
+                    .ReturnsAsync("copied text");
+
+                var task = Assert.IsAssignableFrom<Task>(InvokePrivate(context.Window, "DoLassoOcr", new Rect(2d, 3d, 8d, 5d)));
+                task.GetAwaiter().GetResult();
+
+                context.TelemetryMock.Verify(
+                    telemetry => telemetry.TrackEvent(
+                        "ocr_attempted",
+                        It.Is<IReadOnlyDictionary<string, string>?>(props =>
+                            props != null
+                            && props["selection_width_px"] == "8"
+                            && props["selection_height_px"] == "5")),
+                    Times.Once);
+                context.TelemetryMock.Verify(
+                    telemetry => telemetry.TrackEvent(
+                        "ocr_used",
+                        It.Is<IReadOnlyDictionary<string, string>?>(props =>
+                            props != null
+                            && props["selection_width_px"] == "8"
+                            && props["selection_height_px"] == "5")),
+                    Times.Once);
+                context.TelemetryMock.Verify(
+                    telemetry => telemetry.TrackEvent("ocr_no_text", It.IsAny<IReadOnlyDictionary<string, string>?>()),
+                    Times.Never);
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        });
+    }
+
+    [Fact]
     public void OnClosed_WhenRecorderIsRecording_StopsRecorder()
     {
         StaTestHelper.Run(() =>
@@ -414,6 +500,7 @@ public sealed class OverlayWindowInteractionTests
         var mouseHookMock = new Mock<IMouseHookService>();
         var messageBoxMock = new Mock<IMessageBoxService>();
         var ocrServiceMock = new Mock<IOcrService>();
+        var telemetryMock = new Mock<ITelemetryService>();
 
         var recordingAnnotationViewModel = new RecordingAnnotationViewModel(
             new AnnotationGeometryService(),
@@ -438,7 +525,7 @@ public sealed class OverlayWindowInteractionTests
             messageBoxMock.Object,
             fileSystemMock.Object,
             ocrServiceMock.Object,
-            Mock.Of<ITelemetryService>(),
+            telemetryMock.Object,
             recordingAnnotationViewModel,
             _ => throw new NotImplementedException());
 
@@ -447,9 +534,18 @@ public sealed class OverlayWindowInteractionTests
             viewModel,
             recorderMock,
             ocrServiceMock,
+            telemetryMock,
             dialogMock,
             fileSystemMock,
             eventAggregator);
+    }
+
+    private static void SetRendererBackground(OverlayWindow window, BitmapSource background, double dpiX, double dpiY)
+    {
+        var renderer = GetPrivateField<object>(window, "_renderer");
+        var setBackgroundMethod = renderer.GetType().GetMethod("SetBackground", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(setBackgroundMethod);
+        setBackgroundMethod.Invoke(renderer, [background, dpiX, dpiY]);
     }
 
     private static object? InvokePrivate(object target, string methodName, params object?[] args)
@@ -508,6 +604,7 @@ public sealed class OverlayWindowInteractionTests
         OverlayViewModel ViewModel,
         Mock<IScreenRecordingService> RecorderMock,
         Mock<IOcrService> OcrServiceMock,
+        Mock<ITelemetryService> TelemetryMock,
         Mock<IDialogService> DialogMock,
         Mock<IFileSystemService> FileSystemMock,
         DefaultEventAggregator EventAggregator)

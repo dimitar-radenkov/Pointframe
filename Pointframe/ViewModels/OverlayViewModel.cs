@@ -127,10 +127,11 @@ public partial class OverlayViewModel : AnnotationViewModel
 
         var finalBitmap = bitmapCapture.ComposeBitmap();
         _clipboardService.SetImage(ApplyWatermarkForCopy(finalBitmap));
+        _ = _eventAggregator.Publish(new CaptureCompletedMessage(null, "copy"));
 
         if (_settings.Current.AutoSaveScreenshots)
         {
-            _ = SaveBitmapToDefaultFolder(ApplyWatermarkForSave(finalBitmap));
+            _ = SaveBitmapToDefaultFolder(ApplyWatermarkForSave(finalBitmap), "auto_save");
         }
 
         CloseRequested?.Invoke();
@@ -147,7 +148,7 @@ public partial class OverlayViewModel : AnnotationViewModel
         }
 
         var finalBitmap = bitmapCapture.ComposeBitmap();
-        _ = SaveBitmapToDefaultFolder(ApplyWatermarkForSave(finalBitmap));
+        _ = SaveBitmapToDefaultFolder(ApplyWatermarkForSave(finalBitmap), "save");
         CloseRequested?.Invoke();
     }
 
@@ -172,7 +173,7 @@ public partial class OverlayViewModel : AnnotationViewModel
             return;
         }
 
-        SaveBitmapToPath(ApplyWatermarkForSave(finalBitmap), savePath);
+        SaveBitmapToPath(ApplyWatermarkForSave(finalBitmap), savePath, "save_as");
         CloseRequested?.Invoke();
     }
 
@@ -198,22 +199,22 @@ public partial class OverlayViewModel : AnnotationViewModel
         return bitmap;
     }
 
-    private string SaveBitmapToDefaultFolder(BitmapSource bitmap)
+    private string SaveBitmapToDefaultFolder(BitmapSource bitmap, string captureAction)
     {
         var saveDirectory = _settings.Current.ScreenshotSavePath;
         _fileSystemService.CreateDirectory(saveDirectory);
         var savePath = _fileSystemService.CombinePath(saveDirectory, $"Snip_{DateTime.Now:yyyyMMdd_HHmmss}.png");
-        SaveBitmapToPath(bitmap, savePath);
+        SaveBitmapToPath(bitmap, savePath, captureAction);
         return savePath;
     }
 
-    private void SaveBitmapToPath(BitmapSource bitmap, string savePath)
+    private void SaveBitmapToPath(BitmapSource bitmap, string savePath, string captureAction)
     {
         using var outputStream = _fileSystemService.OpenWrite(savePath);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         encoder.Save(outputStream);
-        _ = _eventAggregator.Publish(new CaptureCompletedMessage(savePath));
+        _ = _eventAggregator.Publish(new CaptureCompletedMessage(savePath, captureAction));
     }
 
     private static string BuildHotkeyDisplayName(uint vk, HotkeyModifiers modifiers)

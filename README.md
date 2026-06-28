@@ -289,7 +289,7 @@ Pointframe collects **anonymous, privacy-safe usage telemetry** in official buil
 | `snip_started` | `type` (region / whole_screen), `source` (tray / hotkey) |
 | `snip_cancelled` | `type` (region / whole_screen) |
 | `capture_delay_used` | `delay_seconds` |
-| `capture_completed` | `action` (copy) |
+| `capture_completed` | `action` (copy / save / save_as / auto_save) |
 | `capture_pinned` | — |
 | `open_image_used` | — |
 | `annotation_committed` | `tool` |
@@ -299,7 +299,9 @@ Pointframe collects **anonymous, privacy-safe usage telemetry** in official buil
 | `microphone_unavailable` | — |
 | `gif_export_started` | — |
 | `gif_export_completed` | `success`, `duration_seconds` |
-| `ocr_used` | — |
+| `ocr_attempted` | `selection_width_px`, `selection_height_px` |
+| `ocr_no_text` | `selection_width_px`, `selection_height_px` |
+| `ocr_used` | `selection_width_px`, `selection_height_px` |
 | `update_check_manual` | — |
 | `update_available` | `version` |
 | `update_confirmed` | `version` |
@@ -327,6 +329,16 @@ To enable telemetry locally during development, create `Pointframe/appsettings.L
 ```
 
 To set up your own Azure Application Insights resource, follow the [Azure Monitor setup guide](https://learn.microsoft.com/en-us/azure/azure-monitor/app/create-workspace-resource).
+
+### Feature usage report
+
+Use the ready-to-run KQL report pack in [docs/appinsights-feature-usage-queries.kql](docs/appinsights-feature-usage-queries.kql) to track:
+
+- Weekly active installs and sessions
+- Per-feature adoption (% installs that used each feature)
+- Feature funnel conversion (snip -> annotate -> pin/ocr)
+- Power-user and stickiness indicators
+- Version split and regression spotting after releases
 
 
 ## Support
