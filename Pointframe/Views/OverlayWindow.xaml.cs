@@ -525,15 +525,7 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        await Dispatcher.InvokeAsync(() =>
-        {
-            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
-            {
-                return;
-            }
-
-            OcrToast.Visibility = Visibility.Collapsed;
-        }, DispatcherPriority.Normal);
+        await Dispatcher.InvokeAsync(() => OcrToast.Visibility = Visibility.Collapsed, DispatcherPriority.Normal);
     }
 
     private void PositionOcrToastNearActionBar(Size toastSize)

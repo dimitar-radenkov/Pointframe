@@ -147,7 +147,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
             var remaining = timerInterval;
             while (remaining > TimeSpan.Zero)
             {
-                var delay = remaining < _settingsPollInterval ? remaining : _settingsPollInterval;
+                var delay = TimeSpan.FromTicks(Math.Min(remaining.Ticks, _settingsPollInterval.Ticks));
                 await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
 
                 var currentInterval = _userSettings.Current.AutoUpdateCheckInterval;
