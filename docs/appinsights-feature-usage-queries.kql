@@ -1,0 +1,46 @@
+// Pointframe App Insights - Feature Usage Query Pack
+// Paste individual queries into Azure Portal -> Application Insights -> Logs, then Save.
+
+// 1) Capture action mix (last 30 days)
+traces
+| where timestamp > ago(30d)
+| where message == "capture_completed"
+| extend action = tostring(customDimensions.action)
+| summarize events = count(), sessions = dcount(tostring(customDimensions.session_id)) by action
+| order by events desc;
+
+// 2) OCR quality funnel (last 30 days)
+let attempted = toscalar(traces | where timestamp > ago(30d) and message == "ocr_attempted" | count);
+let noText = toscalar(traces | where timestamp > ago(30d) and message == "ocr_no_text" | count);
+let success = toscalar(traces | where timestamp > ago(30d) and message == "ocr_used" | count);
+print
+  ocr_attempted = attempted,
+  ocr_no_text = noText,
+  ocr_success = success,
+  ocr_success_rate_pct = round(100.0 * todouble(success) / todouble(attempted), 2),
+  ocr_no_text_rate_pct = round(100.0 * todouble(noText) / todouble(attempted), 2);
+
+// 3) Feature adoption by installs (last 30 days)
+let FeatureMap = datatable(event_name:string, feature:string)
+[
+  "snip_started", "snip",
+  "annotation_committed", "annotation",
+  "capture_pinned", "pin",
+  "ocr_used", "ocr",
+  "recording_started", "recording",
+  "gif_export_started", "gif_export",
+  "open_image_used", "open_image",
+  "beautify_opened", "beautify",
+  "video_trim_opened", "video_trim"
+];
+let Base = traces
+| where timestamp > ago(30d)
+| where message in (FeatureMap | project event_name)
+| extend install_id = tostring(customDimensions.install_id), event_name = message
+| where isnotempty(install_id)
+| join kind=inner FeatureMap on event_name;
+let TotalInstalls = toscalar(Base | summarize dcount(install_id));
+Base
+| summarize installs_used = dcount(install_id) by feature
+| extend adoption_pct = round(100.0 * todouble(installs_used) / todouble(TotalInstalls), 2)
+| order by adoption_pct desc;

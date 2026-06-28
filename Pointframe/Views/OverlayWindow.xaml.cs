@@ -462,16 +462,24 @@ public partial class OverlayWindow : Window
         }
 
         var cropped = new CroppedBitmap(background, new Int32Rect(pixelX, pixelY, pixelW, pixelH));
+        var ocrProps = new Dictionary<string, string>
+        {
+            ["selection_width_px"] = pixelW.ToString(),
+            ["selection_height_px"] = pixelH.ToString(),
+        };
+
+        _telemetry.TrackEvent("ocr_attempted", ocrProps);
         var text = await _ocrService.Recognize(cropped);
 
         if (string.IsNullOrWhiteSpace(text))
         {
+            _telemetry.TrackEvent("ocr_no_text", ocrProps);
             ShowOcrToast("No text detected \u2014 try a larger area");
             return;
         }
 
         System.Windows.Clipboard.SetText(text);
-        _telemetry.TrackEvent("ocr_used");
+        _telemetry.TrackEvent("ocr_used", ocrProps);
         ShowOcrToast("\u2713 Text copied to clipboard");
     }
 

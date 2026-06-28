@@ -454,8 +454,12 @@ public partial class App : Application
 
     private ValueTask HandleCaptureCompleted(CaptureCompletedMessage message)
     {
-        _trayIconManager.HandleCaptureCompleted(message.OutputPath);
-        _activationTelemetry.TrackCaptureCompleted();
+        if (!string.IsNullOrWhiteSpace(message.OutputPath))
+        {
+            _trayIconManager.HandleCaptureCompleted(message.OutputPath);
+        }
+
+        _activationTelemetry.TrackCaptureCompleted(message.CaptureAction);
         return ValueTask.CompletedTask;
     }
 

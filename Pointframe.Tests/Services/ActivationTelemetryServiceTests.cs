@@ -29,16 +29,21 @@ public sealed class ActivationTelemetryServiceTests
 
         var sut = new ActivationTelemetryService(telemetryMock.Object, settingsMock.Object);
 
-        sut.TrackCaptureCompleted();
-        sut.TrackCaptureCompleted();
+        sut.TrackCaptureCompleted("copy");
+        sut.TrackCaptureCompleted("copy");
 
         var eventNames = events.Select(item => item.Name).ToList();
         Assert.Equal(2, eventNames.Count(name => name == "capture_completed"));
         Assert.Equal(1, eventNames.Count(name => name == "first_capture_completed"));
 
+        var captureCompleted = events.First(item => item.Name == "capture_completed");
+        Assert.NotNull(captureCompleted.Props);
+        Assert.Equal("copy", captureCompleted.Props!["action"]);
+
         var firstCapture = events.Single(item => item.Name == "first_capture_completed");
         Assert.NotNull(firstCapture.Props);
         Assert.Equal("screenshot", firstCapture.Props!["capture_type"]);
+        Assert.Equal("copy", firstCapture.Props["first_action"]);
         Assert.True(firstCapture.Props.ContainsKey("time_from_install_minutes"));
     }
 

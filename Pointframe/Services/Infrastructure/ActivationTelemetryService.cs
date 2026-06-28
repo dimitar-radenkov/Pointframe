@@ -13,11 +13,11 @@ public sealed class ActivationTelemetryService : IActivationTelemetryService
         _userSettings = userSettings;
     }
 
-    public void TrackCaptureCompleted()
+    public void TrackCaptureCompleted(string captureAction)
     {
         _telemetry.TrackEvent("capture_completed", new Dictionary<string, string>
         {
-            ["action"] = "copy",
+            ["action"] = captureAction,
         });
 
         var shouldTrackFirstCapture = false;
@@ -43,6 +43,7 @@ public sealed class ActivationTelemetryService : IActivationTelemetryService
         var props = new Dictionary<string, string>
         {
             ["capture_type"] = "screenshot",
+            ["first_action"] = captureAction,
         };
 
         if (timeFromInstallMinutes is not null)
