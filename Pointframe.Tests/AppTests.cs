@@ -96,6 +96,44 @@ public sealed class AppTests
         });
     }
 
+    [Fact]
+    public void HandleCaptureCompleted_WithOutputPath_ForwardsToTrayAndActivationTelemetry()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var app = CreateAppWithoutRunning();
+            var trayIconManager = new Mock<ITrayIconManager>();
+            var activationTelemetry = new Mock<IActivationTelemetryService>();
+
+            SetField(app, "_trayIconManager", trayIconManager.Object);
+            SetField(app, "_activationTelemetry", activationTelemetry.Object);
+
+            InvokeHandleCaptureCompleted(app, new CaptureCompletedMessage(@"C:\\captures\\shot.png", "save"));
+
+            trayIconManager.Verify(manager => manager.HandleCaptureCompleted(@"C:\\captures\\shot.png"), Times.Once);
+            activationTelemetry.Verify(service => service.TrackCaptureCompleted("save"), Times.Once);
+        });
+    }
+
+    [Fact]
+    public void HandleCaptureCompleted_WithoutOutputPath_TracksActivationTelemetryOnly()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var app = CreateAppWithoutRunning();
+            var trayIconManager = new Mock<ITrayIconManager>();
+            var activationTelemetry = new Mock<IActivationTelemetryService>();
+
+            SetField(app, "_trayIconManager", trayIconManager.Object);
+            SetField(app, "_activationTelemetry", activationTelemetry.Object);
+
+            InvokeHandleCaptureCompleted(app, new CaptureCompletedMessage(null, "copy"));
+
+            trayIconManager.Verify(manager => manager.HandleCaptureCompleted(It.IsAny<string>()), Times.Never);
+            activationTelemetry.Verify(service => service.TrackCaptureCompleted("copy"), Times.Once);
+        });
+    }
+
     private static App CreateAppWithoutRunning()
     {
         return (App)RuntimeHelpers.GetUninitializedObject(typeof(App));
@@ -104,6 +142,18 @@ public sealed class AppTests
     private static void InvokeHandleUpdateAvailable(App app, UpdateAvailableMessage message)
     {
         var method = typeof(App).GetMethod("HandleUpdateAvailable", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var result = method.Invoke(app, [message]);
+        if (result is ValueTask task)
+        {
+            task.GetAwaiter().GetResult();
+        }
+    }
+
+    private static void InvokeHandleCaptureCompleted(App app, CaptureCompletedMessage message)
+    {
+        var method = typeof(App).GetMethod("HandleCaptureCompleted", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         Assert.NotNull(method);
 
         var result = method.Invoke(app, [message]);

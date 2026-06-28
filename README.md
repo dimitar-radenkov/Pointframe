@@ -332,7 +332,7 @@ To set up your own Azure Application Insights resource, follow the [Azure Monito
 
 ### Feature usage report
 
-Use the ready-to-run KQL report pack in [docs/appinsights-feature-usage-report.md](docs/appinsights-feature-usage-report.md) to track:
+Use the ready-to-run KQL report pack in [docs/appinsights-feature-usage-queries.kql](docs/appinsights-feature-usage-queries.kql) to track:
 
 - Weekly active installs and sessions
 - Per-feature adoption (% installs that used each feature)
