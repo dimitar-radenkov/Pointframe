@@ -437,12 +437,20 @@ public partial class App : Application
         }));
     }
 
-    private ValueTask HandleUpdateAvailable(UpdateAvailableMessage message)
+    private async ValueTask HandleUpdateAvailable(UpdateAvailableMessage message)
     {
+        var dispatcher = Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            _trayIconManager?.HandleUpdateAvailable(message.Result);
+        }
+        else
+        {
+            await dispatcher.InvokeAsync(() => _trayIconManager?.HandleUpdateAvailable(message.Result));
+        }
+
         var v = message.Result.LatestVersion;
         _telemetry.TrackEvent("update_available", new Dictionary<string, string> { ["version"] = $"{v.Major}.{v.Minor}.{v.Build}" });
-
-        return ValueTask.CompletedTask;
     }
 
     private ValueTask HandleRecordingCompleted(RecordingCompletedMessage message)
