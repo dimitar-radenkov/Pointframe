@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
 using Pointframe.ViewModels;
 
 namespace Pointframe;
@@ -21,6 +23,40 @@ public partial class LibraryWindow : Window
     }
 
     public LibraryViewModel ViewModel { get; }
+
+    private void Captures_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.ListBox listBox)
+        {
+            return;
+        }
+
+        var container = FindAncestor<System.Windows.Controls.ListBoxItem>(e.OriginalSource as DependencyObject);
+        if (container?.DataContext is null)
+        {
+            return;
+        }
+
+        listBox.SelectedItem = container.DataContext;
+        ViewModel.OpenCommand.Execute(null);
+        e.Handled = true;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? source)
+        where T : DependencyObject
+    {
+        while (source is not null)
+        {
+            if (source is T match)
+            {
+                return match;
+            }
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return null;
+    }
 }
 
 public sealed class FilePathToThumbnailConverter : IValueConverter

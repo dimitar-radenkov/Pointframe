@@ -246,10 +246,10 @@
                      Background="Transparent"
                      BorderThickness="0"
                      Padding="0"
+                     MouseDoubleClick="Captures_MouseDoubleClick"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      AutomationProperties.AutomationId="LibraryWindow.Captures">
                 <ListBox.InputBindings>
-                    <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding OpenCommand}"/>
                     <KeyBinding Key="Enter" Command="{Binding OpenCommand}"/>
                 </ListBox.InputBindings>
                 <ListBox.ItemsPanel>
