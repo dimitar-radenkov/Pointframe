@@ -33,6 +33,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Pointframe.Data\Pointframe.Data.csproj" />
+
     <Content Include="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

@@ -4,6 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Pointframe.Automation;
+using Pointframe.Data;
+using Pointframe.Data.Abstractions;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 using Pointframe.Services.Recording;
@@ -89,6 +91,21 @@ public partial class App : Application
         _captureLaunch = _host.Services.GetRequiredService<ICaptureLaunchService>();
         _telemetry = _host.Services.GetRequiredService<ITelemetryService>();
         _activationTelemetry = _host.Services.GetRequiredService<IActivationTelemetryService>();
+
+        try
+        {
+            ApplyDataMigrations();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Database migration failed at startup");
+            _messageBox.ShowError(
+                "Pointframe could not start because database migration failed. Please check logs for details.",
+                "Startup Error");
+            Current.Shutdown();
+            return;
+        }
+
         _themeService.Apply(_userSettings.Current.Theme);
         if (!automationLaunchOptions.IsAutomationMode)
         {
@@ -160,8 +177,23 @@ public partial class App : Application
         _host.StartAsync().GetAwaiter().GetResult();
     }
 
+    private void ApplyDataMigrations()
+    {
+        using var scope = _host.Services.CreateScope();
+        var migrationService = scope.ServiceProvider.GetRequiredService<IMigrationService>();
+        migrationService.ApplyMigrations().GetAwaiter().GetResult();
+    }
+
     private static void ConfigureServices(IServiceCollection services)
     {
+        var dataSourceDirectory = Path.GetDirectoryName(AppPaths.PointframeDatabasePath);
+        if (!string.IsNullOrWhiteSpace(dataSourceDirectory))
+        {
+            Directory.CreateDirectory(dataSourceDirectory);
+        }
+
+        services.AddPointframeDataServices($"Data Source={AppPaths.PointframeDatabasePath}");
+
         services.AddSingleton<ITelemetryService, TelemetryService>();
         services.AddSingleton<IActivationTelemetryService, ActivationTelemetryService>();
         services.AddSingleton<IThemeService, ThemeService>();
