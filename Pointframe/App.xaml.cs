@@ -4,6 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Pointframe.Automation;
+using Pointframe.Data;
+using Pointframe.Data.Abstractions;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 using Pointframe.Services.Recording;
@@ -36,6 +38,7 @@ public partial class App : Application
     private DateTime _sessionStartTime;
     private SettingsWindow? _settingsWindow;
     private AboutWindow? _aboutWindow;
+    private LibraryWindow? _libraryWindow;
 
     private const string AutomationOpenImagePathEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_OPEN_IMAGE_PATH";
 
@@ -88,6 +91,21 @@ public partial class App : Application
         _captureLaunch = _host.Services.GetRequiredService<ICaptureLaunchService>();
         _telemetry = _host.Services.GetRequiredService<ITelemetryService>();
         _activationTelemetry = _host.Services.GetRequiredService<IActivationTelemetryService>();
+
+        try
+        {
+            ApplyDataMigrations();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Database migration failed at startup");
+            _messageBox.ShowError(
+                "Pointframe could not start because database migration failed. Please check logs for details.",
+                "Startup Error");
+            Current.Shutdown();
+            return;
+        }
+
         _themeService.Apply(_userSettings.Current.Theme);
         if (!automationLaunchOptions.IsAutomationMode)
         {
@@ -139,7 +157,8 @@ public partial class App : Application
             onOpenImage: () => Dispatcher.InvokeAsync(OpenImage, System.Windows.Threading.DispatcherPriority.ApplicationIdle),
             onTrimRecording: ShowTrimWindow,
             onShowSettings: ShowSettingsWindow,
-            onShowAbout: ShowAboutWindow);
+            onShowAbout: ShowAboutWindow,
+            onShowLibrary: ShowLibraryWindow);
         _trayIconManager.Initialize();
         startupTimer.Stop();
         _telemetry.TrackEvent("startup_completed", new Dictionary<string, string>
@@ -158,8 +177,23 @@ public partial class App : Application
         _host.StartAsync().GetAwaiter().GetResult();
     }
 
+    private void ApplyDataMigrations()
+    {
+        using var scope = _host.Services.CreateScope();
+        var migrationService = scope.ServiceProvider.GetRequiredService<IMigrationService>();
+        migrationService.ApplyMigrations().GetAwaiter().GetResult();
+    }
+
     private static void ConfigureServices(IServiceCollection services)
     {
+        var dataSourceDirectory = Path.GetDirectoryName(AppPaths.PointframeDatabasePath);
+        if (!string.IsNullOrWhiteSpace(dataSourceDirectory))
+        {
+            Directory.CreateDirectory(dataSourceDirectory);
+        }
+
+        services.AddPointframeDataServices($"Data Source={AppPaths.PointframeDatabasePath}");
+
         services.AddSingleton<ITelemetryService, TelemetryService>();
         services.AddSingleton<IActivationTelemetryService, ActivationTelemetryService>();
         services.AddSingleton<IThemeService, ThemeService>();
@@ -168,6 +202,7 @@ public partial class App : Application
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<IImageFileService, ImageFileService>();
         services.AddSingleton<IEventAggregator, DefaultEventAggregator>();
+        services.AddSingleton<IDebounceService, DebounceService>();
         services.AddSingleton<IProcessService, ProcessService>();
         services.AddSingleton<IMouseHookService, MouseHookService>();
         services.AddSingleton<IMessageBoxService, MessageBoxService>();
@@ -177,6 +212,8 @@ public partial class App : Application
         services.AddSingleton<IGlobalHotkeyService, GlobalHotkeyService>();
         services.AddSingleton<IAppErrorHandler, AppErrorHandler>();
         services.AddSingleton<ICaptureLaunchService, CaptureLaunchService>();
+        services.AddSingleton<ICaptureLibraryService, CaptureLibraryService>();
+        services.AddSingleton<ICaptureTextLookupService, CaptureTextLookupService>();
         services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
         services.AddTransient<IWindowCaptureService, WindowCaptureService>();
         services.AddTransient<IVideoWriterFactory, VideoWriterFactory>();
@@ -191,6 +228,7 @@ public partial class App : Application
         services.AddSingleton<IAnnotationGeometryService, AnnotationGeometryService>();
         services.AddSingleton<IOcrService, WindowsOcrService>();
         services.AddTransient<OverlayViewModel>();
+        services.AddTransient<LibraryViewModel>();
         services.AddTransient<RecordingAnnotationViewModel>();
         services.AddTransient<OverlayWindow>(CreateOverlayWindow);
         services.AddTransient<BeautifierViewModel>();
@@ -212,6 +250,7 @@ public partial class App : Application
                 sp.GetRequiredService<ILogger<RecordingHudViewModel>>()));
         services.AddTransient<AboutViewModel>();
         services.AddTransient<AboutWindow>();
+        services.AddTransient<LibraryWindow>();
         services.AddTransient<UpdateDownloadViewModel>(sp =>
             new UpdateDownloadViewModel(
                 UpdateDownloadViewModel.SharedHttp,
@@ -277,6 +316,12 @@ public partial class App : Application
         if (automationLaunchOptions.OpenAboutWindow)
         {
             ShowAboutWindow();
+            return;
+        }
+
+        if (automationLaunchOptions.OpenLibraryWindow)
+        {
+            ShowLibraryWindow();
             return;
         }
 
@@ -375,6 +420,39 @@ public partial class App : Application
         RegisterAutomationWindow(_aboutWindow);
         _aboutWindow.Closed += (_, _) => _aboutWindow = null;
         _aboutWindow.Show();
+    }
+
+    private void ShowLibraryWindow()
+    {
+        if (_libraryWindow is not null)
+        {
+            _libraryWindow.Activate();
+            return;
+        }
+
+        _libraryWindow = _host.Services.GetRequiredService<LibraryWindow>();
+        _libraryWindow.ViewModel.RequestOpen += OpenCaptureFromLibrary;
+        RegisterAutomationWindow(_libraryWindow);
+        _libraryWindow.Closed += (_, _) => _libraryWindow = null;
+        _libraryWindow.Show();
+    }
+
+    private void OpenCaptureFromLibrary(CaptureItem item)
+    {
+        try
+        {
+            var bitmap = _imageFileService.LoadForAnnotation(item.FilePath);
+            _telemetry.TrackEvent("library_open_used");
+
+            // Close the library before the full-screen overlay appears so the two never overlap.
+            _libraryWindow?.Close();
+            ShowOverlayFromImage(bitmap, item.FilePath);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException or NotSupportedException or IOException or UnauthorizedAccessException)
+        {
+            _logger?.LogWarning(ex, "Failed to open capture '{Path}'", item.FilePath);
+            _messageBox.ShowWarning(ex.Message, "Open Capture");
+        }
     }
 
     private void ShowAutomationSampleOverlayWindow()

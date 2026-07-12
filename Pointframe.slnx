@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="Pointframe.AutomationTests/Pointframe.AutomationTests.csproj" />
+  <Project Path="Pointframe.Data/Pointframe.Data.csproj" />
   <Project Path="Pointframe.Tests/Pointframe.Tests.csproj" />
   <Project Path="Pointframe/Pointframe.csproj" />
 </Solution>

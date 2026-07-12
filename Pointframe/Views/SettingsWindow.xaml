@@ -14,12 +14,18 @@
         Background="{DynamicResource WindowBackground}"
         AutomationProperties.AutomationId="SettingsWindow.Root">
     <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/Pointframe;component/Themes/Controls.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
         <Style x:Key="PageTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="18"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="26"/>
+            <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
         </Style>
 
         <Style x:Key="PageDescription" TargetType="TextBlock">
@@ -100,14 +106,7 @@
             </Setter>
         </Style>
 
-        <Style TargetType="TextBox">
-            <Setter Property="Padding" Value="5,3"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
-            <Setter Property="Background" Value="{DynamicResource InputBackground}"/>
-            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="FontSize" Value="11"/>
-        </Style>
+        <Style TargetType="TextBox" BasedOn="{StaticResource AppInputTextBox}"/>
 
         <Style x:Key="BrowseBtn" TargetType="Button">
             <Setter Property="Padding" Value="10,4"/>
@@ -118,28 +117,11 @@
             <Setter Property="FontSize" Value="11"/>
         </Style>
 
-        <Style x:Key="PrimaryBtn" TargetType="Button">
-            <Setter Property="Padding" Value="20,5"/>
-            <Setter Property="Background" Value="{DynamicResource AccentColor}"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-        </Style>
+        <Style x:Key="PrimaryBtn" TargetType="Button" BasedOn="{StaticResource AppPrimaryButton}"/>
 
-        <Style x:Key="SecondaryBtn" TargetType="Button">
-            <Setter Property="Padding" Value="20,5"/>
-            <Setter Property="Background" Value="{DynamicResource BtnSecondaryBackground}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
-            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-        </Style>
+        <Style x:Key="SecondaryBtn" TargetType="Button" BasedOn="{StaticResource AppSecondaryButton}"/>
 
-        <Style x:Key="CompactComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="MinWidth" Value="140"/>
-        </Style>
+        <Style x:Key="CompactComboBox" TargetType="ComboBox" BasedOn="{StaticResource AppCompactComboBox}"/>
 
         <Style x:Key="SidebarTitleText" TargetType="TextBlock">
             <Setter Property="FontSize" Value="12"/>
@@ -153,6 +135,7 @@
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="Margin" Value="0,2,0,0"/>
         </Style>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Grid Margin="20,16,20,16">
