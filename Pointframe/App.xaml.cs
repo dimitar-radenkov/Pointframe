@@ -202,6 +202,7 @@ public partial class App : Application
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<IImageFileService, ImageFileService>();
         services.AddSingleton<IEventAggregator, DefaultEventAggregator>();
+        services.AddSingleton<IDebounceService, DebounceService>();
         services.AddSingleton<IProcessService, ProcessService>();
         services.AddSingleton<IMouseHookService, MouseHookService>();
         services.AddSingleton<IMessageBoxService, MessageBoxService>();

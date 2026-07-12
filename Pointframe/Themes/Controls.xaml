@@ -3,6 +3,50 @@
 
     <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
+    <!-- Shared app-level styles used across windows for consistent look and feel -->
+    <Style x:Key="AppPageTitleText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+    </Style>
+
+    <Style x:Key="AppHintText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Foreground" Value="{DynamicResource MutedText}"/>
+    </Style>
+
+    <Style x:Key="AppInputTextBox" TargetType="TextBox">
+        <Setter Property="Padding" Value="5,3"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
+        <Setter Property="Background" Value="{DynamicResource InputBackground}"/>
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="FontSize" Value="11"/>
+    </Style>
+
+    <Style x:Key="AppPrimaryButton" TargetType="Button">
+        <Setter Property="Padding" Value="20,5"/>
+        <Setter Property="Background" Value="{DynamicResource AccentColor}"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+
+    <Style x:Key="AppSecondaryButton" TargetType="Button">
+        <Setter Property="Padding" Value="20,5"/>
+        <Setter Property="Background" Value="{DynamicResource BtnSecondaryBackground}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+
+    <Style x:Key="AppCompactComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="MinWidth" Value="140"/>
+    </Style>
+
     <!-- ══════════════════════════════════════════════════════════
          ComboBox
          ══════════════════════════════════════════════════════════ -->
@@ -12,21 +56,22 @@
                 Background="{DynamicResource InputBackground}"
                 BorderBrush="{DynamicResource ControlBorder}"
                 BorderThickness="1"
-                CornerRadius="2">
+                CornerRadius="4">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="20"/>
+                    <ColumnDefinition Width="24"/>
                 </Grid.ColumnDefinitions>
                 <!-- placeholder — actual content presented by ComboBox itself -->
                 <Border Grid.Column="1"
+                        Background="{DynamicResource BtnSecondaryBackground}"
                         BorderBrush="{DynamicResource ControlBorder}"
                         BorderThickness="1,0,0,0">
-                    <TextBlock Text="▾"
+                    <TextBlock Text="▼"
                                Foreground="{DynamicResource SecondaryText}"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
-                               FontSize="10"/>
+                               FontSize="8"/>
                 </Border>
             </Grid>
         </Border>
@@ -48,7 +93,7 @@
         <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding" Value="5,3"/>
+        <Setter Property="Padding" Value="6,3"/>
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
@@ -62,7 +107,7 @@
                                       Focusable="False"
                                       ClickMode="Press"/>
                         <ContentPresenter x:Name="contentPresenter"
-                                          Margin="{TemplateBinding Padding}"
+                                          Margin="8,3,28,3"
                                           Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                           ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
@@ -79,6 +124,7 @@
                                     Background="{DynamicResource InputBackground}"
                                     BorderBrush="{DynamicResource ControlBorder}"
                                     BorderThickness="1"
+                                    CornerRadius="4"
                                     MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                     MaxHeight="{TemplateBinding MaxDropDownHeight}">
                                 <ScrollViewer>

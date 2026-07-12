@@ -20,42 +20,30 @@
         <local:FilePathToThumbnailConverter x:Key="Thumbnail"/>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
-        <Style x:Key="PageTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="18"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-        </Style>
+        <Style x:Key="PageTitle" TargetType="TextBlock" BasedOn="{StaticResource AppPageTitleText}"/>
 
-        <Style x:Key="Hint" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Foreground" Value="{DynamicResource MutedText}"/>
-        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock" BasedOn="{StaticResource AppHintText}"/>
 
-        <Style TargetType="TextBox">
-            <Setter Property="Padding" Value="10,7"/>
+        <Style TargetType="TextBox" BasedOn="{StaticResource AppInputTextBox}"/>
+
+        <Style x:Key="PrimaryBtn" TargetType="Button" BasedOn="{StaticResource AppPrimaryButton}"/>
+
+        <Style x:Key="SecondaryBtn" TargetType="Button" BasedOn="{StaticResource AppSecondaryButton}"/>
+
+        <Style x:Key="LibraryDatePicker" TargetType="DatePicker">
+            <Setter Property="Width" Value="140"/>
             <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
             <Setter Property="Background" Value="{DynamicResource InputBackground}"/>
             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="Padding" Value="5,3"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="SelectedDateFormat" Value="Short"/>
         </Style>
 
-        <Style x:Key="PrimaryBtn" TargetType="Button">
-            <Setter Property="Padding" Value="20,6"/>
-            <Setter Property="Background" Value="{DynamicResource AccentColor}"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-        </Style>
-
-        <Style x:Key="SecondaryBtn" TargetType="Button">
-            <Setter Property="Padding" Value="16,6"/>
-            <Setter Property="Background" Value="{DynamicResource BtnSecondaryBackground}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
-            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
+        <Style x:Key="LibraryRangeCombo" TargetType="ComboBox" BasedOn="{StaticResource AppCompactComboBox}">
+            <Setter Property="Width" Value="140"/>
+            <Setter Property="MinWidth" Value="140"/>
         </Style>
 
         <!-- Flat icon-ish button used for the in-field clear affordance -->
@@ -87,6 +75,8 @@
         <Style x:Key="CaptureTile" TargetType="ListBoxItem">
             <Setter Property="Margin" Value="0,0,10,10"/>
             <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
             <Setter Property="AutomationProperties.Name" Value="{Binding FileName}"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -167,20 +157,21 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Search field with placeholder + clear affordance -->
                 <Grid Grid.Column="0">
                     <TextBox x:Name="SearchBox"
-                             Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged, Delay=350}"
-                             Padding="10,7,32,7"
+                             Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                             Padding="8,5,28,5"
                              ToolTip="Search file names and text found inside the images (OCR)"
                              AutomationProperties.AutomationId="LibraryWindow.Search"/>
 
                     <TextBlock IsHitTestVisible="False"
-                               Margin="12,0,0,0"
+                               Margin="10,0,0,0"
                                VerticalAlignment="Center"
-                               FontSize="13"
+                               FontSize="12"
                                Foreground="{DynamicResource MutedText}"
                                Text="Search names or text inside images…">
                         <TextBlock.Style>
@@ -205,17 +196,32 @@
                             AutomationProperties.AutomationId="LibraryWindow.ClearSearch"/>
                 </Grid>
 
-                <DatePicker Grid.Column="1" Width="128" Margin="8,0,0,0"
+                <ComboBox Grid.Column="1"
+                          Margin="8,0,0,0"
+                          Style="{StaticResource LibraryRangeCombo}"
+                          ItemsSource="{Binding DateRangeOptions}"
+                          SelectedItem="{Binding SelectedDateRangeOption}"
+                          DisplayMemberPath="Label"
+                          ToolTip="Quick date filters"
+                          AutomationProperties.AutomationId="LibraryWindow.RangePreset"/>
+
+                <DatePicker Grid.Column="2"
+                            Margin="6,0,0,0"
+                            Style="{StaticResource LibraryDatePicker}"
                             SelectedDate="{Binding FromDate}"
-                            ToolTip="From date"
+                            SelectedDateFormat="Short"
+                            ToolTip="Start date (inclusive)"
                             AutomationProperties.AutomationId="LibraryWindow.FromDate"/>
 
-                <DatePicker Grid.Column="2" Width="128" Margin="6,0,0,0"
+                <DatePicker Grid.Column="3"
+                            Margin="6,0,0,0"
+                            Style="{StaticResource LibraryDatePicker}"
                             SelectedDate="{Binding ToDate}"
-                            ToolTip="To date"
+                            SelectedDateFormat="Short"
+                            ToolTip="End date (inclusive)"
                             AutomationProperties.AutomationId="LibraryWindow.ToDate"/>
 
-                <Button Grid.Column="3" Margin="8,0,0,0"
+                <Button Grid.Column="4" Margin="8,0,0,0"
                         Style="{StaticResource SecondaryBtn}"
                         Content="Clear"
                         Command="{Binding ClearFiltersCommand}"
@@ -223,7 +229,7 @@
                         ToolTip="Clear all filters"
                         AutomationProperties.AutomationId="LibraryWindow.ClearFilters"/>
 
-                <Button Grid.Column="4" Margin="6,0,0,0"
+                <Button Grid.Column="5" Margin="6,0,0,0"
                         Style="{StaticResource SecondaryBtn}"
                         Content="Refresh"
                         Command="{Binding RefreshCommand}"

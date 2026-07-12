@@ -5,9 +5,16 @@ namespace Pointframe.ViewModels;
 
 public partial class LibraryViewModel : ObservableObject
 {
+    private const int SearchDebounceMilliseconds = 300;
+
     private readonly ICaptureLibraryService _library;
+    private readonly IDebounceService _debounceService;
+    private readonly LibraryDateRangeOption _allTimeOption = new("All time", null);
+    private readonly LibraryDateRangeOption _customOption = new("Custom", null);
+    private readonly string _searchDebounceKey = $"{nameof(LibraryViewModel)}.Search.{Guid.NewGuid():N}";
 
     private CancellationTokenSource? _searchCts;
+    private bool _isApplyingPreset;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSearchQuery))]
@@ -43,14 +50,36 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     private int _resultCount;
 
+    [ObservableProperty]
+    private LibraryDateRangeOption? _selectedDateRangeOption;
+
     public LibraryViewModel(ICaptureLibraryService library)
-        => _library = library;
+        : this(library, ImmediateDebounceService.Instance)
+    {
+    }
+
+    public LibraryViewModel(ICaptureLibraryService library, IDebounceService debounceService)
+    {
+        _library = library;
+        _debounceService = debounceService;
+        DateRangeOptions =
+        [
+            _allTimeOption,
+            new LibraryDateRangeOption("Last 7 days", 7),
+            new LibraryDateRangeOption("Last 30 days", 30),
+            new LibraryDateRangeOption("Last 90 days", 90),
+            _customOption,
+        ];
+        SelectedDateRangeOption = _allTimeOption;
+    }
 
     public event Action<CaptureItem>? RequestOpen;
 
     public event Action? RequestClose;
 
     public ObservableCollection<CaptureItem> Captures { get; } = new();
+
+    public IReadOnlyList<LibraryDateRangeOption> DateRangeOptions { get; }
 
     public bool HasSearchQuery => !string.IsNullOrWhiteSpace(SearchQuery);
 
@@ -121,6 +150,7 @@ public partial class LibraryViewModel : ObservableObject
         SearchQuery = null;
         FromDate = null;
         ToDate = null;
+        SelectedDateRangeOption = _allTimeOption;
     }
 
     [RelayCommand]
@@ -135,7 +165,17 @@ public partial class LibraryViewModel : ObservableObject
     [RelayCommand]
     private void Close() => RequestClose?.Invoke();
 
-    partial void OnSearchQueryChanged(string? value) => RefreshCommand.Execute(null);
+    partial void OnSearchQueryChanged(string? value)
+    {
+        _ = _debounceService.DebounceAsync(
+            _searchDebounceKey,
+            TimeSpan.FromMilliseconds(SearchDebounceMilliseconds),
+            _ =>
+            {
+                RefreshCommand.Execute(null);
+                return Task.CompletedTask;
+            });
+    }
 
     partial void OnFromUtcChanged(DateTime? value) => RefreshCommand.Execute(null);
 
@@ -144,8 +184,70 @@ public partial class LibraryViewModel : ObservableObject
     // DatePicker yields a local calendar day; SearchAsync compares against UTC instants.
     // Map the picked day to its full local-day span so same-day captures are not excluded.
     partial void OnFromDateChanged(DateTime? value)
-        => FromUtc = value?.Date.ToUniversalTime();
+    {
+        FromUtc = value?.Date.ToUniversalTime();
+        EnsureCustomPreset();
+    }
 
     partial void OnToDateChanged(DateTime? value)
-        => ToUtc = value?.Date.AddDays(1).AddTicks(-1).ToUniversalTime();
+    {
+        ToUtc = value?.Date.AddDays(1).AddTicks(-1).ToUniversalTime();
+        EnsureCustomPreset();
+    }
+
+    partial void OnSelectedDateRangeOptionChanged(LibraryDateRangeOption? value)
+    {
+        if (value is null || value == _customOption)
+        {
+            return;
+        }
+
+        _isApplyingPreset = true;
+        try
+        {
+            if (value == _allTimeOption)
+            {
+                FromDate = null;
+                ToDate = null;
+                return;
+            }
+
+            if (value.Days is int days)
+            {
+                var today = DateTime.Today;
+                ToDate = today;
+                FromDate = today.AddDays(-(days - 1));
+            }
+        }
+        finally
+        {
+            _isApplyingPreset = false;
+        }
+    }
+
+    private void EnsureCustomPreset()
+    {
+        if (_isApplyingPreset)
+        {
+            return;
+        }
+
+        if (FromDate is null && ToDate is null)
+        {
+            if (SelectedDateRangeOption != _allTimeOption)
+            {
+                SelectedDateRangeOption = _allTimeOption;
+            }
+
+            return;
+        }
+
+        if (SelectedDateRangeOption != _customOption)
+        {
+            SelectedDateRangeOption = _customOption;
+        }
+    }
+
 }
+
+public sealed record LibraryDateRangeOption(string Label, int? Days);

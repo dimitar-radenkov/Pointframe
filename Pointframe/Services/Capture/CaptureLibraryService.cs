@@ -54,9 +54,19 @@ internal sealed class CaptureLibraryService : ICaptureLibraryService
             .Where(item => InDateRange(item, fromUtc, toUtc))
             .ToList();
 
-        if (string.IsNullOrWhiteSpace(query))
+        var normalizedQuery = query?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedQuery))
         {
             return candidates;
+        }
+
+        // Keep typing responsive: do not OCR-scan the whole library for very short
+        // terms while the user is still composing the search phrase.
+        if (normalizedQuery.Length < 3)
+        {
+            return candidates
+                .Where(item => item.FileName.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
 
         var matches = new List<CaptureItem>();
@@ -68,7 +78,7 @@ internal sealed class CaptureLibraryService : ICaptureLibraryService
 
             // A file-name hit short-circuits OCR — otherwise every keystroke would
             // recognize text in every capture that is only excluded by name.
-            if (item.FileName.Contains(query, StringComparison.OrdinalIgnoreCase))
+            if (item.FileName.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase))
             {
                 matches.Add(item);
             }
@@ -77,7 +87,7 @@ internal sealed class CaptureLibraryService : ICaptureLibraryService
                 try
                 {
                     var text = await _textIndex.GetText(item, cancellationToken);
-                    if (text is not null && text.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    if (text is not null && text.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase))
                     {
                         matches.Add(item);
                     }
