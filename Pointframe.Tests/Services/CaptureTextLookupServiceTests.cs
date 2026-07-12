@@ -1,4 +1,5 @@
 using System.IO;
+using Microsoft.Extensions.DependencyInjection;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Moq;
@@ -10,7 +11,7 @@ using Xunit;
 
 namespace Pointframe.Tests.Services;
 
-public sealed class CaptureTextIndexTests
+public sealed class CaptureTextLookupServiceTests
 {
     private static readonly DateTime T1 = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -30,7 +31,7 @@ public sealed class CaptureTextIndexTests
             });
 
         var ocr = new Mock<IOcrService>();
-        var sut = new CaptureTextIndex(ImageFiles(), ocr.Object, unitOfWork.Object);
+        var sut = new CaptureTextLookupService(ImageFiles(), ocr.Object, ScopeFactory(unitOfWork.Object));
 
         var text = await sut.GetText(Item("a.png", T1));
 
@@ -49,7 +50,7 @@ public sealed class CaptureTextIndexTests
 
         var ocr = new Mock<IOcrService>();
         ocr.Setup(o => o.Recognize(It.IsAny<BitmapSource>(), It.IsAny<CancellationToken>())).ReturnsAsync("hello");
-        var sut = new CaptureTextIndex(ImageFiles(), ocr.Object, unitOfWork.Object);
+        var sut = new CaptureTextLookupService(ImageFiles(), ocr.Object, ScopeFactory(unitOfWork.Object));
         var item = Item("a.png", T1);
 
         var text = await sut.GetText(item);
@@ -85,7 +86,7 @@ public sealed class CaptureTextIndexTests
                 It.Is<CancellationToken>(token => token == cts.Token)))
             .ReturnsAsync("hello");
 
-        var sut = new CaptureTextIndex(ImageFiles(), ocr.Object, unitOfWork.Object);
+        var sut = new CaptureTextLookupService(ImageFiles(), ocr.Object, ScopeFactory(unitOfWork.Object));
 
         var text = await sut.GetText(Item("a.png", T1), cts.Token);
 
@@ -109,7 +110,7 @@ public sealed class CaptureTextIndexTests
 
         var ocr = new Mock<IOcrService>();
         ocr.Setup(o => o.Recognize(It.IsAny<BitmapSource>(), It.IsAny<CancellationToken>())).ReturnsAsync("fallback");
-        var sut = new CaptureTextIndex(ImageFiles(), ocr.Object, unitOfWork.Object);
+        var sut = new CaptureTextLookupService(ImageFiles(), ocr.Object, ScopeFactory(unitOfWork.Object));
         var item = Item("a.png", T1);
 
         var text = await sut.GetText(item);
@@ -133,7 +134,7 @@ public sealed class CaptureTextIndexTests
         var ocr = new Mock<IOcrService>();
         ocr.Setup(o => o.Recognize(It.IsAny<BitmapSource>(), It.IsAny<CancellationToken>())).ReturnsAsync("hello");
 
-        var sut = new CaptureTextIndex(ImageFiles(), ocr.Object, unitOfWork.Object);
+        var sut = new CaptureTextLookupService(ImageFiles(), ocr.Object, ScopeFactory(unitOfWork.Object));
 
         var text = await sut.GetText(Item("a.png", T1));
 
@@ -160,5 +161,20 @@ public sealed class CaptureTextIndexTests
         unitOfWork.SetupGet(u => u.CaptureTextCache).Returns(repository);
         unitOfWork.Setup(u => u.SaveChanges(It.IsAny<CancellationToken>())).ReturnsAsync(1);
         return unitOfWork;
+    }
+
+    private static IServiceScopeFactory ScopeFactory(IPointframeDataUnitOfWork unitOfWork)
+    {
+        var provider = new Mock<IServiceProvider>();
+        provider
+            .Setup(p => p.GetService(typeof(IPointframeDataUnitOfWork)))
+            .Returns(unitOfWork);
+
+        var scope = new Mock<IServiceScope>();
+        scope.SetupGet(s => s.ServiceProvider).Returns(provider.Object);
+
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
+        return scopeFactory.Object;
     }
 }

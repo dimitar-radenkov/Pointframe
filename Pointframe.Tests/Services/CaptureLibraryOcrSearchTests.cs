@@ -16,7 +16,7 @@ public sealed class CaptureLibraryOcrSearchTests : IDisposable
         "Pointframe.Tests",
         Guid.NewGuid().ToString("N"));
 
-    private readonly Mock<ICaptureTextIndex> _textIndex = new();
+    private readonly Mock<ICaptureTextLookupService> _textIndex = new();
 
     [Fact]
     public async Task SearchAsync_MatchesTextInsideImage_EvenWhenFileNameDoesNot()

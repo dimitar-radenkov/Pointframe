@@ -139,7 +139,7 @@
             <TextBlock Text="Capture Library" Style="{StaticResource PageTitle}"/>
             <TextBlock Style="{StaticResource Hint}"
                        Margin="0,3,0,0"
-                       Text="Search by file name, or by text found inside the images."/>
+                       Text="Search by file name, or by text found inside the images (OCR starts at 3+ characters)."/>
         </StackPanel>
 
         <!-- Filter bar -->
@@ -165,7 +165,7 @@
                     <TextBox x:Name="SearchBox"
                              Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
                              Padding="8,5,28,5"
-                             ToolTip="Search file names and text found inside the images (OCR)"
+                             ToolTip="Search file names immediately. OCR text-in-image search starts at 3 characters."
                              AutomationProperties.AutomationId="LibraryWindow.Search"/>
 
                     <TextBlock IsHitTestVisible="False"
@@ -173,7 +173,7 @@
                                VerticalAlignment="Center"
                                FontSize="12"
                                Foreground="{DynamicResource MutedText}"
-                               Text="Search names or text inside images…">
+                               Text="Search names, or type at least 3 characters for OCR text search…">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed"/>

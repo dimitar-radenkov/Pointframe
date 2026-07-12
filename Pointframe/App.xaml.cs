@@ -213,7 +213,7 @@ public partial class App : Application
         services.AddSingleton<IAppErrorHandler, AppErrorHandler>();
         services.AddSingleton<ICaptureLaunchService, CaptureLaunchService>();
         services.AddSingleton<ICaptureLibraryService, CaptureLibraryService>();
-        services.AddSingleton<ICaptureTextIndex, CaptureTextIndex>();
+        services.AddSingleton<ICaptureTextLookupService, CaptureTextLookupService>();
         services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
         services.AddTransient<IWindowCaptureService, WindowCaptureService>();
         services.AddTransient<IVideoWriterFactory, VideoWriterFactory>();

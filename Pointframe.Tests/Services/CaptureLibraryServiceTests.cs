@@ -78,7 +78,7 @@ public sealed class CaptureLibraryServiceTests : IDisposable
         settings
             .SetupGet(s => s.Current)
             .Returns(new UserSettings { ScreenshotSavePath = savePath });
-        return new CaptureLibraryService(settings.Object, Mock.Of<ICaptureTextIndex>());
+        return new CaptureLibraryService(settings.Object, Mock.Of<ICaptureTextLookupService>());
     }
 
     public void Dispose()

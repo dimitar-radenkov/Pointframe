@@ -104,7 +104,7 @@ public sealed class CaptureLibrarySearchTests : IDisposable
         settings
             .SetupGet(s => s.Current)
             .Returns(new UserSettings { ScreenshotSavePath = _tempDirectory });
-        return new CaptureLibraryService(settings.Object, Mock.Of<ICaptureTextIndex>());
+        return new CaptureLibraryService(settings.Object, Mock.Of<ICaptureTextLookupService>());
     }
 
     private void CreateFile(string name, DateTime capturedUtc)

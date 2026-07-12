@@ -1,6 +1,6 @@
 namespace Pointframe.Services;
 
-public interface ICaptureTextIndex
+public interface ICaptureTextLookupService
 {
     Task<string?> GetText(CaptureItem item, CancellationToken cancellationToken = default);
 }

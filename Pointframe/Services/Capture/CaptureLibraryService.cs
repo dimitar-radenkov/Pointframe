@@ -6,9 +6,9 @@ internal sealed class CaptureLibraryService : ICaptureLibraryService
         new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".bmp" };
 
     private readonly IUserSettingsService _settings;
-    private readonly ICaptureTextIndex _textIndex;
+    private readonly ICaptureTextLookupService _textIndex;
 
-    public CaptureLibraryService(IUserSettingsService settings, ICaptureTextIndex textIndex)
+    public CaptureLibraryService(IUserSettingsService settings, ICaptureTextLookupService textIndex)
     {
         _settings = settings;
         _textIndex = textIndex;

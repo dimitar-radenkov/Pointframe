@@ -1,41 +1,44 @@
+using Microsoft.Extensions.DependencyInjection;
 using Pointframe.Data.Abstractions;
 using Pointframe.Data.Entities;
 
 namespace Pointframe.Services;
 
-internal sealed class CaptureTextIndex : ICaptureTextIndex
+internal sealed class CaptureTextLookupService : ICaptureTextLookupService
 {
     private const int DefaultMaxCacheEntries = 2000;
 
     private readonly IImageFileService _imageFiles;
     private readonly IOcrService _ocr;
-    private readonly IPointframeDataUnitOfWork _data;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly int _maxCacheEntries;
 
-    public CaptureTextIndex(
+    public CaptureTextLookupService(
         IImageFileService imageFiles,
         IOcrService ocr,
-        IPointframeDataUnitOfWork data,
+        IServiceScopeFactory scopeFactory,
         int maxCacheEntries = DefaultMaxCacheEntries)
     {
         _imageFiles = imageFiles;
         _ocr = ocr;
-        _data = data;
+        _scopeFactory = scopeFactory;
         _maxCacheEntries = Math.Max(1, maxCacheEntries);
     }
 
     public async Task<string?> GetText(CaptureItem item, CancellationToken cancellationToken = default)
     {
+        using var scope = _scopeFactory.CreateScope();
+        var data = scope.ServiceProvider.GetRequiredService<IPointframeDataUnitOfWork>();
         CaptureTextCacheEntry? existing = null;
 
         try
         {
-            existing = await _data.CaptureTextCache.GetByFilePath(item.FilePath, cancellationToken);
+            existing = await data.CaptureTextCache.GetByFilePath(item.FilePath, cancellationToken);
             if (existing is not null && existing.CapturedAt == item.CapturedAtUtc)
             {
                 existing.LastAccessedAt = DateTime.UtcNow;
-                await _data.CaptureTextCache.Update(existing, cancellationToken);
-                await _data.SaveChanges(cancellationToken);
+                await data.CaptureTextCache.Update(existing, cancellationToken);
+                await data.SaveChanges(cancellationToken);
                 return existing.Text;
             }
         }
@@ -56,7 +59,7 @@ internal sealed class CaptureTextIndex : ICaptureTextIndex
             var now = DateTime.UtcNow;
             if (existing is null)
             {
-                await _data.CaptureTextCache.Add(new CaptureTextCacheEntry
+                await data.CaptureTextCache.Add(new CaptureTextCacheEntry
                 {
                     FilePath = item.FilePath,
                     CapturedAt = item.CapturedAtUtc,
@@ -72,11 +75,11 @@ internal sealed class CaptureTextIndex : ICaptureTextIndex
                 existing.Text = text;
                 existing.LastAccessedAt = now;
                 existing.UpdatedAt = now;
-                await _data.CaptureTextCache.Update(existing, cancellationToken);
+                await data.CaptureTextCache.Update(existing, cancellationToken);
             }
 
-            await _data.CaptureTextCache.TrimToLimit(_maxCacheEntries, cancellationToken);
-            await _data.SaveChanges(cancellationToken);
+            await data.CaptureTextCache.TrimToLimit(_maxCacheEntries, cancellationToken);
+            await data.SaveChanges(cancellationToken);
         }
         catch (OperationCanceledException)
         {
