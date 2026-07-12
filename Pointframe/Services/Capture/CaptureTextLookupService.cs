@@ -7,6 +7,7 @@ namespace Pointframe.Services;
 internal sealed class CaptureTextLookupService : ICaptureTextLookupService
 {
     private const int DefaultMaxCacheEntries = 2000;
+    private static readonly TimeSpan LastAccessWriteInterval = TimeSpan.FromMinutes(10);
 
     private readonly IImageFileService _imageFiles;
     private readonly IOcrService _ocr;
@@ -36,9 +37,14 @@ internal sealed class CaptureTextLookupService : ICaptureTextLookupService
             existing = await data.CaptureTextCache.GetByFilePath(item.FilePath, cancellationToken);
             if (existing is not null && existing.CapturedAt == item.CapturedAtUtc)
             {
-                existing.LastAccessedAt = DateTime.UtcNow;
-                await data.CaptureTextCache.Update(existing, cancellationToken);
-                await data.SaveChanges(cancellationToken);
+                var now = DateTime.UtcNow;
+                if (now - existing.LastAccessedAt >= LastAccessWriteInterval)
+                {
+                    existing.LastAccessedAt = now;
+                    await data.CaptureTextCache.Update(existing, cancellationToken);
+                    await data.SaveChanges(cancellationToken);
+                }
+
                 return existing.Text;
             }
         }

@@ -154,6 +154,40 @@ public sealed class LibraryViewModelTests
     }
 
     [Fact]
+    public async Task RefreshCommand_TracksOcrSearchUsageTelemetry_WhenQueryMeetsThreshold()
+    {
+        var library = LibraryReturning(Item("a.png", T1));
+        var telemetry = new Mock<ITelemetryService>();
+        var sut = new LibraryViewModel(library.Object, ImmediateDebounceService.Instance, telemetry.Object)
+        {
+            SearchQuery = "invoice"
+        };
+
+        await WaitForRefresh(sut);
+
+        telemetry.Verify(
+            t => t.TrackEvent("library_ocr_search_used", It.IsAny<IReadOnlyDictionary<string, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task RefreshCommand_DoesNotTrackOcrSearchUsageTelemetry_WhenQueryBelowThreshold()
+    {
+        var library = LibraryReturning(Item("a.png", T1));
+        var telemetry = new Mock<ITelemetryService>();
+        var sut = new LibraryViewModel(library.Object, ImmediateDebounceService.Instance, telemetry.Object)
+        {
+            SearchQuery = "ab"
+        };
+
+        await WaitForRefresh(sut);
+
+        telemetry.Verify(
+            t => t.TrackEvent("library_ocr_search_used", It.IsAny<IReadOnlyDictionary<string, string>>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task ClearSearchCommand_ResetsQueryAndRequeries()
     {
         var library = LibraryReturning();

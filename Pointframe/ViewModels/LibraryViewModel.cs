@@ -9,6 +9,7 @@ public partial class LibraryViewModel : ObservableObject
 
     private readonly ICaptureLibraryService _library;
     private readonly IDebounceService _debounceService;
+    private readonly ITelemetryService _telemetry;
     private readonly LibraryDateRangeOption _allTimeOption = new("All time", null);
     private readonly LibraryDateRangeOption _customOption = new("Custom", null);
     private readonly string _searchDebounceKey = $"{nameof(LibraryViewModel)}.Search.{Guid.NewGuid():N}";
@@ -54,14 +55,23 @@ public partial class LibraryViewModel : ObservableObject
     private LibraryDateRangeOption? _selectedDateRangeOption;
 
     public LibraryViewModel(ICaptureLibraryService library)
-        : this(library, ImmediateDebounceService.Instance)
+        : this(library, ImmediateDebounceService.Instance, NullTelemetryService.Instance)
     {
     }
 
     public LibraryViewModel(ICaptureLibraryService library, IDebounceService debounceService)
+        : this(library, debounceService, NullTelemetryService.Instance)
+    {
+    }
+
+    public LibraryViewModel(
+        ICaptureLibraryService library,
+        IDebounceService debounceService,
+        ITelemetryService telemetry)
     {
         _library = library;
         _debounceService = debounceService;
+        _telemetry = telemetry;
         DateRangeOptions =
         [
             _allTimeOption,
@@ -90,15 +100,16 @@ public partial class LibraryViewModel : ObservableObject
     {
         // Supersede any in-flight search; OCR over a large library is slow and
         // each keystroke would otherwise queue another full pass.
-        _searchCts?.Cancel();
-        _searchCts?.Dispose();
-
         var cts = new CancellationTokenSource();
-        _searchCts = cts;
+        var previousCts = Interlocked.Exchange(ref _searchCts, cts);
+        previousCts?.Cancel();
 
         IsSearching = true;
         ShowEmptyState = false;
         SearchStatus = null;
+        var normalizedQuery = SearchQuery?.Trim();
+        var queryLength = normalizedQuery?.Length ?? 0;
+        var isOcrEligibleQuery = queryLength >= 3;
 
         var progress = new Progress<CaptureSearchProgress>(report =>
         {
@@ -126,6 +137,11 @@ public partial class LibraryViewModel : ObservableObject
 
             ResultCount = Captures.Count;
             ShowEmptyState = Captures.Count == 0;
+
+            if (isOcrEligibleQuery)
+            {
+                _telemetry.TrackEvent("library_ocr_search_used");
+            }
         }
         catch (OperationCanceledException)
         {
@@ -137,7 +153,10 @@ public partial class LibraryViewModel : ObservableObject
             {
                 IsSearching = false;
                 SearchStatus = null;
+                _searchCts = null;
             }
+
+            cts.Dispose();
         }
     }
 
@@ -251,3 +270,24 @@ public partial class LibraryViewModel : ObservableObject
 }
 
 public sealed record LibraryDateRangeOption(string Label, int? Days);
+
+internal sealed class NullTelemetryService : ITelemetryService
+{
+    public static NullTelemetryService Instance { get; } = new();
+
+    private NullTelemetryService()
+    {
+    }
+
+    public void TrackEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
+    {
+    }
+
+    public void TrackException(Exception exception, string? context = null)
+    {
+    }
+
+    public void Flush()
+    {
+    }
+}
