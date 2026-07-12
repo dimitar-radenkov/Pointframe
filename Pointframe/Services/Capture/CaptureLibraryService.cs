@@ -22,12 +22,56 @@ internal sealed class CaptureLibraryService : ICaptureLibraryService
             return Array.Empty<CaptureItem>();
         }
 
-        return Directory.EnumerateFiles(folder)
-            .Where(path => SupportedExtensions.Contains(Path.GetExtension(path)))
-            .Select(path => new CaptureItem(
-                path,
-                Path.GetFileName(path),
-                File.GetLastWriteTimeUtc(path)))
+        string[] files;
+
+        try
+        {
+            files = Directory.GetFiles(folder);
+        }
+        catch (IOException)
+        {
+            return Array.Empty<CaptureItem>();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Array.Empty<CaptureItem>();
+        }
+        catch (System.Security.SecurityException)
+        {
+            return Array.Empty<CaptureItem>();
+        }
+
+        var captures = new List<CaptureItem>();
+
+        foreach (var path in files)
+        {
+            if (!SupportedExtensions.Contains(Path.GetExtension(path)))
+            {
+                continue;
+            }
+
+            try
+            {
+                captures.Add(new CaptureItem(
+                    path,
+                    Path.GetFileName(path),
+                    File.GetLastWriteTimeUtc(path)));
+            }
+            catch (IOException)
+            {
+                // Keep capture loading best-effort if a file disappears or cannot be read.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Keep capture loading best-effort if file access is denied.
+            }
+            catch (System.Security.SecurityException)
+            {
+                // Keep capture loading best-effort if file metadata access is blocked.
+            }
+        }
+
+        return captures
             .OrderByDescending(item => item.CapturedAtUtc)
             .ToList();
     }

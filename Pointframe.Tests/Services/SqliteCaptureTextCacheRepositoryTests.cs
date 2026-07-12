@@ -38,7 +38,7 @@ public sealed class SqliteCaptureTextCacheRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task TryGet_WithStaleCapturedAt_ReturnsNotFound()
+    public async Task GetByFilePath_WhenFilePathMissing_ReturnsNotFound()
     {
         Directory.CreateDirectory(_tempDirectory);
         var databasePath = Path.Combine(_tempDirectory, "cache.db");

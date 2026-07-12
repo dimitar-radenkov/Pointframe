@@ -14,9 +14,19 @@
         Background="{DynamicResource WindowBackground}"
         AutomationProperties.AutomationId="SettingsWindow.Root">
     <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/Pointframe;component/Themes/Controls.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
-        <Style x:Key="PageTitle" TargetType="TextBlock" BasedOn="{StaticResource AppPageTitleText}"/>
+        <Style x:Key="PageTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="26"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
 
         <Style x:Key="PageDescription" TargetType="TextBlock">
             <Setter Property="FontSize" Value="11"/>
@@ -125,6 +135,7 @@
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="Margin" Value="0,2,0,0"/>
         </Style>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Grid Margin="20,16,20,16">

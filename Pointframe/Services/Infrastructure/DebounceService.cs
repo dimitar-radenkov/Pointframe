@@ -16,15 +16,29 @@ public sealed class DebounceService : IDebounceService, IDisposable
         ArgumentNullException.ThrowIfNull(action);
 
         var current = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _pending.AddOrUpdate(
-            key,
-            _ => current,
-            (_, existing) =>
+        CancellationTokenSource? superseded = null;
+
+        while (true)
+        {
+            if (_pending.TryGetValue(key, out var existing))
             {
-                existing.Cancel();
-                existing.Dispose();
-                return current;
-            });
+                if (_pending.TryUpdate(key, current, existing))
+                {
+                    superseded = existing;
+                    break;
+                }
+
+                continue;
+            }
+
+            if (_pending.TryAdd(key, current))
+            {
+                break;
+            }
+        }
+
+        superseded?.Cancel();
+        superseded?.Dispose();
 
         try
         {
