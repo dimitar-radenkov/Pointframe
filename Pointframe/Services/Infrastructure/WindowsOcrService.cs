@@ -6,7 +6,7 @@ namespace Pointframe.Services;
 
 internal sealed class WindowsOcrService : IOcrService
 {
-    public async Task<string?> Recognize(BitmapSource bitmap)
+    public async Task<string?> Recognize(BitmapSource bitmap, CancellationToken cancellationToken = default)
     {
         var engine = OcrEngine.TryCreateFromUserProfileLanguages();
         if (engine is null)
@@ -15,7 +15,7 @@ internal sealed class WindowsOcrService : IOcrService
         }
 
         using var softwareBitmap = ConvertToSoftwareBitmap(bitmap);
-        var result = await engine.RecognizeAsync(softwareBitmap);
+        var result = await engine.RecognizeAsync(softwareBitmap).AsTask(cancellationToken);
 
         if (result.Lines.Count == 0)
         {

@@ -574,7 +574,8 @@ public sealed class TrayIconManagerTests
             onOpenImage: static () => { },
             onTrimRecording: onTrimRecording ?? (static _ => { }),
             onShowSettings: static () => { },
-            onShowAbout: static () => { });
+            onShowAbout: static () => { },
+            onShowLibrary: static () => { });
     }
 
     private static void InvokePrivate(object target, string methodName, params object[] args)

@@ -1,0 +1,320 @@
+<Window x:Class="Pointframe.LibraryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Pointframe"
+        Title="Capture Library"
+        Width="980" Height="680"
+        MinWidth="620" MinHeight="420"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI"
+        Background="{DynamicResource WindowBackground}"
+        Icon="/Assets/icon.ico"
+        AutomationProperties.AutomationId="LibraryWindow.Root">
+
+    <Window.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding CloseCommand}"/>
+        <KeyBinding Key="F5" Command="{Binding RefreshCommand}"/>
+    </Window.InputBindings>
+
+    <Window.Resources>
+        <local:FilePathToThumbnailConverter x:Key="Thumbnail"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <Style x:Key="PageTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource MutedText}"/>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
+            <Setter Property="Background" Value="{DynamicResource InputBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <Style x:Key="PrimaryBtn" TargetType="Button">
+            <Setter Property="Padding" Value="20,6"/>
+            <Setter Property="Background" Value="{DynamicResource AccentColor}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <Style x:Key="SecondaryBtn" TargetType="Button">
+            <Setter Property="Padding" Value="16,6"/>
+            <Setter Property="Background" Value="{DynamicResource BtnSecondaryBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <!-- Flat icon-ish button used for the in-field clear affordance -->
+        <Style x:Key="ClearBtn" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{DynamicResource MutedText}"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="B" Background="Transparent" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="B" Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Capture tile: card with hover + selected states -->
+        <Style x:Key="CaptureTile" TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="0,0,10,10"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="AutomationProperties.Name" Value="{Binding FileName}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Card"
+                                Width="208"
+                                Background="{DynamicResource SurfaceBackground}"
+                                BorderBrush="{DynamicResource SurfaceBorder}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="8">
+                            <StackPanel>
+                                <Border Height="126"
+                                        CornerRadius="5"
+                                        Background="{DynamicResource ControlBackground}"
+                                        ClipToBounds="True">
+                                    <Image Source="{Binding FilePath, Converter={StaticResource Thumbnail}}"
+                                           Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                                </Border>
+                                <TextBlock Text="{Binding FileName}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Margin="2,8,2,0"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding FilePath}"
+                                           Foreground="{DynamicResource PrimaryText}"/>
+                                <TextBlock Text="{Binding CapturedAtUtc, StringFormat='{}{0:yyyy-MM-dd HH:mm} UTC'}"
+                                           FontSize="11"
+                                           Margin="2,2,2,0"
+                                           Foreground="{DynamicResource SubLabelText}"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Card" Property="Background" Value="{DynamicResource AccentBackground}"/>
+                                <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource AccentColor}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+            <TextBlock Text="Capture Library" Style="{StaticResource PageTitle}"/>
+            <TextBlock Style="{StaticResource Hint}"
+                       Margin="0,3,0,0"
+                       Text="Search by file name, or by text found inside the images."/>
+        </StackPanel>
+
+        <!-- Filter bar -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource SurfaceBackground}"
+                BorderBrush="{DynamicResource SurfaceBorder}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="10"
+                Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Search field with placeholder + clear affordance -->
+                <Grid Grid.Column="0">
+                    <TextBox x:Name="SearchBox"
+                             Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged, Delay=350}"
+                             Padding="10,7,32,7"
+                             ToolTip="Search file names and text found inside the images (OCR)"
+                             AutomationProperties.AutomationId="LibraryWindow.Search"/>
+
+                    <TextBlock IsHitTestVisible="False"
+                               Margin="12,0,0,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="{DynamicResource MutedText}"
+                               Text="Search names or text inside images…">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasSearchQuery}" Value="False">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <Button Style="{StaticResource ClearBtn}"
+                            Content="✕"
+                            HorizontalAlignment="Right"
+                            Margin="0,1,3,1"
+                            Command="{Binding ClearSearchCommand}"
+                            Visibility="{Binding HasSearchQuery, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Clear search"
+                            AutomationProperties.AutomationId="LibraryWindow.ClearSearch"/>
+                </Grid>
+
+                <DatePicker Grid.Column="1" Width="128" Margin="8,0,0,0"
+                            SelectedDate="{Binding FromDate}"
+                            ToolTip="From date"
+                            AutomationProperties.AutomationId="LibraryWindow.FromDate"/>
+
+                <DatePicker Grid.Column="2" Width="128" Margin="6,0,0,0"
+                            SelectedDate="{Binding ToDate}"
+                            ToolTip="To date"
+                            AutomationProperties.AutomationId="LibraryWindow.ToDate"/>
+
+                <Button Grid.Column="3" Margin="8,0,0,0"
+                        Style="{StaticResource SecondaryBtn}"
+                        Content="Clear"
+                        Command="{Binding ClearFiltersCommand}"
+                        Visibility="{Binding HasFilters, Converter={StaticResource BoolToVis}}"
+                        ToolTip="Clear all filters"
+                        AutomationProperties.AutomationId="LibraryWindow.ClearFilters"/>
+
+                <Button Grid.Column="4" Margin="6,0,0,0"
+                        Style="{StaticResource SecondaryBtn}"
+                        Content="Refresh"
+                        Command="{Binding RefreshCommand}"
+                        ToolTip="Rescan the save folder (F5)"
+                        AutomationProperties.AutomationId="LibraryWindow.Refresh"/>
+            </Grid>
+        </Border>
+
+        <!-- Results -->
+        <Grid Grid.Row="2">
+            <ListBox ItemsSource="{Binding Captures}"
+                     SelectedItem="{Binding SelectedItem}"
+                     ItemContainerStyle="{StaticResource CaptureTile}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     AutomationProperties.AutomationId="LibraryWindow.Captures">
+                <ListBox.InputBindings>
+                    <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding OpenCommand}"/>
+                    <KeyBinding Key="Enter" Command="{Binding OpenCommand}"/>
+                </ListBox.InputBindings>
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+            </ListBox>
+
+            <!-- Empty state -->
+            <StackPanel VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Visibility="{Binding ShowEmptyState, Converter={StaticResource BoolToVis}}"
+                        AutomationProperties.AutomationId="LibraryWindow.EmptyState">
+                <TextBlock Text="No captures found"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource SecondaryText}"/>
+                <TextBlock Text="Try a different word, widen the date range, or clear the filters."
+                           Style="{StaticResource Hint}"
+                           Margin="0,6,0,0"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Footer -->
+        <Grid Grid.Row="3" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Live search progress: OCR can take seconds on a cold cache -->
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Visibility="{Binding IsSearching, Converter={StaticResource BoolToVis}}">
+                <ProgressBar IsIndeterminate="True"
+                             Width="90"
+                             Height="3"
+                             VerticalAlignment="Center"
+                             Foreground="{DynamicResource AccentColor}"
+                             Background="Transparent"
+                             BorderThickness="0"/>
+                <TextBlock Text="{Binding SearchStatus}"
+                           Margin="10,0,0,0"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource AccentColor}"
+                           AutomationProperties.AutomationId="LibraryWindow.Searching"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <TextBlock Text="{Binding ResultCount, StringFormat='{}{0} captures'}"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Margin="0,0,14,0"
+                           Foreground="{DynamicResource MutedText}"
+                           AutomationProperties.AutomationId="LibraryWindow.Count"/>
+                <Button Style="{StaticResource PrimaryBtn}"
+                        Content="Open"
+                        Margin="0,0,8,0"
+                        Command="{Binding OpenCommand}"
+                        ToolTip="Open the selected capture for annotation (Enter)"
+                        AutomationProperties.AutomationId="LibraryWindow.Open"/>
+                <Button Style="{StaticResource SecondaryBtn}"
+                        Content="Close"
+                        Command="{Binding CloseCommand}"
+                        AutomationProperties.AutomationId="LibraryWindow.Close"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

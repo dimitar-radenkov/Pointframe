@@ -36,6 +36,7 @@ public partial class App : Application
     private DateTime _sessionStartTime;
     private SettingsWindow? _settingsWindow;
     private AboutWindow? _aboutWindow;
+    private LibraryWindow? _libraryWindow;
 
     private const string AutomationOpenImagePathEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_OPEN_IMAGE_PATH";
 
@@ -139,7 +140,8 @@ public partial class App : Application
             onOpenImage: () => Dispatcher.InvokeAsync(OpenImage, System.Windows.Threading.DispatcherPriority.ApplicationIdle),
             onTrimRecording: ShowTrimWindow,
             onShowSettings: ShowSettingsWindow,
-            onShowAbout: ShowAboutWindow);
+            onShowAbout: ShowAboutWindow,
+            onShowLibrary: ShowLibraryWindow);
         _trayIconManager.Initialize();
         startupTimer.Stop();
         _telemetry.TrackEvent("startup_completed", new Dictionary<string, string>
@@ -177,6 +179,8 @@ public partial class App : Application
         services.AddSingleton<IGlobalHotkeyService, GlobalHotkeyService>();
         services.AddSingleton<IAppErrorHandler, AppErrorHandler>();
         services.AddSingleton<ICaptureLaunchService, CaptureLaunchService>();
+        services.AddSingleton<ICaptureLibraryService, CaptureLibraryService>();
+        services.AddSingleton<ICaptureTextIndex, CaptureTextIndex>();
         services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
         services.AddTransient<IWindowCaptureService, WindowCaptureService>();
         services.AddTransient<IVideoWriterFactory, VideoWriterFactory>();
@@ -191,6 +195,7 @@ public partial class App : Application
         services.AddSingleton<IAnnotationGeometryService, AnnotationGeometryService>();
         services.AddSingleton<IOcrService, WindowsOcrService>();
         services.AddTransient<OverlayViewModel>();
+        services.AddTransient<LibraryViewModel>();
         services.AddTransient<RecordingAnnotationViewModel>();
         services.AddTransient<OverlayWindow>(CreateOverlayWindow);
         services.AddTransient<BeautifierViewModel>();
@@ -212,6 +217,7 @@ public partial class App : Application
                 sp.GetRequiredService<ILogger<RecordingHudViewModel>>()));
         services.AddTransient<AboutViewModel>();
         services.AddTransient<AboutWindow>();
+        services.AddTransient<LibraryWindow>();
         services.AddTransient<UpdateDownloadViewModel>(sp =>
             new UpdateDownloadViewModel(
                 UpdateDownloadViewModel.SharedHttp,
@@ -277,6 +283,12 @@ public partial class App : Application
         if (automationLaunchOptions.OpenAboutWindow)
         {
             ShowAboutWindow();
+            return;
+        }
+
+        if (automationLaunchOptions.OpenLibraryWindow)
+        {
+            ShowLibraryWindow();
             return;
         }
 
@@ -375,6 +387,39 @@ public partial class App : Application
         RegisterAutomationWindow(_aboutWindow);
         _aboutWindow.Closed += (_, _) => _aboutWindow = null;
         _aboutWindow.Show();
+    }
+
+    private void ShowLibraryWindow()
+    {
+        if (_libraryWindow is not null)
+        {
+            _libraryWindow.Activate();
+            return;
+        }
+
+        _libraryWindow = _host.Services.GetRequiredService<LibraryWindow>();
+        _libraryWindow.ViewModel.RequestOpen += OpenCaptureFromLibrary;
+        RegisterAutomationWindow(_libraryWindow);
+        _libraryWindow.Closed += (_, _) => _libraryWindow = null;
+        _libraryWindow.Show();
+    }
+
+    private void OpenCaptureFromLibrary(CaptureItem item)
+    {
+        try
+        {
+            var bitmap = _imageFileService.LoadForAnnotation(item.FilePath);
+            _telemetry.TrackEvent("library_open_used");
+
+            // Close the library before the full-screen overlay appears so the two never overlap.
+            _libraryWindow?.Close();
+            ShowOverlayFromImage(bitmap, item.FilePath);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException or NotSupportedException or IOException or UnauthorizedAccessException)
+        {
+            _logger?.LogWarning(ex, "Failed to open capture '{Path}'", item.FilePath);
+            _messageBox.ShowWarning(ex.Message, "Open Capture");
+        }
     }
 
     private void ShowAutomationSampleOverlayWindow()

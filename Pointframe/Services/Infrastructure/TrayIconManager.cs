@@ -26,6 +26,7 @@ internal sealed class TrayIconManager : ITrayIconManager
     private readonly Action<string> _onTrimRecording;
     private readonly Action _onShowSettings;
     private readonly Action _onShowAbout;
+    private readonly Action _onShowLibrary;
 
     private const int MaxRecentItems = 5;
 
@@ -53,8 +54,10 @@ internal sealed class TrayIconManager : ITrayIconManager
         Action onOpenImage,
         Action<string> onTrimRecording,
         Action onShowSettings,
-        Action onShowAbout)
+        Action onShowAbout,
+        Action onShowLibrary)
     {
+        _onShowLibrary = onShowLibrary;
         _logger = logger;
         _messageBox = messageBox;
         _processService = processService;
@@ -171,6 +174,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         contextMenu.Items.Add(CreateTrayMenuItem("Whole screen snip", WholeScreenSnip_Click));
         contextMenu.Items.Add(CreateTrayMenuItem("Clean window snip", CleanWindowSnip_Click));
         contextMenu.Items.Add(CreateTrayMenuItem("Open image...", OpenImage_Click));
+        contextMenu.Items.Add(CreateTrayMenuItem("Library", Library_Click));
         contextMenu.Items.Add(CreateOpenFoldersMenuItem());
         contextMenu.Items.Add(new WpfSeparator());
         contextMenu.Items.Add(CreateTrayMenuItem("Settings", Settings_Click));
@@ -210,6 +214,7 @@ internal sealed class TrayIconManager : ITrayIconManager
     private void CleanWindowSnip_Click(object sender, RoutedEventArgs e) => _onCleanWindowSnip();
     private void Settings_Click(object sender, RoutedEventArgs e) => _onShowSettings();
     private void About_Click(object sender, RoutedEventArgs e) => _onShowAbout();
+    private void Library_Click(object sender, RoutedEventArgs e) => _onShowLibrary();
     private void OpenImage_Click(object sender, RoutedEventArgs e) => _onOpenImage();
     private void Exit_Click(object sender, RoutedEventArgs e) => WpfApplication.Current.Shutdown();
 
