@@ -467,12 +467,10 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
         for (var index = 0; index < framesToPad; index++)
         {
-            var frameCopy = new byte[paddingSource.Length];
-            Buffer.BlockCopy(paddingSource, 0, frameCopy, 0, frameCopy.Length);
             Interlocked.Increment(ref _attemptedFrameCount);
             try
             {
-                _writer?.WriteFrame(frameCopy);
+                _writer?.WriteFrame(paddingSource);
             }
             catch (IOException ex)
             {
