@@ -431,8 +431,9 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
     private void UpdateLatestFrame(byte[] source)
     {
-        _latestFrameBytes ??= new byte[source.Length];
-        Buffer.BlockCopy(source, 0, _latestFrameBytes, 0, source.Length);
+        // Keep the most recent captured frame reference for stop-time padding.
+        // The frame content remains stable once capture stops and encode draining begins.
+        _latestFrameBytes = source;
     }
 
     private void PadRecordingToElapsedDuration(TimeSpan targetElapsed)
