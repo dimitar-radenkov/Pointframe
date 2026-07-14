@@ -29,6 +29,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     // Reused across every frame of a single recording session — allocated in Start, disposed in Stop.
     private Bitmap? _captureBitmap;
     private Graphics? _captureGraphics;
+    private ScreenDc? _screenDc;
 
     private int _captureX;
     private int _captureY;
@@ -104,6 +105,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         // Allocate the capture surface once per session — no per-frame allocation.
         _captureBitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
         _captureGraphics = Graphics.FromImage(_captureBitmap);
+        _screenDc = new ScreenDc();
 
         // Pre-allocate a small pool of raw frame buffers so neither the capture nor the
         // encode loop ever needs to allocate on the hot path.
@@ -199,6 +201,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _captureGraphics = null;
             _captureBitmap?.Dispose();
             _captureBitmap = null;
+            _screenDc?.Dispose();
+            _screenDc = null;
             _latestFrameBytes = null;
             IsRecordingMicrophoneEnabled = false;
             CanToggleMicrophone = false;
@@ -258,7 +262,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
     private void CaptureFrameToChannel()
     {
-        if (_encodeChannel is null || _captureBitmap is null || _captureGraphics is null)
+        if (_encodeChannel is null || _captureBitmap is null || _captureGraphics is null || _screenDc is null)
         {
             return;
         }
@@ -275,9 +279,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         var bitmapDc = _captureGraphics.GetHdc();
         try
         {
-            using var screenDc = new ScreenDc();
             BitBlt(bitmapDc, 0, 0, _captureWidth, _captureHeight,
-                screenDc.Handle, _captureX, _captureY, SrcCopy);
+                _screenDc.Handle, _captureX, _captureY, SrcCopy);
         }
         finally
         {
