@@ -38,7 +38,6 @@ internal sealed class CaptureLibraryService : ICaptureLibraryService
             normalizedQuery is { Length: < 3 } ? normalizedQuery : null,
             useFileNameSearchPattern: true,
             sortByCapturedAtDescending: normalizedQuery is null or { Length: < 3 });
-
         if (string.IsNullOrWhiteSpace(normalizedQuery))
         {
             return candidates;
