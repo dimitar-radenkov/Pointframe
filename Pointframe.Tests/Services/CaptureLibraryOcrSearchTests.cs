@@ -135,6 +135,20 @@ public sealed class CaptureLibraryOcrSearchTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchAsync_LongQuery_ReturnsMatchesSortedNewestFirst()
+    {
+        Directory.CreateDirectory(_tempDirectory);
+        CreateFile("older.png", Jan);
+        CreateFile("newer.png", Jun);
+        TextFor("older.png", "invoice");
+        TextFor("newer.png", "invoice");
+
+        var results = await NewService().SearchAsync("invoice", null, null);
+
+        Assert.Equal(["newer.png", "older.png"], results.Select(result => result.FileName).ToArray());
+    }
+
+    [Fact]
     public async Task SearchAsync_ReportsProgressAcrossScannedCandidates()
     {
         Directory.CreateDirectory(_tempDirectory);
