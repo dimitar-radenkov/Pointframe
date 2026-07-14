@@ -67,7 +67,7 @@ public sealed class ScreenRecordingServiceTests
         }
     }
 
-    private sealed class CapturingVideoWriter : IVideoWriter
+    private sealed class FrameCollectingVideoWriter : IVideoWriter
     {
         public List<byte[]> Frames { get; } = [];
 
@@ -642,7 +642,7 @@ public sealed class ScreenRecordingServiceTests
     [Fact]
     public void PadRecordingToElapsedDuration_ClonesLatestFrameOnceForPadding()
     {
-        var writer = new CapturingVideoWriter();
+        var writer = new FrameCollectingVideoWriter();
         var source = new byte[] { 1, 2, 3, 4 };
         using var svc = CreateSut();
 

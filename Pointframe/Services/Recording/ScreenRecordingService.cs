@@ -172,9 +172,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _encodeChannel = null;
             _cts?.Dispose();
             _cts = null;
-            while (_bufferPool.TryDequeue(out _))
-            {
-            }
+            ClearBufferPool();
 
             _sessionStopwatch = null;
             throw;
@@ -243,9 +241,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             IsRecordingMicrophoneEnabled = false;
             CanToggleMicrophone = false;
             IsMicrophoneMuted = false;
-            while (_bufferPool.TryDequeue(out _))
-            {
-            }
+            ClearBufferPool();
 
             try
             {
@@ -563,6 +559,13 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             firstFrameDelayMilliseconds,
             effectiveOutputDuration,
             droppedDuration);
+    }
+
+    private void ClearBufferPool()
+    {
+        while (_bufferPool.TryDequeue(out _))
+        {
+        }
     }
 
     private void RestoreMicrophoneMuteState()
