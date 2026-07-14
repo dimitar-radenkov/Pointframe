@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -58,6 +60,20 @@ public sealed class ScreenRecordingServiceTests
             }
 
             WrittenFrameCount++;
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class CapturingVideoWriter : IVideoWriter
+    {
+        public List<byte[]> Frames { get; } = [];
+
+        public void WriteFrame(byte[] frameData)
+        {
+            Frames.Add(frameData);
         }
 
         public void Dispose()
@@ -199,6 +215,31 @@ public sealed class ScreenRecordingServiceTests
 
         // Assert
         Assert.False(svc.IsRecording);
+    }
+
+    [Fact]
+    public void Start_WhenInitializationFailsAfterWriterCreation_ResetsRecordingStateAndClearsBufferPool()
+    {
+        var writerMock = new Mock<IVideoWriter>();
+        var mockFactory = new Mock<IVideoWriterFactory>();
+        mockFactory
+            .Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()))
+            .Returns(writerMock.Object);
+        var microphoneService = new Mock<IMicrophoneDeviceService>();
+        microphoneService.Setup(service => service.GetAvailableCaptureDeviceNames()).Returns(["Studio Mic"]);
+        microphoneService.Setup(service => service.GetDefaultCaptureDeviceName()).Returns("Studio Mic");
+        microphoneService.Setup(service => service.TryGetCaptureDeviceMuted("Studio Mic")).Throws(new InvalidOperationException("boom"));
+        var settings = new UserSettings { RecordMicrophone = true };
+        using var svc = CreateSut(mockFactory.Object, microphoneService.Object, settings);
+
+        Assert.Throws<InvalidOperationException>(() => svc.Start(0, 0, 100, 100, "test.mp4"));
+
+        Assert.False(svc.IsRecording);
+        Assert.False(svc.IsPaused);
+        Assert.False(svc.IsRecordingMicrophoneEnabled);
+        Assert.False(svc.CanToggleMicrophone);
+        Assert.False(svc.IsMicrophoneMuted);
+        Assert.Empty(GetField<ConcurrentQueue<byte[]>>(svc, "_bufferPool"));
     }
 
     [Fact]
@@ -596,5 +637,46 @@ public sealed class ScreenRecordingServiceTests
 
         Assert.Contains("droppedFrames=0", sessionStats, StringComparison.Ordinal);
         Assert.Contains("droppedDuration=00:00:00", sessionStats, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PadRecordingToElapsedDuration_ClonesLatestFrameOnceForPadding()
+    {
+        var writer = new CapturingVideoWriter();
+        var source = new byte[] { 1, 2, 3, 4 };
+        using var svc = CreateSut();
+
+        SetField(svc, "_writer", writer);
+        SetField(svc, "_latestFrameBytes", source);
+        SetField(svc, "_fps", 10);
+        SetField(svc, "_captureWidth", 1);
+        SetField(svc, "_captureHeight", 1);
+
+        InvokePrivateMethod(svc, "PadRecordingToElapsedDuration", TimeSpan.FromMilliseconds(150));
+
+        Assert.Equal(2, writer.Frames.Count);
+        Assert.NotSame(source, writer.Frames[0]);
+        Assert.Same(writer.Frames[0], writer.Frames[1]);
+        Assert.Equal(source, writer.Frames[0]);
+    }
+
+    private static T GetField<T>(object target, string fieldName)
+    {
+        var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        return Assert.IsType<T>(field?.GetValue(target));
+    }
+
+    private static void SetField(object target, string fieldName, object? value)
+    {
+        var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        field.SetValue(target, value);
+    }
+
+    private static void InvokePrivateMethod(object target, string methodName, params object?[] args)
+    {
+        var method = target.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        method.Invoke(target, args);
     }
 }

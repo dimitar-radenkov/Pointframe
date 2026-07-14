@@ -150,6 +150,15 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         }
         catch
         {
+            IsRecording = false;
+            IsPaused = false;
+            IsRecordingMicrophoneEnabled = false;
+            CanToggleMicrophone = false;
+            IsMicrophoneMuted = false;
+            _activeMicrophoneDeviceName = null;
+            _restoreMicrophoneMutedState = null;
+            _latestFrameBytes = null;
+            _cts?.Cancel();
             _screenDc?.Dispose();
             _screenDc = null;
             _captureGraphics?.Dispose();
@@ -163,6 +172,11 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _encodeChannel = null;
             _cts?.Dispose();
             _cts = null;
+            while (_bufferPool.TryDequeue(out _))
+            {
+            }
+
+            _sessionStopwatch = null;
             throw;
         }
     }
@@ -222,8 +236,9 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _captureGraphics = null;
             _captureBitmap?.Dispose();
             _captureBitmap = null;
-            _screenDc?.Dispose();
+            var screenDc = _screenDc;
             _screenDc = null;
+            screenDc?.Dispose();
             _latestFrameBytes = null;
             IsRecordingMicrophoneEnabled = false;
             CanToggleMicrophone = false;
@@ -477,6 +492,10 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
             paddingSource = new byte[_captureWidth * _captureHeight * 4];
             _logger.LogWarning("No captured frame was available for stop-time padding; using a blank frame to preserve recording duration");
+        }
+        else
+        {
+            paddingSource = (byte[])paddingSource.Clone();
         }
 
         var elapsedFrameCount = (int)Math.Ceiling(targetElapsed.TotalSeconds * _fps);
