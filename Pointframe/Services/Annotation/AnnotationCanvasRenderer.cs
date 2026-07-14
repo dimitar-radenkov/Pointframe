@@ -17,6 +17,7 @@ internal sealed class AnnotationCanvasRenderer
     private IAnnotationShapeHandler? _activeHandler;
 
     private readonly Dictionary<Color, SolidColorBrush> _brushCache = [];
+    private readonly byte[] _samplePixelScratch = new byte[4];
 
     private BitmapSource? _backgroundCapture;
     private double _dpiX = 1.0;
@@ -42,9 +43,8 @@ internal sealed class AnnotationCanvasRenderer
 
         var px = Math.Clamp((int)Math.Floor(dipPoint.X * _dpiX), 0, _backgroundCapture.PixelWidth - 1);
         var py = Math.Clamp((int)Math.Floor(dipPoint.Y * _dpiY), 0, _backgroundCapture.PixelHeight - 1);
-        var bytes = new byte[4];
-        _backgroundCapture.CopyPixels(new Int32Rect(px, py, 1, 1), bytes, 4, 0);
-        return Color.FromRgb(bytes[2], bytes[1], bytes[0]); // BGRA → RGB
+        _backgroundCapture.CopyPixels(new Int32Rect(px, py, 1, 1), _samplePixelScratch, 4, 0);
+        return Color.FromRgb(_samplePixelScratch[2], _samplePixelScratch[1], _samplePixelScratch[0]); // BGRA → RGB
     }
 
     public BitmapSource? CropLoupeRegion(Point dipCenter, int halfPixels)
