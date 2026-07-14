@@ -180,6 +180,11 @@ internal sealed class CaptureLibraryService : ICaptureLibraryService
 
     private static bool CanUseFileSearchPattern(string fileNameContains)
     {
-        return fileNameContains.IndexOfAny(['*', '?', Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) < 0;
+        if (fileNameContains.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            return false;
+        }
+
+        return fileNameContains.IndexOfAny(['*', '?']) < 0;
     }
 }

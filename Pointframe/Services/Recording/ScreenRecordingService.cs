@@ -102,48 +102,69 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _latestFrameBytes = null;
         _sessionStopwatch = Stopwatch.StartNew();
 
-        // Allocate the capture surface once per session — no per-frame allocation.
-        _captureBitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        _captureGraphics = Graphics.FromImage(_captureBitmap);
-        _screenDc = new ScreenDc();
-
-        // Pre-allocate a small pool of raw frame buffers so neither the capture nor the
-        // encode loop ever needs to allocate on the hot path.
-        var bufferSize = width * height * 4;
-        const int PoolSize = 4;
-        for (var i = 0; i < PoolSize; i++)
+        try
         {
-            _bufferPool.Enqueue(new byte[bufferSize]);
+            // Allocate the capture surface once per session — no per-frame allocation.
+            _captureBitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            _captureGraphics = Graphics.FromImage(_captureBitmap);
+
+            // Pre-allocate a small pool of raw frame buffers so neither the capture nor the
+            // encode loop ever needs to allocate on the hot path.
+            var bufferSize = width * height * 4;
+            const int PoolSize = 4;
+            for (var i = 0; i < PoolSize; i++)
+            {
+                _bufferPool.Enqueue(new byte[bufferSize]);
+            }
+
+            var microphoneDeviceName = ResolveMicrophoneDeviceName();
+            _writer = _writerFactory.Create(width, height, fps, outputPath, microphoneDeviceName);
+
+            _screenDc = new ScreenDc();
+            IsRecordingMicrophoneEnabled = microphoneDeviceName is not null;
+            _activeMicrophoneDeviceName = microphoneDeviceName;
+            var initialMicrophoneMutedState = microphoneDeviceName is null
+                ? null
+                : _microphoneDeviceService.TryGetCaptureDeviceMuted(microphoneDeviceName);
+            _restoreMicrophoneMutedState = initialMicrophoneMutedState;
+            CanToggleMicrophone = initialMicrophoneMutedState.HasValue;
+            IsMicrophoneMuted = initialMicrophoneMutedState ?? false;
+
+            // Bounded channel: if the encode loop falls behind, CaptureFrameToChannel will
+            // skip the newest frame (TryWrite returns false) rather than stalling the capture thread.
+            // DropWrite is used so TryWrite still returns false on a full channel, keeping the
+            // buffer-pool return and dropped-frame counter working correctly.
+            _encodeChannel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(PoolSize)
+            {
+                FullMode = BoundedChannelFullMode.DropWrite,
+                SingleReader = true,
+                SingleWriter = true,
+                AllowSynchronousContinuations = false,
+            });
+
+            _cts = new CancellationTokenSource();
+            IsRecording = true;
+            _captureLoop = Task.Run(() => CaptureLoop(_cts.Token));
+            _encodeLoop = Task.Run(EncodeLoop);
+            _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps (MP4) → {Path}", width, height, fps, outputPath);
         }
-
-        var microphoneDeviceName = ResolveMicrophoneDeviceName();
-        _writer = _writerFactory.Create(width, height, fps, outputPath, microphoneDeviceName);
-        IsRecordingMicrophoneEnabled = microphoneDeviceName is not null;
-        _activeMicrophoneDeviceName = microphoneDeviceName;
-        var initialMicrophoneMutedState = microphoneDeviceName is null
-            ? null
-            : _microphoneDeviceService.TryGetCaptureDeviceMuted(microphoneDeviceName);
-        _restoreMicrophoneMutedState = initialMicrophoneMutedState;
-        CanToggleMicrophone = initialMicrophoneMutedState.HasValue;
-        IsMicrophoneMuted = initialMicrophoneMutedState ?? false;
-
-        // Bounded channel: if the encode loop falls behind, CaptureFrameToChannel will
-        // skip the newest frame (TryWrite returns false) rather than stalling the capture thread.
-        // DropWrite is used so TryWrite still returns false on a full channel, keeping the
-        // buffer-pool return and dropped-frame counter working correctly.
-        _encodeChannel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(PoolSize)
+        catch
         {
-            FullMode = BoundedChannelFullMode.DropWrite,
-            SingleReader = true,
-            SingleWriter = true,
-            AllowSynchronousContinuations = false,
-        });
-
-        _cts = new CancellationTokenSource();
-        IsRecording = true;
-        _captureLoop = Task.Run(() => CaptureLoop(_cts.Token));
-        _encodeLoop = Task.Run(EncodeLoop);
-        _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps (MP4) → {Path}", width, height, fps, outputPath);
+            _screenDc?.Dispose();
+            _screenDc = null;
+            _captureGraphics?.Dispose();
+            _captureGraphics = null;
+            _captureBitmap?.Dispose();
+            _captureBitmap = null;
+            _writer?.Dispose();
+            _writer = null;
+            _captureLoop = null;
+            _encodeLoop = null;
+            _encodeChannel = null;
+            _cts?.Dispose();
+            _cts = null;
+            throw;
+        }
     }
 
     public void Stop()
