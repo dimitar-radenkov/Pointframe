@@ -663,6 +663,7 @@ public sealed class ScreenRecordingServiceTests
     private static T GetField<T>(object target, string fieldName)
     {
         var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
         return Assert.IsType<T>(field?.GetValue(target));
     }
 

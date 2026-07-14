@@ -159,6 +159,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _restoreMicrophoneMutedState = null;
             _latestFrameBytes = null;
             _cts?.Cancel();
+            WaitForStartFailureTaskShutdown(_captureLoop);
+            WaitForStartFailureTaskShutdown(_encodeLoop);
             _screenDc?.Dispose();
             _screenDc = null;
             _captureGraphics?.Dispose();
@@ -564,6 +566,22 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private void ClearBufferPool()
     {
         while (_bufferPool.TryDequeue(out _))
+        {
+        }
+    }
+
+    private static void WaitForStartFailureTaskShutdown(Task? task)
+    {
+        if (task is null)
+        {
+            return;
+        }
+
+        try
+        {
+            task.Wait(TimeSpan.FromSeconds(1));
+        }
+        catch (AggregateException ae) when (ae.InnerExceptions.All(ex => ex is OperationCanceledException))
         {
         }
     }
