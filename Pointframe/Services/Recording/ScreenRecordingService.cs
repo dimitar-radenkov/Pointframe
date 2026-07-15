@@ -29,6 +29,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     // Reused across every frame of a single recording session — allocated in Start, disposed in Stop.
     private Bitmap? _captureBitmap;
     private Graphics? _captureGraphics;
+    private ScreenDc? _screenDc;
 
     private int _captureX;
     private int _captureY;
@@ -101,47 +102,83 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _latestFrameBytes = null;
         _sessionStopwatch = Stopwatch.StartNew();
 
-        // Allocate the capture surface once per session — no per-frame allocation.
-        _captureBitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        _captureGraphics = Graphics.FromImage(_captureBitmap);
-
-        // Pre-allocate a small pool of raw frame buffers so neither the capture nor the
-        // encode loop ever needs to allocate on the hot path.
-        var bufferSize = width * height * 4;
-        const int PoolSize = 4;
-        for (var i = 0; i < PoolSize; i++)
+        try
         {
-            _bufferPool.Enqueue(new byte[bufferSize]);
+            // Allocate the capture surface once per session — no per-frame allocation.
+            _captureBitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            _captureGraphics = Graphics.FromImage(_captureBitmap);
+
+            // Pre-allocate a small pool of raw frame buffers so neither the capture nor the
+            // encode loop ever needs to allocate on the hot path.
+            var bufferSize = width * height * 4;
+            const int PoolSize = 4;
+            for (var i = 0; i < PoolSize; i++)
+            {
+                _bufferPool.Enqueue(new byte[bufferSize]);
+            }
+
+            var microphoneDeviceName = ResolveMicrophoneDeviceName();
+            _writer = _writerFactory.Create(width, height, fps, outputPath, microphoneDeviceName);
+
+            _screenDc = new ScreenDc();
+            IsRecordingMicrophoneEnabled = microphoneDeviceName is not null;
+            _activeMicrophoneDeviceName = microphoneDeviceName;
+            var initialMicrophoneMutedState = microphoneDeviceName is null
+                ? null
+                : _microphoneDeviceService.TryGetCaptureDeviceMuted(microphoneDeviceName);
+            _restoreMicrophoneMutedState = initialMicrophoneMutedState;
+            CanToggleMicrophone = initialMicrophoneMutedState.HasValue;
+            IsMicrophoneMuted = initialMicrophoneMutedState ?? false;
+
+            // Bounded channel: if the encode loop falls behind, CaptureFrameToChannel will
+            // skip the newest frame (TryWrite returns false) rather than stalling the capture thread.
+            // DropWrite is used so TryWrite still returns false on a full channel, keeping the
+            // buffer-pool return and dropped-frame counter working correctly.
+            _encodeChannel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(PoolSize)
+            {
+                FullMode = BoundedChannelFullMode.DropWrite,
+                SingleReader = true,
+                SingleWriter = true,
+                AllowSynchronousContinuations = false,
+            });
+
+            _cts = new CancellationTokenSource();
+            IsRecording = true;
+            _captureLoop = Task.Run(() => CaptureLoop(_cts.Token));
+            _encodeLoop = Task.Run(EncodeLoop);
+            _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps (MP4) → {Path}", width, height, fps, outputPath);
         }
-
-        var microphoneDeviceName = ResolveMicrophoneDeviceName();
-        _writer = _writerFactory.Create(width, height, fps, outputPath, microphoneDeviceName);
-        IsRecordingMicrophoneEnabled = microphoneDeviceName is not null;
-        _activeMicrophoneDeviceName = microphoneDeviceName;
-        var initialMicrophoneMutedState = microphoneDeviceName is null
-            ? null
-            : _microphoneDeviceService.TryGetCaptureDeviceMuted(microphoneDeviceName);
-        _restoreMicrophoneMutedState = initialMicrophoneMutedState;
-        CanToggleMicrophone = initialMicrophoneMutedState.HasValue;
-        IsMicrophoneMuted = initialMicrophoneMutedState ?? false;
-
-        // Bounded channel: if the encode loop falls behind, CaptureFrameToChannel will
-        // skip the newest frame (TryWrite returns false) rather than stalling the capture thread.
-        // DropWrite is used so TryWrite still returns false on a full channel, keeping the
-        // buffer-pool return and dropped-frame counter working correctly.
-        _encodeChannel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(PoolSize)
+        catch
         {
-            FullMode = BoundedChannelFullMode.DropWrite,
-            SingleReader = true,
-            SingleWriter = true,
-            AllowSynchronousContinuations = false,
-        });
+            IsRecording = false;
+            IsPaused = false;
+            IsRecordingMicrophoneEnabled = false;
+            CanToggleMicrophone = false;
+            IsMicrophoneMuted = false;
+            _activeMicrophoneDeviceName = null;
+            _restoreMicrophoneMutedState = null;
+            _latestFrameBytes = null;
+            _cts?.Cancel();
+            WaitForStartFailureTaskShutdown(_captureLoop);
+            WaitForStartFailureTaskShutdown(_encodeLoop);
+            _screenDc?.Dispose();
+            _screenDc = null;
+            _captureGraphics?.Dispose();
+            _captureGraphics = null;
+            _captureBitmap?.Dispose();
+            _captureBitmap = null;
+            _writer?.Dispose();
+            _writer = null;
+            _captureLoop = null;
+            _encodeLoop = null;
+            _encodeChannel = null;
+            _cts?.Dispose();
+            _cts = null;
+            ClearBufferPool();
 
-        _cts = new CancellationTokenSource();
-        IsRecording = true;
-        _captureLoop = Task.Run(() => CaptureLoop(_cts.Token));
-        _encodeLoop = Task.Run(EncodeLoop);
-        _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps (MP4) → {Path}", width, height, fps, outputPath);
+            _sessionStopwatch = null;
+            throw;
+        }
     }
 
     public void Stop()
@@ -199,13 +236,14 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _captureGraphics = null;
             _captureBitmap?.Dispose();
             _captureBitmap = null;
+            var screenDc = _screenDc;
+            _screenDc = null;
+            screenDc?.Dispose();
             _latestFrameBytes = null;
             IsRecordingMicrophoneEnabled = false;
             CanToggleMicrophone = false;
             IsMicrophoneMuted = false;
-            while (_bufferPool.TryDequeue(out _))
-            {
-            }
+            ClearBufferPool();
 
             try
             {
@@ -258,7 +296,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
     private void CaptureFrameToChannel()
     {
-        if (_encodeChannel is null || _captureBitmap is null || _captureGraphics is null)
+        if (_encodeChannel is null || _captureBitmap is null || _captureGraphics is null || _screenDc is null)
         {
             return;
         }
@@ -275,9 +313,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         var bitmapDc = _captureGraphics.GetHdc();
         try
         {
-            using var screenDc = new ScreenDc();
             BitBlt(bitmapDc, 0, 0, _captureWidth, _captureHeight,
-                screenDc.Handle, _captureX, _captureY, SrcCopy);
+                _screenDc.Handle, _captureX, _captureY, SrcCopy);
         }
         finally
         {
@@ -431,8 +468,9 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
     private void UpdateLatestFrame(byte[] source)
     {
-        _latestFrameBytes ??= new byte[source.Length];
-        Buffer.BlockCopy(source, 0, _latestFrameBytes, 0, source.Length);
+        // Keep the most recent captured frame reference for stop-time padding.
+        // The frame content remains stable once capture stops and encode draining begins.
+        _latestFrameBytes = source;
     }
 
     private void PadRecordingToElapsedDuration(TimeSpan targetElapsed)
@@ -453,6 +491,10 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             paddingSource = new byte[_captureWidth * _captureHeight * 4];
             _logger.LogWarning("No captured frame was available for stop-time padding; using a blank frame to preserve recording duration");
         }
+        else
+        {
+            paddingSource = (byte[])paddingSource.Clone();
+        }
 
         var elapsedFrameCount = (int)Math.Ceiling(targetElapsed.TotalSeconds * _fps);
         var writtenFrameCount = Volatile.Read(ref _writtenFrameCount);
@@ -467,12 +509,10 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
         for (var index = 0; index < framesToPad; index++)
         {
-            var frameCopy = new byte[paddingSource.Length];
-            Buffer.BlockCopy(paddingSource, 0, frameCopy, 0, frameCopy.Length);
             Interlocked.Increment(ref _attemptedFrameCount);
             try
             {
-                _writer?.WriteFrame(frameCopy);
+                _writer?.WriteFrame(paddingSource);
             }
             catch (IOException ex)
             {
@@ -521,6 +561,29 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             firstFrameDelayMilliseconds,
             effectiveOutputDuration,
             droppedDuration);
+    }
+
+    private void ClearBufferPool()
+    {
+        while (_bufferPool.TryDequeue(out _))
+        {
+        }
+    }
+
+    private static void WaitForStartFailureTaskShutdown(Task? task)
+    {
+        if (task is null)
+        {
+            return;
+        }
+
+        try
+        {
+            task.Wait(TimeSpan.FromSeconds(1));
+        }
+        catch (AggregateException ae) when (ae.InnerExceptions.All(ex => ex is OperationCanceledException))
+        {
+        }
     }
 
     private void RestoreMicrophoneMuteState()
