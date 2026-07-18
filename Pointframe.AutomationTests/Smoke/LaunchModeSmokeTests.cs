@@ -28,6 +28,20 @@ public sealed class LaunchModeSmokeTests : IClassFixture<DesktopAutomationFixtur
 
     [Fact]
     [Trait("Category", "DesktopAutomation")]
+    public void LibraryLaunchMode_OpensLibraryWindowAndCloses()
+    {
+        _fixture.SeedSettings(autoSaveScreenshots: false);
+
+        using var app = AutomationApp.Launch("--automation-open-library", _fixture.CreateEnvironmentVariables());
+        Assert.Equal(AutomationIds.LibraryWindowRoot, app.MainWindowAutomationId);
+        Assert.NotNull(app.FindRequiredElement(AutomationIds.LibraryWindowSearch));
+
+        app.CloseMainWindow();
+        app.WaitForExit();
+    }
+
+    [Fact]
+    [Trait("Category", "DesktopAutomation")]
     public void SampleOverlayLaunchMode_OpensOpenedImageOverlayAndCloses()
     {
         _fixture.SeedSettings(autoSaveScreenshots: false);

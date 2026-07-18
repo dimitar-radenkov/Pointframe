@@ -33,6 +33,7 @@ internal sealed class TrayIconManager : ITrayIconManager
     private TaskbarIcon? _trayIcon;
     private WpfMenuItem? _recentRecordingsMenuItem;
     private WpfMenuItem? _recentCapturesMenuItem;
+    private WpfMenuItem? _checkForUpdatesMenuItem;
     private UpdateCheckResult? _pendingUpdate;
     private string? _pendingRecordingBalloonPath;
     private readonly List<RecentRecordingItem> _recentRecordings = [];
@@ -87,8 +88,8 @@ internal sealed class TrayIconManager : ITrayIconManager
         _trayIcon.TrayLeftMouseUp += TrayIcon_LeftClick;
         _trayIcon.TrayBalloonTipClicked += OnTrayBalloonClicked;
 
-        InitializeRecentCapturesMenu();
-        InitializeRecentRecordingsMenu();
+        RebuildRecentCapturesMenu();
+        RebuildRecentRecordingsMenu();
     }
 
     public void HandleUpdateAvailable(UpdateCheckResult result)
@@ -101,6 +102,7 @@ internal sealed class TrayIconManager : ITrayIconManager
             "Update Available",
             $"Version {v.Major}.{v.Minor}.{v.Build} is ready to download.",
             BalloonIcon.Info);
+        UpdateCheckForUpdatesMenuItemHeader();
     }
 
     public void HandleRecordingCompleted(string outputPath, string elapsedText)
@@ -170,18 +172,39 @@ internal sealed class TrayIconManager : ITrayIconManager
     private WpfContextMenu CreateTrayContextMenu()
     {
         var contextMenu = new WpfContextMenu();
-        contextMenu.Items.Add(CreateTrayMenuItem("New Snip", NewSnip_Click));
-        contextMenu.Items.Add(CreateTrayMenuItem("Whole screen snip", WholeScreenSnip_Click));
-        contextMenu.Items.Add(CreateTrayMenuItem("Clean window snip", CleanWindowSnip_Click));
-        contextMenu.Items.Add(CreateTrayMenuItem("Open image...", OpenImage_Click));
-        contextMenu.Items.Add(CreateTrayMenuItem("Library", Library_Click));
+        contextMenu.Items.Add(CreateTrayMenuItem("New Snip", NewSnip_Click, "\uE722"));
+        contextMenu.Items.Add(CreateTrayMenuItem("Whole Screen Snip", WholeScreenSnip_Click, "\uE7F4"));
+        contextMenu.Items.Add(CreateTrayMenuItem("Clean Window Snip", CleanWindowSnip_Click, "\uE8A7"));
+        contextMenu.Items.Add(CreateTrayMenuItem("Open Image...", OpenImage_Click, "\uE91B"));
+        contextMenu.Items.Add(new WpfSeparator());
+
+        _recentCapturesMenuItem = new WpfMenuItem
+        {
+            Header = "Recent Captures",
+            Icon = CreateMenuGlyphIcon("\uE823"),
+        };
+        contextMenu.Items.Add(_recentCapturesMenuItem);
+
+        _recentRecordingsMenuItem = new WpfMenuItem
+        {
+            Header = "Recent Recordings",
+            Icon = CreateMenuGlyphIcon("\uE919"),
+        };
+        contextMenu.Items.Add(_recentRecordingsMenuItem);
+
+        contextMenu.Items.Add(new WpfSeparator());
+        contextMenu.Items.Add(CreateTrayMenuItem("Library", Library_Click, "\uE8F1"));
         contextMenu.Items.Add(CreateOpenFoldersMenuItem());
         contextMenu.Items.Add(new WpfSeparator());
-        contextMenu.Items.Add(CreateTrayMenuItem("Settings", Settings_Click));
-        contextMenu.Items.Add(CreateTrayMenuItem("Check for Updates", CheckForUpdates_Click));
-        contextMenu.Items.Add(CreateTrayMenuItem("About", About_Click));
+        contextMenu.Items.Add(CreateTrayMenuItem("Settings", Settings_Click, "\uE713"));
+
+        _checkForUpdatesMenuItem = CreateTrayMenuItem("Check for Updates", CheckForUpdates_Click, "\uE895");
+        contextMenu.Items.Add(_checkForUpdatesMenuItem);
+        contextMenu.Items.Add(CreateTrayMenuItem("About", About_Click, "\uE946"));
         contextMenu.Items.Add(new WpfSeparator());
-        contextMenu.Items.Add(CreateTrayMenuItem("Exit", Exit_Click));
+        contextMenu.Items.Add(CreateTrayMenuItem("Quit Pointframe", Exit_Click, "\uE8BB"));
+
+        UpdateCheckForUpdatesMenuItemHeader();
         return contextMenu;
     }
 
@@ -189,20 +212,22 @@ internal sealed class TrayIconManager : ITrayIconManager
     {
         var openFoldersMenuItem = new WpfMenuItem
         {
-            Header = "Open folders",
+            Header = "Open Folders",
+            Icon = CreateMenuGlyphIcon("\uE838"),
         };
 
-        openFoldersMenuItem.Items.Add(CreateTrayMenuItem("Snips folder", OpenSnipsFolder_Click));
-        openFoldersMenuItem.Items.Add(CreateTrayMenuItem("Videos folder", OpenVideosFolder_Click));
-        openFoldersMenuItem.Items.Add(CreateTrayMenuItem("Logs folder", OpenLogsFolder_Click));
+        openFoldersMenuItem.Items.Add(CreateTrayMenuItem("Snips Folder", OpenSnipsFolder_Click, "\uE8A5"));
+        openFoldersMenuItem.Items.Add(CreateTrayMenuItem("Videos Folder", OpenVideosFolder_Click, "\uE714"));
+        openFoldersMenuItem.Items.Add(CreateTrayMenuItem("Logs Folder", OpenLogsFolder_Click, "\uE9D9"));
         return openFoldersMenuItem;
     }
 
-    internal static WpfMenuItem CreateTrayMenuItem(string header, RoutedEventHandler clickHandler)
+    internal static WpfMenuItem CreateTrayMenuItem(string header, RoutedEventHandler clickHandler, string? glyph = null)
     {
         var menuItem = new WpfMenuItem
         {
             Header = header,
+            Icon = string.IsNullOrWhiteSpace(glyph) ? null : CreateMenuGlyphIcon(glyph),
         };
         menuItem.Click += clickHandler;
         return menuItem;
@@ -246,22 +271,6 @@ internal sealed class TrayIconManager : ITrayIconManager
         RebuildRecentRecordingsMenu();
     }
 
-    private void InitializeRecentCapturesMenu()
-    {
-        if (_trayIcon?.ContextMenu is not { } contextMenu)
-        {
-            return;
-        }
-
-        _recentCapturesMenuItem = new WpfMenuItem
-        {
-            Header = "Recent captures",
-        };
-
-        contextMenu.Items.Insert(3, _recentCapturesMenuItem);
-        RebuildRecentCapturesMenu();
-    }
-
     private void RebuildRecentCapturesMenu()
     {
         if (_recentCapturesMenuItem is null)
@@ -275,11 +284,11 @@ internal sealed class TrayIconManager : ITrayIconManager
         {
             _recentCapturesMenuItem.Items.Add(new WpfMenuItem
             {
-                Header = "No recent captures",
+                Header = "No Recent Captures",
                 IsEnabled = false,
             });
             _recentCapturesMenuItem.Items.Add(new WpfSeparator());
-            var openFolder = CreateTrayMenuItem("Open Snips folder", OpenSnipsFolder_Click);
+            var openFolder = CreateTrayMenuItem("Open Snips Folder", OpenSnipsFolder_Click);
             _recentCapturesMenuItem.Items.Add(openFolder);
             return;
         }
@@ -327,24 +336,8 @@ internal sealed class TrayIconManager : ITrayIconManager
         }
 
         _recentCapturesMenuItem.Items.Add(new WpfSeparator());
-        var clearRecent = CreateTrayMenuItem("Clear recent captures", ClearRecentCaptures_Click);
+        var clearRecent = CreateTrayMenuItem("Clear Recent Captures", ClearRecentCaptures_Click);
         _recentCapturesMenuItem.Items.Add(clearRecent);
-    }
-
-    private void InitializeRecentRecordingsMenu()
-    {
-        if (_trayIcon?.ContextMenu is not { } contextMenu)
-        {
-            return;
-        }
-
-        _recentRecordingsMenuItem = new WpfMenuItem
-        {
-            Header = "Recent recordings",
-        };
-
-        contextMenu.Items.Insert(4, _recentRecordingsMenuItem);
-        RebuildRecentRecordingsMenu();
     }
 
     private void RebuildRecentRecordingsMenu()
@@ -360,11 +353,11 @@ internal sealed class TrayIconManager : ITrayIconManager
         {
             _recentRecordingsMenuItem.Items.Add(new WpfMenuItem
             {
-                Header = "No recent recordings",
+                Header = "No Recent Recordings",
                 IsEnabled = false,
             });
             _recentRecordingsMenuItem.Items.Add(new WpfSeparator());
-            var openFolder = CreateTrayMenuItem("Open Videos folder", OpenVideosFolder_Click);
+            var openFolder = CreateTrayMenuItem("Open Videos Folder", OpenVideosFolder_Click);
             _recentRecordingsMenuItem.Items.Add(openFolder);
             return;
         }
@@ -437,7 +430,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         }
 
         _recentRecordingsMenuItem.Items.Add(new WpfSeparator());
-        var clearRecent = CreateTrayMenuItem("Clear recent recordings", ClearRecentRecordings_Click);
+        var clearRecent = CreateTrayMenuItem("Clear Recent Recordings", ClearRecentRecordings_Click);
         _recentRecordingsMenuItem.Items.Add(clearRecent);
     }
 
@@ -469,10 +462,19 @@ internal sealed class TrayIconManager : ITrayIconManager
     {
         var menuItem = (WpfMenuItem)sender;
         menuItem.IsEnabled = false;
-        _telemetry.TrackEvent("update_check_manual");
 
         try
         {
+            if (_pendingUpdate is not null)
+            {
+                var pendingUpdate = _pendingUpdate;
+                _pendingUpdate = null;
+                UpdateCheckForUpdatesMenuItemHeader();
+                await _autoUpdate.ConfirmAndInstall(pendingUpdate);
+                return;
+            }
+
+            _telemetry.TrackEvent("update_check_manual");
             var result = await _updateService.CheckForUpdates();
 
             if (!result.IsUpdateAvailable)
@@ -484,7 +486,11 @@ internal sealed class TrayIconManager : ITrayIconManager
                 return;
             }
 
+            _pendingUpdate = result;
+            UpdateCheckForUpdatesMenuItemHeader();
             await _autoUpdate.ConfirmAndInstall(result);
+            _pendingUpdate = null;
+            UpdateCheckForUpdatesMenuItemHeader();
         }
         catch (Exception ex)
         {
@@ -594,6 +600,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         {
             var update = _pendingUpdate;
             _pendingUpdate = null;
+            UpdateCheckForUpdatesMenuItemHeader();
             await _autoUpdate.ConfirmAndInstall(update);
             return;
         }
@@ -697,6 +704,34 @@ internal sealed class TrayIconManager : ITrayIconManager
         button.MouseEnter += (_, _) => button.Opacity = 1.0;
         button.MouseLeave += (_, _) => button.Opacity = 0.88;
         return button;
+    }
+
+    private static UIElement CreateMenuGlyphIcon(string glyph)
+    {
+        return new System.Windows.Controls.TextBlock
+        {
+            Text = glyph,
+            FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"),
+            FontSize = 13,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+    }
+
+    private void UpdateCheckForUpdatesMenuItemHeader()
+    {
+        if (_checkForUpdatesMenuItem is null)
+        {
+            return;
+        }
+
+        if (_pendingUpdate is null)
+        {
+            _checkForUpdatesMenuItem.Header = "Check for Updates";
+            return;
+        }
+
+        var version = _pendingUpdate.LatestVersion;
+        _checkForUpdatesMenuItem.Header = $"Install Update ({version.Major}.{version.Minor}.{version.Build})";
     }
 
     private void SimulateUiError_Click(object sender, RoutedEventArgs e)
