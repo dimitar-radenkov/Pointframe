@@ -55,11 +55,37 @@ If you find Pointframe useful, a ⭐ on GitHub helps others discover it — than
 - **Built-in OCR:** Lasso any text on your screen (even in images or videos) to instantly copy it to your clipboard.
 - **Pin to Screen:** Pin captured screenshots as floating, always-on-top windows for quick reference while coding or writing.
 
-## Latest features
+## 🆕 What shipped in recent releases
 
-- **Show your point while recording** — Draw on the captured region as you record, then switch between interactive and drawing modes from the HUD.
-- **Stay in control without breaking flow** — Pause, resume, stop, switch tools, clear annotations, and open the output folder from one floating HUD.
-- **Redact sensitive content live** — Blur annotations now sample from the live recording region, so private details stay hidden in the final video.
+### Jul 2026
+
+- **Tray menu UX refresh** — Improved command grouping, clearer labels, and iconized top-level actions.
+- **Capture Library OCR hardening** — Better reliability and scale for OCR-backed library search.
+- **Capture + recording hot-path optimizations** — Smoother performance in frequent capture/recording flows.
+
+### Jun 2026
+
+- **Clean Window Snip** — Capture cleaner active-window results via tray action and hotkey.
+- **Video watermark support** — Configurable watermark overlays for recorded MP4 output.
+- **Video trim workflow** — Trim recordings directly in-app from recent recordings actions.
+- **Auto-update tray notification improvements** — Better update signaling and install flow behavior from tray.
+
+### May 2026
+
+- **Capture delay customization** — Adjustable delay presets to capture menus and transient UI states.
+- **Screenshot watermark support** — Add configurable watermarking for screenshots.
+- **Library and tray workflow upgrades** — Open folders submenu, richer recents actions, and improved tray ergonomics.
+- **Expanded auto-update intervals** — Additional cadence options including short intervals and disable mode.
+
+### Apr-Mar 2026 (foundation releases)
+
+- **Whole-screen snip mode** and **whole-screen record hotkey**.
+- **Recording HUD improvements** including compact mode and better in-recording controls.
+- **GIF export**, **cursor highlight**, and **click ripple** for clearer instructional recordings.
+- **Open existing image**, **callout tool**, **color picker**, **pixel ruler**, and **style presets**.
+- **Telemetry and usage reporting foundation** for anonymous feature adoption metrics.
+
+For full detail by version, see the [Releases](https://github.com/dimitar-radenkov/Pointframe/releases) page.
 
 ## Why people use it
 
@@ -72,6 +98,7 @@ If you find Pointframe useful, a ⭐ on GitHub helps others discover it — than
 
 - **Region capture** — Press the configured hotkey (default: `Print Screen`) to draw a selection on screen
 - **Whole-screen snip** — Instantly capture the entire screen from the tray icon or a dedicated hotkey
+- **Clean window snip** — Capture a cleaner active-window result directly from tray and dedicated hotkey
 - **Frozen screen snapshot** — The screen is captured instantly when the hotkey is pressed, freezing menus, tooltips, and popups exactly as they appear
 - **Selection magnifier** — A zoomed loupe follows your cursor while drawing the capture region for pixel-accurate selection
 - **Configurable capture hotkeys** — Change the region-capture hotkey and the whole-screen record hotkey independently from Settings
@@ -81,17 +108,20 @@ If you find Pointframe useful, a ⭐ on GitHub helps others discover it — than
 - **Pixel ruler tool** — Draw a ruler across the screenshot to measure distances in pixels
 - **Blur tool** — Drag over sensitive content (faces, emails, passwords) to apply a Gaussian blur before sharing
 - **OCR — Copy Text** — Draw a lasso around text in the screenshot to extract it via OCR and copy to clipboard (uses Windows.Media.Ocr, no external dependencies)
+- **Capture Library** — Browse your saved captures, filter by date range, and search by filename or OCR text from the tray Library entry
 - **Open existing image** — Load a PNG, JPG/JPEG, or BMP from the tray menu and annotate it without taking a new screenshot
 - **Pin screenshot** — Pin the captured screenshot as a floating, always-on-top, resizable window for quick reference while you work
 - **Undo / redo** — Full undo/redo stack during annotation
 - **Copy & auto-save** — Copy to clipboard; optional auto-save to a configurable folder
 - **Screen recording** — Record a selected region to MP4 (H.264 via ffmpeg) or start a whole-screen recording instantly with `Ctrl+Shift+R` (default); optional microphone audio from a selected Windows input device
 - **Recording-time annotations** — Add shapes and text directly on top of a recording while it is in progress; switch between draw mode and interact mode from the floating HUD
+- **Video watermark** — Optionally burn a configurable watermark into MP4 recordings
+- **Tray menu icons** — Core tray actions now include consistent glyph icons for faster scanning
 - **Cursor highlight** — Configurable glowing ring around the cursor during recording so viewers never lose track of your pointer
 - **Click ripple** — Visual ripple effect on mouse clicks during recording to make interactions obvious
 - **GIF export** — Export any recent recording to GIF directly from the tray's Recent recordings menu (requires ffmpeg)
 - **Capture delay** — Configurable countdown (0 / 3 / 5 / 10 s) before the selection overlay appears, useful for capturing menus and hover states
-- **Auto-updates** — A background service checks GitHub Releases on every launch and on a configurable schedule (every day / 2 days / 3 days). When a new version is found a tray balloon appears; click it to confirm, watch the progress bar, and the installer runs automatically — no browser, no manual downloads
+- **Auto-updates** — A background service checks GitHub Releases on launch and on a configurable schedule (every 2 hours / 6 hours / 12 hours / day / 2 days / 3 days / never). When a new version is found a tray balloon appears; click it to confirm and install without opening the browser
 - **System tray** — Runs silently in the background; all actions accessible from the tray icon
 - **Theme support** — Choose Light, Dark, or follow the system theme from Settings
 
@@ -110,14 +140,17 @@ Right-click the tray icon to access all actions:
 | Item | Description |
 |---|---|
 | New Snip | Open the region-capture overlay (same as the capture hotkey) |
-| Whole screen snip | Instantly capture the entire screen |
-| Open image… | Load a PNG / JPG / BMP file and open it in the annotation overlay |
-| Recent captures | Submenu listing the last 5 saved screenshots; each has **Open** and **Open folder** actions |
-| Recent recordings | Submenu listing the last 5 recordings; each has **Open**, **Open folder**, and **Export to GIF** actions |
+| Whole Screen Snip | Instantly capture the entire screen |
+| Clean Window Snip | Capture the active window with a cleaner result |
+| Open Image... | Load a PNG / JPG / BMP file and open it in the annotation overlay |
+| Recent Captures | Submenu listing the last 5 saved screenshots; each has **Open** and **Open folder** actions |
+| Recent Recordings | Submenu listing the last 5 recordings; each has **Open**, **Trim**, **Export to GIF**, and **Open folder** actions |
+| Library | Open the capture library window |
+| Open Folders | Quick access to Snips Folder, Videos Folder, and Logs Folder |
 | Settings | Open the Settings window |
-| Check for Updates | Manually trigger an update check against GitHub Releases |
+| Check for Updates / Install Update | Manually check for updates or install a pending update directly from tray |
 | About | Show version information |
-| Exit | Quit the application |
+| Quit Pointframe | Quit the application |
 
 Left-clicking the tray icon triggers **New Snip** directly.
 
@@ -140,6 +173,7 @@ Open **Settings** from the tray icon to configure:
 |---|---|
 | Recording output folder | Where recorded MP4 files are saved |
 | Record hotkey | The key combination that starts a whole-screen recording (default: `Ctrl+Shift+R`) |
+| Video watermark | Optional watermark overlay in MP4 recordings |
 | Cursor highlight | Show a glowing ring around the cursor during recording; configurable size |
 | Click ripple | Show a ripple effect on mouse clicks during recording |
 | Microphone *(advanced)* | Include microphone audio when recording starts |
@@ -154,6 +188,15 @@ Open **Settings** from the tray icon to configure:
 | Stroke thickness | Default pen/shape width |
 | Style presets | Up to 5 named color-and-thickness shortcuts shown in the annotation toolbar |
 
+### Shortcuts
+
+| Setting | Description |
+|---|---|
+| Region capture hotkey | Opens the region capture overlay (default: `Print Screen`) |
+| Whole-screen record hotkey | Starts whole-screen recording (default: `Ctrl+Shift+R`) |
+| Clean window snip hotkey | Starts clean-window capture (default: `Ctrl+Shift+W`) |
+| Overlay shortcuts | Configure copy, save-as, undo, redo, show-shortcuts, and close keys for the overlay |
+
 ### App
 
 | Setting | Description |
@@ -167,6 +210,7 @@ Open **Settings** from the tray icon to configure:
 |---|---|
 | `Print Screen` (default, configurable) | Open region-capture overlay |
 | `Ctrl+Shift+R` (default, configurable) | Start whole-screen recording |
+| `Ctrl+Shift+W` (default, configurable) | Start clean-window snip |
 | `Ctrl+Z` | Undo last annotation |
 | `Ctrl+Y` | Redo annotation |
 | `Ctrl+C` | Copy screenshot to clipboard |
