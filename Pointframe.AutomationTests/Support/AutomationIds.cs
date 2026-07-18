@@ -4,6 +4,9 @@ internal static class AutomationIds
 {
     public const string AboutWindowRoot = "AboutWindow.Root";
     public const string AboutWindowClose = "AboutWindow.Close";
+    public const string LibraryWindowRoot = "LibraryWindow.Root";
+    public const string LibraryWindowSearch = "LibraryWindow.Search";
+    public const string LibraryWindowClose = "LibraryWindow.Close";
     public const string SettingsWindowRoot = "SettingsWindow.Root";
     public const string SettingsWindowAutoSaveScreenshots = "SettingsWindow.AutoSaveScreenshots";
     public const string SettingsWindowCancel = "SettingsWindow.Cancel";

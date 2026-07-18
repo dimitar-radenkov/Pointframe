@@ -159,6 +159,106 @@ public sealed class TrayIconManagerTests
     }
 
     [Fact]
+    public void CreateTrayContextMenu_UsesExpectedSectionOrderAndLabels()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var manager = CreateManager();
+
+            var contextMenu = (System.Windows.Controls.ContextMenu)InvokePrivateResult(manager, "CreateTrayContextMenu");
+            var headers = GetTopLevelHeaders(contextMenu);
+
+            Assert.Equal(
+            [
+                "New Snip",
+                "Whole Screen Snip",
+                "Clean Window Snip",
+                "Open Image...",
+                "<separator>",
+                "Recent Captures",
+                "Recent Recordings",
+                "<separator>",
+                "Library",
+                "Open Folders",
+                "<separator>",
+                "Settings",
+                "Check for Updates",
+                "About",
+                "<separator>",
+                "Quit Pointframe",
+            ],
+            headers);
+        });
+    }
+
+    [Fact]
+    public void CreateTrayContextMenu_AssignsIconsToTopLevelCommands()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var manager = CreateManager();
+
+            var contextMenu = (System.Windows.Controls.ContextMenu)InvokePrivateResult(manager, "CreateTrayContextMenu");
+
+            AssertMenuItemHasIcon(contextMenu, "New Snip");
+            AssertMenuItemHasIcon(contextMenu, "Whole Screen Snip");
+            AssertMenuItemHasIcon(contextMenu, "Clean Window Snip");
+            AssertMenuItemHasIcon(contextMenu, "Open Image...");
+            AssertMenuItemHasIcon(contextMenu, "Recent Captures");
+            AssertMenuItemHasIcon(contextMenu, "Recent Recordings");
+            AssertMenuItemHasIcon(contextMenu, "Library");
+            AssertMenuItemHasIcon(contextMenu, "Open Folders");
+            AssertMenuItemHasIcon(contextMenu, "Settings");
+            AssertMenuItemHasIcon(contextMenu, "Check for Updates");
+            AssertMenuItemHasIcon(contextMenu, "About");
+            AssertMenuItemHasIcon(contextMenu, "Quit Pointframe");
+        });
+    }
+
+    [Fact]
+    public void HandleUpdateAvailable_UpdatesTrayMenuHeaderToInstall()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var manager = CreateManager();
+            var contextMenu = (System.Windows.Controls.ContextMenu)InvokePrivateResult(manager, "CreateTrayContextMenu");
+            var checkForUpdatesItem = FindTopLevelMenuItem(contextMenu, "Check for Updates");
+            Assert.NotNull(checkForUpdatesItem);
+
+            manager.HandleUpdateAvailable(new UpdateCheckResult(true, new Version(2, 4, 1), "https://example.com/download"));
+
+            Assert.Equal("Install Update (2.4.1)", checkForUpdatesItem!.Header?.ToString());
+        });
+    }
+
+    [Fact]
+    public void CheckForUpdates_Click_WhenPendingUpdate_InstallsPendingAndResetsHeader()
+    {
+        StaTestHelper.RunAsync(async () =>
+        {
+            var autoUpdateMock = new Mock<IAutoUpdateService>();
+            autoUpdateMock
+                .Setup(service => service.ConfirmAndInstall(It.IsAny<UpdateCheckResult>()))
+                .Returns(Task.CompletedTask);
+            var manager = CreateManager(autoUpdate: autoUpdateMock.Object);
+
+            var contextMenu = (System.Windows.Controls.ContextMenu)InvokePrivateResult(manager, "CreateTrayContextMenu");
+            var checkForUpdatesItem = FindTopLevelMenuItem(contextMenu, "Check for Updates");
+            Assert.NotNull(checkForUpdatesItem);
+
+            var pendingUpdate = new UpdateCheckResult(true, new Version(3, 1, 0), "https://example.com/download");
+            manager.HandleUpdateAvailable(pendingUpdate);
+
+            InvokePrivate(manager, "CheckForUpdates_Click", checkForUpdatesItem!, new RoutedEventArgs());
+            await WaitForCondition(() => checkForUpdatesItem!.IsEnabled, TimeSpan.FromSeconds(3));
+
+            autoUpdateMock.Verify(service => service.ConfirmAndInstall(pendingUpdate), Times.Once);
+            Assert.Equal("Check for Updates", checkForUpdatesItem.Header?.ToString());
+            Assert.Null(GetField(manager, "_pendingUpdate"));
+        });
+    }
+
+    [Fact]
     public void OpenRecentRecordingFolder_Click_WithValidTag_OpensFolder()
     {
         StaTestHelper.Run(() =>
@@ -471,8 +571,8 @@ public sealed class TrayIconManagerTests
 
             InvokePrivate(manager, "RebuildRecentCapturesMenu");
 
-            Assert.True(HasMenuItemHeader(menuItem, "No recent captures"));
-            Assert.True(HasMenuItemHeader(menuItem, "Open Snips folder"));
+            Assert.True(HasMenuItemHeader(menuItem, "No Recent Captures"));
+            Assert.True(HasMenuItemHeader(menuItem, "Open Snips Folder"));
         });
     }
 
@@ -490,8 +590,8 @@ public sealed class TrayIconManagerTests
 
             InvokePrivate(manager, "RebuildRecentCapturesMenu");
 
-            Assert.False(HasMenuItemHeader(menuItem, "Open Snips folder"));
-            Assert.True(HasMenuItemHeader(menuItem, "Clear recent captures"));
+            Assert.False(HasMenuItemHeader(menuItem, "Open Snips Folder"));
+            Assert.True(HasMenuItemHeader(menuItem, "Clear Recent Captures"));
         });
     }
 
@@ -506,8 +606,8 @@ public sealed class TrayIconManagerTests
 
             InvokePrivate(manager, "RebuildRecentRecordingsMenu");
 
-            Assert.True(HasMenuItemHeader(menuItem, "No recent recordings"));
-            Assert.True(HasMenuItemHeader(menuItem, "Open Videos folder"));
+            Assert.True(HasMenuItemHeader(menuItem, "No Recent Recordings"));
+            Assert.True(HasMenuItemHeader(menuItem, "Open Videos Folder"));
         });
     }
 
@@ -527,8 +627,8 @@ public sealed class TrayIconManagerTests
 
             InvokePrivate(manager, "RebuildRecentRecordingsMenu");
 
-            Assert.False(HasMenuItemHeader(menuItem, "Open Videos folder"));
-            Assert.True(HasMenuItemHeader(menuItem, "Clear recent recordings"));
+            Assert.False(HasMenuItemHeader(menuItem, "Open Videos Folder"));
+            Assert.True(HasMenuItemHeader(menuItem, "Clear Recent Recordings"));
         });
     }
 
@@ -585,6 +685,13 @@ public sealed class TrayIconManagerTests
         method.Invoke(target, args);
     }
 
+    private static object InvokePrivateResult(object target, string methodName, params object[] args)
+    {
+        var method = target.GetType().GetMethod(methodName, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        return method.Invoke(target, args)!;
+    }
+
     private static object? GetField(object target, string fieldName)
     {
         var field = target.GetType().GetField(fieldName, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -632,5 +739,46 @@ public sealed class TrayIconManagerTests
         }
 
         return false;
+    }
+
+    private static List<string> GetTopLevelHeaders(System.Windows.Controls.ContextMenu contextMenu)
+    {
+        var headers = new List<string>();
+        foreach (var item in contextMenu.Items)
+        {
+            if (item is System.Windows.Controls.Separator)
+            {
+                headers.Add("<separator>");
+                continue;
+            }
+
+            if (item is System.Windows.Controls.MenuItem menuItem)
+            {
+                headers.Add(menuItem.Header?.ToString() ?? string.Empty);
+            }
+        }
+
+        return headers;
+    }
+
+    private static System.Windows.Controls.MenuItem? FindTopLevelMenuItem(System.Windows.Controls.ContextMenu contextMenu, string header)
+    {
+        foreach (var item in contextMenu.Items)
+        {
+            if (item is System.Windows.Controls.MenuItem menuItem &&
+                string.Equals(menuItem.Header?.ToString(), header, StringComparison.Ordinal))
+            {
+                return menuItem;
+            }
+        }
+
+        return null;
+    }
+
+    private static void AssertMenuItemHasIcon(System.Windows.Controls.ContextMenu contextMenu, string header)
+    {
+        var item = FindTopLevelMenuItem(contextMenu, header);
+        Assert.NotNull(item);
+        Assert.NotNull(item!.Icon);
     }
 }
