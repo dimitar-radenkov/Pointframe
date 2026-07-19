@@ -14,13 +14,11 @@ namespace Pointframe.Tests;
 public sealed class AppTests
 {
     [Fact]
-    public void ConfigureServices_RegistersCoreServicesAndFactories()
+    public void AddPointframeAppServices_RegistersCoreServicesAndFactories()
     {
         var services = new ServiceCollection();
 
-        typeof(App)
-            .GetMethod("ConfigureServices", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
-            .Invoke(null, [services]);
+        services.AddPointframeAppServices();
 
         using var provider = services.BuildServiceProvider();
 
