@@ -32,7 +32,7 @@ public partial class OverlayWindow : Window
     private readonly Func<BitmapSource, BeautifierWindow> _beautifierWindowFactory;
     private AnnotationCanvasRenderer _renderer = null!;
     private AnnotationCanvasInteractionController _annotationInteractionController = null!;
-    private Point? _lassoStart;
+    private readonly OcrLassoController _ocrLasso;
     private RecordingSessionGeometry _recordingSessionGeometry = RecordingSessionGeometry.Empty;
     private BitmapSource? _openedImage;
     private string? _openedImagePath;
@@ -101,6 +101,14 @@ public partial class OverlayWindow : Window
                 ShowOcrToast($"Copied {hex}");
             },
             onLoupePositionChanged: pt => UpdateLoupe(pt));
+        _ocrLasso = new OcrLassoController(
+            AnnotationCanvas,
+            OcrLassoRect,
+            _vm,
+            _ocrService,
+            _telemetry,
+            () => _renderer.BackgroundCapture,
+            ShowOcrToast);
         _undoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleUndoGroup);
         _redoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRedoGroup);
         _vm.CloseRequested += Close;
@@ -223,60 +231,31 @@ public partial class OverlayWindow : Window
 
     private void Annot_Down(object sender, MouseButtonEventArgs e)
     {
-        if (_vm.IsTextLassoActive)
+        var point = e.GetPosition(AnnotationCanvas);
+        if (_ocrLasso.HandlePointerDown(point))
         {
-            _lassoStart = e.GetPosition(AnnotationCanvas);
-            var sel = _vm.SelectionRect;
-            Canvas.SetLeft(OcrLassoRect, sel.X + _lassoStart.Value.X);
-            Canvas.SetTop(OcrLassoRect, sel.Y + _lassoStart.Value.Y);
-            OcrLassoRect.Width = 0;
-            OcrLassoRect.Height = 0;
-            OcrLassoRect.Visibility = Visibility.Visible;
-            AnnotationCanvas.CaptureMouse();
             return;
         }
 
-        _annotationInteractionController.HandlePointerDown(e.GetPosition(AnnotationCanvas));
+        _annotationInteractionController.HandlePointerDown(point);
     }
 
     private void Annot_Move(object sender, MouseEventArgs e)
     {
-        if (_vm.IsTextLassoActive && _lassoStart.HasValue)
+        var point = e.GetPosition(AnnotationCanvas);
+        if (_ocrLasso.HandlePointerMove(point))
         {
-            var cur = e.GetPosition(AnnotationCanvas);
-            var sel = _vm.SelectionRect;
-            var x = Math.Min(cur.X, _lassoStart.Value.X);
-            var y = Math.Min(cur.Y, _lassoStart.Value.Y);
-            var w = Math.Abs(cur.X - _lassoStart.Value.X);
-            var h = Math.Abs(cur.Y - _lassoStart.Value.Y);
-            Canvas.SetLeft(OcrLassoRect, sel.X + x);
-            Canvas.SetTop(OcrLassoRect, sel.Y + y);
-            OcrLassoRect.Width = w;
-            OcrLassoRect.Height = h;
             return;
         }
 
-        _annotationInteractionController.HandlePointerMove(e.GetPosition(AnnotationCanvas));
+        _annotationInteractionController.HandlePointerMove(point);
     }
 
     private void Annot_Up(object sender, MouseButtonEventArgs e)
     {
-        if (_vm.IsTextLassoActive && _lassoStart.HasValue)
+        var point = e.GetPosition(AnnotationCanvas);
+        if (_ocrLasso.HandlePointerUp(point))
         {
-            var cur = e.GetPosition(AnnotationCanvas);
-            AnnotationCanvas.ReleaseMouseCapture();
-            var x = Math.Min(cur.X, _lassoStart.Value.X);
-            var y = Math.Min(cur.Y, _lassoStart.Value.Y);
-            var w = Math.Abs(cur.X - _lassoStart.Value.X);
-            var h = Math.Abs(cur.Y - _lassoStart.Value.Y);
-            OcrLassoRect.Visibility = Visibility.Collapsed;
-            _lassoStart = null;
-
-            if (w >= 4 && h >= 4)
-            {
-                _ = DoLassoOcr(new Rect(x, y, w, h));
-            }
-
             return;
         }
 
@@ -285,7 +264,7 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        _annotationInteractionController.HandlePointerUp(e.GetPosition(AnnotationCanvas));
+        _annotationInteractionController.HandlePointerUp(point);
     }
 
     private void Tool_Click(object sender, RoutedEventArgs e)
@@ -438,51 +417,6 @@ public partial class OverlayWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(Close));
     }
 
-    private async Task DoLassoOcr(Rect lassoRect)
-    {
-        var background = _renderer.BackgroundCapture;
-        if (background is null)
-        {
-            return;
-        }
-
-        var pixelX = (int)(lassoRect.X * _vm.DpiX);
-        var pixelY = (int)(lassoRect.Y * _vm.DpiY);
-        var pixelW = (int)(lassoRect.Width * _vm.DpiX);
-        var pixelH = (int)(lassoRect.Height * _vm.DpiY);
-
-        pixelX = Math.Max(0, Math.Min(pixelX, background.PixelWidth - 1));
-        pixelY = Math.Max(0, Math.Min(pixelY, background.PixelHeight - 1));
-        pixelW = Math.Min(pixelW, background.PixelWidth - pixelX);
-        pixelH = Math.Min(pixelH, background.PixelHeight - pixelY);
-
-        if (pixelW < 1 || pixelH < 1)
-        {
-            return;
-        }
-
-        var cropped = new CroppedBitmap(background, new Int32Rect(pixelX, pixelY, pixelW, pixelH));
-        var ocrProps = new Dictionary<string, string>
-        {
-            ["selection_width_px"] = pixelW.ToString(),
-            ["selection_height_px"] = pixelH.ToString(),
-        };
-
-        _telemetry.TrackEvent("ocr_attempted", ocrProps);
-        var text = await _ocrService.Recognize(cropped);
-
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            _telemetry.TrackEvent("ocr_no_text", ocrProps);
-            ShowOcrToast("No text detected \u2014 try a larger area");
-            return;
-        }
-
-        System.Windows.Clipboard.SetText(text);
-        _telemetry.TrackEvent("ocr_used", ocrProps);
-        ShowOcrToast("\u2713 Text copied to clipboard");
-    }
-
     private async void ShowOcrToast(string message)
     {
         if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
@@ -578,30 +512,9 @@ public partial class OverlayWindow : Window
         var shortcuts = _userSettings.Current;
         if (MatchesShortcut(key, modifiers, shortcuts.OverlayCloseHotkey, shortcuts.OverlayCloseHotkeyModifiers))
         {
-            if (_vm.CurrentPhase == OverlayViewModel.Phase.Annotating)
+            if (_vm.CurrentPhase == OverlayViewModel.Phase.Annotating && TryDismissAnnotatingUiLayer())
             {
-                if (ShortcutsPopup.Visibility == Visibility.Visible)
-                {
-                    ShortcutsPopup.Visibility = Visibility.Collapsed;
-                    return true;
-                }
-
-                if (_vm.IsTextLassoActive)
-                {
-                    _vm.IsTextLassoActive = false;
-                    OcrLassoRect.Visibility = Visibility.Collapsed;
-                    _lassoStart = null;
-                    return true;
-                }
-
-                if (_vm.SelectedTool == AnnotationTool.ColorPicker)
-                {
-                    _vm.RevertToPreviousTool();
-                    SyncToolbarToSelectedTool();
-                    UpdateLoupe(null);
-                    AnnotationCanvas.Cursor = _vm.SelectedTool == AnnotationTool.Text ? Cursors.IBeam : Cursors.Cross;
-                    return true;
-                }
+                return true;
             }
 
             Close();
@@ -613,30 +526,9 @@ public partial class OverlayWindow : Window
             return false;
         }
 
-        if (key == Key.Escape)
+        if (key == Key.Escape && TryDismissAnnotatingUiLayer())
         {
-            if (ShortcutsPopup.Visibility == Visibility.Visible)
-            {
-                ShortcutsPopup.Visibility = Visibility.Collapsed;
-                return true;
-            }
-
-            if (_vm.IsTextLassoActive)
-            {
-                _vm.IsTextLassoActive = false;
-                OcrLassoRect.Visibility = Visibility.Collapsed;
-                _lassoStart = null;
-                return true;
-            }
-
-            if (_vm.SelectedTool == AnnotationTool.ColorPicker)
-            {
-                _vm.RevertToPreviousTool();
-                SyncToolbarToSelectedTool();
-                UpdateLoupe(null);
-                AnnotationCanvas.Cursor = _vm.SelectedTool == AnnotationTool.Text ? Cursors.IBeam : Cursors.Cross;
-                return true;
-            }
+            return true;
         }
 
         if (MatchesShortcut(key, modifiers, shortcuts.OverlayToggleShortcutsHotkey, shortcuts.OverlayToggleShortcutsHotkeyModifiers))
@@ -695,37 +587,33 @@ public partial class OverlayWindow : Window
         return false;
     }
 
-    private static bool MatchesShortcut(Key key, ModifierKeys pressedModifiers, uint configuredKey, HotkeyModifiers configuredModifiers)
+    private bool TryDismissAnnotatingUiLayer()
     {
-        if (configuredKey == 0)
+        if (ShortcutsPopup.Visibility == Visibility.Visible)
         {
-            return false;
+            ShortcutsPopup.Visibility = Visibility.Collapsed;
+            return true;
         }
 
-        return key == KeyInterop.KeyFromVirtualKey((int)configuredKey)
-               && pressedModifiers == ToModifierKeys(configuredModifiers);
+        if (_ocrLasso.Cancel())
+        {
+            return true;
+        }
+
+        if (_vm.SelectedTool == AnnotationTool.ColorPicker)
+        {
+            _vm.RevertToPreviousTool();
+            SyncToolbarToSelectedTool();
+            UpdateLoupe(null);
+            AnnotationCanvas.Cursor = _vm.SelectedTool == AnnotationTool.Text ? Cursors.IBeam : Cursors.Cross;
+            return true;
+        }
+
+        return false;
     }
 
-    private static ModifierKeys ToModifierKeys(HotkeyModifiers modifiers)
-    {
-        var result = ModifierKeys.None;
-        if (modifiers.HasFlag(HotkeyModifiers.Ctrl))
-        {
-            result |= ModifierKeys.Control;
-        }
-
-        if (modifiers.HasFlag(HotkeyModifiers.Shift))
-        {
-            result |= ModifierKeys.Shift;
-        }
-
-        if (modifiers.HasFlag(HotkeyModifiers.Alt))
-        {
-            result |= ModifierKeys.Alt;
-        }
-
-        return result;
-    }
+    private static bool MatchesShortcut(Key key, ModifierKeys pressedModifiers, uint configuredKey, HotkeyModifiers configuredModifiers) =>
+        new HotkeyBinding(configuredKey, configuredModifiers).Matches(key, pressedModifiers);
 
     private void ToggleShortcutsPopup()
     {

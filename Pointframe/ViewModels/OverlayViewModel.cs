@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Input;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 
@@ -56,12 +55,12 @@ public partial class OverlayViewModel : AnnotationViewModel
     [ObservableProperty]
     private bool _isTextLassoActive;
 
-    public string OverlayCopyHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlayCopyHotkey, _settings.Current.OverlayCopyHotkeyModifiers);
-    public string OverlaySaveAsHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlaySaveAsHotkey, _settings.Current.OverlaySaveAsHotkeyModifiers);
-    public string OverlayUndoHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlayUndoHotkey, _settings.Current.OverlayUndoHotkeyModifiers);
-    public string OverlayRedoHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlayRedoHotkey, _settings.Current.OverlayRedoHotkeyModifiers);
-    public string OverlayToggleShortcutsHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlayToggleShortcutsHotkey, _settings.Current.OverlayToggleShortcutsHotkeyModifiers);
-    public string OverlayCloseHotkeyDisplayName => BuildHotkeyDisplayName(_settings.Current.OverlayCloseHotkey, _settings.Current.OverlayCloseHotkeyModifiers);
+    public string OverlayCopyHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlayCopyHotkey, _settings.Current.OverlayCopyHotkeyModifiers).DisplayName;
+    public string OverlaySaveAsHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlaySaveAsHotkey, _settings.Current.OverlaySaveAsHotkeyModifiers).DisplayName;
+    public string OverlayUndoHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlayUndoHotkey, _settings.Current.OverlayUndoHotkeyModifiers).DisplayName;
+    public string OverlayRedoHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlayRedoHotkey, _settings.Current.OverlayRedoHotkeyModifiers).DisplayName;
+    public string OverlayToggleShortcutsHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlayToggleShortcutsHotkey, _settings.Current.OverlayToggleShortcutsHotkeyModifiers).DisplayName;
+    public string OverlayCloseHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlayCloseHotkey, _settings.Current.OverlayCloseHotkeyModifiers).DisplayName;
 
     public string CopyToolTip => $"Copy to clipboard ({OverlayCopyHotkeyDisplayName})";
     public string SaveAsToolTip => $"Save As ({OverlaySaveAsHotkeyDisplayName})";
@@ -215,33 +214,6 @@ public partial class OverlayViewModel : AnnotationViewModel
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         encoder.Save(outputStream);
         _ = _eventAggregator.Publish(new CaptureCompletedMessage(savePath, captureAction));
-    }
-
-    private static string BuildHotkeyDisplayName(uint vk, HotkeyModifiers modifiers)
-    {
-        if (vk == 0)
-        {
-            return "Not set";
-        }
-
-        var parts = new List<string>();
-        if (modifiers.HasFlag(HotkeyModifiers.Ctrl))
-        {
-            parts.Add("Ctrl");
-        }
-
-        if (modifiers.HasFlag(HotkeyModifiers.Shift))
-        {
-            parts.Add("Shift");
-        }
-
-        if (modifiers.HasFlag(HotkeyModifiers.Alt))
-        {
-            parts.Add("Alt");
-        }
-
-        parts.Add(vk == 0x2C ? "Print Screen" : KeyInterop.KeyFromVirtualKey((int)vk).ToString());
-        return string.Join("+", parts);
     }
 
     [RelayCommand]

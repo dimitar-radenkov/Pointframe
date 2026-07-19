@@ -112,74 +112,16 @@ public sealed class UserSettingsService : IUserSettingsService
         return GetDefaultSettingsPath();
     }
 
-    private static UserSettings Clone(UserSettings settings) =>
-        new()
-        {
-            ScreenshotSavePath = settings.ScreenshotSavePath,
-            AutoSaveScreenshots = settings.AutoSaveScreenshots,
-            RecordingOutputPath = settings.RecordingOutputPath,
-            RecordMicrophone = settings.RecordMicrophone,
-            RecordingMicrophoneDeviceName = settings.RecordingMicrophoneDeviceName,
-            RecordingFps = settings.RecordingFps,
-            GifFps = settings.GifFps,
-            HudGapPixels = settings.HudGapPixels,
-            RecordingCursorHighlightEnabled = settings.RecordingCursorHighlightEnabled,
-            RecordingClickRippleEnabled = settings.RecordingClickRippleEnabled,
-            RecordingCursorHighlightSize = settings.RecordingCursorHighlightSize,
-            DefaultAnnotationColor = settings.DefaultAnnotationColor,
-            DefaultStrokeThickness = settings.DefaultStrokeThickness,
-            CaptureDelaySeconds = settings.CaptureDelaySeconds,
-            RegionCaptureHotkey = settings.RegionCaptureHotkey,
-            RegionCaptureHotkeyModifiers = settings.RegionCaptureHotkeyModifiers,
-            WholeScreenRecordHotkey = settings.WholeScreenRecordHotkey,
-            WholeScreenRecordHotkeyModifiers = settings.WholeScreenRecordHotkeyModifiers,
-            CleanWindowCaptureHotkey = settings.CleanWindowCaptureHotkey,
-            CleanWindowCaptureHotkeyModifiers = settings.CleanWindowCaptureHotkeyModifiers,
-            OverlayCopyHotkey = settings.OverlayCopyHotkey,
-            OverlayCopyHotkeyModifiers = settings.OverlayCopyHotkeyModifiers,
-            OverlaySaveAsHotkey = settings.OverlaySaveAsHotkey,
-            OverlaySaveAsHotkeyModifiers = settings.OverlaySaveAsHotkeyModifiers,
-            OverlayUndoHotkey = settings.OverlayUndoHotkey,
-            OverlayUndoHotkeyModifiers = settings.OverlayUndoHotkeyModifiers,
-            OverlayRedoHotkey = settings.OverlayRedoHotkey,
-            OverlayRedoHotkeyModifiers = settings.OverlayRedoHotkeyModifiers,
-            OverlayToggleShortcutsHotkey = settings.OverlayToggleShortcutsHotkey,
-            OverlayToggleShortcutsHotkeyModifiers = settings.OverlayToggleShortcutsHotkeyModifiers,
-            OverlayCloseHotkey = settings.OverlayCloseHotkey,
-            OverlayCloseHotkeyModifiers = settings.OverlayCloseHotkeyModifiers,
-            AutoUpdateCheckInterval = settings.AutoUpdateCheckInterval,
-            LastAutoUpdateCheckUtc = settings.LastAutoUpdateCheckUtc,
-            Theme = settings.Theme,
-            StylePresets = [.. (settings.StylePresets ?? []).Select(p => new Pointframe.Models.AnnotationStylePreset
-            {
-                Name = p.Name,
-                Color = p.Color,
-                StrokeThickness = p.StrokeThickness,
-            })],
-            ScreenshotWatermark = CloneScreenshotWatermark(settings.ScreenshotWatermark),
-            VideoWatermark = CloneVideoWatermark(settings.VideoWatermark),
-            InstallId = settings.InstallId,
-            InstallCreatedUtc = settings.InstallCreatedUtc,
-            FirstCaptureCompletedTracked = settings.FirstCaptureCompletedTracked,
-            FirstRecordingCompletedTracked = settings.FirstRecordingCompletedTracked,
-        };
-
-    private static Pointframe.Models.ScreenshotWatermarkSettings CloneScreenshotWatermark(Pointframe.Models.WatermarkSettings? source)
+    private static UserSettings Clone(UserSettings settings)
     {
-        source ??= new Pointframe.Models.ScreenshotWatermarkSettings();
-        return new Pointframe.Models.ScreenshotWatermarkSettings
-        {
-            Enabled = source.Enabled,
-            TextTemplate = source.TextTemplate,
-            Position = source.Position,
-            FontSize = source.FontSize,
-            ColorHex = source.ColorHex,
-            BackgroundEnabled = source.BackgroundEnabled,
-            Opacity = source.Opacity,
-            Margin = source.Margin,
-            ApplyToCopy = source.ApplyToCopy,
-            ApplyToSave = source.ApplyToSave,
-        };
+        // Round-tripping through the persistence serializer keeps clone fidelity
+        // identical to Save/Load by construction — a property the serializer would
+        // drop here is already dropped on disk.
+        var clone = JsonSerializer.Deserialize<UserSettings>(JsonSerializer.Serialize(settings))!;
+        clone.StylePresets ??= [];
+        clone.ScreenshotWatermark ??= new Pointframe.Models.ScreenshotWatermarkSettings();
+        clone.VideoWatermark ??= new Pointframe.Models.VideoWatermarkSettings();
+        return clone;
     }
 
     private static Pointframe.Models.VideoWatermarkSettings CloneVideoWatermark(Pointframe.Models.WatermarkSettings? source)

@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Windows.Input;
 using System.Windows.Media;
 using Pointframe.Services;
 
@@ -17,6 +16,44 @@ public partial class SettingsViewModel : ObservableObject
         new(SettingsSection.Shortcuts, "Shortcuts", "See all capture, recording, and overlay keyboard shortcuts."),
         new(SettingsSection.App, "App", "Appearance, update checks, and reset actions."),
     ];
+
+    private sealed record OverlayShortcutDescriptor(
+        string Key,
+        string Label,
+        Func<UserSettings, HotkeyBinding> SettingOf,
+        Func<SettingsViewModel, HotkeyBinding> Get,
+        Action<SettingsViewModel, HotkeyBinding> Set);
+
+    private static readonly OverlayShortcutDescriptor[] OverlayShortcutDescriptors =
+    [
+        new("OverlayCopy", "Copy snip",
+            s => new(s.OverlayCopyHotkey, s.OverlayCopyHotkeyModifiers),
+            vm => new(vm.OverlayCopyHotkey, vm.OverlayCopyHotkeyModifiers),
+            (vm, b) => (vm.OverlayCopyHotkey, vm.OverlayCopyHotkeyModifiers) = (b.Key, b.Modifiers)),
+        new("OverlaySaveAs", "Save As",
+            s => new(s.OverlaySaveAsHotkey, s.OverlaySaveAsHotkeyModifiers),
+            vm => new(vm.OverlaySaveAsHotkey, vm.OverlaySaveAsHotkeyModifiers),
+            (vm, b) => (vm.OverlaySaveAsHotkey, vm.OverlaySaveAsHotkeyModifiers) = (b.Key, b.Modifiers)),
+        new("OverlayUndo", "Undo",
+            s => new(s.OverlayUndoHotkey, s.OverlayUndoHotkeyModifiers),
+            vm => new(vm.OverlayUndoHotkey, vm.OverlayUndoHotkeyModifiers),
+            (vm, b) => (vm.OverlayUndoHotkey, vm.OverlayUndoHotkeyModifiers) = (b.Key, b.Modifiers)),
+        new("OverlayRedo", "Redo",
+            s => new(s.OverlayRedoHotkey, s.OverlayRedoHotkeyModifiers),
+            vm => new(vm.OverlayRedoHotkey, vm.OverlayRedoHotkeyModifiers),
+            (vm, b) => (vm.OverlayRedoHotkey, vm.OverlayRedoHotkeyModifiers) = (b.Key, b.Modifiers)),
+        new("OverlayToggleShortcuts", "Show/hide overlay shortcuts",
+            s => new(s.OverlayToggleShortcutsHotkey, s.OverlayToggleShortcutsHotkeyModifiers),
+            vm => new(vm.OverlayToggleShortcutsHotkey, vm.OverlayToggleShortcutsHotkeyModifiers),
+            (vm, b) => (vm.OverlayToggleShortcutsHotkey, vm.OverlayToggleShortcutsHotkeyModifiers) = (b.Key, b.Modifiers)),
+        new("OverlayClose", "Close overlay",
+            s => new(s.OverlayCloseHotkey, s.OverlayCloseHotkeyModifiers),
+            vm => new(vm.OverlayCloseHotkey, vm.OverlayCloseHotkeyModifiers),
+            (vm, b) => (vm.OverlayCloseHotkey, vm.OverlayCloseHotkeyModifiers) = (b.Key, b.Modifiers)),
+    ];
+
+    private static OverlayShortcutDescriptor? FindOverlayShortcut(string shortcutKey) =>
+        Array.Find(OverlayShortcutDescriptors, descriptor => descriptor.Key == shortcutKey);
 
     private readonly IDialogService _dialogService;
     private readonly IMicrophoneDeviceService _microphoneDeviceService;
@@ -268,15 +305,15 @@ public partial class SettingsViewModel : ObservableObject
     public SettingsSectionItem SelectedSectionItem =>
         Array.Find(SectionItems, item => item.Section == SelectedSection) ?? SectionItems[0];
 
-    public string RegionCaptureHotkeyDisplayName => BuildHotkeyDisplayName(RegionCaptureHotkey, RegionCaptureHotkeyModifiers);
-    public string WholeScreenRecordHotkeyDisplayName => BuildHotkeyDisplayName(WholeScreenRecordHotkey, WholeScreenRecordHotkeyModifiers);
-    public string CleanWindowCaptureHotkeyDisplayName => BuildHotkeyDisplayName(CleanWindowCaptureHotkey, CleanWindowCaptureHotkeyModifiers);
-    public string OverlayCopyHotkeyDisplayName => BuildHotkeyDisplayName(OverlayCopyHotkey, OverlayCopyHotkeyModifiers);
-    public string OverlaySaveAsHotkeyDisplayName => BuildHotkeyDisplayName(OverlaySaveAsHotkey, OverlaySaveAsHotkeyModifiers);
-    public string OverlayUndoHotkeyDisplayName => BuildHotkeyDisplayName(OverlayUndoHotkey, OverlayUndoHotkeyModifiers);
-    public string OverlayRedoHotkeyDisplayName => BuildHotkeyDisplayName(OverlayRedoHotkey, OverlayRedoHotkeyModifiers);
-    public string OverlayToggleShortcutsHotkeyDisplayName => BuildHotkeyDisplayName(OverlayToggleShortcutsHotkey, OverlayToggleShortcutsHotkeyModifiers);
-    public string OverlayCloseHotkeyDisplayName => BuildHotkeyDisplayName(OverlayCloseHotkey, OverlayCloseHotkeyModifiers);
+    public string RegionCaptureHotkeyDisplayName => new HotkeyBinding(RegionCaptureHotkey, RegionCaptureHotkeyModifiers).DisplayName;
+    public string WholeScreenRecordHotkeyDisplayName => new HotkeyBinding(WholeScreenRecordHotkey, WholeScreenRecordHotkeyModifiers).DisplayName;
+    public string CleanWindowCaptureHotkeyDisplayName => new HotkeyBinding(CleanWindowCaptureHotkey, CleanWindowCaptureHotkeyModifiers).DisplayName;
+    public string OverlayCopyHotkeyDisplayName => new HotkeyBinding(OverlayCopyHotkey, OverlayCopyHotkeyModifiers).DisplayName;
+    public string OverlaySaveAsHotkeyDisplayName => new HotkeyBinding(OverlaySaveAsHotkey, OverlaySaveAsHotkeyModifiers).DisplayName;
+    public string OverlayUndoHotkeyDisplayName => new HotkeyBinding(OverlayUndoHotkey, OverlayUndoHotkeyModifiers).DisplayName;
+    public string OverlayRedoHotkeyDisplayName => new HotkeyBinding(OverlayRedoHotkey, OverlayRedoHotkeyModifiers).DisplayName;
+    public string OverlayToggleShortcutsHotkeyDisplayName => new HotkeyBinding(OverlayToggleShortcutsHotkey, OverlayToggleShortcutsHotkeyModifiers).DisplayName;
+    public string OverlayCloseHotkeyDisplayName => new HotkeyBinding(OverlayCloseHotkey, OverlayCloseHotkeyModifiers).DisplayName;
     public bool HasOverlayShortcutConflict => !string.IsNullOrWhiteSpace(OverlayShortcutConflictMessage);
     public string SelectedSectionDisplayName => SelectedSectionItem.DisplayName;
     public string SelectedSectionDescription => SelectedSectionItem.Description;
@@ -529,118 +566,29 @@ public partial class SettingsViewModel : ObservableObject
     private void ResetOverlayShortcut(string shortcutKey)
     {
         OverlayShortcutConflictMessage = string.Empty;
-        var defaults = new UserSettings();
-        switch (shortcutKey)
-        {
-            case "OverlayCopy":
-                OverlayCopyHotkey = defaults.OverlayCopyHotkey;
-                OverlayCopyHotkeyModifiers = defaults.OverlayCopyHotkeyModifiers;
-                break;
-            case "OverlaySaveAs":
-                OverlaySaveAsHotkey = defaults.OverlaySaveAsHotkey;
-                OverlaySaveAsHotkeyModifiers = defaults.OverlaySaveAsHotkeyModifiers;
-                break;
-            case "OverlayUndo":
-                OverlayUndoHotkey = defaults.OverlayUndoHotkey;
-                OverlayUndoHotkeyModifiers = defaults.OverlayUndoHotkeyModifiers;
-                break;
-            case "OverlayRedo":
-                OverlayRedoHotkey = defaults.OverlayRedoHotkey;
-                OverlayRedoHotkeyModifiers = defaults.OverlayRedoHotkeyModifiers;
-                break;
-            case "OverlayToggleShortcuts":
-                OverlayToggleShortcutsHotkey = defaults.OverlayToggleShortcutsHotkey;
-                OverlayToggleShortcutsHotkeyModifiers = defaults.OverlayToggleShortcutsHotkeyModifiers;
-                break;
-            case "OverlayClose":
-                OverlayCloseHotkey = defaults.OverlayCloseHotkey;
-                OverlayCloseHotkeyModifiers = defaults.OverlayCloseHotkeyModifiers;
-                break;
-        }
+        var descriptor = FindOverlayShortcut(shortcutKey);
+        descriptor?.Set(this, descriptor.SettingOf(new UserSettings()));
     }
 
     internal void ApplyOverlayShortcutCapture(uint vk, HotkeyModifiers modifiers)
     {
-        if (TryFindOverlayShortcutOwner(vk, modifiers, out var owner) && owner != OverlayShortcutCaptureTarget)
+        var binding = new HotkeyBinding(vk, modifiers);
+        var owner = Array.Find(OverlayShortcutDescriptors, descriptor => descriptor.Get(this) == binding);
+        if (owner is not null && owner.Key != OverlayShortcutCaptureTarget)
         {
-            OverlayShortcutConflictMessage = $"{BuildHotkeyDisplayName(vk, modifiers)} is already assigned to {OverlayShortcutLabel(owner)}.";
+            OverlayShortcutConflictMessage = $"{binding.DisplayName} is already assigned to {owner.Label}.";
             return;
         }
 
         OverlayShortcutConflictMessage = string.Empty;
-        switch (OverlayShortcutCaptureTarget)
+        var target = FindOverlayShortcut(OverlayShortcutCaptureTarget);
+        if (target is null)
         {
-            case "OverlayCopy":
-                OverlayCopyHotkey = vk;
-                OverlayCopyHotkeyModifiers = modifiers;
-                break;
-            case "OverlaySaveAs":
-                OverlaySaveAsHotkey = vk;
-                OverlaySaveAsHotkeyModifiers = modifiers;
-                break;
-            case "OverlayUndo":
-                OverlayUndoHotkey = vk;
-                OverlayUndoHotkeyModifiers = modifiers;
-                break;
-            case "OverlayRedo":
-                OverlayRedoHotkey = vk;
-                OverlayRedoHotkeyModifiers = modifiers;
-                break;
-            case "OverlayToggleShortcuts":
-                OverlayToggleShortcutsHotkey = vk;
-                OverlayToggleShortcutsHotkeyModifiers = modifiers;
-                break;
-            case "OverlayClose":
-                OverlayCloseHotkey = vk;
-                OverlayCloseHotkeyModifiers = modifiers;
-                break;
-            default:
-                return;
+            return;
         }
 
+        target.Set(this, binding);
         CancelCapturingOverlayShortcut();
-    }
-
-    private bool TryFindOverlayShortcutOwner(uint vk, HotkeyModifiers modifiers, out string owner)
-    {
-        if (OverlayCopyHotkey == vk && OverlayCopyHotkeyModifiers == modifiers)
-        {
-            owner = "OverlayCopy";
-            return true;
-        }
-
-        if (OverlaySaveAsHotkey == vk && OverlaySaveAsHotkeyModifiers == modifiers)
-        {
-            owner = "OverlaySaveAs";
-            return true;
-        }
-
-        if (OverlayUndoHotkey == vk && OverlayUndoHotkeyModifiers == modifiers)
-        {
-            owner = "OverlayUndo";
-            return true;
-        }
-
-        if (OverlayRedoHotkey == vk && OverlayRedoHotkeyModifiers == modifiers)
-        {
-            owner = "OverlayRedo";
-            return true;
-        }
-
-        if (OverlayToggleShortcutsHotkey == vk && OverlayToggleShortcutsHotkeyModifiers == modifiers)
-        {
-            owner = "OverlayToggleShortcuts";
-            return true;
-        }
-
-        if (OverlayCloseHotkey == vk && OverlayCloseHotkeyModifiers == modifiers)
-        {
-            owner = "OverlayClose";
-            return true;
-        }
-
-        owner = string.Empty;
-        return false;
     }
 
     [RelayCommand]
@@ -688,18 +636,7 @@ public partial class SettingsViewModel : ObservableObject
                 AppTheme = defaults.Theme;
                 break;
             case SettingsSection.Shortcuts:
-                OverlayCopyHotkey = defaults.OverlayCopyHotkey;
-                OverlayCopyHotkeyModifiers = defaults.OverlayCopyHotkeyModifiers;
-                OverlaySaveAsHotkey = defaults.OverlaySaveAsHotkey;
-                OverlaySaveAsHotkeyModifiers = defaults.OverlaySaveAsHotkeyModifiers;
-                OverlayUndoHotkey = defaults.OverlayUndoHotkey;
-                OverlayUndoHotkeyModifiers = defaults.OverlayUndoHotkeyModifiers;
-                OverlayRedoHotkey = defaults.OverlayRedoHotkey;
-                OverlayRedoHotkeyModifiers = defaults.OverlayRedoHotkeyModifiers;
-                OverlayToggleShortcutsHotkey = defaults.OverlayToggleShortcutsHotkey;
-                OverlayToggleShortcutsHotkeyModifiers = defaults.OverlayToggleShortcutsHotkeyModifiers;
-                OverlayCloseHotkey = defaults.OverlayCloseHotkey;
-                OverlayCloseHotkeyModifiers = defaults.OverlayCloseHotkeyModifiers;
+                ResetOverlayShortcutsTo(defaults);
                 IsCapturingOverlayShortcut = false;
                 OverlayShortcutCaptureTarget = string.Empty;
                 OverlayShortcutCaptureDisplayName = string.Empty;
@@ -743,18 +680,7 @@ public partial class SettingsViewModel : ObservableObject
         CleanWindowCaptureHotkey = defaults.CleanWindowCaptureHotkey;
         CleanWindowCaptureHotkeyModifiers = defaults.CleanWindowCaptureHotkeyModifiers;
         IsCapturingCleanWindowCaptureHotkey = false;
-        OverlayCopyHotkey = defaults.OverlayCopyHotkey;
-        OverlayCopyHotkeyModifiers = defaults.OverlayCopyHotkeyModifiers;
-        OverlaySaveAsHotkey = defaults.OverlaySaveAsHotkey;
-        OverlaySaveAsHotkeyModifiers = defaults.OverlaySaveAsHotkeyModifiers;
-        OverlayUndoHotkey = defaults.OverlayUndoHotkey;
-        OverlayUndoHotkeyModifiers = defaults.OverlayUndoHotkeyModifiers;
-        OverlayRedoHotkey = defaults.OverlayRedoHotkey;
-        OverlayRedoHotkeyModifiers = defaults.OverlayRedoHotkeyModifiers;
-        OverlayToggleShortcutsHotkey = defaults.OverlayToggleShortcutsHotkey;
-        OverlayToggleShortcutsHotkeyModifiers = defaults.OverlayToggleShortcutsHotkeyModifiers;
-        OverlayCloseHotkey = defaults.OverlayCloseHotkey;
-        OverlayCloseHotkeyModifiers = defaults.OverlayCloseHotkeyModifiers;
+        ResetOverlayShortcutsTo(defaults);
         IsCapturingOverlayShortcut = false;
         OverlayShortcutCaptureTarget = string.Empty;
         OverlayShortcutCaptureDisplayName = string.Empty;
@@ -784,49 +710,16 @@ public partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(CanAddPreset));
     }
 
-    private static string VkToKeyName(uint vk) =>
-        vk == 0x2C ? "Print Screen" : KeyInterop.KeyFromVirtualKey((int)vk).ToString();
-
-    private static string OverlayShortcutLabel(string shortcutKey)
+    private void ResetOverlayShortcutsTo(UserSettings settings)
     {
-        return shortcutKey switch
+        foreach (var descriptor in OverlayShortcutDescriptors)
         {
-            "OverlayCopy" => "Copy snip",
-            "OverlaySaveAs" => "Save As",
-            "OverlayUndo" => "Undo",
-            "OverlayRedo" => "Redo",
-            "OverlayToggleShortcuts" => "Show/hide overlay shortcuts",
-            "OverlayClose" => "Close overlay",
-            _ => "Shortcut",
-        };
+            descriptor.Set(this, descriptor.SettingOf(settings));
+        }
     }
 
-    private static string BuildHotkeyDisplayName(uint vk, HotkeyModifiers modifiers)
-    {
-        if (vk == 0)
-        {
-            return "Not set";
-        }
-
-        var parts = new List<string>();
-        if (modifiers.HasFlag(HotkeyModifiers.Ctrl))
-        {
-            parts.Add("Ctrl");
-        }
-
-        if (modifiers.HasFlag(HotkeyModifiers.Shift))
-        {
-            parts.Add("Shift");
-        }
-
-        if (modifiers.HasFlag(HotkeyModifiers.Alt))
-        {
-            parts.Add("Alt");
-        }
-
-        parts.Add(VkToKeyName(vk));
-        return string.Join("+", parts);
-    }
+    private static string OverlayShortcutLabel(string shortcutKey) =>
+        FindOverlayShortcut(shortcutKey)?.Label ?? "Shortcut";
 
     private static double ClampRecordingCursorHighlightSize(double size)
     {

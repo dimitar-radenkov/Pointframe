@@ -150,17 +150,19 @@ public sealed class OverlayWindowInteractionTests
             try
             {
                 var lassoRect = Assert.IsType<Rectangle>(context.Window.FindName("OcrLassoRect"));
-                lassoRect.Visibility = Visibility.Visible;
                 context.ViewModel.InitializeAnnotatingSession(new Rect(0d, 0d, 100d, 80d), 1d, 1d);
                 context.ViewModel.IsTextLassoActive = true;
-                SetPrivateField(context.Window, "_lassoStart", new Point(12d, 14d));
+                var lasso = GetPrivateField<OcrLassoController>(context.Window, "_ocrLasso");
+                lasso.HandlePointerDown(new Point(12d, 14d));
+                Assert.Equal(Visibility.Visible, lassoRect.Visibility);
+                Assert.True(lasso.HasPendingLasso);
 
                 var args = CreateKeyArgs(Key.Escape);
                 InvokePrivate(context.Window, "Window_KeyDown", context.Window, args);
 
                 Assert.False(context.ViewModel.IsTextLassoActive);
                 Assert.Equal(Visibility.Collapsed, lassoRect.Visibility);
-                Assert.Null(GetPrivateField<Point?>(context.Window, "_lassoStart"));
+                Assert.False(lasso.HasPendingLasso);
                 Assert.True(args.Handled);
             }
             finally
@@ -344,8 +346,8 @@ public sealed class OverlayWindowInteractionTests
             var context = CreateContext();
             try
             {
-                var task = Assert.IsAssignableFrom<Task>(InvokePrivate(context.Window, "DoLassoOcr", new Rect(1d, 2d, 30d, 16d)));
-                task.GetAwaiter().GetResult();
+                var lasso = GetPrivateField<OcrLassoController>(context.Window, "_ocrLasso");
+                lasso.RecognizeAsync(new Rect(1d, 2d, 30d, 16d)).GetAwaiter().GetResult();
 
                 context.OcrServiceMock.Verify(service => service.Recognize(It.IsAny<BitmapSource>()), Times.Never);
             }
@@ -369,8 +371,8 @@ public sealed class OverlayWindowInteractionTests
                     .Setup(service => service.Recognize(It.IsAny<BitmapSource>()))
                     .ReturnsAsync("   ");
 
-                var task = Assert.IsAssignableFrom<Task>(InvokePrivate(context.Window, "DoLassoOcr", new Rect(1d, 2d, 10d, 6d)));
-                task.GetAwaiter().GetResult();
+                var lasso = GetPrivateField<OcrLassoController>(context.Window, "_ocrLasso");
+                lasso.RecognizeAsync(new Rect(1d, 2d, 10d, 6d)).GetAwaiter().GetResult();
 
                 context.TelemetryMock.Verify(
                     telemetry => telemetry.TrackEvent(
@@ -412,8 +414,8 @@ public sealed class OverlayWindowInteractionTests
                     .Setup(service => service.Recognize(It.IsAny<BitmapSource>()))
                     .ReturnsAsync("copied text");
 
-                var task = Assert.IsAssignableFrom<Task>(InvokePrivate(context.Window, "DoLassoOcr", new Rect(2d, 3d, 8d, 5d)));
-                task.GetAwaiter().GetResult();
+                var lasso = GetPrivateField<OcrLassoController>(context.Window, "_ocrLasso");
+                lasso.RecognizeAsync(new Rect(2d, 3d, 8d, 5d)).GetAwaiter().GetResult();
 
                 context.TelemetryMock.Verify(
                     telemetry => telemetry.TrackEvent(
@@ -560,13 +562,6 @@ public sealed class OverlayWindowInteractionTests
         var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(field);
         return (T)field.GetValue(target)!;
-    }
-
-    private static void SetPrivateField<T>(object target, string fieldName, T value)
-    {
-        var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        field.SetValue(target, value);
     }
 
     private static KeyEventArgs CreateKeyArgs(Key key)

@@ -14,18 +14,21 @@ namespace Pointframe.Tests;
 public sealed class AppTests
 {
     [Fact]
-    public void ConfigureServices_RegistersCoreServicesAndFactories()
+    public void AddPointframeAppServices_RegistersCoreServicesAndFactories()
     {
         var services = new ServiceCollection();
+        // The production host registers logging and configuration; mirror that here.
+        services.AddLogging();
+        services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
-        typeof(App)
-            .GetMethod("ConfigureServices", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
-            .Invoke(null, [services]);
+        services.AddPointframeAppServices();
 
         using var provider = services.BuildServiceProvider();
 
         Assert.IsType<DialogService>(provider.GetRequiredService<IDialogService>());
         Assert.IsType<MessageBoxService>(provider.GetRequiredService<IMessageBoxService>());
+        Assert.IsType<TrayIconManager>(provider.GetRequiredService<ITrayIconManager>());
         Assert.NotNull(provider.GetRequiredService<Func<IScreenRecordingService, string, RecordingHudViewModel>>());
     }
 

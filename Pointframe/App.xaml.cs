@@ -4,11 +4,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Pointframe.Automation;
-using Pointframe.Data;
 using Pointframe.Data.Abstractions;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
-using Pointframe.Services.Recording;
 using Pointframe.ViewModels;
 using Serilog;
 using Application = System.Windows.Application;
@@ -23,7 +21,6 @@ public partial class App : Application
     private IMessageBoxService _messageBox = null!;
     private IUserSettingsService _userSettings = null!;
     private IThemeService _themeService = null!;
-    private IAutoUpdateService _autoUpdate = null!;
     private IDialogService _dialogService = null!;
     private IImageFileService _imageFileService = null!;
     private IGlobalHotkeyService _globalHotkey = null!;
@@ -31,9 +28,7 @@ public partial class App : Application
     private ITrayIconManager _trayIconManager = null!;
     private ICaptureLaunchService _captureLaunch = null!;
     private IActivationTelemetryService _activationTelemetry = null!;
-    private IEventSubscription? _updateAvailableSubscription;
-    private IEventSubscription? _recordingCompletedSubscription;
-    private IEventSubscription? _captureCompletedSubscription;
+    private readonly List<IEventSubscription> _eventSubscriptions = [];
     private ITelemetryService _telemetry = null!;
     private DateTime _sessionStartTime;
     private SettingsWindow? _settingsWindow;
@@ -77,7 +72,7 @@ public partial class App : Application
                 logging.ClearProviders();
                 logging.AddSerilog(dispose: false);
             })
-            .ConfigureServices((_, services) => ConfigureServices(services))
+            .ConfigureServices((_, services) => services.AddPointframeAppServices())
             .Build();
 
         _logger = _host.Services.GetRequiredService<ILogger<App>>();
@@ -110,10 +105,14 @@ public partial class App : Application
         if (!automationLaunchOptions.IsAutomationMode)
         {
             var eventAggregator = _host.Services.GetRequiredService<IEventAggregator>();
-            _updateAvailableSubscription = eventAggregator.Subscribe<UpdateAvailableMessage>(HandleUpdateAvailable);
-            _recordingCompletedSubscription = eventAggregator.Subscribe<RecordingCompletedMessage>(HandleRecordingCompleted);
-            _captureCompletedSubscription = eventAggregator.Subscribe<CaptureCompletedMessage>(HandleCaptureCompleted);
-            _autoUpdate = _host.Services.GetRequiredService<IAutoUpdateService>();
+            _eventSubscriptions.Add(eventAggregator.Subscribe<UpdateAvailableMessage>(HandleUpdateAvailable));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<RecordingCompletedMessage>(HandleRecordingCompleted));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<CaptureCompletedMessage>(HandleCaptureCompleted));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<OpenImageRequestedMessage>(HandleOpenImageRequested));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<TrimRecordingRequestedMessage>(HandleTrimRecordingRequested));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<ShowSettingsWindowRequestedMessage>(HandleShowSettingsWindowRequested));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<ShowAboutWindowRequestedMessage>(HandleShowAboutWindowRequested));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<ShowLibraryWindowRequestedMessage>(HandleShowLibraryWindowRequested));
         }
 
         _logger.LogInformation("Pointframe starting up");
@@ -141,24 +140,7 @@ public partial class App : Application
             return;
         }
 
-        _trayIconManager = new TrayIconManager(
-            _host.Services.GetRequiredService<ILogger<TrayIconManager>>(),
-            _messageBox,
-            _host.Services.GetRequiredService<IProcessService>(),
-            _host.Services.GetRequiredService<IUpdateService>(),
-            _host.Services.GetRequiredService<IAppVersionService>(),
-            _autoUpdate,
-            _userSettings,
-            _host.Services.GetRequiredService<IGifExportService>(),
-            _telemetry,
-            onNewSnip: () => _captureLaunch.StartRegionSnip("tray"),
-            onWholeScreenSnip: () => _captureLaunch.StartWholeScreenSnip("tray"),
-            onCleanWindowSnip: () => _captureLaunch.StartCleanWindowSnip("tray"),
-            onOpenImage: () => Dispatcher.InvokeAsync(OpenImage, System.Windows.Threading.DispatcherPriority.ApplicationIdle),
-            onTrimRecording: ShowTrimWindow,
-            onShowSettings: ShowSettingsWindow,
-            onShowAbout: ShowAboutWindow,
-            onShowLibrary: ShowLibraryWindow);
+        _trayIconManager = _host.Services.GetRequiredService<ITrayIconManager>();
         _trayIconManager.Initialize();
         startupTimer.Stop();
         _telemetry.TrackEvent("startup_completed", new Dictionary<string, string>
@@ -184,104 +166,6 @@ public partial class App : Application
         migrationService.ApplyMigrations().GetAwaiter().GetResult();
     }
 
-    private static void ConfigureServices(IServiceCollection services)
-    {
-        var dataSourceDirectory = Path.GetDirectoryName(AppPaths.PointframeDatabasePath);
-        if (!string.IsNullOrWhiteSpace(dataSourceDirectory))
-        {
-            Directory.CreateDirectory(dataSourceDirectory);
-        }
-
-        services.AddPointframeDataServices($"Data Source={AppPaths.PointframeDatabasePath}");
-
-        services.AddSingleton<ITelemetryService, TelemetryService>();
-        services.AddSingleton<IActivationTelemetryService, ActivationTelemetryService>();
-        services.AddSingleton<IThemeService, ThemeService>();
-        services.AddSingleton<IAppVersionService, AppVersionService>();
-        services.AddSingleton<IClipboardService, ClipboardService>();
-        services.AddSingleton<IDialogService, DialogService>();
-        services.AddSingleton<IImageFileService, ImageFileService>();
-        services.AddSingleton<IEventAggregator, DefaultEventAggregator>();
-        services.AddSingleton<IDebounceService, DebounceService>();
-        services.AddSingleton<IProcessService, ProcessService>();
-        services.AddSingleton<IMouseHookService, MouseHookService>();
-        services.AddSingleton<IMessageBoxService, MessageBoxService>();
-        services.AddSingleton<IFileSystemService, FileSystemService>();
-        services.AddSingleton<IMicrophoneDeviceService, MicrophoneDeviceService>();
-        services.AddSingleton<IUserSettingsService, UserSettingsService>();
-        services.AddSingleton<IGlobalHotkeyService, GlobalHotkeyService>();
-        services.AddSingleton<IAppErrorHandler, AppErrorHandler>();
-        services.AddSingleton<ICaptureLaunchService, CaptureLaunchService>();
-        services.AddSingleton<ICaptureLibraryService, CaptureLibraryService>();
-        services.AddSingleton<ICaptureTextLookupService, CaptureTextLookupService>();
-        services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
-        services.AddTransient<IWindowCaptureService, WindowCaptureService>();
-        services.AddTransient<IVideoWriterFactory, VideoWriterFactory>();
-        services.AddTransient<IScreenRecordingService, ScreenRecordingService>();
-        services.AddSingleton<IGifExportService, GifExportService>();
-        services.AddSingleton<IVideoTrimService, VideoTrimService>();
-        services.AddTransient<Func<string, TrimViewModel>>(sp => inputPath => new TrimViewModel(
-            inputPath,
-            sp.GetRequiredService<IVideoTrimService>(),
-            sp.GetRequiredService<ITelemetryService>(),
-            sp.GetRequiredService<ILogger<TrimViewModel>>()));
-        services.AddSingleton<IAnnotationGeometryService, AnnotationGeometryService>();
-        services.AddSingleton<IOcrService, WindowsOcrService>();
-        services.AddTransient<OverlayViewModel>();
-        services.AddTransient<LibraryViewModel>();
-        services.AddTransient<RecordingAnnotationViewModel>();
-        services.AddTransient<OverlayWindow>(CreateOverlayWindow);
-        services.AddTransient<BeautifierViewModel>();
-        services.AddSingleton<BeautifierRenderService>();
-        services.AddSingleton<IScreenshotWatermarkService, ScreenshotWatermarkService>();
-        services.AddTransient<Func<BitmapSource, BeautifierWindow>>(sp => bitmap =>
-        {
-            var window = new BeautifierWindow(sp.GetRequiredService<BeautifierViewModel>());
-            window.Initialize(bitmap);
-            return window;
-        });
-        services.AddTransient<SettingsViewModel>();
-        services.AddTransient<SettingsWindow>();
-        services.AddTransient<Func<IScreenRecordingService, string, RecordingHudViewModel>>(sp =>
-            (screenRecordingService, outputPath) => new RecordingHudViewModel(
-                screenRecordingService,
-                outputPath,
-                sp.GetRequiredService<IEventAggregator>(),
-                sp.GetRequiredService<ILogger<RecordingHudViewModel>>()));
-        services.AddTransient<AboutViewModel>();
-        services.AddTransient<AboutWindow>();
-        services.AddTransient<LibraryWindow>();
-        services.AddTransient<UpdateDownloadViewModel>(sp =>
-            new UpdateDownloadViewModel(
-                UpdateDownloadViewModel.SharedHttp,
-                sp.GetRequiredService<IProcessService>(),
-                sp.GetService<ILogger<UpdateDownloadViewModel>>()));
-        services.AddTransient<Func<UpdateDownloadViewModel>>(sp => () => sp.GetRequiredService<UpdateDownloadViewModel>());
-        services.AddTransient<Func<UpdateDownloadViewModel, UpdateDownloadWindow>>(_ => vm => new UpdateDownloadWindow(vm));
-        services.AddTransient<IUpdateDownloadService, UpdateDownloadWindowService>();
-        services.AddSingleton<IUpdateService, GitHubUpdateService>();
-        services.AddSingleton<AutoUpdateService>();
-        services.AddSingleton<IAutoUpdateService>(sp => sp.GetRequiredService<AutoUpdateService>());
-        services.AddHostedService(sp => sp.GetRequiredService<AutoUpdateService>());
-        services.AddHostedService<TelemetryHeartbeatService>();
-    }
-
-    private static OverlayWindow CreateOverlayWindow(IServiceProvider sp) => new(
-        sp.GetRequiredService<OverlayViewModel>(),
-        sp.GetRequiredService<IScreenCaptureService>(),
-        sp.GetRequiredService<IScreenRecordingService>(),
-        sp.GetRequiredService<IMouseHookService>(),
-        sp.GetRequiredService<Func<IScreenRecordingService, string, RecordingHudViewModel>>(),
-        sp.GetRequiredService<IEventAggregator>(),
-        sp.GetRequiredService<ILoggerFactory>(),
-        sp.GetRequiredService<IUserSettingsService>(),
-        sp.GetRequiredService<IMessageBoxService>(),
-        sp.GetRequiredService<IFileSystemService>(),
-        sp.GetRequiredService<IOcrService>(),
-        sp.GetRequiredService<ITelemetryService>(),
-        sp.GetRequiredService<RecordingAnnotationViewModel>(),
-        sp.GetRequiredService<Func<BitmapSource, BeautifierWindow>>());
-
     protected override void OnExit(ExitEventArgs e)
     {
         _logger?.LogInformation("Pointframe shutting down");
@@ -293,9 +177,12 @@ public partial class App : Application
             });
         }
 
-        _updateAvailableSubscription?.Dispose();
-        _recordingCompletedSubscription?.Dispose();
-        _captureCompletedSubscription?.Dispose();
+        foreach (var subscription in _eventSubscriptions)
+        {
+            subscription.Dispose();
+        }
+
+        _eventSubscriptions.Clear();
         _globalHotkey.Dispose();
         _trayIconManager?.Dispose();
         _host.StopAsync().GetAwaiter().GetResult();
@@ -394,47 +281,30 @@ public partial class App : Application
         window.Show();
     }
 
-    private void ShowSettingsWindow()
+    private void ShowSettingsWindow() => ShowOrActivateWindow(_settingsWindow, window => _settingsWindow = window);
+
+    private void ShowAboutWindow() => ShowOrActivateWindow(_aboutWindow, window => _aboutWindow = window);
+
+    private void ShowLibraryWindow() => ShowOrActivateWindow(
+        _libraryWindow,
+        window => _libraryWindow = window,
+        window => window.ViewModel.RequestOpen += OpenCaptureFromLibrary);
+
+    private void ShowOrActivateWindow<TWindow>(TWindow? current, Action<TWindow?> store, Action<TWindow>? initialize = null)
+        where TWindow : Window
     {
-        if (_settingsWindow is not null)
+        if (current is not null)
         {
-            _settingsWindow.Activate();
+            current.Activate();
             return;
         }
 
-        _settingsWindow = _host.Services.GetRequiredService<SettingsWindow>();
-        RegisterAutomationWindow(_settingsWindow);
-        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        _settingsWindow.Show();
-    }
-
-    private void ShowAboutWindow()
-    {
-        if (_aboutWindow is not null)
-        {
-            _aboutWindow.Activate();
-            return;
-        }
-
-        _aboutWindow = _host.Services.GetRequiredService<AboutWindow>();
-        RegisterAutomationWindow(_aboutWindow);
-        _aboutWindow.Closed += (_, _) => _aboutWindow = null;
-        _aboutWindow.Show();
-    }
-
-    private void ShowLibraryWindow()
-    {
-        if (_libraryWindow is not null)
-        {
-            _libraryWindow.Activate();
-            return;
-        }
-
-        _libraryWindow = _host.Services.GetRequiredService<LibraryWindow>();
-        _libraryWindow.ViewModel.RequestOpen += OpenCaptureFromLibrary;
-        RegisterAutomationWindow(_libraryWindow);
-        _libraryWindow.Closed += (_, _) => _libraryWindow = null;
-        _libraryWindow.Show();
+        var window = _host.Services.GetRequiredService<TWindow>();
+        initialize?.Invoke(window);
+        RegisterAutomationWindow(window);
+        window.Closed += (_, _) => store(null);
+        store(window);
+        window.Show();
     }
 
     private void OpenCaptureFromLibrary(CaptureItem item)
@@ -529,6 +399,37 @@ public partial class App : Application
 
         var v = message.Result.LatestVersion;
         _telemetry.TrackEvent("update_available", new Dictionary<string, string> { ["version"] = $"{v.Major}.{v.Minor}.{v.Build}" });
+    }
+
+    private ValueTask HandleOpenImageRequested(OpenImageRequestedMessage message)
+    {
+        // Defer until the tray menu has fully unwound so the file dialog keeps focus (see lessons.md).
+        Dispatcher.InvokeAsync(OpenImage, DispatcherPriority.ApplicationIdle);
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask HandleTrimRecordingRequested(TrimRecordingRequestedMessage message)
+    {
+        ShowTrimWindow(message.RecordingPath);
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask HandleShowSettingsWindowRequested(ShowSettingsWindowRequestedMessage message)
+    {
+        ShowSettingsWindow();
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask HandleShowAboutWindowRequested(ShowAboutWindowRequestedMessage message)
+    {
+        ShowAboutWindow();
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask HandleShowLibraryWindowRequested(ShowLibraryWindowRequestedMessage message)
+    {
+        ShowLibraryWindow();
+        return ValueTask.CompletedTask;
     }
 
     private ValueTask HandleRecordingCompleted(RecordingCompletedMessage message)
