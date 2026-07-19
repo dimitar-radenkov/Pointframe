@@ -36,6 +36,7 @@ internal static class AppServiceRegistration
         services.AddSingleton<IUserSettingsService, UserSettingsService>();
         services.AddSingleton<IGlobalHotkeyService, GlobalHotkeyService>();
         services.AddSingleton<IAppErrorHandler, AppErrorHandler>();
+        services.AddSingleton<ITrayIconManager, TrayIconManager>();
         services.AddSingleton<ICaptureLaunchService, CaptureLaunchService>();
         services.AddSingleton<ICaptureLibraryService, CaptureLibraryService>();
         services.AddSingleton<ICaptureTextLookupService, CaptureTextLookupService>();

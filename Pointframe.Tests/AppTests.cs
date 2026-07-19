@@ -17,6 +17,10 @@ public sealed class AppTests
     public void AddPointframeAppServices_RegistersCoreServicesAndFactories()
     {
         var services = new ServiceCollection();
+        // The production host registers logging and configuration; mirror that here.
+        services.AddLogging();
+        services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 
         services.AddPointframeAppServices();
 
@@ -24,6 +28,7 @@ public sealed class AppTests
 
         Assert.IsType<DialogService>(provider.GetRequiredService<IDialogService>());
         Assert.IsType<MessageBoxService>(provider.GetRequiredService<IMessageBoxService>());
+        Assert.IsType<TrayIconManager>(provider.GetRequiredService<ITrayIconManager>());
         Assert.NotNull(provider.GetRequiredService<Func<IScreenRecordingService, string, RecordingHudViewModel>>());
     }
 

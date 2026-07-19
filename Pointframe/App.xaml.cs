@@ -21,7 +21,6 @@ public partial class App : Application
     private IMessageBoxService _messageBox = null!;
     private IUserSettingsService _userSettings = null!;
     private IThemeService _themeService = null!;
-    private IAutoUpdateService _autoUpdate = null!;
     private IDialogService _dialogService = null!;
     private IImageFileService _imageFileService = null!;
     private IGlobalHotkeyService _globalHotkey = null!;
@@ -29,9 +28,7 @@ public partial class App : Application
     private ITrayIconManager _trayIconManager = null!;
     private ICaptureLaunchService _captureLaunch = null!;
     private IActivationTelemetryService _activationTelemetry = null!;
-    private IEventSubscription? _updateAvailableSubscription;
-    private IEventSubscription? _recordingCompletedSubscription;
-    private IEventSubscription? _captureCompletedSubscription;
+    private readonly List<IEventSubscription> _eventSubscriptions = [];
     private ITelemetryService _telemetry = null!;
     private DateTime _sessionStartTime;
     private SettingsWindow? _settingsWindow;
@@ -108,10 +105,14 @@ public partial class App : Application
         if (!automationLaunchOptions.IsAutomationMode)
         {
             var eventAggregator = _host.Services.GetRequiredService<IEventAggregator>();
-            _updateAvailableSubscription = eventAggregator.Subscribe<UpdateAvailableMessage>(HandleUpdateAvailable);
-            _recordingCompletedSubscription = eventAggregator.Subscribe<RecordingCompletedMessage>(HandleRecordingCompleted);
-            _captureCompletedSubscription = eventAggregator.Subscribe<CaptureCompletedMessage>(HandleCaptureCompleted);
-            _autoUpdate = _host.Services.GetRequiredService<IAutoUpdateService>();
+            _eventSubscriptions.Add(eventAggregator.Subscribe<UpdateAvailableMessage>(HandleUpdateAvailable));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<RecordingCompletedMessage>(HandleRecordingCompleted));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<CaptureCompletedMessage>(HandleCaptureCompleted));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<OpenImageRequestedMessage>(HandleOpenImageRequested));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<TrimRecordingRequestedMessage>(HandleTrimRecordingRequested));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<ShowSettingsWindowRequestedMessage>(HandleShowSettingsWindowRequested));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<ShowAboutWindowRequestedMessage>(HandleShowAboutWindowRequested));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<ShowLibraryWindowRequestedMessage>(HandleShowLibraryWindowRequested));
         }
 
         _logger.LogInformation("Pointframe starting up");
@@ -139,24 +140,7 @@ public partial class App : Application
             return;
         }
 
-        _trayIconManager = new TrayIconManager(
-            _host.Services.GetRequiredService<ILogger<TrayIconManager>>(),
-            _messageBox,
-            _host.Services.GetRequiredService<IProcessService>(),
-            _host.Services.GetRequiredService<IUpdateService>(),
-            _host.Services.GetRequiredService<IAppVersionService>(),
-            _autoUpdate,
-            _userSettings,
-            _host.Services.GetRequiredService<IGifExportService>(),
-            _telemetry,
-            onNewSnip: () => _captureLaunch.StartRegionSnip("tray"),
-            onWholeScreenSnip: () => _captureLaunch.StartWholeScreenSnip("tray"),
-            onCleanWindowSnip: () => _captureLaunch.StartCleanWindowSnip("tray"),
-            onOpenImage: () => Dispatcher.InvokeAsync(OpenImage, System.Windows.Threading.DispatcherPriority.ApplicationIdle),
-            onTrimRecording: ShowTrimWindow,
-            onShowSettings: ShowSettingsWindow,
-            onShowAbout: ShowAboutWindow,
-            onShowLibrary: ShowLibraryWindow);
+        _trayIconManager = _host.Services.GetRequiredService<ITrayIconManager>();
         _trayIconManager.Initialize();
         startupTimer.Stop();
         _telemetry.TrackEvent("startup_completed", new Dictionary<string, string>
@@ -193,9 +177,12 @@ public partial class App : Application
             });
         }
 
-        _updateAvailableSubscription?.Dispose();
-        _recordingCompletedSubscription?.Dispose();
-        _captureCompletedSubscription?.Dispose();
+        foreach (var subscription in _eventSubscriptions)
+        {
+            subscription.Dispose();
+        }
+
+        _eventSubscriptions.Clear();
         _globalHotkey.Dispose();
         _trayIconManager?.Dispose();
         _host.StopAsync().GetAwaiter().GetResult();
@@ -412,6 +399,37 @@ public partial class App : Application
 
         var v = message.Result.LatestVersion;
         _telemetry.TrackEvent("update_available", new Dictionary<string, string> { ["version"] = $"{v.Major}.{v.Minor}.{v.Build}" });
+    }
+
+    private ValueTask HandleOpenImageRequested(OpenImageRequestedMessage message)
+    {
+        // Defer until the tray menu has fully unwound so the file dialog keeps focus (see lessons.md).
+        Dispatcher.InvokeAsync(OpenImage, DispatcherPriority.ApplicationIdle);
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask HandleTrimRecordingRequested(TrimRecordingRequestedMessage message)
+    {
+        ShowTrimWindow(message.RecordingPath);
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask HandleShowSettingsWindowRequested(ShowSettingsWindowRequestedMessage message)
+    {
+        ShowSettingsWindow();
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask HandleShowAboutWindowRequested(ShowAboutWindowRequestedMessage message)
+    {
+        ShowAboutWindow();
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask HandleShowLibraryWindowRequested(ShowLibraryWindowRequestedMessage message)
+    {
+        ShowLibraryWindow();
+        return ValueTask.CompletedTask;
     }
 
     private ValueTask HandleRecordingCompleted(RecordingCompletedMessage message)

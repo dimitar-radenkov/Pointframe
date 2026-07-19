@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows;
 using Hardcodet.Wpf.TaskbarNotification;
+using Pointframe.Services.Messaging;
 using WpfApplication = System.Windows.Application;
 using WpfContextMenu = System.Windows.Controls.ContextMenu;
 using WpfMenuItem = System.Windows.Controls.MenuItem;
@@ -19,14 +20,8 @@ internal sealed class TrayIconManager : ITrayIconManager
     private readonly IUserSettingsService _userSettings;
     private readonly IGifExportService _gifExportService;
     private readonly ITelemetryService _telemetry;
-    private readonly Action _onNewSnip;
-    private readonly Action _onWholeScreenSnip;
-    private readonly Action _onCleanWindowSnip;
-    private readonly Action _onOpenImage;
-    private readonly Action<string> _onTrimRecording;
-    private readonly Action _onShowSettings;
-    private readonly Action _onShowAbout;
-    private readonly Action _onShowLibrary;
+    private readonly ICaptureLaunchService _captureLaunch;
+    private readonly IEventAggregator _eventAggregator;
 
     private const int MaxRecentItems = 5;
 
@@ -49,16 +44,9 @@ internal sealed class TrayIconManager : ITrayIconManager
         IUserSettingsService userSettings,
         IGifExportService gifExportService,
         ITelemetryService telemetry,
-        Action onNewSnip,
-        Action onWholeScreenSnip,
-        Action onCleanWindowSnip,
-        Action onOpenImage,
-        Action<string> onTrimRecording,
-        Action onShowSettings,
-        Action onShowAbout,
-        Action onShowLibrary)
+        ICaptureLaunchService captureLaunch,
+        IEventAggregator eventAggregator)
     {
-        _onShowLibrary = onShowLibrary;
         _logger = logger;
         _messageBox = messageBox;
         _processService = processService;
@@ -68,13 +56,8 @@ internal sealed class TrayIconManager : ITrayIconManager
         _userSettings = userSettings;
         _gifExportService = gifExportService;
         _telemetry = telemetry;
-        _onNewSnip = onNewSnip;
-        _onWholeScreenSnip = onWholeScreenSnip;
-        _onCleanWindowSnip = onCleanWindowSnip;
-        _onOpenImage = onOpenImage;
-        _onTrimRecording = onTrimRecording;
-        _onShowSettings = onShowSettings;
-        _onShowAbout = onShowAbout;
+        _captureLaunch = captureLaunch;
+        _eventAggregator = eventAggregator;
     }
 
     public void Initialize()
@@ -233,14 +216,14 @@ internal sealed class TrayIconManager : ITrayIconManager
         return menuItem;
     }
 
-    private void TrayIcon_LeftClick(object sender, RoutedEventArgs e) => _onNewSnip();
-    private void NewSnip_Click(object sender, RoutedEventArgs e) => _onNewSnip();
-    private void WholeScreenSnip_Click(object sender, RoutedEventArgs e) => _onWholeScreenSnip();
-    private void CleanWindowSnip_Click(object sender, RoutedEventArgs e) => _onCleanWindowSnip();
-    private void Settings_Click(object sender, RoutedEventArgs e) => _onShowSettings();
-    private void About_Click(object sender, RoutedEventArgs e) => _onShowAbout();
-    private void Library_Click(object sender, RoutedEventArgs e) => _onShowLibrary();
-    private void OpenImage_Click(object sender, RoutedEventArgs e) => _onOpenImage();
+    private void TrayIcon_LeftClick(object sender, RoutedEventArgs e) => _captureLaunch.StartRegionSnip("tray");
+    private void NewSnip_Click(object sender, RoutedEventArgs e) => _captureLaunch.StartRegionSnip("tray");
+    private void WholeScreenSnip_Click(object sender, RoutedEventArgs e) => _captureLaunch.StartWholeScreenSnip("tray");
+    private void CleanWindowSnip_Click(object sender, RoutedEventArgs e) => _captureLaunch.StartCleanWindowSnip("tray");
+    private void Settings_Click(object sender, RoutedEventArgs e) => _ = _eventAggregator.Publish(new ShowSettingsWindowRequestedMessage());
+    private void About_Click(object sender, RoutedEventArgs e) => _ = _eventAggregator.Publish(new ShowAboutWindowRequestedMessage());
+    private void Library_Click(object sender, RoutedEventArgs e) => _ = _eventAggregator.Publish(new ShowLibraryWindowRequestedMessage());
+    private void OpenImage_Click(object sender, RoutedEventArgs e) => _ = _eventAggregator.Publish(new OpenImageRequestedMessage());
     private void Exit_Click(object sender, RoutedEventArgs e) => WpfApplication.Current.Shutdown();
 
     private void OpenSnipsFolder_Click(object sender, RoutedEventArgs e)
@@ -544,7 +527,7 @@ internal sealed class TrayIconManager : ITrayIconManager
 
         _telemetry.TrackEvent("video_trim_opened");
         DismissTransientUi();
-        _onTrimRecording(recentRecording.OutputPath);
+        _ = _eventAggregator.Publish(new TrimRecordingRequestedMessage(recentRecording.OutputPath));
     }
 
     private async void ExportRecentRecordingGif_Click(object sender, RoutedEventArgs e)

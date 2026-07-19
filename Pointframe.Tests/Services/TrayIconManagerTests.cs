@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Pointframe.Models;
 using Pointframe.Services;
+using Pointframe.Services.Messaging;
 using Pointframe.Tests.Services.Handlers;
 using Xunit;
 
@@ -282,10 +283,10 @@ public sealed class TrayIconManagerTests
         StaTestHelper.Run(() =>
         {
             var messageBoxMock = new Mock<IMessageBoxService>();
-            var trimRequested = false;
+            var eventAggregatorMock = new Mock<IEventAggregator>();
             var manager = CreateManager(
                 messageBox: messageBoxMock.Object,
-                onTrimRecording: _ => trimRequested = true);
+                eventAggregator: eventAggregatorMock.Object);
 
             var missingPath = Path.Combine(Path.GetTempPath(), $"missing-{Guid.NewGuid()}.mp4");
             var recentRecording = CreateRecentRecordingItem(missingPath, "00:07");
@@ -296,17 +297,19 @@ public sealed class TrayIconManagerTests
             messageBoxMock.Verify(service => service.ShowWarning(
                 "The recording file could not be found.",
                 "Trim Recording"), Times.Once);
-            Assert.False(trimRequested);
+            eventAggregatorMock.Verify(
+                aggregator => aggregator.Publish(It.IsAny<TrimRecordingRequestedMessage>()),
+                Times.Never);
         });
     }
 
     [Fact]
-    public void TrimRecentRecording_Click_WhenRecordingExists_InvokesTrimCallback()
+    public void TrimRecentRecording_Click_WhenRecordingExists_PublishesTrimRequest()
     {
         StaTestHelper.Run(() =>
         {
-            string? trimmedPath = null;
-            var manager = CreateManager(onTrimRecording: path => trimmedPath = path);
+            var eventAggregatorMock = new Mock<IEventAggregator>();
+            var manager = CreateManager(eventAggregator: eventAggregatorMock.Object);
 
             var tempMp4 = Path.GetTempFileName();
             var recentRecording = CreateRecentRecordingItem(tempMp4, "00:09");
@@ -316,12 +319,52 @@ public sealed class TrayIconManagerTests
             {
                 InvokePrivate(manager, "TrimRecentRecording_Click", menuItem, new RoutedEventArgs());
 
-                Assert.Equal(tempMp4, trimmedPath);
+                eventAggregatorMock.Verify(
+                    aggregator => aggregator.Publish(It.Is<TrimRecordingRequestedMessage>(message => message.RecordingPath == tempMp4)),
+                    Times.Once);
             }
             finally
             {
                 File.Delete(tempMp4);
             }
+        });
+    }
+
+    [Fact]
+    public void SnipMenuClicks_ForwardToCaptureLaunchService()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var captureLaunchMock = new Mock<ICaptureLaunchService>();
+            var manager = CreateManager(captureLaunch: captureLaunchMock.Object);
+
+            InvokePrivate(manager, "NewSnip_Click", new object(), new RoutedEventArgs());
+            InvokePrivate(manager, "WholeScreenSnip_Click", new object(), new RoutedEventArgs());
+            InvokePrivate(manager, "CleanWindowSnip_Click", new object(), new RoutedEventArgs());
+
+            captureLaunchMock.Verify(service => service.StartRegionSnip("tray"), Times.Once);
+            captureLaunchMock.Verify(service => service.StartWholeScreenSnip("tray"), Times.Once);
+            captureLaunchMock.Verify(service => service.StartCleanWindowSnip("tray"), Times.Once);
+        });
+    }
+
+    [Fact]
+    public void ShellMenuClicks_PublishWindowRequests()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var eventAggregatorMock = new Mock<IEventAggregator>();
+            var manager = CreateManager(eventAggregator: eventAggregatorMock.Object);
+
+            InvokePrivate(manager, "Settings_Click", new object(), new RoutedEventArgs());
+            InvokePrivate(manager, "About_Click", new object(), new RoutedEventArgs());
+            InvokePrivate(manager, "Library_Click", new object(), new RoutedEventArgs());
+            InvokePrivate(manager, "OpenImage_Click", new object(), new RoutedEventArgs());
+
+            eventAggregatorMock.Verify(aggregator => aggregator.Publish(It.IsAny<ShowSettingsWindowRequestedMessage>()), Times.Once);
+            eventAggregatorMock.Verify(aggregator => aggregator.Publish(It.IsAny<ShowAboutWindowRequestedMessage>()), Times.Once);
+            eventAggregatorMock.Verify(aggregator => aggregator.Publish(It.IsAny<ShowLibraryWindowRequestedMessage>()), Times.Once);
+            eventAggregatorMock.Verify(aggregator => aggregator.Publish(It.IsAny<OpenImageRequestedMessage>()), Times.Once);
         });
     }
 
@@ -656,7 +699,8 @@ public sealed class TrayIconManagerTests
         IAutoUpdateService? autoUpdate = null,
         IUserSettingsService? userSettings = null,
         IGifExportService? gifExportService = null,
-        Action<string>? onTrimRecording = null)
+        ICaptureLaunchService? captureLaunch = null,
+        IEventAggregator? eventAggregator = null)
     {
         return new TrayIconManager(
             NullLogger<TrayIconManager>.Instance,
@@ -668,14 +712,8 @@ public sealed class TrayIconManagerTests
             userSettings ?? Mock.Of<IUserSettingsService>(),
             gifExportService ?? Mock.Of<IGifExportService>(),
             Mock.Of<ITelemetryService>(),
-            onNewSnip: static () => { },
-            onWholeScreenSnip: static () => { },
-            onCleanWindowSnip: static () => { },
-            onOpenImage: static () => { },
-            onTrimRecording: onTrimRecording ?? (static _ => { }),
-            onShowSettings: static () => { },
-            onShowAbout: static () => { },
-            onShowLibrary: static () => { });
+            captureLaunch ?? Mock.Of<ICaptureLaunchService>(),
+            eventAggregator ?? Mock.Of<IEventAggregator>());
     }
 
     private static void InvokePrivate(object target, string methodName, params object[] args)
