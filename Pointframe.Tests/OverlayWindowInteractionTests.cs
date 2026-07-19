@@ -155,6 +155,7 @@ public sealed class OverlayWindowInteractionTests
                 var lasso = GetPrivateField<OcrLassoController>(context.Window, "_ocrLasso");
                 lasso.HandlePointerDown(new Point(12d, 14d));
                 Assert.Equal(Visibility.Visible, lassoRect.Visibility);
+                Assert.True(lasso.HasPendingLasso);
 
                 var args = CreateKeyArgs(Key.Escape);
                 InvokePrivate(context.Window, "Window_KeyDown", context.Window, args);

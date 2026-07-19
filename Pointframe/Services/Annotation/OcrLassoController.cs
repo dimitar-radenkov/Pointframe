@@ -103,6 +103,11 @@ internal sealed class OcrLassoController
             return false;
         }
 
+        if (_canvas.IsMouseCaptured)
+        {
+            _canvas.ReleaseMouseCapture();
+        }
+
         _viewModel.IsTextLassoActive = false;
         _lassoRect.Visibility = Visibility.Collapsed;
         _lassoStart = null;
