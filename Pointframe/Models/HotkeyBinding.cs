@@ -35,4 +35,36 @@ public readonly record struct HotkeyBinding(uint Key, HotkeyModifiers Modifiers)
             return string.Join("+", parts);
         }
     }
+
+    public bool Matches(Key pressedKey, ModifierKeys pressedModifiers)
+    {
+        if (Key == 0)
+        {
+            return false;
+        }
+
+        return pressedKey == KeyInterop.KeyFromVirtualKey((int)Key)
+               && pressedModifiers == ToModifierKeys(Modifiers);
+    }
+
+    private static ModifierKeys ToModifierKeys(HotkeyModifiers modifiers)
+    {
+        var result = ModifierKeys.None;
+        if (modifiers.HasFlag(HotkeyModifiers.Ctrl))
+        {
+            result |= ModifierKeys.Control;
+        }
+
+        if (modifiers.HasFlag(HotkeyModifiers.Shift))
+        {
+            result |= ModifierKeys.Shift;
+        }
+
+        if (modifiers.HasFlag(HotkeyModifiers.Alt))
+        {
+            result |= ModifierKeys.Alt;
+        }
+
+        return result;
+    }
 }

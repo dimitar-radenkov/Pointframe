@@ -119,11 +119,13 @@ public partial class OverlayWindow
         Int32Rect captureBoundsPixels,
         string monitorName)
     {
-        var monitorBounds = Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
+        var screen = Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
             captureBoundsPixels.X,
             captureBoundsPixels.Y,
             captureBoundsPixels.Width,
-            captureBoundsPixels.Height)).Bounds;
+            captureBoundsPixels.Height));
+        var monitorBounds = screen.Bounds;
+        var workArea = screen.WorkingArea;
 
         return CreateRecordingSessionGeometry(
             selectionRect,
@@ -135,26 +137,10 @@ public partial class OverlayWindow
                 monitorBounds.Width,
                 monitorBounds.Height),
             new Int32Rect(
-                Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
-                    captureBoundsPixels.X,
-                    captureBoundsPixels.Y,
-                    captureBoundsPixels.Width,
-                    captureBoundsPixels.Height)).WorkingArea.X,
-                Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
-                    captureBoundsPixels.X,
-                    captureBoundsPixels.Y,
-                    captureBoundsPixels.Width,
-                    captureBoundsPixels.Height)).WorkingArea.Y,
-                Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
-                    captureBoundsPixels.X,
-                    captureBoundsPixels.Y,
-                    captureBoundsPixels.Width,
-                    captureBoundsPixels.Height)).WorkingArea.Width,
-                Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
-                    captureBoundsPixels.X,
-                    captureBoundsPixels.Y,
-                    captureBoundsPixels.Width,
-                    captureBoundsPixels.Height)).WorkingArea.Height));
+                workArea.X,
+                workArea.Y,
+                workArea.Width,
+                workArea.Height));
     }
 
     internal static RecordingSessionGeometry CreateRecordingSessionGeometry(
