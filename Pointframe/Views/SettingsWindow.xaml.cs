@@ -74,16 +74,16 @@ public partial class SettingsWindow : Window
         // Non-modifier keys are intercepted by the hook in capture mode.
         // This handler only fires for modifier keys — update the live display.
         e.Handled = true;
-        UpdateCaptureHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(CaptureHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void HotkeyCapture_PreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateCaptureHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(CaptureHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
-    private void UpdateCaptureHotkeyCurrentInput(ModifierKeys modifiers)
+    private static void SetHotkeyCaptureInput(TextBlock target, ModifierKeys modifiers)
     {
         var parts = new System.Collections.Generic.List<string>();
         if ((modifiers & ModifierKeys.Control) != 0)
@@ -101,7 +101,7 @@ public partial class SettingsWindow : Window
             parts.Add("Alt");
         }
 
-        CaptureHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
+        target.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
     }
 
     private void HotkeyRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -138,7 +138,7 @@ public partial class SettingsWindow : Window
         // Non-modifier keys are intercepted by the hook in capture mode.
         // This handler only fires for modifier keys — update the live display.
         e.Handled = true;
-        UpdateRecordHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(RecordHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void WholeScreenRecordHotkeyRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -173,13 +173,13 @@ public partial class SettingsWindow : Window
     private void CleanWindowHotkeyCapture_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateCleanWindowHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(CleanWindowHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void CleanWindowHotkeyCapture_PreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateCleanWindowHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(CleanWindowHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void CleanWindowHotkeyRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -214,40 +214,19 @@ public partial class SettingsWindow : Window
     private void RecordHotkeyCapture_PreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateRecordHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
-    }
-
-    private void UpdateRecordHotkeyCurrentInput(ModifierKeys modifiers)
-    {
-        var parts = new System.Collections.Generic.List<string>();
-        if ((modifiers & ModifierKeys.Control) != 0)
-        {
-            parts.Add("Ctrl");
-        }
-
-        if ((modifiers & ModifierKeys.Shift) != 0)
-        {
-            parts.Add("Shift");
-        }
-
-        if ((modifiers & ModifierKeys.Alt) != 0)
-        {
-            parts.Add("Alt");
-        }
-
-        RecordHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
+        SetHotkeyCaptureInput(RecordHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void ShortcutsCleanWindowHotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateShortcutsCleanWindowHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(ShortcutsCleanWindowHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void ShortcutsCleanWindowHotkeyCapture_PreviewKeyUp(object sender, KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateShortcutsCleanWindowHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(ShortcutsCleanWindowHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void ShortcutsCleanWindowHotkeyRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -266,58 +245,16 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void UpdateShortcutsCleanWindowHotkeyCurrentInput(ModifierKeys modifiers)
-    {
-        var parts = new System.Collections.Generic.List<string>();
-        if ((modifiers & ModifierKeys.Control) != 0)
-        {
-            parts.Add("Ctrl");
-        }
-
-        if ((modifiers & ModifierKeys.Shift) != 0)
-        {
-            parts.Add("Shift");
-        }
-
-        if ((modifiers & ModifierKeys.Alt) != 0)
-        {
-            parts.Add("Alt");
-        }
-
-        ShortcutsCleanWindowHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
-    }
-
-    private void UpdateCleanWindowHotkeyCurrentInput(ModifierKeys modifiers)
-    {
-        var parts = new System.Collections.Generic.List<string>();
-        if ((modifiers & ModifierKeys.Control) != 0)
-        {
-            parts.Add("Ctrl");
-        }
-
-        if ((modifiers & ModifierKeys.Shift) != 0)
-        {
-            parts.Add("Shift");
-        }
-
-        if ((modifiers & ModifierKeys.Alt) != 0)
-        {
-            parts.Add("Alt");
-        }
-
-        CleanWindowHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
-    }
-
     private void ShortcutsRegionHotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateShortcutsRegionHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(ShortcutsCaptureHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void ShortcutsRegionHotkeyCapture_PreviewKeyUp(object sender, KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateShortcutsRegionHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(ShortcutsCaptureHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void ShortcutsRegionHotkeyRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -336,37 +273,16 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void UpdateShortcutsRegionHotkeyCurrentInput(ModifierKeys modifiers)
-    {
-        var parts = new System.Collections.Generic.List<string>();
-        if ((modifiers & ModifierKeys.Control) != 0)
-        {
-            parts.Add("Ctrl");
-        }
-
-        if ((modifiers & ModifierKeys.Shift) != 0)
-        {
-            parts.Add("Shift");
-        }
-
-        if ((modifiers & ModifierKeys.Alt) != 0)
-        {
-            parts.Add("Alt");
-        }
-
-        ShortcutsCaptureHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
-    }
-
     private void ShortcutsRecordHotkeyCapture_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateShortcutsRecordHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(ShortcutsRecordHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void ShortcutsRecordHotkeyCapture_PreviewKeyUp(object sender, KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateShortcutsRecordHotkeyCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(ShortcutsRecordHotkeyCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void ShortcutsRecordHotkeyRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -385,37 +301,16 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void UpdateShortcutsRecordHotkeyCurrentInput(ModifierKeys modifiers)
-    {
-        var parts = new System.Collections.Generic.List<string>();
-        if ((modifiers & ModifierKeys.Control) != 0)
-        {
-            parts.Add("Ctrl");
-        }
-
-        if ((modifiers & ModifierKeys.Shift) != 0)
-        {
-            parts.Add("Shift");
-        }
-
-        if ((modifiers & ModifierKeys.Alt) != 0)
-        {
-            parts.Add("Alt");
-        }
-
-        ShortcutsRecordHotkeyCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
-    }
-
     private void OverlayShortcutCapture_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateOverlayShortcutCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(OverlayShortcutCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void OverlayShortcutCapture_PreviewKeyUp(object sender, KeyEventArgs e)
     {
         e.Handled = true;
-        UpdateOverlayShortcutCurrentInput(e.KeyboardDevice.Modifiers);
+        SetHotkeyCaptureInput(OverlayShortcutCurrentInput, e.KeyboardDevice.Modifiers);
     }
 
     private void OverlayShortcutRecordingPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -443,27 +338,6 @@ public partial class SettingsWindow : Window
         }
 
         _vm.ApplyOverlayShortcutCapture(vk, modifiers);
-    }
-
-    private void UpdateOverlayShortcutCurrentInput(ModifierKeys modifiers)
-    {
-        var parts = new System.Collections.Generic.List<string>();
-        if ((modifiers & ModifierKeys.Control) != 0)
-        {
-            parts.Add("Ctrl");
-        }
-
-        if ((modifiers & ModifierKeys.Shift) != 0)
-        {
-            parts.Add("Shift");
-        }
-
-        if ((modifiers & ModifierKeys.Alt) != 0)
-        {
-            parts.Add("Alt");
-        }
-
-        OverlayShortcutCurrentInput.Text = parts.Count > 0 ? string.Join(" + ", parts) + " + ?" : "—";
     }
 
     private void SectionNavigation_SelectionChanged(object sender, SelectionChangedEventArgs e)
