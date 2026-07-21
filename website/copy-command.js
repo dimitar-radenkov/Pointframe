@@ -1,17 +1,45 @@
-// UI module: handles winget command copy interactions and related tracking events.
+// UI module: handles install command copy interactions, the winget/scoop
+// package-manager toggle, and related tracking events.
 export function initCopyCommand(trackEvent) {
     const copyButton = document.getElementById("copy-command-button");
     const copyStatus = document.getElementById("copy-command-status");
-    const command = "winget install DimitarRadenkov.Pointframe";
+    const commandText = document.getElementById("copy-command-text");
+    const tabs = Array.from(document.querySelectorAll(".install-tab"));
 
     if (!(copyButton instanceof HTMLButtonElement) || !(copyStatus instanceof HTMLElement)) {
         return;
     }
 
+    let activeCommand = "winget install DimitarRadenkov.Pointframe";
+    let activeManager = "winget";
+
     const setStatus = (message, kind) => {
         copyStatus.textContent = message;
         copyStatus.className = kind ? `copy-status is-${kind}` : "copy-status";
     };
+
+    for (const tab of tabs) {
+        tab.addEventListener("click", () => {
+            for (const other of tabs) {
+                const isActive = other === tab;
+                other.classList.toggle("is-active", isActive);
+                other.setAttribute("aria-pressed", isActive ? "true" : "false");
+            }
+
+            activeCommand = tab.dataset.command || activeCommand;
+            activeManager = tab.dataset.manager || activeManager;
+
+            if (commandText instanceof HTMLElement) {
+                commandText.textContent = activeCommand;
+            }
+
+            setStatus("", "");
+            trackEvent("install_manager_selected", {
+                cta_location: "hero",
+                manager: activeManager
+            });
+        });
+    }
 
     const fallbackCopy = (text) => {
         const textArea = document.createElement("textarea");
@@ -34,6 +62,8 @@ export function initCopyCommand(trackEvent) {
         copyButton.disabled = true;
         setStatus("Copying command...", "");
 
+        const command = activeCommand;
+
         try {
             if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
                 await navigator.clipboard.writeText(command);
@@ -44,6 +74,7 @@ export function initCopyCommand(trackEvent) {
 
             trackEvent("winget_command_copied", {
                 cta_location: "hero",
+                manager: activeManager,
                 command
             });
             setStatus("Command copied to clipboard.", "success");
@@ -53,6 +84,7 @@ export function initCopyCommand(trackEvent) {
                 fallbackCopy(command);
                 trackEvent("winget_command_copied", {
                     cta_location: "hero",
+                    manager: activeManager,
                     command,
                     copied_via: "fallback"
                 });
@@ -61,6 +93,7 @@ export function initCopyCommand(trackEvent) {
             catch {
                 trackEvent("winget_command_copy_failed", {
                     cta_location: "hero",
+                    manager: activeManager,
                     command
                 });
                 setStatus("Could not copy automatically. Please copy the command manually.", "error");

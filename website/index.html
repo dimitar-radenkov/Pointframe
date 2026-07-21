@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pointframe - Screen Capture and Recording for Windows</title>
     <meta name="google-site-verification" content="JCIyqMnw-rGhSTm6JTGdaDzOQDnhKaqcuhP44x2W6Cc">
-    <meta name="description" content="Pointframe is a Windows screen capture and recording tool with live annotations, blur redaction, OCR, and pinned screenshots.">
+    <meta name="description" content="Pointframe is a Windows screen capture and recording tool with live annotations, blur redaction, OCR, a searchable capture library, and pinned screenshots.">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://dimitar-radenkov.github.io/Pointframe/">
     <link rel="icon" href="./favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="./app-icon.png">
     <meta property="og:type" content="website">
     <meta property="og:title" content="Pointframe - Screen Capture and Recording for Windows">
-    <meta property="og:description" content="Capture screenshots, record your screen, annotate live, blur sensitive data, and extract text with OCR on Windows.">
+    <meta property="og:description" content="Capture screenshots, record your screen, annotate live, blur sensitive data, trim recordings, and extract text with OCR on Windows.">
     <meta property="og:url" content="https://dimitar-radenkov.github.io/Pointframe/">
     <meta property="og:site_name" content="Pointframe">
     <meta property="og:image" content="https://dimitar-radenkov.github.io/Pointframe/social-preview.png">
@@ -21,7 +21,7 @@
     <meta property="og:image:alt" content="Pointframe social preview showing screen capture, recording, and OCR workflow highlights.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Pointframe - Screen Capture and Recording for Windows">
-    <meta name="twitter:description" content="Pointframe is a lightweight Windows screenshot and screen recording tool with live annotations, OCR, blur, and pinned screenshots.">
+    <meta name="twitter:description" content="Pointframe is a lightweight Windows screenshot and screen recording tool with live annotations, OCR, blur, video trimming, and a searchable capture library.">
     <meta name="twitter:image" content="https://dimitar-radenkov.github.io/Pointframe/social-preview.png">
     <meta name="twitter:image:alt" content="Pointframe social preview showing screen capture, recording, and OCR workflow highlights.">
     <link rel="stylesheet" href="./styles.css">
@@ -33,7 +33,7 @@
             "applicationCategory": "UtilitiesApplication",
             "applicationSubCategory": "Screen Capture Tool",
             "operatingSystem": "Windows 10, Windows 11",
-            "description": "Pointframe is a Windows screen capture, OCR, and screen recording tool with live annotations, blur redaction, and pinned screenshots.",
+            "description": "Pointframe is a Windows screen capture, OCR, and screen recording tool with live annotations, blur redaction, video trimming, watermarks, a searchable capture library, and pinned screenshots.",
             "downloadUrl": "https://github.com/dimitar-radenkov/Pointframe/releases/latest",
             "url": "https://dimitar-radenkov.github.io/Pointframe/",
             "softwareVersion": "Latest",
@@ -50,6 +50,8 @@
                 "screen capture tool for Windows",
                 "screen recorder with annotations",
                 "OCR from screenshot",
+                "searchable screenshot library",
+                "trim screen recording Windows",
                 "Snagit alternative",
                 "Greenshot alternative",
                 "ShareX alternative"
@@ -59,6 +61,8 @@
 </head>
 <body>
 
+    <a class="skip-link" href="#top">Skip to content</a>
+
     <!-- Navigation -->
     <nav class="site-nav">
         <div class="container nav-inner">
@@ -66,16 +70,17 @@
                 <img src="./app-icon.png" alt="" class="brand-logo" width="32" height="32">
                 <span>Pointframe</span>
             </a>
-            <div class="nav-links">
+            <div class="nav-links nav-links-primary">
                 <a href="#features" class="nav-link">Features</a>
+                <a href="#whats-new" class="nav-link">What's new</a>
                 <a href="#compare" class="nav-link">Compare</a>
                 <a href="#resources" class="nav-link">Guides</a>
-                <a href="#use-cases" class="nav-link">Use Cases</a>
                 <a href="https://github.com/dimitar-radenkov/Pointframe" target="_blank" rel="noopener noreferrer" class="github-link" aria-label="Open Pointframe on GitHub">
                         <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path>
                         </svg>
                 </a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-cta js-utm-link" data-utm-campaign="homepage_download" data-utm-medium="cta" data-utm-content="nav_primary" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="nav">Download</a>
             </div>
         </div>
     </nav>
@@ -83,12 +88,12 @@
     <!-- Hero Section -->
     <main id="top" class="hero">
         <div class="container hero-panel">
-            <p class="hero-eyebrow">A Windows screen capture and recording tool for bug reports, tutorials, and fast feedback.</p>
+            <p class="hero-eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>Free, open source, and actively developed for Windows 10 and 11</p>
             <h1 class="hero-title">
-                Pointframe helps you <span class="gradient-text">show exactly what matters</span>
+                Pointframe helps you <span class="capture-frame"><span class="gradient-text">show exactly what matters</span></span>
             </h1>
             <p class="hero-copy">
-                Pointframe is a Windows screen capture and recording tool with live annotations, OCR, blur redaction, and pinned screenshots. Built for bug reports, tutorials, and fast feedback.
+                Capture, record, and explain your screen in one tool: live annotations while recording, blur redaction, OCR text extraction, pinned screenshots, and a capture library you can search by the text inside your screenshots.
             </p>
 
             <div class="proof-badges" aria-label="Product proof points">
@@ -102,30 +107,35 @@
                     <img src="https://img.shields.io/badge/winget-DimitarRadenkov.Pointframe-0ea5e9?style=flat-square" alt="Pointframe winget package badge">
                 </a>
             </div>
-            
+
             <div class="hero-actions">
                 <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="homepage_download" data-utm-medium="cta" data-utm-content="hero_primary" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="hero">
                     <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                     Download for Windows
                 </a>
-                
-                <button id="copy-command-button" type="button" class="command-button" aria-describedby="copy-command-status">
-                    <span class="command-content">
-                        <span class="command-text"><span class="command-prefix">$</span> winget install DimitarRadenkov.Pointframe</span>
-                    </span>
-                    <span class="command-icon" aria-hidden="true">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                    </span>
-                    <span class="command-tooltip">Copy command</span>
-                </button>
+
+                <div class="command-group">
+                    <div class="install-tabs" role="group" aria-label="Choose a package manager">
+                        <button type="button" class="install-tab is-active" data-manager="winget" data-command="winget install DimitarRadenkov.Pointframe" aria-pressed="true">winget</button>
+                        <button type="button" class="install-tab" data-manager="scoop" data-command="scoop install pointframe" aria-pressed="false">scoop</button>
+                    </div>
+                    <button id="copy-command-button" type="button" class="command-button" aria-describedby="copy-command-status">
+                        <span class="command-content">
+                            <span class="command-text"><span class="command-prefix">$</span> <span id="copy-command-text">winget install DimitarRadenkov.Pointframe</span></span>
+                        </span>
+                        <span class="command-icon" aria-hidden="true">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </span>
+                        <span class="command-tooltip">Copy command</span>
+                    </button>
+                </div>
             </div>
             <p id="copy-command-status" class="copy-status" role="status" aria-live="polite"></p>
-            <p class="copy-status">Pointframe uses the winget package ID DimitarRadenkov.Pointframe starting with the 5.0 release line.</p>
 
             <div class="trust-strip" aria-label="Trust and setup highlights">
                 <span>Free and open source</span>
                 <span>No account required</span>
-                <span>Install in seconds with winget</span>
+                <span>Install via winget or Scoop</span>
                 <span>Built for Windows 10 and 11</span>
             </div>
 
@@ -137,7 +147,7 @@
                 </article>
                 <article class="workflow-card">
                     <h2 class="workflow-title">Create guided recordings</h2>
-                    <p class="workflow-copy">Record your screen with live drawing, blur sensitive data, and export MP4 or GIF for docs and demos.</p>
+                    <p class="workflow-copy">Record your screen with live drawing, blur sensitive data, trim the result, and export MP4 or GIF for docs and demos.</p>
                     <a href="./screen-recorder-with-annotations-windows.html" class="workflow-link">See recording workflow</a>
                 </article>
                 <article class="workflow-card">
@@ -150,7 +160,7 @@
             <!-- Video Demo -->
             <div class="video-shell">
                 <div class="video-overlay"></div>
-                <video src="./hero-demo.mp4" class="video-player" poster="./social-preview.png" autoplay loop muted controls></video>
+                <video src="./hero-demo.mp4" class="video-player" poster="./social-preview.png" autoplay loop muted playsinline controls></video>
             </div>
         </div>
     </main>
@@ -164,70 +174,159 @@
             </div>
 
             <div class="feature-grid">
-                <!-- Feature 1 -->
+                <!-- 1 -->
                 <article class="feature-card">
                     <div class="feature-icon blue">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                     </div>
-                    <h3 class="feature-title">Live Video Annotations</h3>
-                    <p class="feature-copy">Draw, highlight, and point things out <em>while</em> you are recording. No need for complicated post-production video editing to explain a bug or tutorial.</p>
+                    <div class="feature-header">
+                        <h3 class="feature-title">Live Video Annotations</h3>
+                    </div>
+                    <p class="feature-copy">Draw, highlight, and point things out <em>while</em> you are recording. Switch between draw mode and interact mode from the floating HUD. No need for complicated post-production video editing to explain a bug or tutorial.</p>
+                    <p class="feature-meta"><span class="kbd">Ctrl+Shift+R</span> starts a whole-screen recording</p>
                 </article>
 
-                <!-- Feature 2 -->
+                <!-- 2 -->
                 <article class="feature-card">
                     <div class="feature-icon teal">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
                     </div>
-                    <h3 class="feature-title">Privacy First (Live Blur)</h3>
+                    <div class="feature-header">
+                        <h3 class="feature-title">Privacy First (Live Blur)</h3>
+                    </div>
                     <p class="feature-copy">Drag over sensitive content (passwords, emails, API keys) to apply a Gaussian blur instantly. It stays blurred even in your exported video recordings.</p>
                 </article>
 
-                <!-- Feature 3 -->
+                <!-- 3 -->
                 <article class="feature-card">
                     <div class="feature-icon green">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
                     </div>
-                    <h3 class="feature-title">Built-in OCR (Text Extraction)</h3>
-                    <p class="feature-copy">Can't copy text from an image or video? Just lasso the text on your screen with Pointframe, and it instantly extracts and copies it to your clipboard.</p>
+                    <div class="feature-header">
+                        <h3 class="feature-title">Built-in OCR (Text Extraction)</h3>
+                    </div>
+                    <p class="feature-copy">Can't copy text from an image or video? Just lasso the text on your screen with Pointframe, and it instantly extracts and copies it to your clipboard. Runs fully offline via Windows OCR.</p>
                 </article>
 
-                <!-- Feature 4 -->
+                <!-- 4 -->
                 <article class="feature-card">
                     <div class="feature-icon orange">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"></path></svg>
+                    </div>
+                    <div class="feature-header">
+                        <h3 class="feature-title">Searchable Capture Library</h3>
+                        <span class="chip-new">New</span>
+                    </div>
+                    <p class="feature-copy">Every saved capture lands in a built-in library. Browse thumbnails, filter by date range, and search by filename — or by the text <em>inside</em> the screenshot, thanks to OCR indexing. That error dialog from three weeks ago is one search away.</p>
+                </article>
+
+                <!-- 5 -->
+                <article class="feature-card">
+                    <div class="feature-icon blue">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 6v12a2 2 0 002 2h12a2 2 0 002-2V6M4 6l2-2h12l2 2"></path></svg>
+                    </div>
+                    <div class="feature-header">
+                        <h3 class="feature-title">Clean Window Snip</h3>
+                        <span class="chip-new">New</span>
+                    </div>
+                    <p class="feature-copy">Capture the active window with clean edges in one keystroke — no manual region dragging, no desktop clutter around it.</p>
+                    <p class="feature-meta"><span class="kbd">Ctrl+Shift+W</span></p>
+                </article>
+
+                <!-- 6 -->
+                <article class="feature-card">
+                    <div class="feature-icon teal">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
                     </div>
-                    <h3 class="feature-title">Pin to Screen</h3>
+                    <div class="feature-header">
+                        <h3 class="feature-title">Pin to Screen</h3>
+                    </div>
                     <p class="feature-copy">Working on something complex? Pin a captured screenshot as a floating, always-on-top window for quick reference while you code or type.</p>
                 </article>
 
-                <!-- Feature 5 -->
+                <!-- 7 -->
                 <article class="feature-card">
-                    <div class="feature-icon blue">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11v-1a7 7 0 00-14 0v1m14 0v.5a5.5 5.5 0 01-11 0V11m11 0a2.5 2.5 0 01-5 0m5 0v3m-5-3v3m-4.5 12a1 1 0 011-1h6a1 1 0 011 1v1h-8v-1z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18v3m0 0H9m3 0h3"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2a3 3 0 00-3 3v7a3 3 0 006 0V5a3 3 0 00-3-3z"></path></svg>
+                    <div class="feature-icon green">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     </div>
-                    <h3 class="feature-title">Microphone Audio</h3>
-                    <p class="feature-copy">Explain what you are doing with your voice. Pointframe captures your microphone alongside the screen and your live annotations to create complete, intuitive video guides.</p>
+                    <div class="feature-header">
+                        <h3 class="feature-title">Precision Capture Tools</h3>
+                    </div>
+                    <p class="feature-copy">A frozen-screen snapshot, zoom loupe for pixel-accurate selection, color picker, pixel ruler, and a configurable capture delay (3 / 5 / 10 s) for catching menus and hover states.</p>
                 </article>
 
-                <!-- Feature 6 -->
+                <!-- 8 -->
                 <article class="feature-card">
-                    <div class="feature-icon teal">
+                    <div class="feature-icon orange">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path></svg>
                     </div>
-                    <h3 class="feature-title">Standard Exports</h3>
-                    <p class="feature-copy">Save your recordings as high-quality MP4 videos or lightweight GIFs that seamlessly embed into pull requests, Jira tickets, Slack messages, and documentation pages.</p>
+                    <div class="feature-header">
+                        <h3 class="feature-title">Trim, Watermark, and Export</h3>
+                        <span class="chip-new">New</span>
+                    </div>
+                    <p class="feature-copy">Trim recordings right in the app — no video editor required. Optionally burn a watermark into MP4 output, and export high-quality MP4 videos or lightweight GIFs that embed cleanly into pull requests, Jira tickets, Slack messages, and docs.</p>
+                </article>
+
+                <!-- 9 -->
+                <article class="feature-card">
+                    <div class="feature-icon blue">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"></path></svg>
+                    </div>
+                    <div class="feature-header">
+                        <h3 class="feature-title">Microphone Audio</h3>
+                    </div>
+                    <p class="feature-copy">Explain what you are doing with your voice. Pointframe captures any Windows input device alongside the screen and your live annotations to create complete, intuitive video guides.</p>
                 </article>
             </div>
 
-            <!-- Dashboard Preview -->
-            <div class="video-shell video-shell-showcase">
-                <div class="video-overlay video-overlay-showcase"></div>
-                <img src="./social-preview.png" alt="Pointframe interface showcase" class="video-player video-player-showcase">
-            </div>
         </div>
     </section>
 
-    <section id="compare" class="section section-alt">
+    <!-- What's New Section -->
+    <section id="whats-new" class="section section-alt">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Shipping steadily — here is what's new</h2>
+                <p class="section-copy">Pointframe gets regular releases. The highlights from the last few months:</p>
+            </div>
+
+            <div class="updates-grid">
+                <article class="update-card">
+                    <p class="update-date">Jul 2026</p>
+                    <h3 class="update-title">Faster and more polished</h3>
+                    <ul>
+                        <li>Tray menu refresh with clearer grouping and icons</li>
+                        <li>Capture Library OCR search hardening for large libraries</li>
+                        <li>Performance optimizations in capture and recording hot paths</li>
+                    </ul>
+                </article>
+                <article class="update-card">
+                    <p class="update-date">Jun 2026</p>
+                    <h3 class="update-title">Cleaner captures, smarter video</h3>
+                    <ul>
+                        <li>Clean Window Snip via tray and dedicated hotkey</li>
+                        <li>In-app video trimming from Recent Recordings</li>
+                        <li>Configurable watermark for MP4 recordings</li>
+                    </ul>
+                </article>
+                <article class="update-card">
+                    <p class="update-date">May 2026</p>
+                    <h3 class="update-title">Workflow upgrades</h3>
+                    <ul>
+                        <li>Capture delay presets for menus and hover states</li>
+                        <li>Screenshot watermark support</li>
+                        <li>Open Folders submenu and richer recents actions</li>
+                    </ul>
+                </article>
+            </div>
+
+            <p class="updates-footer">
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases" target="_blank" rel="noopener noreferrer">See the full release history on GitHub &rarr;</a>
+            </p>
+        </div>
+    </section>
+
+    <section id="compare" class="section">
         <div class="container">
             <div class="section-header">
                 <h2 class="section-title">A practical alternative to Windows Snipping Tool, ShareX, Greenshot, and Snagit</h2>
@@ -237,7 +336,7 @@
             <div class="comparison-grid">
                 <article class="comparison-card">
                     <h3 class="comparison-title">Compared with Windows Snipping Tool</h3>
-                    <p class="comparison-copy">Pointframe adds live recording annotations, built-in OCR, blur redaction, pinned screenshots, and faster explanation workflows for bug reports and tutorials.</p>
+                    <p class="comparison-copy">Pointframe adds live recording annotations, built-in OCR, blur redaction, clean window snips, pinned screenshots, and a searchable capture library — faster explanation workflows for bug reports and tutorials.</p>
                 </article>
                 <article class="comparison-card">
                     <h3 class="comparison-title">Compared with ShareX and Greenshot</h3>
@@ -245,7 +344,7 @@
                 </article>
                 <article class="comparison-card">
                     <h3 class="comparison-title">Compared with Snagit</h3>
-                    <p class="comparison-copy">Pointframe gives you a free Windows screen capture and recording workflow with live markup, blur, and OCR without requiring a paid license.</p>
+                    <p class="comparison-copy">Pointframe gives you a free Windows screen capture and recording workflow with live markup, blur, OCR, a searchable capture library, and in-app video trimming — without requiring a paid license.</p>
                 </article>
             </div>
 
@@ -256,7 +355,7 @@
         </div>
     </section>
 
-    <section id="resources" class="section">
+    <section id="resources" class="section section-alt">
         <div class="container">
             <div class="section-header">
                 <h2 class="section-title">Popular guides people actually search for</h2>
@@ -292,7 +391,7 @@
         </div>
     </section>
 
-    <section id="use-cases" class="section section-alt">
+    <section id="use-cases" class="section">
         <div class="container">
             <div class="section-header">
                 <h2 class="section-title">Pick the workflow that matches your role</h2>
@@ -302,11 +401,11 @@
             <div class="use-case-grid">
                 <article class="comparison-card">
                     <h3 class="comparison-title">For QA and testing</h3>
-                    <p class="comparison-copy">Capture reproducible visual evidence, annotate expected versus actual behavior, and attach one artifact to your issue tracker.</p>
+                    <p class="comparison-copy">Capture reproducible visual evidence, annotate expected versus actual behavior, and attach one artifact to your issue tracker. Find old evidence again with library search.</p>
                 </article>
                 <article class="comparison-card">
                     <h3 class="comparison-title">For support and success</h3>
-                    <p class="comparison-copy">Respond to customer issues with short, clear recordings that show fixes step by step without extra editing overhead.</p>
+                    <p class="comparison-copy">Respond to customer issues with short, clear recordings that show fixes step by step — trim out the dead air before sending, without extra editing tools.</p>
                 </article>
                 <article class="comparison-card">
                     <h3 class="comparison-title">For product and engineering</h3>
@@ -323,11 +422,12 @@
                 <img src="./app-icon.png" alt="" class="brand-logo" width="32" height="32">
                 <span>Pointframe</span>
             </div>
-            
+
             <div class="footer-links">
                 <span>Built on .NET 10, WPF, and MVVM</span>
-                <a href="https://github.com/dimitar-radenkov/Pointframe/issues" class="hover:text-white transition-colors">Report an Issue</a>
-                <a href="https://github.com/dimitar-radenkov/Pointframe" class="hover:text-white transition-colors">Source Code</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases">Releases</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/issues">Report an Issue</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe">Source Code</a>
             </div>
         </div>
     </footer>
