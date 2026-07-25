@@ -9,7 +9,6 @@ public enum TelemetryChannel
 public static class TelemetryPropertyKeys
 {
     public const string Action = "action";
-    public const string AppVersion = "version";
     public const string AnnotationInputState = "annotation_input_state";
     public const string AnnotationTool = "annotation_tool";
     public const string AppSection = "app_section";
@@ -141,7 +140,7 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.AboutUrlOpened] = Product(TelemetryEvents.AboutUrlOpened, TelemetryPropertyKeys.UrlHost),
             [TelemetryEvents.AppClosed] = Product(TelemetryEvents.AppClosed, TelemetryPropertyKeys.SessionMinutes),
             [TelemetryEvents.AppHeartbeat] = Diagnostic(TelemetryEvents.AppHeartbeat, TelemetryPropertyKeys.UptimeMinutes),
-            [TelemetryEvents.AppStarted] = Product(TelemetryEvents.AppStarted, TelemetryPropertyKeys.OsBuild, TelemetryPropertyKeys.ScreenCount).WithOptional(TelemetryPropertyKeys.Version),
+            [TelemetryEvents.AppStarted] = Product(TelemetryEvents.AppStarted, TelemetryPropertyKeys.OsBuild, TelemetryPropertyKeys.ScreenCount),
             [TelemetryEvents.BeautifyOpened] = Product(TelemetryEvents.BeautifyOpened),
             [TelemetryEvents.CaptureCompleted] = Product(TelemetryEvents.CaptureCompleted, TelemetryPropertyKeys.Action),
             [TelemetryEvents.CaptureDelayUsed] = Product(TelemetryEvents.CaptureDelayUsed, TelemetryPropertyKeys.DelaySeconds),

@@ -330,7 +330,7 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 
 | Event | Properties |
 |---|---|
-| `app_started` | `version`, `os_build`, `screen_count` |
+| `app_started` | `os_build`, `screen_count` |
 | `startup_completed` | `duration_ms` |
 | `app_heartbeat` | `uptime_minutes` (sent every 4 hours while the tray app remains open) |
 | `app_closed` | `session_minutes` |

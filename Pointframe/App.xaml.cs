@@ -120,11 +120,10 @@ public partial class App : Application
         EnsureInstallId();
 
         // Automation runs are filtered inside TelemetryService, so no guard is needed here.
-        var version = _host.Services.GetRequiredService<IAppVersionService>().Current;
+        // The app version rides on every event via the telemetry scope, so it is not repeated here.
         _sessionStartTime = DateTime.UtcNow;
         _telemetry.TrackEvent(TelemetryEvents.AppStarted, new Dictionary<string, string>
         {
-            [TelemetryPropertyKeys.Version] = version.ToString(),
             [TelemetryPropertyKeys.OsBuild] = Environment.OSVersion.Version.ToString(),
             [TelemetryPropertyKeys.ScreenCount] = System.Windows.Forms.Screen.AllScreens.Length.ToString(),
         });
