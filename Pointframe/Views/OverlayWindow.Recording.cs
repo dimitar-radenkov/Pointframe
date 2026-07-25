@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Threading;
+using Pointframe.Services;
 using Forms = System.Windows.Forms;
 
 namespace Pointframe;
@@ -52,16 +53,19 @@ public partial class OverlayWindow
         catch (System.IO.FileNotFoundException ex)
         {
             Visibility = Visibility.Visible;
-            _telemetry.TrackEvent("ffmpeg_missing");
+            _telemetry.TrackEvent(TelemetryEvents.FfmpegMissing);
             _messageBox.ShowWarning(ex.Message, "ffmpeg not found");
             return;
         }
 
-        _telemetry.TrackEvent("recording_started", new System.Collections.Generic.Dictionary<string, string> { ["type"] = "region" });
+        _telemetry.TrackEvent(TelemetryEvents.RecordingStarted, new System.Collections.Generic.Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Type] = "region",
+        });
 
         if (_userSettings.Current.RecordMicrophone && !_recorder.IsRecordingMicrophoneEnabled)
         {
-            _telemetry.TrackEvent("microphone_unavailable");
+            _telemetry.TrackEvent(TelemetryEvents.MicrophoneUnavailable);
             _messageBox.ShowWarning(
                 "Microphone recording is enabled, but no compatible microphone device was available. The recording will continue without microphone audio.",
                 "Microphone unavailable");

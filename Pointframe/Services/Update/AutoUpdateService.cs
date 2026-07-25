@@ -88,11 +88,17 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
                 $"Version {v.Major}.{v.Minor}.{v.Build} is available. Download and install now?",
                 "Update Available"))
         {
-            _telemetry.TrackEvent("update_dismissed", new Dictionary<string, string> { ["version"] = $"{v.Major}.{v.Minor}.{v.Build}" });
+            _telemetry.TrackEvent(TelemetryEvents.UpdateDismissed, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.Version] = $"{v.Major}.{v.Minor}.{v.Build}",
+            });
             return;
         }
 
-        _telemetry.TrackEvent("update_confirmed", new Dictionary<string, string> { ["version"] = $"{v.Major}.{v.Minor}.{v.Build}" });
+        _telemetry.TrackEvent(TelemetryEvents.UpdateConfirmed, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Version] = $"{v.Major}.{v.Minor}.{v.Build}",
+        });
         var fileName = ResolveInstallerFileName(result.DownloadUrl, v);
         var destPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
         var succeeded = await _downloadService.Show(result.DownloadUrl, destPath);

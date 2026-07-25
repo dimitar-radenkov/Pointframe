@@ -244,7 +244,7 @@ public partial class OverlayViewModel : AnnotationViewModel
             return;
         }
 
-        _telemetry.TrackEvent("capture_pinned");
+        _telemetry.TrackEvent(TelemetryEvents.CapturePinned);
         PinRequested?.Invoke(bitmapCapture.ComposeBitmap(restoreOverlayVisibilityAfterCapture: false));
     }
 
@@ -258,7 +258,7 @@ public partial class OverlayViewModel : AnnotationViewModel
             return;
         }
 
-        _telemetry.TrackEvent("beautify_opened");
+        _telemetry.TrackEvent(TelemetryEvents.BeautifyOpened);
         BeautifyRequested?.Invoke(bitmapCapture.ComposeBitmap(restoreOverlayVisibilityAfterCapture: false));
     }
 }

@@ -119,10 +119,53 @@ public sealed class TelemetryServiceTests
         var sut = CreateSut(logger);
 
         // Act
-        sut.TrackEvent("snip_started");
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
 
         // Assert
         Assert.Single(logger.Entries);
+    }
+
+    [Fact]
+    public void TrackEvent_KnownProductEvent_IncludesProductChannelInScope()
+    {
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        sut.TrackEvent(TelemetryEvents.SnipStarted, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Type] = "region",
+            [TelemetryPropertyKeys.Source] = "hotkey",
+        });
+
+        Assert.Equal("product", logger.Entries[0].Scope["telemetry_channel"]);
+    }
+
+    [Fact]
+    public void TrackEvent_KnownDiagnosticEvent_IncludesDiagnosticChannelInScope()
+    {
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        sut.TrackEvent(TelemetryEvents.AppHeartbeat, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.UptimeMinutes] = "30",
+        });
+
+        Assert.Equal("diagnostic", logger.Entries[0].Scope["telemetry_channel"]);
+    }
+
+    [Fact]
+    public void TrackEvent_WhenRequiredPropertiesMissing_LogsSchemaWarning()
+    {
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        sut.TrackEvent(TelemetryEvents.SnipStarted, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Type] = "region",
+        });
+
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Warning);
     }
 
     [Fact]
@@ -133,10 +176,10 @@ public sealed class TelemetryServiceTests
         var sut = CreateSut(logger);
 
         // Act
-        sut.TrackEvent("snip_started");
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
 
         // Assert
-        Assert.Contains("snip_started", logger.Entries[0].Message);
+        Assert.Contains(TelemetryEvents.CapturePinned, logger.Entries[0].Message);
     }
 
     [Fact]
@@ -161,7 +204,7 @@ public sealed class TelemetryServiceTests
         var sut = CreateSut(logger, installId: "abc123");
 
         // Act
-        sut.TrackEvent("annotation_committed");
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
 
         // Assert
         Assert.Equal("abc123", logger.Entries[0].Scope["install_id"]);
@@ -175,7 +218,7 @@ public sealed class TelemetryServiceTests
         var sut = new TelemetryService(logger, SettingsWithInstallId("abc123"), AppVersion(new Version(9, 8, 7)));
 
         // Act
-        sut.TrackEvent("annotation_committed");
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
 
         // Assert
         Assert.Equal("9.8.7", logger.Entries[0].Scope["version"]);
@@ -189,7 +232,7 @@ public sealed class TelemetryServiceTests
         var sut = CreateSut(logger, installId: null);
 
         // Act
-        sut.TrackEvent("annotation_committed");
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
 
         // Assert
         Assert.DoesNotContain("install_id", logger.Entries[0].Scope.Keys);
@@ -203,7 +246,7 @@ public sealed class TelemetryServiceTests
         var sut = CreateSut(logger, installId: string.Empty);
 
         // Act
-        sut.TrackEvent("annotation_committed");
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
 
         // Assert
         Assert.DoesNotContain("install_id", logger.Entries[0].Scope.Keys);
@@ -217,7 +260,11 @@ public sealed class TelemetryServiceTests
         var sut = CreateSut(logger);
 
         // Act
-        sut.TrackEvent("snip_started", new Dictionary<string, string> { ["type"] = "region" });
+        sut.TrackEvent(TelemetryEvents.SnipStarted, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Type] = "region",
+            [TelemetryPropertyKeys.Source] = "tray",
+        });
 
         // Assert
         Assert.Equal("region", logger.Entries[0].Scope["type"]);
@@ -231,7 +278,10 @@ public sealed class TelemetryServiceTests
         var sut = CreateSut(logger, installId: "xyz");
 
         // Act
-        sut.TrackEvent("recording_started", new Dictionary<string, string> { ["type"] = "whole_screen" });
+        sut.TrackEvent(TelemetryEvents.RecordingStarted, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Type] = "whole_screen",
+        });
 
         // Assert
         var scope = logger.Entries[0].Scope;
@@ -251,6 +301,17 @@ public sealed class TelemetryServiceTests
 
         // Assert
         Assert.Single(logger.Entries);
+    }
+
+    [Fact]
+    public void TrackDiagnosticException_LogsDiagnosticChannelInScope()
+    {
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        sut.TrackDiagnosticException(new InvalidOperationException("boom"), "dispatcher");
+
+        Assert.Equal("diagnostic", logger.Entries[0].Scope["telemetry_channel"]);
     }
 
     [Fact]
@@ -359,7 +420,7 @@ public sealed class TelemetryServiceTests
         var sut = CreateSut(logger);
 
         // Act
-        sut.TrackEvent("snip_started");
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
 
         // Assert
         Assert.True(logger.Entries[0].Scope.ContainsKey("session_id"));
@@ -374,8 +435,8 @@ public sealed class TelemetryServiceTests
         var sut = CreateSut(logger);
 
         // Act
-        sut.TrackEvent("snip_started");
-        sut.TrackEvent("capture_completed");
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
 
         // Assert
         var first = logger.Entries[0].Scope["session_id"];
@@ -392,8 +453,8 @@ public sealed class TelemetryServiceTests
         var sut2 = CreateSut(logger);
 
         // Act
-        sut1.TrackEvent("snip_started");
-        sut2.TrackEvent("snip_started");
+        sut1.TrackEvent(TelemetryEvents.CapturePinned);
+        sut2.TrackEvent(TelemetryEvents.CapturePinned);
 
         // Assert
         Assert.NotEqual(logger.Entries[0].Scope["session_id"], logger.Entries[1].Scope["session_id"]);
@@ -405,13 +466,13 @@ public sealed class TelemetryServiceTests
         // Arrange
         var logger = new CapturingLogger();
         var sut = CreateSut(logger);
-        sut.TrackEvent("annotation_committed");
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
 
         // Act
         sut.TrackException(new InvalidOperationException("boom"));
 
         // Assert
-        Assert.Equal("annotation_committed", logger.Entries[1].Scope["last_action"]);
+        Assert.Equal(TelemetryEvents.CapturePinned, logger.Entries[1].Scope[TelemetryPropertyKeys.LastAction]);
     }
 
     [Fact]

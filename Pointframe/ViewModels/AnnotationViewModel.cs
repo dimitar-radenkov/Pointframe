@@ -302,9 +302,9 @@ public partial class AnnotationViewModel : ObservableObject
             _redoStack.Clear();
             UndoCount = _undoStack.Count;
             RedoCount = 0;
-            _telemetry.TrackEvent("annotation_committed", new Dictionary<string, string>
+            _telemetry.TrackEvent(TelemetryEvents.AnnotationCommitted, new Dictionary<string, string>
             {
-                ["tool"] = SelectedTool.ToString(),
+                [TelemetryPropertyKeys.Tool] = SelectedTool.ToString(),
             });
         }
 

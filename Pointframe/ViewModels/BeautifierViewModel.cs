@@ -92,7 +92,7 @@ public partial class BeautifierViewModel : ObservableObject
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         encoder.Save(outputStream);
 
-        _telemetry.TrackEvent("screenshot_beautified");
+        _telemetry.TrackEvent(TelemetryEvents.ScreenshotBeautified);
         _logger.LogInformation("Beautified screenshot saved: {Path}", savePath);
         ToastRequested?.Invoke($"Saved \u2014 {System.IO.Path.GetFileName(savePath)}");
     }
@@ -102,7 +102,7 @@ public partial class BeautifierViewModel : ObservableObject
     {
         var bitmap = RenderCurrent();
         _clipboardService.SetImage(bitmap);
-        _telemetry.TrackEvent("screenshot_beautified_copied");
+        _telemetry.TrackEvent(TelemetryEvents.ScreenshotBeautifiedCopied);
         ToastRequested?.Invoke("Copied to clipboard");
     }
 

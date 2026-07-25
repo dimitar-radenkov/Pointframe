@@ -33,18 +33,18 @@ public sealed class ActivationTelemetryServiceTests
         sut.TrackCaptureCompleted("copy");
 
         var eventNames = events.Select(item => item.Name).ToList();
-        Assert.Equal(2, eventNames.Count(name => name == "capture_completed"));
-        Assert.Equal(1, eventNames.Count(name => name == "first_capture_completed"));
+        Assert.Equal(2, eventNames.Count(name => name == TelemetryEvents.CaptureCompleted));
+        Assert.Equal(1, eventNames.Count(name => name == TelemetryEvents.FirstCaptureCompleted));
 
-        var captureCompleted = events.First(item => item.Name == "capture_completed");
+        var captureCompleted = events.First(item => item.Name == TelemetryEvents.CaptureCompleted);
         Assert.NotNull(captureCompleted.Props);
-        Assert.Equal("copy", captureCompleted.Props!["action"]);
+        Assert.Equal("copy", captureCompleted.Props![TelemetryPropertyKeys.Action]);
 
-        var firstCapture = events.Single(item => item.Name == "first_capture_completed");
+        var firstCapture = events.Single(item => item.Name == TelemetryEvents.FirstCaptureCompleted);
         Assert.NotNull(firstCapture.Props);
-        Assert.Equal("screenshot", firstCapture.Props!["capture_type"]);
-        Assert.Equal("copy", firstCapture.Props["first_action"]);
-        Assert.True(firstCapture.Props.ContainsKey("time_from_install_minutes"));
+        Assert.Equal("screenshot", firstCapture.Props![TelemetryPropertyKeys.CaptureType]);
+        Assert.Equal("copy", firstCapture.Props[TelemetryPropertyKeys.FirstAction]);
+        Assert.True(firstCapture.Props.ContainsKey(TelemetryPropertyKeys.TimeFromInstallMinutes));
     }
 
     [Fact]
@@ -74,13 +74,13 @@ public sealed class ActivationTelemetryServiceTests
         sut.TrackRecordingCompleted("01:05");
 
         var eventNames = events.Select(item => item.Name).ToList();
-        Assert.Equal(2, eventNames.Count(name => name == "recording_completed"));
-        Assert.Equal(1, eventNames.Count(name => name == "first_recording_completed"));
+        Assert.Equal(2, eventNames.Count(name => name == TelemetryEvents.RecordingCompleted));
+        Assert.Equal(1, eventNames.Count(name => name == TelemetryEvents.FirstRecordingCompleted));
 
-        var firstRecording = events.Single(item => item.Name == "first_recording_completed");
+        var firstRecording = events.Single(item => item.Name == TelemetryEvents.FirstRecordingCompleted);
         Assert.NotNull(firstRecording.Props);
-        Assert.Equal("true", firstRecording.Props!["with_audio"]);
-        Assert.Equal("65", firstRecording.Props["duration_seconds"]);
-        Assert.True(firstRecording.Props.ContainsKey("time_from_install_minutes"));
+        Assert.Equal("true", firstRecording.Props![TelemetryPropertyKeys.WithAudio]);
+        Assert.Equal("65", firstRecording.Props[TelemetryPropertyKeys.DurationSeconds]);
+        Assert.True(firstRecording.Props.ContainsKey(TelemetryPropertyKeys.TimeFromInstallMinutes));
     }
 }

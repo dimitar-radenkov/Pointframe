@@ -457,7 +457,7 @@ internal sealed class TrayIconManager : ITrayIconManager
                 return;
             }
 
-            _telemetry.TrackEvent("update_check_manual");
+            _telemetry.TrackEvent(TelemetryEvents.UpdateCheckManual);
             var result = await _updateService.CheckForUpdates();
 
             if (!result.IsUpdateAvailable)
@@ -525,7 +525,7 @@ internal sealed class TrayIconManager : ITrayIconManager
             return;
         }
 
-        _telemetry.TrackEvent("video_trim_opened");
+        _telemetry.TrackEvent(TelemetryEvents.VideoTrimOpened);
         DismissTransientUi();
         _ = _eventAggregator.Publish(new TrimRecordingRequestedMessage(recentRecording.OutputPath));
     }
@@ -545,7 +545,7 @@ internal sealed class TrayIconManager : ITrayIconManager
 
         var gifPath = Path.ChangeExtension(recentRecording.OutputPath, ".gif");
         senderElement.IsEnabled = false;
-        _telemetry.TrackEvent("gif_export_started");
+        _telemetry.TrackEvent(TelemetryEvents.GifExportStarted);
 
         var sw = Stopwatch.StartNew();
         var success = true;
@@ -562,16 +562,16 @@ internal sealed class TrayIconManager : ITrayIconManager
         {
             success = false;
             _logger.LogError(ex, "GIF export from recent recordings failed for {Path}", recentRecording.OutputPath);
-            _telemetry.TrackException(ex, "gif_export");
+            _telemetry.TrackDiagnosticException(ex, "gif_export");
             _messageBox.ShowWarning("The GIF export failed. Please try again.", "Export to GIF");
         }
         finally
         {
             sw.Stop();
-            _telemetry.TrackEvent("gif_export_completed", new Dictionary<string, string>
+            _telemetry.TrackEvent(TelemetryEvents.GifExportCompleted, new Dictionary<string, string>
             {
-                ["success"] = success ? "true" : "false",
-                ["duration_seconds"] = ((int)sw.Elapsed.TotalSeconds).ToString(),
+                [TelemetryPropertyKeys.Success] = success ? "true" : "false",
+                [TelemetryPropertyKeys.DurationSeconds] = ((int)sw.Elapsed.TotalSeconds).ToString(),
             });
             senderElement.IsEnabled = true;
         }

@@ -39,9 +39,9 @@ public sealed class TelemetryHeartbeatService : BackgroundService
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
             {
                 var uptimeMinutes = ((int)(DateTime.UtcNow - _startedAtUtc).TotalMinutes).ToString();
-                _telemetry.TrackEvent("app_heartbeat", new Dictionary<string, string>
+                _telemetry.TrackEvent(TelemetryEvents.AppHeartbeat, new Dictionary<string, string>
                 {
-                    ["uptime_minutes"] = uptimeMinutes,
+                    [TelemetryPropertyKeys.UptimeMinutes] = uptimeMinutes,
                 });
             }
         }
