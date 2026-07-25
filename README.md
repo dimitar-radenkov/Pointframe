@@ -324,35 +324,98 @@ Pointframe collects **anonymous, privacy-safe usage telemetry** in official buil
 
 ### What is collected
 
+Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services/Infrastructure/TelemetryEventCatalog.cs), which is the single source of truth. A unit test fails the build if this table and the catalog ever disagree.
+
+**App lifecycle**
+
 | Event | Properties |
 |---|---|
 | `app_started` | `version`, `os_build`, `screen_count` |
 | `startup_completed` | `duration_ms` |
-| `app_heartbeat` | `uptime_minutes` (sent about every 4 hours while the tray app remains open) |
+| `app_heartbeat` | `uptime_minutes` (sent every 4 hours while the tray app remains open) |
 | `app_closed` | `session_minutes` |
+
+**Capture**
+
+| Event | Properties |
+|---|---|
 | `snip_started` | `type` (region / whole_screen), `source` (tray / hotkey) |
 | `snip_cancelled` | `type` (region / whole_screen) |
 | `capture_delay_used` | `delay_seconds` |
 | `capture_completed` | `action` (copy / save / save_as / auto_save) |
 | `capture_pinned` | — |
+| `first_capture_completed` | `capture_type`, `first_action`, `time_from_install_minutes` when available |
 | `open_image_used` | — |
 | `annotation_committed` | `tool` |
+
+**Recording**
+
+| Event | Properties |
+|---|---|
 | `recording_started` | `type` (region / whole_screen) |
 | `recording_completed` | `duration_seconds` when available |
+| `first_recording_completed` | `with_audio`, `duration_seconds` and `time_from_install_minutes` when available |
+| `recording_hud_pause_toggled` | `state` |
+| `recording_hud_stopped` | `duration_seconds` |
+| `recording_hud_microphone_toggled` | `state` |
+| `recording_hud_display_mode_changed` | `display_mode` |
+| `recording_hud_annotation_input_toggled` | `annotation_input_state` |
+| `recording_hud_tool_selected` | `annotation_tool` |
+| `recording_hud_undo_annotations` | — |
+| `recording_hud_clear_annotations` | — |
 | `ffmpeg_missing` | — |
 | `microphone_unavailable` | — |
+
+**Export and editing**
+
+| Event | Properties |
+|---|---|
 | `gif_export_started` | — |
 | `gif_export_completed` | `success`, `duration_seconds` |
+| `video_trim_opened` | — |
+| `video_trim_started` | — |
+| `video_trim_completed` | `success`, `canceled` |
+| `beautify_opened` | — |
+| `screenshot_beautified` | — |
+| `screenshot_beautified_copied` | — |
+
+**OCR and library**
+
+| Event | Properties |
+|---|---|
 | `ocr_attempted` | `selection_width_px`, `selection_height_px` |
 | `ocr_no_text` | `selection_width_px`, `selection_height_px` |
 | `ocr_used` | `selection_width_px`, `selection_height_px` |
+| `library_open_used` | — |
+| `library_ocr_search_used` | — |
+
+**Settings and About**
+
+| Event | Properties |
+|---|---|
+| `settings_opened` | `app_section` |
+| `settings_section_changed` | `app_section` |
+| `settings_saved` | `app_section` |
+| `settings_section_reset` | `app_section` |
+| `settings_defaults_restored` | — |
+| `settings_canceled` | — |
+| `about_opened` | — |
+| `about_closed` | — |
+| `about_url_opened` | `url_host` (host name only, never a full URL) |
+
+**Updates and diagnostics**
+
+| Event | Properties |
+|---|---|
 | `update_check_manual` | — |
 | `update_available` | `version` |
 | `update_confirmed` | `version` |
 | `update_dismissed` | `version` |
 | `unhandled_exception` | `exception_type`, `context`, `last_action` when available |
 
-Every event includes an app `version`, a per-run `session_id`, and an `install_id` when one is available. The install ID is a random GUID generated once on first launch and stored locally. It is used only to count unique installs; it is not tied to an account or identity.
+Every event includes an app `version`, a per-run `session_id`, a `telemetry_channel` (`product` or `diagnostic`), a `telemetry_schema_version`, and an `install_id` when one is available. The install ID is a random GUID generated once on first launch and stored locally. It is used only to count unique installs; it is not tied to an account or identity.
+
+The `last_action` value attached to `unhandled_exception` is the name of the most recent **product** event — background diagnostic events such as `app_heartbeat` never overwrite it.
 
 **Nothing leaves your machine except these anonymised events.** Screenshots, recordings, OCR output, file names, and file paths are never transmitted. Local diagnostic logs are stored under `%LOCALAPPDATA%\Pointframe\logs\` and may include local paths to help troubleshoot issues; they are not uploaded automatically.
 

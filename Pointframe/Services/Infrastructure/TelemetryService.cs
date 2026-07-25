@@ -1,12 +1,23 @@
 using Azure.Monitor.OpenTelemetry.Exporter;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using OpenTelemetry;
+using OpenTelemetry.Logs;
 
 namespace Pointframe.Services;
 
 internal sealed class TelemetryService : ITelemetryService, IDisposable
 {
+    private const int FlushTimeoutMilliseconds = 5000;
+    private const int MaxQueueSize = 2048;
+    private const int ScheduledDelayMilliseconds = 5000;
+    private const int ExporterTimeoutMilliseconds = 30000;
+    private const int MaxExportBatchSize = 512;
+
     private readonly ILogger? _logger;
+    private readonly ILogger<TelemetryService> _localLogger;
     private readonly ILoggerFactory? _loggerFactory;
+    private readonly BaseProcessor<LogRecord>? _exportProcessor;
     private readonly IUserSettingsService _userSettings;
     private readonly string _appVersion;
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
@@ -18,16 +29,31 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
     public TelemetryService(
         IConfiguration configuration,
         IUserSettingsService userSettings,
-        IAppVersionService appVersionService)
+        IAppVersionService appVersionService,
+        ILogger<TelemetryService> localLogger)
     {
         _userSettings = userSettings;
         _appVersion = appVersionService.Current.ToString();
+        _localLogger = localLogger;
 
         var connectionString = configuration["ApplicationInsights:ConnectionString"];
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             return;
         }
+
+        var exporter = new AzureMonitorLogExporter(new AzureMonitorExporterOptions
+        {
+            ConnectionString = connectionString,
+        });
+
+        var processor = new BatchLogRecordExportProcessor(
+            exporter,
+            MaxQueueSize,
+            ScheduledDelayMilliseconds,
+            ExporterTimeoutMilliseconds,
+            MaxExportBatchSize);
+        _exportProcessor = processor;
 
         _loggerFactory = LoggerFactory.Create(builder =>
         {
@@ -36,10 +62,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
                 .AddOpenTelemetry(otel =>
                 {
                     otel.IncludeScopes = true;
-                    otel.AddAzureMonitorLogExporter(options =>
-                    {
-                        options.ConnectionString = connectionString;
-                    });
+                    otel.AddProcessor(processor);
                 });
         });
 
@@ -49,11 +72,13 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
     internal TelemetryService(
         ILogger logger,
         IUserSettingsService userSettings,
-        IAppVersionService appVersionService)
+        IAppVersionService appVersionService,
+        ILogger<TelemetryService>? localLogger = null)
     {
         _userSettings = userSettings;
         _appVersion = appVersionService.Current.ToString();
         _logger = logger;
+        _localLogger = localLogger ?? NullLogger<TelemetryService>.Instance;
     }
 
     public void TrackProductEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
@@ -71,7 +96,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
         string? context = null,
         IReadOnlyDictionary<string, string>? properties = null)
     {
-        if (_logger is null || _disposed)
+        if (_disposed)
         {
             return;
         }
@@ -106,6 +131,11 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
             LogSchemaValidationFailure(validation);
         }
 
+        if (_logger is null)
+        {
+            return;
+        }
+
         var scope = BuildScope(TelemetryChannel.Diagnostic, mergedProperties);
         using (_logger.BeginScope(scope))
         {
@@ -125,17 +155,28 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
 
     private void TrackEventInternal(string name, IReadOnlyDictionary<string, string>? properties, TelemetryChannel defaultChannel)
     {
-        if (_logger is null || _disposed)
+        if (_disposed)
         {
             return;
         }
 
-        _lastEventName = name;
         var validation = TelemetryEventCatalog.Validate(name, properties);
         var channel = validation.Definition?.Channel ?? defaultChannel;
         if (!validation.IsValid)
         {
             LogSchemaValidationFailure(validation);
+        }
+
+        // Diagnostic events (heartbeat, startup) are background noise, not user actions.
+        // Letting them overwrite the breadcrumb would make last_action useless on crash reports.
+        if (channel == TelemetryChannel.Product)
+        {
+            _lastEventName = name;
+        }
+
+        if (_logger is null)
+        {
+            return;
         }
 
         var scope = BuildScope(channel, properties);
@@ -174,21 +215,34 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
 
     private void LogSchemaValidationFailure(TelemetrySchemaValidationResult validation)
     {
+        // Always report locally: source builds have no connection string, so the remote
+        // logger is null and a schema mistake would otherwise go unnoticed until production.
         if (validation.IsKnownEvent)
         {
+            var missingProperties = string.Join(",", validation.MissingProperties);
+            _localLogger.LogWarning(
+                "Telemetry schema mismatch for {EventName}. Missing required properties: {MissingProperties}",
+                validation.EventName,
+                missingProperties);
             _logger?.LogWarning(
                 "Telemetry schema mismatch for {EventName}. Missing required properties: {MissingProperties}",
                 validation.EventName,
-                string.Join(",", validation.MissingProperties));
+                missingProperties);
             return;
         }
 
+        _localLogger.LogWarning("Telemetry event {EventName} is not registered in TelemetryEventCatalog", validation.EventName);
         _logger?.LogWarning("Telemetry event {EventName} is not registered in TelemetryEventCatalog", validation.EventName);
     }
 
     public void Flush()
     {
-        Dispose();
+        if (_disposed)
+        {
+            return;
+        }
+
+        _exportProcessor?.ForceFlush(FlushTimeoutMilliseconds);
     }
 
     public void Dispose()
