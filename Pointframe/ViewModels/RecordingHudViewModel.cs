@@ -8,6 +8,7 @@ public partial class RecordingHudViewModel : ObservableObject
     private readonly IScreenRecordingService _svc;
     private readonly IEventAggregator _eventAggregator;
     private readonly ILogger<RecordingHudViewModel> _logger;
+    private readonly ITelemetryService _telemetry;
     private RecordingAnnotationViewModel? _annotationViewModel;
     private Func<bool>? _toggleAnnotationInput;
     private CancellationTokenSource? _elapsedCts;
@@ -75,11 +76,22 @@ public partial class RecordingHudViewModel : ObservableObject
         string outputPath,
         IEventAggregator eventAggregator,
         ILogger<RecordingHudViewModel> logger)
+        : this(svc, outputPath, eventAggregator, logger, NullTelemetryService.Instance)
+    {
+    }
+
+    public RecordingHudViewModel(
+        IScreenRecordingService svc,
+        string outputPath,
+        IEventAggregator eventAggregator,
+        ILogger<RecordingHudViewModel> logger,
+        ITelemetryService telemetry)
     {
         _svc = svc;
         OutputPath = outputPath;
         _eventAggregator = eventAggregator;
         _logger = logger;
+        _telemetry = telemetry;
         CanToggleMicrophone = svc.CanToggleMicrophone;
         IsMicrophoneMuted = svc.IsMicrophoneMuted;
     }
@@ -137,6 +149,10 @@ public partial class RecordingHudViewModel : ObservableObject
         CancelElapsedTimer();
         await Task.Run(() => _svc.Stop()).ConfigureAwait(true);
         _logger.LogInformation("Recording saved to {Path}", OutputPath);
+        _telemetry.TrackEvent(TelemetryEvents.RecordingHudStopped, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.DurationSeconds] = GetElapsedSeconds().ToString(),
+        });
 
         CloseRequested?.Invoke();
         await _eventAggregator.Publish(new RecordingCompletedMessage(OutputPath, ElapsedText)).ConfigureAwait(true);
@@ -150,6 +166,10 @@ public partial class RecordingHudViewModel : ObservableObject
             _totalPausedDuration += DateTime.UtcNow - _pausedAt;
             _svc.Resume();
             PauseResumeLabel = "⏸ Pause";
+            _telemetry.TrackEvent(TelemetryEvents.RecordingHudPauseToggled, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.State] = "resumed",
+            });
             _logger.LogInformation("Recording resumed from HUD");
         }
         else
@@ -157,6 +177,10 @@ public partial class RecordingHudViewModel : ObservableObject
             _pausedAt = DateTime.UtcNow;
             _svc.Pause();
             PauseResumeLabel = "▶ Resume";
+            _telemetry.TrackEvent(TelemetryEvents.RecordingHudPauseToggled, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.State] = "paused",
+            });
             _logger.LogInformation("Recording paused from HUD");
         }
     }
@@ -177,6 +201,10 @@ public partial class RecordingHudViewModel : ObservableObject
         }
 
         IsMicrophoneMuted = nextMutedState;
+        _telemetry.TrackEvent(TelemetryEvents.RecordingHudMicrophoneToggled, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.State] = nextMutedState ? "muted" : "unmuted",
+        });
         _logger.LogInformation("Recording microphone toggled from HUD: {State}", nextMutedState ? "muted" : "unmuted");
     }
 
@@ -184,12 +212,20 @@ public partial class RecordingHudViewModel : ObservableObject
     private void ExpandHud()
     {
         IsCompactMode = false;
+        _telemetry.TrackEvent(TelemetryEvents.RecordingHudDisplayModeChanged, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.DisplayMode] = "expanded",
+        });
     }
 
     [RelayCommand]
     private void MinimizeHud()
     {
         IsCompactMode = true;
+        _telemetry.TrackEvent(TelemetryEvents.RecordingHudDisplayModeChanged, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.DisplayMode] = "compact",
+        });
     }
 
     [RelayCommand]
@@ -203,6 +239,10 @@ public partial class RecordingHudViewModel : ObservableObject
         var isInputArmed = _toggleAnnotationInput();
         IsAnnotationInputArmed = isInputArmed;
         AnnotationModeLabel = isInputArmed ? "Interact" : "Annotate";
+        _telemetry.TrackEvent(TelemetryEvents.RecordingHudAnnotationInputToggled, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.AnnotationInputState] = isInputArmed ? "armed" : "disarmed",
+        });
         _logger.LogInformation("Recording annotation spike toggled: {IsInputArmed}", isInputArmed);
     }
 
@@ -217,6 +257,10 @@ public partial class RecordingHudViewModel : ObservableObject
         }
 
         _annotationViewModel.SelectedTool = selectedTool;
+        _telemetry.TrackEvent(TelemetryEvents.RecordingHudToolSelected, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.AnnotationTool] = selectedTool.ToString().ToLowerInvariant(),
+        });
         _logger.LogInformation("Recording annotation tool selected from HUD: {Tool}", selectedTool);
     }
 
@@ -229,6 +273,7 @@ public partial class RecordingHudViewModel : ObservableObject
         }
 
         _annotationViewModel.UndoCommand.Execute(null);
+        _telemetry.TrackEvent(TelemetryEvents.RecordingHudUndoAnnotations);
     }
 
     [RelayCommand]
@@ -240,5 +285,16 @@ public partial class RecordingHudViewModel : ObservableObject
         }
 
         _annotationViewModel.ClearCommand.Execute(null);
+        _telemetry.TrackEvent(TelemetryEvents.RecordingHudClearAnnotations);
+    }
+
+    private int GetElapsedSeconds()
+    {
+        if (TimeSpan.TryParseExact(ElapsedText, @"mm\:ss", null, out var elapsed))
+        {
+            return (int)elapsed.TotalSeconds;
+        }
+
+        return 0;
     }
 }

@@ -123,11 +123,11 @@ public partial class App : Application
         {
             var version = _host.Services.GetRequiredService<IAppVersionService>().Current;
             _sessionStartTime = DateTime.UtcNow;
-            _telemetry.TrackEvent("app_started", new Dictionary<string, string>
+            _telemetry.TrackEvent(TelemetryEvents.AppStarted, new Dictionary<string, string>
             {
-                ["version"] = version.ToString(),
-                ["os_build"] = Environment.OSVersion.Version.ToString(),
-                ["screen_count"] = System.Windows.Forms.Screen.AllScreens.Length.ToString(),
+                [TelemetryPropertyKeys.Version] = version.ToString(),
+                [TelemetryPropertyKeys.OsBuild] = Environment.OSVersion.Version.ToString(),
+                [TelemetryPropertyKeys.ScreenCount] = System.Windows.Forms.Screen.AllScreens.Length.ToString(),
             });
         }
 
@@ -143,9 +143,9 @@ public partial class App : Application
         _trayIconManager = _host.Services.GetRequiredService<ITrayIconManager>();
         _trayIconManager.Initialize();
         startupTimer.Stop();
-        _telemetry.TrackEvent("startup_completed", new Dictionary<string, string>
+        _telemetry.TrackEvent(TelemetryEvents.StartupCompleted, new Dictionary<string, string>
         {
-            ["duration_ms"] = startupTimer.ElapsedMilliseconds.ToString(),
+            [TelemetryPropertyKeys.DurationMilliseconds] = startupTimer.ElapsedMilliseconds.ToString(),
         });
 #if DEBUG
         _trayIconManager.AddDebugMenuItems();
@@ -171,9 +171,9 @@ public partial class App : Application
         _logger?.LogInformation("Pointframe shutting down");
         if (!_isAutomationMode && _sessionStartTime != default)
         {
-            _telemetry?.TrackEvent("app_closed", new Dictionary<string, string>
+            _telemetry?.TrackEvent(TelemetryEvents.AppClosed, new Dictionary<string, string>
             {
-                ["session_minutes"] = ((int)(DateTime.UtcNow - _sessionStartTime).TotalMinutes).ToString(),
+                [TelemetryPropertyKeys.SessionMinutes] = ((int)(DateTime.UtcNow - _sessionStartTime).TotalMinutes).ToString(),
             });
         }
 
@@ -251,7 +251,7 @@ public partial class App : Application
         try
         {
             var bitmap = _imageFileService.LoadForAnnotation(selectedPath);
-            _telemetry.TrackEvent("open_image_used");
+            _telemetry.TrackEvent(TelemetryEvents.OpenImageUsed);
             ShowOverlayFromImage(bitmap, selectedPath);
         }
         catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException or NotSupportedException or IOException or UnauthorizedAccessException)
@@ -312,7 +312,7 @@ public partial class App : Application
         try
         {
             var bitmap = _imageFileService.LoadForAnnotation(item.FilePath);
-            _telemetry.TrackEvent("library_open_used");
+            _telemetry.TrackEvent(TelemetryEvents.LibraryOpenUsed);
 
             // Close the library before the full-screen overlay appears so the two never overlap.
             _libraryWindow?.Close();
@@ -398,7 +398,10 @@ public partial class App : Application
         }
 
         var v = message.Result.LatestVersion;
-        _telemetry.TrackEvent("update_available", new Dictionary<string, string> { ["version"] = $"{v.Major}.{v.Minor}.{v.Build}" });
+        _telemetry.TrackEvent(TelemetryEvents.UpdateAvailable, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Version] = $"{v.Major}.{v.Minor}.{v.Build}",
+        });
     }
 
     private ValueTask HandleOpenImageRequested(OpenImageRequestedMessage message)

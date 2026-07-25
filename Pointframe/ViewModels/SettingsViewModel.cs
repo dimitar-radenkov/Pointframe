@@ -58,6 +58,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IDialogService _dialogService;
     private readonly IMicrophoneDeviceService _microphoneDeviceService;
     private readonly IUserSettingsService _settingsService;
+    private readonly ITelemetryService _telemetry;
     private readonly IThemeService _themeService;
     private readonly AppTheme _originalTheme;
     private readonly IReadOnlyList<string> _availableMicrophoneDevices;
@@ -66,11 +67,26 @@ public partial class SettingsViewModel : ObservableObject
     private DateTime? _lastAutoUpdateCheckUtc;
     private readonly ScreenshotWatermarkSettings _watermarkOther;
 
-    public SettingsViewModel(IUserSettingsService settingsService, IThemeService themeService, IDialogService dialogService, IMicrophoneDeviceService microphoneDeviceService)
+    public SettingsViewModel(
+        IUserSettingsService settingsService,
+        IThemeService themeService,
+        IDialogService dialogService,
+        IMicrophoneDeviceService microphoneDeviceService)
+        : this(settingsService, themeService, dialogService, microphoneDeviceService, NullTelemetryService.Instance)
+    {
+    }
+
+    public SettingsViewModel(
+        IUserSettingsService settingsService,
+        IThemeService themeService,
+        IDialogService dialogService,
+        IMicrophoneDeviceService microphoneDeviceService,
+        ITelemetryService telemetry)
     {
         _dialogService = dialogService;
         _microphoneDeviceService = microphoneDeviceService;
         _settingsService = settingsService;
+        _telemetry = telemetry;
         _themeService = themeService;
         _availableMicrophoneDevices = microphoneDeviceService.GetAvailableCaptureDeviceNames();
 
@@ -128,6 +144,11 @@ public partial class SettingsViewModel : ObservableObject
             OnPropertyChanged(nameof(CanAddPreset));
             AddPresetCommand.NotifyCanExecuteChanged();
         };
+
+        _telemetry.TrackEvent(TelemetryEvents.SettingsOpened, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.AppSection] = SelectedSection.ToString().ToLowerInvariant(),
+        });
     }
 
     public IReadOnlyList<SettingsSectionItem> Sections => SectionItems;
@@ -330,6 +351,14 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnAppThemeChanged(AppTheme value) => _themeService.Apply(value);
 
+    partial void OnSelectedSectionChanged(SettingsSection value)
+    {
+        _telemetry.TrackEvent(TelemetryEvents.SettingsSectionChanged, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.AppSection] = value.ToString().ToLowerInvariant(),
+        });
+    }
+
     public SolidColorBrush ColorPreviewBrush => new(DefaultAnnotationColor);
     public double AnnotationPreviewThickness => Math.Max(DefaultStrokeThickness, 1d);
 
@@ -473,6 +502,10 @@ public partial class SettingsViewModel : ObservableObject
             FirstCaptureCompletedTracked = currentSettings.FirstCaptureCompletedTracked,
             FirstRecordingCompletedTracked = currentSettings.FirstRecordingCompletedTracked,
         });
+        _telemetry.TrackEvent(TelemetryEvents.SettingsSaved, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.AppSection] = SelectedSection.ToString().ToLowerInvariant(),
+        });
         RequestClose?.Invoke();
     }
 
@@ -594,6 +627,11 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void ResetCurrentSection()
     {
+        _telemetry.TrackEvent(TelemetryEvents.SettingsSectionReset, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.AppSection] = SelectedSection.ToString().ToLowerInvariant(),
+        });
+
         var defaults = new UserSettings();
         switch (SelectedSection)
         {
@@ -648,6 +686,8 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void RestoreDefaults()
     {
+        _telemetry.TrackEvent(TelemetryEvents.SettingsDefaultsRestored);
+
         var defaults = new UserSettings();
         _recordingFps = defaults.RecordingFps;
         _hudGapPixels = defaults.HudGapPixels;
@@ -692,6 +732,7 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void Cancel()
     {
+        _telemetry.TrackEvent(TelemetryEvents.SettingsCanceled);
         _themeService.Apply(_originalTheme);
         RequestClose?.Invoke();
     }

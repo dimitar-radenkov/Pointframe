@@ -73,7 +73,8 @@ internal static class AppServiceRegistration
                 screenRecordingService,
                 outputPath,
                 sp.GetRequiredService<IEventAggregator>(),
-                sp.GetRequiredService<ILogger<RecordingHudViewModel>>()));
+                sp.GetRequiredService<ILogger<RecordingHudViewModel>>(),
+                sp.GetRequiredService<ITelemetryService>()));
         services.AddTransient<AboutViewModel>();
         services.AddTransient<AboutWindow>();
         services.AddTransient<LibraryWindow>();

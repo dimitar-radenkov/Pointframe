@@ -140,7 +140,7 @@ public partial class LibraryViewModel : ObservableObject
 
             if (isOcrEligibleQuery)
             {
-                _telemetry.TrackEvent("library_ocr_search_used");
+                _telemetry.TrackEvent(TelemetryEvents.LibraryOcrSearchUsed);
             }
         }
         catch (OperationCanceledException)
@@ -276,6 +276,21 @@ internal sealed class NullTelemetryService : ITelemetryService
     public static NullTelemetryService Instance { get; } = new();
 
     private NullTelemetryService()
+    {
+    }
+
+    public void TrackProductEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
+    {
+    }
+
+    public void TrackDiagnosticEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
+    {
+    }
+
+    public void TrackDiagnosticException(
+        Exception exception,
+        string? context = null,
+        IReadOnlyDictionary<string, string>? properties = null)
     {
     }
 

@@ -10,6 +10,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
     private readonly IUserSettingsService _userSettings;
     private readonly string _appVersion;
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
+    private readonly string _telemetrySchemaVersion = "1";
     private readonly object _syncRoot = new();
     private volatile string? _lastEventName;
     private bool _disposed;
@@ -55,7 +56,74 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
         _logger = logger;
     }
 
+    public void TrackProductEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
+    {
+        TrackEventInternal(name, properties, TelemetryChannel.Product);
+    }
+
+    public void TrackDiagnosticEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
+    {
+        TrackEventInternal(name, properties, TelemetryChannel.Diagnostic);
+    }
+
+    public void TrackDiagnosticException(
+        Exception exception,
+        string? context = null,
+        IReadOnlyDictionary<string, string>? properties = null)
+    {
+        if (_logger is null || _disposed)
+        {
+            return;
+        }
+
+        var mergedProperties = new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.ExceptionType] = exception.GetType().Name,
+        };
+
+        if (context is not null)
+        {
+            mergedProperties[TelemetryPropertyKeys.Context] = context;
+        }
+
+        var lastEvent = _lastEventName;
+        if (lastEvent is not null)
+        {
+            mergedProperties[TelemetryPropertyKeys.LastAction] = lastEvent;
+        }
+
+        if (properties is not null)
+        {
+            foreach (var kvp in properties)
+            {
+                mergedProperties[kvp.Key] = kvp.Value;
+            }
+        }
+
+        var validation = TelemetryEventCatalog.Validate(TelemetryEvents.UnhandledException, mergedProperties);
+        if (!validation.IsValid)
+        {
+            LogSchemaValidationFailure(validation);
+        }
+
+        var scope = BuildScope(TelemetryChannel.Diagnostic, mergedProperties);
+        using (_logger.BeginScope(scope))
+        {
+            _logger.LogError("{microsoft.custom_event.name}", TelemetryEvents.UnhandledException);
+        }
+    }
+
     public void TrackEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
+    {
+        TrackProductEvent(name, properties);
+    }
+
+    public void TrackException(Exception exception, string? context = null)
+    {
+        TrackDiagnosticException(exception, context);
+    }
+
+    private void TrackEventInternal(string name, IReadOnlyDictionary<string, string>? properties, TelemetryChannel defaultChannel)
     {
         if (_logger is null || _disposed)
         {
@@ -63,45 +131,28 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
         }
 
         _lastEventName = name;
-        var scope = BuildScope(properties);
+        var validation = TelemetryEventCatalog.Validate(name, properties);
+        var channel = validation.Definition?.Channel ?? defaultChannel;
+        if (!validation.IsValid)
+        {
+            LogSchemaValidationFailure(validation);
+        }
+
+        var scope = BuildScope(channel, properties);
         using (_logger.BeginScope(scope))
         {
             _logger.LogInformation("{microsoft.custom_event.name}", name);
         }
     }
 
-    public void TrackException(Exception exception, string? context = null)
-    {
-        if (_logger is null || _disposed)
-        {
-            return;
-        }
-
-        var extra = new Dictionary<string, string> { ["exception_type"] = exception.GetType().Name };
-        if (context is not null)
-        {
-            extra["context"] = context;
-        }
-
-        var lastEvent = _lastEventName;
-        if (lastEvent is not null)
-        {
-            extra["last_action"] = lastEvent;
-        }
-
-        var scope = BuildScope(extra);
-        using (_logger.BeginScope(scope))
-        {
-            _logger.LogError("{microsoft.custom_event.name}", "unhandled_exception");
-        }
-    }
-
-    private Dictionary<string, object?> BuildScope(IReadOnlyDictionary<string, string>? properties)
+    private Dictionary<string, object?> BuildScope(TelemetryChannel channel, IReadOnlyDictionary<string, string>? properties)
     {
         var scope = new Dictionary<string, object?>
         {
-            ["version"] = _appVersion,
+            [TelemetryPropertyKeys.Version] = _appVersion,
             ["session_id"] = _sessionId,
+            ["telemetry_channel"] = channel.ToString().ToLowerInvariant(),
+            ["telemetry_schema_version"] = _telemetrySchemaVersion,
         };
 
         var installId = _userSettings.Current.InstallId;
@@ -119,6 +170,20 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
         }
 
         return scope;
+    }
+
+    private void LogSchemaValidationFailure(TelemetrySchemaValidationResult validation)
+    {
+        if (validation.IsKnownEvent)
+        {
+            _logger?.LogWarning(
+                "Telemetry schema mismatch for {EventName}. Missing required properties: {MissingProperties}",
+                validation.EventName,
+                string.Join(",", validation.MissingProperties));
+            return;
+        }
+
+        _logger?.LogWarning("Telemetry event {EventName} is not registered in TelemetryEventCatalog", validation.EventName);
     }
 
     public void Flush()

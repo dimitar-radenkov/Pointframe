@@ -140,22 +140,22 @@ internal sealed class OcrLassoController
         var cropped = new CroppedBitmap(background, new Int32Rect(pixelX, pixelY, pixelW, pixelH));
         var ocrProps = new Dictionary<string, string>
         {
-            ["selection_width_px"] = pixelW.ToString(),
-            ["selection_height_px"] = pixelH.ToString(),
+            [TelemetryPropertyKeys.SelectionWidthPx] = pixelW.ToString(),
+            [TelemetryPropertyKeys.SelectionHeightPx] = pixelH.ToString(),
         };
 
-        _telemetry.TrackEvent("ocr_attempted", ocrProps);
+        _telemetry.TrackEvent(TelemetryEvents.OcrAttempted, ocrProps);
         var text = await _ocrService.Recognize(cropped);
 
         if (string.IsNullOrWhiteSpace(text))
         {
-            _telemetry.TrackEvent("ocr_no_text", ocrProps);
+            _telemetry.TrackEvent(TelemetryEvents.OcrNoText, ocrProps);
             _showToast("No text detected — try a larger area");
             return;
         }
 
         System.Windows.Clipboard.SetText(text);
-        _telemetry.TrackEvent("ocr_used", ocrProps);
+        _telemetry.TrackEvent(TelemetryEvents.OcrUsed, ocrProps);
         _showToast("✓ Text copied to clipboard");
     }
 }

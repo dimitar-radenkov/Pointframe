@@ -92,7 +92,7 @@ public partial class TrimViewModel : ObservableObject
 
         IsTrimming = true;
         StatusText = "Trimming…";
-        _telemetry.TrackEvent("video_trim_started");
+        _telemetry.TrackEvent(TelemetryEvents.VideoTrimStarted);
 
         var canceled = false;
         var success = true;
@@ -122,17 +122,17 @@ public partial class TrimViewModel : ObservableObject
         {
             success = false;
             _logger.LogError(ex, "Trim failed for {Path}", InputPath);
-            _telemetry.TrackException(ex, "video_trim");
+            _telemetry.TrackDiagnosticException(ex, "video_trim");
             StatusText = "Trim failed. Please try again.";
         }
         finally
         {
             _trimCancellationSource = null;
             _closeWhenTrimCanceled = false;
-            _telemetry.TrackEvent("video_trim_completed", new Dictionary<string, string>
+            _telemetry.TrackEvent(TelemetryEvents.VideoTrimCompleted, new Dictionary<string, string>
             {
-                ["success"] = success ? "true" : "false",
-                ["canceled"] = canceled ? "true" : "false",
+                [TelemetryPropertyKeys.Success] = success ? "true" : "false",
+                [TelemetryPropertyKeys.Canceled] = canceled ? "true" : "false",
             });
             IsTrimming = false;
         }

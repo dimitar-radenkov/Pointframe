@@ -15,9 +15,9 @@ public sealed class ActivationTelemetryService : IActivationTelemetryService
 
     public void TrackCaptureCompleted(string captureAction)
     {
-        _telemetry.TrackEvent("capture_completed", new Dictionary<string, string>
+        _telemetry.TrackEvent(TelemetryEvents.CaptureCompleted, new Dictionary<string, string>
         {
-            ["action"] = captureAction,
+            [TelemetryPropertyKeys.Action] = captureAction,
         });
 
         var shouldTrackFirstCapture = false;
@@ -42,16 +42,16 @@ public sealed class ActivationTelemetryService : IActivationTelemetryService
 
         var props = new Dictionary<string, string>
         {
-            ["capture_type"] = "screenshot",
-            ["first_action"] = captureAction,
+            [TelemetryPropertyKeys.CaptureType] = "screenshot",
+            [TelemetryPropertyKeys.FirstAction] = captureAction,
         };
 
         if (timeFromInstallMinutes is not null)
         {
-            props["time_from_install_minutes"] = timeFromInstallMinutes.Value.ToString();
+            props[TelemetryPropertyKeys.TimeFromInstallMinutes] = timeFromInstallMinutes.Value.ToString();
         }
 
-        _telemetry.TrackEvent("first_capture_completed", props);
+        _telemetry.TrackEvent(TelemetryEvents.FirstCaptureCompleted, props);
     }
 
     public void TrackRecordingCompleted(string elapsedText)
@@ -63,11 +63,11 @@ public sealed class ActivationTelemetryService : IActivationTelemetryService
         {
             recordingProps = new Dictionary<string, string>
             {
-                ["duration_seconds"] = durationSeconds.Value.ToString(),
+                [TelemetryPropertyKeys.DurationSeconds] = durationSeconds.Value.ToString(),
             };
         }
 
-        _telemetry.TrackEvent("recording_completed", recordingProps);
+        _telemetry.TrackEvent(TelemetryEvents.RecordingCompleted, recordingProps);
 
         var shouldTrackFirstRecording = false;
         int? timeFromInstallMinutes = null;
@@ -93,20 +93,20 @@ public sealed class ActivationTelemetryService : IActivationTelemetryService
 
         var firstRecordingProps = new Dictionary<string, string>
         {
-            ["with_audio"] = withAudio ? "true" : "false",
+            [TelemetryPropertyKeys.WithAudio] = withAudio ? "true" : "false",
         };
 
         if (durationSeconds is not null)
         {
-            firstRecordingProps["duration_seconds"] = durationSeconds.Value.ToString();
+            firstRecordingProps[TelemetryPropertyKeys.DurationSeconds] = durationSeconds.Value.ToString();
         }
 
         if (timeFromInstallMinutes is not null)
         {
-            firstRecordingProps["time_from_install_minutes"] = timeFromInstallMinutes.Value.ToString();
+            firstRecordingProps[TelemetryPropertyKeys.TimeFromInstallMinutes] = timeFromInstallMinutes.Value.ToString();
         }
 
-        _telemetry.TrackEvent("first_recording_completed", firstRecordingProps);
+        _telemetry.TrackEvent(TelemetryEvents.FirstRecordingCompleted, firstRecordingProps);
     }
 
     private static int? TryGetDurationSeconds(string elapsedText)
