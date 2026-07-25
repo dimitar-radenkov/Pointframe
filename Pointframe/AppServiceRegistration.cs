@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Pointframe.Automation;
 using Pointframe.Data;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
@@ -9,7 +10,9 @@ namespace Pointframe;
 
 internal static class AppServiceRegistration
 {
-    internal static IServiceCollection AddPointframeAppServices(this IServiceCollection services)
+    internal static IServiceCollection AddPointframeAppServices(
+        this IServiceCollection services,
+        AutomationLaunchOptions? automationLaunchOptions = null)
     {
         var dataSourceDirectory = Path.GetDirectoryName(AppPaths.PointframeDatabasePath);
         if (!string.IsNullOrWhiteSpace(dataSourceDirectory))
@@ -19,6 +22,7 @@ internal static class AppServiceRegistration
 
         services.AddPointframeDataServices($"Data Source={AppPaths.PointframeDatabasePath}");
 
+        services.AddSingleton(automationLaunchOptions ?? AutomationLaunchOptions.Parse([]));
         services.AddSingleton<ITelemetryService, TelemetryService>();
         services.AddSingleton<IActivationTelemetryService, ActivationTelemetryService>();
         services.AddSingleton<IThemeService, ThemeService>();

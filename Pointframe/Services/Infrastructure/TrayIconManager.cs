@@ -562,7 +562,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         {
             success = false;
             _logger.LogError(ex, "GIF export from recent recordings failed for {Path}", recentRecording.OutputPath);
-            _telemetry.TrackDiagnosticException(ex, "gif_export");
+            _telemetry.TrackException(ex, "gif_export");
             _messageBox.ShowWarning("The GIF export failed. Please try again.", "Export to GIF");
         }
         finally

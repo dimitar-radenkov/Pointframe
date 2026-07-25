@@ -270,39 +270,3 @@ public partial class LibraryViewModel : ObservableObject
 }
 
 public sealed record LibraryDateRangeOption(string Label, int? Days);
-
-internal sealed class NullTelemetryService : ITelemetryService
-{
-    public static NullTelemetryService Instance { get; } = new();
-
-    private NullTelemetryService()
-    {
-    }
-
-    public void TrackProductEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
-    {
-    }
-
-    public void TrackDiagnosticEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
-    {
-    }
-
-    public void TrackDiagnosticException(
-        Exception exception,
-        string? context = null,
-        IReadOnlyDictionary<string, string>? properties = null)
-    {
-    }
-
-    public void TrackEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
-    {
-    }
-
-    public void TrackException(Exception exception, string? context = null)
-    {
-    }
-
-    public void Flush()
-    {
-    }
-}

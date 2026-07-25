@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
+using Pointframe.Automation;
 using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
@@ -16,7 +17,7 @@ public sealed class TelemetryServiceTests
         public Dictionary<string, object?> Scope { get; init; } = [];
     }
 
-    private sealed class CapturingLogger : ILogger
+    private sealed class CapturingLogger : ILogger<TelemetryService>
     {
         private readonly List<LogEntry> _entries = [];
         private readonly Dictionary<string, object?> _currentScope = [];
@@ -81,13 +82,26 @@ public sealed class TelemetryServiceTests
     private static TelemetryService CreateSut(CapturingLogger logger, string? installId = "install-abc")
         => new(logger, SettingsWithInstallId(installId), AppVersion());
 
+    private static TelemetryService CreateDisabledSut(CapturingLogger localLogger)
+    {
+        var config = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
+        config.Setup(c => c["ApplicationInsights:ConnectionString"]).Returns((string?)null);
+        return new TelemetryService(
+            config.Object,
+            SettingsWithInstallId("id"),
+            AppVersion(),
+            localLogger,
+            AutomationLaunchOptions.Parse([]));
+    }
+
+    private static TelemetryService CreateAutomationSut(CapturingLogger logger)
+        => new(logger, SettingsWithInstallId("install-abc"), AppVersion(), localLogger: null, isAutomationMode: true);
+
     [Fact]
     public void TrackEvent_WhenConnectionStringMissing_DoesNotThrow()
     {
         // Arrange
-        var config = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
-        config.Setup(c => c["ApplicationInsights:ConnectionString"]).Returns((string?)null);
-        var sut = new TelemetryService(config.Object, SettingsWithInstallId("id"), AppVersion());
+        var sut = CreateDisabledSut(new CapturingLogger());
 
         // Act
         var ex = Record.Exception(() => sut.TrackEvent("some_event"));
@@ -100,15 +114,62 @@ public sealed class TelemetryServiceTests
     public void TrackException_WhenConnectionStringMissing_DoesNotThrow()
     {
         // Arrange
-        var config = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
-        config.Setup(c => c["ApplicationInsights:ConnectionString"]).Returns((string?)null);
-        var sut = new TelemetryService(config.Object, SettingsWithInstallId("id"), AppVersion());
+        var sut = CreateDisabledSut(new CapturingLogger());
 
         // Act
         var ex = Record.Exception(() => sut.TrackException(new InvalidOperationException("oops")));
 
         // Assert
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public void TrackEvent_WhenTelemetryDisabled_WarnsLocallyAboutUnregisteredEvent()
+    {
+        // Arrange
+        var localLogger = new CapturingLogger();
+        var sut = CreateDisabledSut(localLogger);
+
+        // Act
+        sut.TrackEvent("not_registered_event");
+
+        // Assert
+        Assert.Contains(localLogger.Entries, entry =>
+            entry.Level == LogLevel.Warning
+            && entry.Message.Contains("not_registered_event", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TrackEvent_WhenTelemetryDisabled_WarnsLocallyAboutMissingRequiredProperties()
+    {
+        // Arrange
+        var localLogger = new CapturingLogger();
+        var sut = CreateDisabledSut(localLogger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.SnipStarted, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Type] = "region",
+        });
+
+        // Assert
+        Assert.Contains(localLogger.Entries, entry =>
+            entry.Level == LogLevel.Warning
+            && entry.Message.Contains(TelemetryPropertyKeys.Source, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TrackEvent_WhenTelemetryDisabledAndEventIsValid_LogsNothingLocally()
+    {
+        // Arrange
+        var localLogger = new CapturingLogger();
+        var sut = CreateDisabledSut(localLogger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
+
+        // Assert
+        Assert.Empty(localLogger.Entries);
     }
 
     [Fact]
@@ -304,12 +365,12 @@ public sealed class TelemetryServiceTests
     }
 
     [Fact]
-    public void TrackDiagnosticException_LogsDiagnosticChannelInScope()
+    public void TrackException_LogsDiagnosticChannelInScope()
     {
         var logger = new CapturingLogger();
         var sut = CreateSut(logger);
 
-        sut.TrackDiagnosticException(new InvalidOperationException("boom"), "dispatcher");
+        sut.TrackException(new InvalidOperationException("boom"), "dispatcher");
 
         Assert.Equal("diagnostic", logger.Entries[0].Scope["telemetry_channel"]);
     }
@@ -487,6 +548,137 @@ public sealed class TelemetryServiceTests
 
         // Assert
         Assert.DoesNotContain("last_action", logger.Entries[0].Scope.Keys);
+    }
+
+    [Fact]
+    public void TrackException_LastActionIgnoresDiagnosticEvents()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
+        sut.TrackEvent(TelemetryEvents.AppHeartbeat, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.UptimeMinutes] = "240",
+        });
+
+        // Act
+        sut.TrackException(new InvalidOperationException("boom"));
+
+        // Assert
+        Assert.Equal(TelemetryEvents.CapturePinned, logger.Entries[2].Scope[TelemetryPropertyKeys.LastAction]);
+    }
+
+    [Fact]
+    public void TrackEvent_WhenPropertyIsNotDeclaredInCatalog_LogsSchemaWarning()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.CapturePinned, new Dictionary<string, string>
+        {
+            ["file_path"] = @"C:\captures\holiday-photo.png",
+        });
+
+        // Assert
+        Assert.Contains(logger.Entries, entry =>
+            entry.Level == LogLevel.Warning
+            && entry.Message.Contains("file_path", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TrackEvent_ClampsOverlongPropertyValues()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.AboutUrlOpened, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.UrlHost] = new string('x', 5000),
+        });
+
+        // Assert
+        var value = Assert.IsType<string>(logger.Entries[0].Scope[TelemetryPropertyKeys.UrlHost]);
+        Assert.Equal(200, value.Length);
+    }
+
+    [Fact]
+    public void TrackEvent_LeavesShortPropertyValuesIntact()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.AboutUrlOpened, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.UrlHost] = "github.com",
+        });
+
+        // Assert
+        Assert.Equal("github.com", logger.Entries[0].Scope[TelemetryPropertyKeys.UrlHost]);
+    }
+
+    [Fact]
+    public void TrackEvent_InAutomationMode_EmitsNothing()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateAutomationSut(logger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
+
+        // Assert
+        Assert.Empty(logger.Entries);
+    }
+
+    [Fact]
+    public void TrackException_InAutomationMode_EmitsNothing()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateAutomationSut(logger);
+
+        // Act
+        sut.TrackException(new InvalidOperationException("boom"));
+
+        // Assert
+        Assert.Empty(logger.Entries);
+    }
+
+    [Fact]
+    public void Flush_DoesNotStopSubsequentTracking()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        // Act
+        sut.Flush();
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
+
+        // Assert
+        Assert.Single(logger.Entries);
+    }
+
+    [Fact]
+    public void Flush_CanBeCalledAfterDispose()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+        sut.Dispose();
+
+        // Act
+        var ex = Record.Exception(sut.Flush);
+
+        // Assert
+        Assert.Null(ex);
     }
 
     [Fact]

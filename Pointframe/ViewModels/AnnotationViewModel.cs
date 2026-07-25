@@ -282,6 +282,7 @@ public partial class AnnotationViewModel : ObservableObject
 
     private readonly List<List<object>> _undoStack = [];
     private readonly List<List<object>> _redoStack = [];
+    private readonly Dictionary<AnnotationTool, int> _committedToolCounts = [];
     private List<object>? _currentGroup;
 
     [ObservableProperty]
@@ -302,13 +303,26 @@ public partial class AnnotationViewModel : ObservableObject
             _redoStack.Clear();
             UndoCount = _undoStack.Count;
             RedoCount = 0;
-            _telemetry.TrackEvent(TelemetryEvents.AnnotationCommitted, new Dictionary<string, string>
-            {
-                [TelemetryPropertyKeys.Tool] = SelectedTool.ToString(),
-            });
+            _committedToolCounts[SelectedTool] = _committedToolCounts.GetValueOrDefault(SelectedTool) + 1;
         }
 
         _currentGroup = null;
+    }
+
+    // Shape commits run into the hundreds in a heavy session. Reporting each one separately
+    // would swamp every other event, so counts are batched and sent once when the surface closes.
+    public void FlushAnnotationTelemetry()
+    {
+        foreach (var (tool, count) in _committedToolCounts)
+        {
+            _telemetry.TrackEvent(TelemetryEvents.AnnotationCommitted, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.Tool] = tool.ToString(),
+                [TelemetryPropertyKeys.Count] = count.ToString(),
+            });
+        }
+
+        _committedToolCounts.Clear();
     }
 
     public void TrackElement(object element) => _currentGroup?.Add(element);

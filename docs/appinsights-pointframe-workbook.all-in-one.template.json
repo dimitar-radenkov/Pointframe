@@ -1,0 +1,356 @@
+{
+  "$schema": "https://github.com/microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json",
+  "version": "Notebook/1.0",
+  "isLocked": false,
+  "fallbackResourceIds": [
+    "{ApplicationInsightsResourceId}"
+  ],
+  "fromTemplateId": "pointframe-product-analytics-all-in-one",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Pointframe Product Analytics (All-in-One)\n\nSingle workbook for executive KPIs, feature usage, funnels, settings/about/HUD adoption, and telemetry quality. Uses unified data source (customEvents + traces)."
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Executive KPIs"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Active installs and sessions (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project timestamp, event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project timestamp, event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| extend install_id=tostring(customDimensions.install_id), session_id=tostring(customDimensions.session_id)\n| summarize active_installs=dcountif(install_id, isnotempty(install_id)), active_sessions=dcountif(session_id, isnotempty(session_id))"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "timechart",
+        "title": "New installs by week (90d)",
+        "query": "let lookback = 90d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project timestamp, event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project timestamp, event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| extend install_id=tostring(customDimensions.install_id)\n| where isnotempty(install_id)\n| summarize first_seen=min(timestamp) by install_id\n| summarize new_installs=count() by week=bin(first_seen, 7d)\n| order by week asc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Recording completion rate (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project timestamp, event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project timestamp, event_name=tostring(message), customDimensions);\nlet started = Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"recording_started\" | summarize started_sessions=dcount(tostring(customDimensions.session_id));\nlet completed = Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"recording_completed\" | summarize completed_sessions=dcount(tostring(customDimensions.session_id));\nstarted\n| extend completed_sessions=toscalar(completed)\n| extend completion_rate_pct=round(100.0 * todouble(completed_sessions) / todouble(started_sessions), 2)"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "OCR success rate (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project timestamp, event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project timestamp, event_name=tostring(message), customDimensions);\nlet attempted = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"ocr_attempted\" | count);\nlet success = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"ocr_used\" | count);\nprint ocr_attempted=attempted, ocr_success=success, ocr_success_rate_pct=round(100.0 * todouble(success) / todouble(attempted), 2)"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Feature Usage"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "barchart",
+        "title": "Top feature events (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project timestamp, event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project timestamp, event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| summarize total=count() by event_name\n| top 20 by total desc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Feature adoption by installs (30d)",
+        "query": "let lookback = 30d;\nlet FeatureMap = datatable(event_name:string, feature:string)[\"snip_started\",\"snip\",\"annotation_committed\",\"annotation\",\"capture_pinned\",\"pin\",\"ocr_used\",\"ocr\",\"recording_started\",\"recording\",\"gif_export_started\",\"gif_export\",\"open_image_used\",\"open_image\",\"beautify_opened\",\"beautify\",\"video_trim_opened\",\"video_trim\",\"settings_opened\",\"settings\",\"about_opened\",\"about\"];\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nlet Base = Events\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| extend install_id=tostring(customDimensions.install_id)\n| where isnotempty(install_id)\n| join kind=inner FeatureMap on event_name;\nlet TotalInstalls = toscalar(Base | summarize dcount(install_id));\nBase\n| summarize installs_used=dcount(install_id) by feature\n| extend adoption_pct=round(100.0 * todouble(installs_used) / todouble(TotalInstalls), 2)\n| order by adoption_pct desc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Settings/About/HUD events (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project timestamp, event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project timestamp, event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| where event_name startswith \"settings_\" or event_name startswith \"about_\" or event_name startswith \"recording_hud_\"\n| summarize events=count() by event_name\n| order by event_name asc"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Funnels"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Snip funnel conversion (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nlet SnipSessions = Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"snip_started\" | summarize by session_id=tostring(customDimensions.session_id);\nlet AnnotateSessions = Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"annotation_committed\" | summarize by session_id=tostring(customDimensions.session_id);\nlet PinSessions = Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"capture_pinned\" | summarize by session_id=tostring(customDimensions.session_id);\nlet snip = toscalar(SnipSessions | count);\nlet annotate = toscalar(SnipSessions | join kind=inner AnnotateSessions on session_id | count);\nlet pin = toscalar(SnipSessions | join kind=inner PinSessions on session_id | count);\nprint snip_sessions=snip, annotate_after_snip=annotate, annotate_rate_pct=round(100.0 * todouble(annotate) / todouble(snip), 2), pin_after_snip=pin, pin_rate_pct=round(100.0 * todouble(pin) / todouble(snip), 2)"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Growth & Operations"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "barchart",
+        "title": "Snip source mix (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project timestamp, event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project timestamp, event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| where event_name == \"snip_started\"\n| summarize starts=count() by source=tostring(customDimensions.source)\n| order by starts desc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Session engagement depth (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| extend session_id=tostring(customDimensions.session_id)\n| where isnotempty(session_id)\n| summarize event_count=count() by session_id\n| extend bucket=case(event_count <= 2, \"1-2\", event_count <= 5, \"3-5\", event_count <= 10, \"6-10\", \"11+\")\n| summarize sessions=count() by bucket\n| order by case(bucket == \"1-2\", 1, bucket == \"3-5\", 2, bucket == \"6-10\", 3, 4) asc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Version adoption by active installs (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| extend install_id=tostring(customDimensions.install_id), app_version=tostring(customDimensions.version)\n| where isnotempty(install_id) and isnotempty(app_version)\n| summarize active_installs=dcount(install_id) by app_version\n| order by active_installs desc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Operation outcomes: GIF and Trim (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| where event_name in (\"gif_export_completed\", \"video_trim_completed\")\n| extend success=tostring(customDimensions.success)\n| summarize total=count(), success_count=countif(success == \"true\") by event_name\n| extend success_rate_pct=round(100.0 * todouble(success_count) / todouble(total), 2)\n| order by event_name asc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Update funnel (90d)",
+        "query": "let lookback = 90d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nlet available = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"update_available\" | count);\nlet confirmed = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"update_confirmed\" | count);\nlet dismissed = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"update_dismissed\" | count);\nprint update_available=available, update_confirmed=confirmed, update_dismissed=dismissed, confirm_rate_pct=round(100.0 * todouble(confirmed) / todouble(available), 2), dismiss_rate_pct=round(100.0 * todouble(dismissed) / todouble(available), 2)"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Decision Intelligence"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Capture action mix (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| where event_name == \"capture_completed\"\n| summarize events=count(), sessions=dcount(tostring(customDimensions.session_id)) by action=tostring(customDimensions.action)\n| order by events desc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Annotation tool usage mix (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| where event_name == \"annotation_committed\"\n| summarize commits=sum(toint(customDimensions.count)), sessions=dcount(tostring(customDimensions.session_id)) by tool=tostring(customDimensions.tool)\n| order by commits desc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Feature usage by app version (30d)",
+        "query": "let lookback = 30d;\nlet FeatureMap = datatable(event_name:string, feature:string)[\"snip_started\",\"snip\",\"annotation_committed\",\"annotation\",\"capture_pinned\",\"pin\",\"ocr_used\",\"ocr\",\"recording_started\",\"recording\",\"gif_export_started\",\"gif_export\",\"open_image_used\",\"open_image\",\"beautify_opened\",\"beautify\",\"video_trim_opened\",\"video_trim\",\"settings_opened\",\"settings\",\"about_opened\",\"about\"];\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| where event_name in (FeatureMap | project event_name)\n| extend app_version=tostring(customDimensions.version)\n| where isnotempty(app_version)\n| join kind=inner FeatureMap on event_name\n| summarize events=count(), sessions=dcount(tostring(customDimensions.session_id)) by app_version, feature\n| order by app_version desc, events desc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Weekly active installs and sessions (90d)",
+        "query": "let lookback = 90d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project timestamp, customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project timestamp, customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| extend install_id=tostring(customDimensions.install_id), session_id=tostring(customDimensions.session_id)\n| where isnotempty(session_id)\n| summarize active_sessions=dcount(session_id), active_installs=dcountif(install_id, isnotempty(install_id)) by week=bin(timestamp, 7d)\n| order by week desc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Sessions per install (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project customDimensions);\nlet base = Events\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| extend install_id=tostring(customDimensions.install_id), session_id=tostring(customDimensions.session_id);\nlet installs = toscalar(base | where isnotempty(install_id) | summarize dcount(install_id));\nlet sessions = toscalar(base | where isnotempty(session_id) | summarize dcount(session_id));\nprint installs=installs, sessions=sessions, sessions_per_install=round(todouble(sessions) / todouble(installs), 2)"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Unhandled exception rate (diagnostic, 30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nlet errors = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"diagnostic\" and event_name == \"unhandled_exception\" | count);\nlet sessions = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" | summarize dcount(tostring(customDimensions.session_id)));\nprint unhandled_exceptions=errors, sessions=sessions, exceptions_per_1k_sessions=round(1000.0 * todouble(errors) / todouble(sessions), 2)"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "ffmpeg missing rate among recording starts (30d)",
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nlet missing_count = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"diagnostic\" and event_name == \"ffmpeg_missing\" | count);\nlet recording_starts = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"recording_started\" | count);\nprint ffmpeg_missing=missing_count, recording_starts=recording_starts, missing_per_start_pct=round(100.0 * todouble(missing_count) / todouble(recording_starts), 2)"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "timechart",
+        "title": "Daily event volume trend (90d)",
+        "query": "let lookback = 90d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project timestamp, event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project timestamp, event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| summarize events=count() by day=bin(timestamp, 1d), event_name\n| where event_name in (\"snip_started\", \"capture_completed\", \"recording_started\", \"recording_completed\")\n| order by day asc"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Release Readiness"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Gate: Recording completion health (30d)",
+        "query": "let lookback = 30d;\nlet passThreshold = 85.0;\nlet warnThreshold = 70.0;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nlet started = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"recording_started\" | summarize count());\nlet completed = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"recording_completed\" | summarize count());\nlet rate = iff(started == 0, real(null), 100.0 * todouble(completed) / todouble(started));\nprint metric=\"recording_completion_rate\", value_pct=round(rate, 2), started=started, completed=completed, pass_threshold_pct=passThreshold, warn_threshold_pct=warnThreshold\n| extend status = case(isnull(value_pct), \"NO_DATA\", value_pct >= passThreshold, \"PASS\", value_pct >= warnThreshold, \"WARN\", \"FAIL\")"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Gate: OCR success health (30d)",
+        "query": "let lookback = 30d;\nlet passThreshold = 75.0;\nlet warnThreshold = 60.0;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nlet attempted = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"ocr_attempted\" | summarize count());\nlet success = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" and event_name == \"ocr_used\" | summarize count());\nlet rate = iff(attempted == 0, real(null), 100.0 * todouble(success) / todouble(attempted));\nprint metric=\"ocr_success_rate\", value_pct=round(rate, 2), attempted=attempted, success=success, pass_threshold_pct=passThreshold, warn_threshold_pct=warnThreshold\n| extend status = case(isnull(value_pct), \"NO_DATA\", value_pct >= passThreshold, \"PASS\", value_pct >= warnThreshold, \"WARN\", \"FAIL\")"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Gate: Unhandled exceptions per 1k sessions (30d)",
+        "query": "let lookback = 30d;\nlet passThreshold = 1.0;\nlet warnThreshold = 3.0;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nlet errors = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"diagnostic\" and event_name == \"unhandled_exception\" | summarize count());\nlet sessions = toscalar(Events | where tostring(customDimensions.telemetry_channel) == \"product\" | summarize dcount(tostring(customDimensions.session_id)));\nlet value = iff(sessions == 0, real(null), 1000.0 * todouble(errors) / todouble(sessions));\nprint metric=\"exceptions_per_1k_sessions\", value_per_1k=round(value, 2), unhandled_exceptions=errors, sessions=sessions, pass_threshold=passThreshold, warn_threshold=warnThreshold\n| extend status = case(isnull(value_per_1k), \"NO_DATA\", value_per_1k <= passThreshold, \"PASS\", value_per_1k <= warnThreshold, \"WARN\", \"FAIL\")"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Gate: Telemetry schema completeness (90d)",
+        "query": "let lookback = 90d;\nlet passThreshold = 99.5;\nlet warnThreshold = 98.0;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project customDimensions);\nlet total = toscalar(Events | summarize count());\nlet missing_count = toscalar(Events | where isempty(tostring(customDimensions.telemetry_channel)) or isempty(tostring(customDimensions.telemetry_schema_version)) | summarize count());\nlet completeness = iff(total == 0, real(null), 100.0 * (todouble(total - missing_count) / todouble(total)));\nprint metric=\"telemetry_schema_completeness\", value_pct=round(completeness, 3), total_events=total, missing_schema_or_channel=missing_count, pass_threshold_pct=passThreshold, warn_threshold_pct=warnThreshold\n| extend status = case(isnull(value_pct), \"NO_DATA\", value_pct >= passThreshold, \"PASS\", value_pct >= warnThreshold, \"WARN\", \"FAIL\")"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Quality & Coverage"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Event inventory (seen vs missing)",
+        "query": "let lookback = 90d;\nlet Expected = datatable(event_name:string, expected_channel:string)[\"annotation_committed\",\"product\",\"about_closed\",\"product\",\"about_opened\",\"product\",\"about_url_opened\",\"product\",\"app_closed\",\"product\",\"app_heartbeat\",\"diagnostic\",\"app_started\",\"product\",\"beautify_opened\",\"product\",\"capture_completed\",\"product\",\"capture_delay_used\",\"product\",\"capture_pinned\",\"product\",\"first_capture_completed\",\"product\",\"first_recording_completed\",\"product\",\"ffmpeg_missing\",\"diagnostic\",\"gif_export_completed\",\"product\",\"gif_export_started\",\"product\",\"library_ocr_search_used\",\"product\",\"library_open_used\",\"product\",\"microphone_unavailable\",\"diagnostic\",\"ocr_attempted\",\"product\",\"ocr_no_text\",\"product\",\"ocr_used\",\"product\",\"open_image_used\",\"product\",\"recording_hud_annotation_input_toggled\",\"product\",\"recording_hud_clear_annotations\",\"product\",\"recording_hud_display_mode_changed\",\"product\",\"recording_hud_microphone_toggled\",\"product\",\"recording_hud_pause_toggled\",\"product\",\"recording_hud_stopped\",\"product\",\"recording_hud_tool_selected\",\"product\",\"recording_hud_undo_annotations\",\"product\",\"recording_completed\",\"product\",\"recording_started\",\"product\",\"settings_canceled\",\"product\",\"settings_defaults_restored\",\"product\",\"settings_opened\",\"product\",\"settings_saved\",\"product\",\"settings_section_changed\",\"product\",\"settings_section_reset\",\"product\",\"screenshot_beautified\",\"product\",\"screenshot_beautified_copied\",\"product\",\"snip_cancelled\",\"product\",\"snip_started\",\"product\",\"startup_completed\",\"diagnostic\",\"unhandled_exception\",\"diagnostic\",\"update_available\",\"product\",\"update_check_manual\",\"product\",\"update_confirmed\",\"product\",\"update_dismissed\",\"product\",\"video_trim_completed\",\"product\",\"video_trim_opened\",\"product\",\"video_trim_started\",\"product\"];\nlet Observed = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project timestamp, event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project timestamp, event_name=tostring(message), customDimensions)\n| summarize observed_count=count(), last_seen=max(timestamp), observed_channel=any(tostring(customDimensions.telemetry_channel)) by event_name;\nExpected\n| join kind=fullouter Observed on event_name\n| extend expected_channel=coalesce(expected_channel, \"n/a\")\n| extend observed_channel=coalesce(observed_channel, \"n/a\")\n| extend status=case(isnotempty(expected_channel) and expected_channel != \"n/a\" and observed_count > 0, \"Seen\", isnotempty(expected_channel) and expected_channel != \"n/a\" and (isnull(observed_count) or observed_count == 0), \"Missing\", \"Unexpected\")\n| extend channel_match=case(status == \"Seen\" and observed_channel == expected_channel, \"OK\", status == \"Seen\" and observed_channel != expected_channel, \"Mismatch\", \"n/a\")\n| project status, event_name, expected_channel, observed_channel, channel_match, observed_count=coalesce(observed_count, 0), last_seen\n| order by case(status == \"Missing\", 0, status == \"Unexpected\", 1, 2) asc, event_name asc"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table",
+        "title": "Data quality check (missing channel/schema)",
+        "query": "let lookback = 90d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project timestamp, event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project timestamp, event_name=tostring(message), customDimensions);\nEvents\n| extend channel=tostring(customDimensions.telemetry_channel), schema_version=tostring(customDimensions.telemetry_schema_version)\n| where isempty(channel) or isempty(schema_version)\n| project timestamp, event_name, channel, schema_version, customDimensions\n| order by timestamp desc"
+      }
+    }
+  ]
+}

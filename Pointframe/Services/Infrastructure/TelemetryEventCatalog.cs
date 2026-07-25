@@ -9,13 +9,13 @@ public enum TelemetryChannel
 public static class TelemetryPropertyKeys
 {
     public const string Action = "action";
-    public const string AppVersion = "version";
     public const string AnnotationInputState = "annotation_input_state";
     public const string AnnotationTool = "annotation_tool";
     public const string AppSection = "app_section";
     public const string Canceled = "canceled";
     public const string CaptureType = "capture_type";
     public const string Context = "context";
+    public const string Count = "count";
     public const string DelaySeconds = "delay_seconds";
     public const string DisplayMode = "display_mode";
     public const string DurationMilliseconds = "duration_ms";
@@ -101,11 +101,13 @@ public sealed class TelemetryEventDefinition
     public TelemetryEventDefinition(
         string name,
         TelemetryChannel channel,
-        params string[] requiredProperties)
+        IReadOnlyList<string> requiredProperties,
+        IReadOnlyList<string> optionalProperties)
     {
         Name = name;
         Channel = channel;
         RequiredProperties = requiredProperties;
+        OptionalProperties = optionalProperties;
     }
 
     public string Name { get; }
@@ -113,6 +115,18 @@ public sealed class TelemetryEventDefinition
     public TelemetryChannel Channel { get; }
 
     public IReadOnlyList<string> RequiredProperties { get; }
+
+    public IReadOnlyList<string> OptionalProperties { get; }
+
+    public bool AllowsProperty(string propertyName)
+    {
+        return RequiredProperties.Contains(propertyName) || OptionalProperties.Contains(propertyName);
+    }
+
+    public TelemetryEventDefinition WithOptional(params string[] optionalProperties)
+    {
+        return new TelemetryEventDefinition(Name, Channel, RequiredProperties, optionalProperties);
+    }
 }
 
 public static class TelemetryEventCatalog
@@ -120,7 +134,7 @@ public static class TelemetryEventCatalog
     private static readonly IReadOnlyDictionary<string, TelemetryEventDefinition> Definitions =
         new Dictionary<string, TelemetryEventDefinition>(StringComparer.Ordinal)
         {
-            [TelemetryEvents.AnnotationCommitted] = Product(TelemetryEvents.AnnotationCommitted, TelemetryPropertyKeys.Tool),
+            [TelemetryEvents.AnnotationCommitted] = Product(TelemetryEvents.AnnotationCommitted, TelemetryPropertyKeys.Tool, TelemetryPropertyKeys.Count),
             [TelemetryEvents.AboutClosed] = Product(TelemetryEvents.AboutClosed),
             [TelemetryEvents.AboutOpened] = Product(TelemetryEvents.AboutOpened),
             [TelemetryEvents.AboutUrlOpened] = Product(TelemetryEvents.AboutUrlOpened, TelemetryPropertyKeys.UrlHost),
@@ -131,8 +145,8 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.CaptureCompleted] = Product(TelemetryEvents.CaptureCompleted, TelemetryPropertyKeys.Action),
             [TelemetryEvents.CaptureDelayUsed] = Product(TelemetryEvents.CaptureDelayUsed, TelemetryPropertyKeys.DelaySeconds),
             [TelemetryEvents.CapturePinned] = Product(TelemetryEvents.CapturePinned),
-            [TelemetryEvents.FirstCaptureCompleted] = Product(TelemetryEvents.FirstCaptureCompleted, TelemetryPropertyKeys.CaptureType, TelemetryPropertyKeys.FirstAction),
-            [TelemetryEvents.FirstRecordingCompleted] = Product(TelemetryEvents.FirstRecordingCompleted, TelemetryPropertyKeys.WithAudio),
+            [TelemetryEvents.FirstCaptureCompleted] = Product(TelemetryEvents.FirstCaptureCompleted, TelemetryPropertyKeys.CaptureType, TelemetryPropertyKeys.FirstAction).WithOptional(TelemetryPropertyKeys.TimeFromInstallMinutes),
+            [TelemetryEvents.FirstRecordingCompleted] = Product(TelemetryEvents.FirstRecordingCompleted, TelemetryPropertyKeys.WithAudio).WithOptional(TelemetryPropertyKeys.DurationSeconds, TelemetryPropertyKeys.TimeFromInstallMinutes),
             [TelemetryEvents.FfmpegMissing] = Diagnostic(TelemetryEvents.FfmpegMissing),
             [TelemetryEvents.GifExportCompleted] = Product(TelemetryEvents.GifExportCompleted, TelemetryPropertyKeys.Success, TelemetryPropertyKeys.DurationSeconds),
             [TelemetryEvents.GifExportStarted] = Product(TelemetryEvents.GifExportStarted),
@@ -151,7 +165,7 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.RecordingHudStopped] = Product(TelemetryEvents.RecordingHudStopped, TelemetryPropertyKeys.DurationSeconds),
             [TelemetryEvents.RecordingHudToolSelected] = Product(TelemetryEvents.RecordingHudToolSelected, TelemetryPropertyKeys.AnnotationTool),
             [TelemetryEvents.RecordingHudUndoAnnotations] = Product(TelemetryEvents.RecordingHudUndoAnnotations),
-            [TelemetryEvents.RecordingCompleted] = Product(TelemetryEvents.RecordingCompleted),
+            [TelemetryEvents.RecordingCompleted] = Product(TelemetryEvents.RecordingCompleted).WithOptional(TelemetryPropertyKeys.DurationSeconds),
             [TelemetryEvents.RecordingStarted] = Product(TelemetryEvents.RecordingStarted, TelemetryPropertyKeys.Type),
             [TelemetryEvents.SettingsCanceled] = Product(TelemetryEvents.SettingsCanceled),
             [TelemetryEvents.SettingsDefaultsRestored] = Product(TelemetryEvents.SettingsDefaultsRestored),
@@ -164,7 +178,7 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.SnipCancelled] = Product(TelemetryEvents.SnipCancelled, TelemetryPropertyKeys.Type),
             [TelemetryEvents.SnipStarted] = Product(TelemetryEvents.SnipStarted, TelemetryPropertyKeys.Type, TelemetryPropertyKeys.Source),
             [TelemetryEvents.StartupCompleted] = Diagnostic(TelemetryEvents.StartupCompleted, TelemetryPropertyKeys.DurationMilliseconds),
-            [TelemetryEvents.UnhandledException] = Diagnostic(TelemetryEvents.UnhandledException, TelemetryPropertyKeys.ExceptionType),
+            [TelemetryEvents.UnhandledException] = Diagnostic(TelemetryEvents.UnhandledException, TelemetryPropertyKeys.ExceptionType).WithOptional(TelemetryPropertyKeys.Context, TelemetryPropertyKeys.LastAction),
             [TelemetryEvents.UpdateAvailable] = Product(TelemetryEvents.UpdateAvailable, TelemetryPropertyKeys.Version),
             [TelemetryEvents.UpdateCheckManual] = Product(TelemetryEvents.UpdateCheckManual),
             [TelemetryEvents.UpdateConfirmed] = Product(TelemetryEvents.UpdateConfirmed, TelemetryPropertyKeys.Version),
@@ -190,32 +204,30 @@ public static class TelemetryEventCatalog
             return TelemetrySchemaValidationResult.UnknownEvent(eventName);
         }
 
-        if (definition.RequiredProperties.Count == 0)
-        {
-            return TelemetrySchemaValidationResult.Valid(definition);
-        }
-
-        if (properties is null)
-        {
-            return TelemetrySchemaValidationResult.MissingRequiredProperties(definition, definition.RequiredProperties);
-        }
-
         var missing = definition.RequiredProperties
-            .Where(requiredProperty => !properties.ContainsKey(requiredProperty))
+            .Where(requiredProperty => properties is null || !properties.ContainsKey(requiredProperty))
             .ToArray();
-        return missing.Length == 0
+
+        // Undeclared keys are how personal data leaks in: a caller passing a file path or
+        // OCR text would otherwise be forwarded verbatim, so surface them as a schema failure.
+        var unknown = (properties?.Keys ?? Enumerable.Empty<string>())
+            .Where(key => !definition.AllowsProperty(key))
+            .OrderBy(key => key, StringComparer.Ordinal)
+            .ToArray();
+
+        return missing.Length == 0 && unknown.Length == 0
             ? TelemetrySchemaValidationResult.Valid(definition)
-            : TelemetrySchemaValidationResult.MissingRequiredProperties(definition, missing);
+            : TelemetrySchemaValidationResult.SchemaMismatch(definition, missing, unknown);
     }
 
     private static TelemetryEventDefinition Product(string name, params string[] requiredProperties)
     {
-        return new TelemetryEventDefinition(name, TelemetryChannel.Product, requiredProperties);
+        return new TelemetryEventDefinition(name, TelemetryChannel.Product, requiredProperties, []);
     }
 
     private static TelemetryEventDefinition Diagnostic(string name, params string[] requiredProperties)
     {
-        return new TelemetryEventDefinition(name, TelemetryChannel.Diagnostic, requiredProperties);
+        return new TelemetryEventDefinition(name, TelemetryChannel.Diagnostic, requiredProperties, []);
     }
 }
 
@@ -226,12 +238,14 @@ public sealed class TelemetrySchemaValidationResult
         bool isKnownEvent,
         TelemetryEventDefinition? definition,
         IReadOnlyList<string> missingProperties,
+        IReadOnlyList<string> unknownProperties,
         string eventName)
     {
         IsValid = isValid;
         IsKnownEvent = isKnownEvent;
         Definition = definition;
         MissingProperties = missingProperties;
+        UnknownProperties = unknownProperties;
         EventName = eventName;
     }
 
@@ -243,22 +257,31 @@ public sealed class TelemetrySchemaValidationResult
 
     public IReadOnlyList<string> MissingProperties { get; }
 
+    public IReadOnlyList<string> UnknownProperties { get; }
+
     public string EventName { get; }
 
     public static TelemetrySchemaValidationResult Valid(TelemetryEventDefinition definition)
     {
-        return new TelemetrySchemaValidationResult(true, true, definition, Array.Empty<string>(), definition.Name);
+        return new TelemetrySchemaValidationResult(true, true, definition, [], [], definition.Name);
     }
 
     public static TelemetrySchemaValidationResult UnknownEvent(string eventName)
     {
-        return new TelemetrySchemaValidationResult(false, false, null, Array.Empty<string>(), eventName);
+        return new TelemetrySchemaValidationResult(false, false, null, [], [], eventName);
     }
 
-    public static TelemetrySchemaValidationResult MissingRequiredProperties(
+    public static TelemetrySchemaValidationResult SchemaMismatch(
         TelemetryEventDefinition definition,
-        IReadOnlyList<string> missingProperties)
+        IReadOnlyList<string> missingProperties,
+        IReadOnlyList<string> unknownProperties)
     {
-        return new TelemetrySchemaValidationResult(false, true, definition, missingProperties, definition.Name);
+        return new TelemetrySchemaValidationResult(
+            false,
+            true,
+            definition,
+            missingProperties,
+            unknownProperties,
+            definition.Name);
     }
 }
