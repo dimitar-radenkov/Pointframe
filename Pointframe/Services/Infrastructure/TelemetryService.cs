@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using Azure.Monitor.OpenTelemetry.Exporter;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
+using Pointframe.Automation;
 
 namespace Pointframe.Services;
 
@@ -13,6 +15,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
     private const int ScheduledDelayMilliseconds = 5000;
     private const int ExporterTimeoutMilliseconds = 30000;
     private const int MaxExportBatchSize = 512;
+    private const int MaxPropertyValueLength = 200;
 
     private readonly ILogger? _logger;
     private readonly ILogger<TelemetryService> _localLogger;
@@ -23,18 +26,21 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
     private readonly string _telemetrySchemaVersion = "1";
     private readonly object _syncRoot = new();
+    private readonly bool _isAutomationMode;
     private volatile string? _lastEventName;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public TelemetryService(
         IConfiguration configuration,
         IUserSettingsService userSettings,
         IAppVersionService appVersionService,
-        ILogger<TelemetryService> localLogger)
+        ILogger<TelemetryService> localLogger,
+        AutomationLaunchOptions automationLaunchOptions)
     {
         _userSettings = userSettings;
         _appVersion = appVersionService.Current.ToString();
         _localLogger = localLogger;
+        _isAutomationMode = automationLaunchOptions.IsAutomationMode;
 
         var connectionString = configuration["ApplicationInsights:ConnectionString"];
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -73,25 +79,17 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
         ILogger logger,
         IUserSettingsService userSettings,
         IAppVersionService appVersionService,
-        ILogger<TelemetryService>? localLogger = null)
+        ILogger<TelemetryService>? localLogger = null,
+        bool isAutomationMode = false)
     {
         _userSettings = userSettings;
         _appVersion = appVersionService.Current.ToString();
         _logger = logger;
         _localLogger = localLogger ?? NullLogger<TelemetryService>.Instance;
+        _isAutomationMode = isAutomationMode;
     }
 
-    public void TrackProductEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
-    {
-        TrackEventInternal(name, properties, TelemetryChannel.Product);
-    }
-
-    public void TrackDiagnosticEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
-    {
-        TrackEventInternal(name, properties, TelemetryChannel.Diagnostic);
-    }
-
-    public void TrackDiagnosticException(
+    public void TrackException(
         Exception exception,
         string? context = null,
         IReadOnlyDictionary<string, string>? properties = null)
@@ -131,7 +129,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
             LogSchemaValidationFailure(validation);
         }
 
-        if (_logger is null)
+        if (!IsRemoteEnabled)
         {
             return;
         }
@@ -145,23 +143,13 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
 
     public void TrackEvent(string name, IReadOnlyDictionary<string, string>? properties = null)
     {
-        TrackProductEvent(name, properties);
-    }
-
-    public void TrackException(Exception exception, string? context = null)
-    {
-        TrackDiagnosticException(exception, context);
-    }
-
-    private void TrackEventInternal(string name, IReadOnlyDictionary<string, string>? properties, TelemetryChannel defaultChannel)
-    {
         if (_disposed)
         {
             return;
         }
 
         var validation = TelemetryEventCatalog.Validate(name, properties);
-        var channel = validation.Definition?.Channel ?? defaultChannel;
+        var channel = validation.Definition?.Channel ?? TelemetryChannel.Product;
         if (!validation.IsValid)
         {
             LogSchemaValidationFailure(validation);
@@ -174,7 +162,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
             _lastEventName = name;
         }
 
-        if (_logger is null)
+        if (!IsRemoteEnabled)
         {
             return;
         }
@@ -185,6 +173,11 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
             _logger.LogInformation("{microsoft.custom_event.name}", name);
         }
     }
+
+    // The single authority on whether anything leaves the machine. Call sites never need to
+    // ask: a missing connection string or an automation run silently drops every event here.
+    [MemberNotNullWhen(true, nameof(_logger))]
+    private bool IsRemoteEnabled => _logger is not null && !_isAutomationMode;
 
     private Dictionary<string, object?> BuildScope(TelemetryChannel channel, IReadOnlyDictionary<string, string>? properties)
     {
@@ -206,33 +199,53 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
         {
             foreach (var kvp in properties)
             {
-                scope[kvp.Key] = kvp.Value;
+                scope[kvp.Key] = Clamp(kvp.Value);
             }
         }
 
         return scope;
     }
 
+    // A dimension this long is always a bug (a path or recognised text that slipped through).
+    // Truncating caps both the ingestion cost and the blast radius of that bug.
+    private static string Clamp(string value)
+    {
+        return value.Length <= MaxPropertyValueLength ? value : value[..MaxPropertyValueLength];
+    }
+
     private void LogSchemaValidationFailure(TelemetrySchemaValidationResult validation)
     {
         // Always report locally: source builds have no connection string, so the remote
         // logger is null and a schema mistake would otherwise go unnoticed until production.
-        if (validation.IsKnownEvent)
+        if (!validation.IsKnownEvent)
         {
-            var missingProperties = string.Join(",", validation.MissingProperties);
-            _localLogger.LogWarning(
-                "Telemetry schema mismatch for {EventName}. Missing required properties: {MissingProperties}",
-                validation.EventName,
-                missingProperties);
-            _logger?.LogWarning(
-                "Telemetry schema mismatch for {EventName}. Missing required properties: {MissingProperties}",
-                validation.EventName,
-                missingProperties);
+            const string UnregisteredTemplate = "Telemetry event {EventName} is not registered in TelemetryEventCatalog";
+            _localLogger.LogWarning(UnregisteredTemplate, validation.EventName);
+            _logger?.LogWarning(UnregisteredTemplate, validation.EventName);
             return;
         }
 
-        _localLogger.LogWarning("Telemetry event {EventName} is not registered in TelemetryEventCatalog", validation.EventName);
-        _logger?.LogWarning("Telemetry event {EventName} is not registered in TelemetryEventCatalog", validation.EventName);
+        if (validation.MissingProperties.Count > 0)
+        {
+            LogWarningToBothSinks(
+                "Telemetry schema mismatch for {EventName}. Missing required properties: {Properties}",
+                validation.EventName,
+                string.Join(",", validation.MissingProperties));
+        }
+
+        if (validation.UnknownProperties.Count > 0)
+        {
+            LogWarningToBothSinks(
+                "Telemetry schema mismatch for {EventName}. Undeclared properties: {Properties}",
+                validation.EventName,
+                string.Join(",", validation.UnknownProperties));
+        }
+    }
+
+    private void LogWarningToBothSinks(string template, string eventName, string properties)
+    {
+        _localLogger.LogWarning(template, eventName, properties);
+        _logger?.LogWarning(template, eventName, properties);
     }
 
     public void Flush()

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
+using Pointframe.Automation;
 using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
@@ -85,8 +86,16 @@ public sealed class TelemetryServiceTests
     {
         var config = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
         config.Setup(c => c["ApplicationInsights:ConnectionString"]).Returns((string?)null);
-        return new TelemetryService(config.Object, SettingsWithInstallId("id"), AppVersion(), localLogger);
+        return new TelemetryService(
+            config.Object,
+            SettingsWithInstallId("id"),
+            AppVersion(),
+            localLogger,
+            AutomationLaunchOptions.Parse([]));
     }
+
+    private static TelemetryService CreateAutomationSut(CapturingLogger logger)
+        => new(logger, SettingsWithInstallId("install-abc"), AppVersion(), localLogger: null, isAutomationMode: true);
 
     [Fact]
     public void TrackEvent_WhenConnectionStringMissing_DoesNotThrow()
@@ -356,12 +365,12 @@ public sealed class TelemetryServiceTests
     }
 
     [Fact]
-    public void TrackDiagnosticException_LogsDiagnosticChannelInScope()
+    public void TrackException_LogsDiagnosticChannelInScope()
     {
         var logger = new CapturingLogger();
         var sut = CreateSut(logger);
 
-        sut.TrackDiagnosticException(new InvalidOperationException("boom"), "dispatcher");
+        sut.TrackException(new InvalidOperationException("boom"), "dispatcher");
 
         Assert.Equal("diagnostic", logger.Entries[0].Scope["telemetry_channel"]);
     }
@@ -558,6 +567,88 @@ public sealed class TelemetryServiceTests
 
         // Assert
         Assert.Equal(TelemetryEvents.CapturePinned, logger.Entries[2].Scope[TelemetryPropertyKeys.LastAction]);
+    }
+
+    [Fact]
+    public void TrackEvent_WhenPropertyIsNotDeclaredInCatalog_LogsSchemaWarning()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.CapturePinned, new Dictionary<string, string>
+        {
+            ["file_path"] = @"C:\captures\holiday-photo.png",
+        });
+
+        // Assert
+        Assert.Contains(logger.Entries, entry =>
+            entry.Level == LogLevel.Warning
+            && entry.Message.Contains("file_path", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TrackEvent_ClampsOverlongPropertyValues()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.AboutUrlOpened, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.UrlHost] = new string('x', 5000),
+        });
+
+        // Assert
+        var value = Assert.IsType<string>(logger.Entries[0].Scope[TelemetryPropertyKeys.UrlHost]);
+        Assert.Equal(200, value.Length);
+    }
+
+    [Fact]
+    public void TrackEvent_LeavesShortPropertyValuesIntact()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.AboutUrlOpened, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.UrlHost] = "github.com",
+        });
+
+        // Assert
+        Assert.Equal("github.com", logger.Entries[0].Scope[TelemetryPropertyKeys.UrlHost]);
+    }
+
+    [Fact]
+    public void TrackEvent_InAutomationMode_EmitsNothing()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateAutomationSut(logger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.CapturePinned);
+
+        // Assert
+        Assert.Empty(logger.Entries);
+    }
+
+    [Fact]
+    public void TrackException_InAutomationMode_EmitsNothing()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateAutomationSut(logger);
+
+        // Act
+        sut.TrackException(new InvalidOperationException("boom"));
+
+        // Assert
+        Assert.Empty(logger.Entries);
     }
 
     [Fact]

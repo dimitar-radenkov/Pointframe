@@ -122,7 +122,7 @@ public partial class TrimViewModel : ObservableObject
         {
             success = false;
             _logger.LogError(ex, "Trim failed for {Path}", InputPath);
-            _telemetry.TrackDiagnosticException(ex, "video_trim");
+            _telemetry.TrackException(ex, "video_trim");
             StatusText = "Trim failed. Please try again.";
         }
         finally

@@ -72,7 +72,7 @@ public partial class App : Application
                 logging.ClearProviders();
                 logging.AddSerilog(dispose: false);
             })
-            .ConfigureServices((_, services) => services.AddPointframeAppServices())
+            .ConfigureServices((_, services) => services.AddPointframeAppServices(automationLaunchOptions))
             .Build();
 
         _logger = _host.Services.GetRequiredService<ILogger<App>>();
@@ -119,17 +119,15 @@ public partial class App : Application
 
         EnsureInstallId();
 
-        if (!automationLaunchOptions.IsAutomationMode)
+        // Automation runs are filtered inside TelemetryService, so no guard is needed here.
+        var version = _host.Services.GetRequiredService<IAppVersionService>().Current;
+        _sessionStartTime = DateTime.UtcNow;
+        _telemetry.TrackEvent(TelemetryEvents.AppStarted, new Dictionary<string, string>
         {
-            var version = _host.Services.GetRequiredService<IAppVersionService>().Current;
-            _sessionStartTime = DateTime.UtcNow;
-            _telemetry.TrackEvent(TelemetryEvents.AppStarted, new Dictionary<string, string>
-            {
-                [TelemetryPropertyKeys.Version] = version.ToString(),
-                [TelemetryPropertyKeys.OsBuild] = Environment.OSVersion.Version.ToString(),
-                [TelemetryPropertyKeys.ScreenCount] = System.Windows.Forms.Screen.AllScreens.Length.ToString(),
-            });
-        }
+            [TelemetryPropertyKeys.Version] = version.ToString(),
+            [TelemetryPropertyKeys.OsBuild] = Environment.OSVersion.Version.ToString(),
+            [TelemetryPropertyKeys.ScreenCount] = System.Windows.Forms.Screen.AllScreens.Length.ToString(),
+        });
 
         _errorHandler.Register();
 
@@ -169,7 +167,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _logger?.LogInformation("Pointframe shutting down");
-        if (!_isAutomationMode && _sessionStartTime != default)
+        if (_sessionStartTime != default)
         {
             _telemetry?.TrackEvent(TelemetryEvents.AppClosed, new Dictionary<string, string>
             {

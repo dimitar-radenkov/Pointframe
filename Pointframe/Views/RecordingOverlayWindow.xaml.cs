@@ -148,6 +148,7 @@ public partial class RecordingOverlayWindow : Window
         _recordingAnnotationViewModel.ClearRequested -= HandleRecordingClearRequested;
         _recordingCursorEffectsService.Dispose();
         _recordingMousePassthroughCoordinator.Dispose();
+        _recordingAnnotationViewModel.FlushAnnotationTelemetry();
         HideRecordingHud();
         HideRecordingAnnotationSurface();
 

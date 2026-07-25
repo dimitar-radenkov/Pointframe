@@ -3,7 +3,7 @@ using Pointframe.Automation;
 
 namespace Pointframe.Services;
 
-public sealed class TelemetryHeartbeatService : BackgroundService
+internal sealed class TelemetryHeartbeatService : BackgroundService
 {
     internal static readonly TimeSpan HeartbeatInterval = TimeSpan.FromHours(4);
 
@@ -14,13 +14,12 @@ public sealed class TelemetryHeartbeatService : BackgroundService
 
     public TelemetryHeartbeatService(
         ITelemetryService telemetry,
-        ILogger<TelemetryHeartbeatService> logger)
+        ILogger<TelemetryHeartbeatService> logger,
+        AutomationLaunchOptions automationLaunchOptions)
     {
         _telemetry = telemetry;
         _logger = logger;
-
-        var launchOptions = AutomationLaunchOptions.Parse(Environment.GetCommandLineArgs().Skip(1));
-        _isAutomationMode = launchOptions.IsAutomationMode;
+        _isAutomationMode = automationLaunchOptions.IsAutomationMode;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

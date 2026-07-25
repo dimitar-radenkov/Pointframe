@@ -28,7 +28,7 @@ internal sealed class AppErrorHandler : IAppErrorHandler
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         _logger.LogError(e.Exception, "Unhandled dispatcher exception");
-        _telemetry.TrackDiagnosticException(e.Exception, "dispatcher");
+        _telemetry.TrackException(e.Exception, "dispatcher");
         e.Handled = true;
 
         var closedWindowName = TryRecoverFromActiveWindow();
@@ -108,7 +108,7 @@ internal sealed class AppErrorHandler : IAppErrorHandler
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
         _logger.LogError(e.Exception, "Unobserved task exception");
-        _telemetry.TrackDiagnosticException(e.Exception, "task");
+        _telemetry.TrackException(e.Exception, "task");
         e.SetObserved();
     }
 }

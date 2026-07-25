@@ -346,7 +346,7 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 | `capture_pinned` | — |
 | `first_capture_completed` | `capture_type`, `first_action`, `time_from_install_minutes` when available |
 | `open_image_used` | — |
-| `annotation_committed` | `tool` |
+| `annotation_committed` | `tool`, `count` (one event per tool, sent once when the annotation surface closes) |
 
 **Recording**
 
@@ -414,6 +414,8 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 | `unhandled_exception` | `exception_type`, `context`, `last_action` when available |
 
 Every event includes an app `version`, a per-run `session_id`, a `telemetry_channel` (`product` or `diagnostic`), a `telemetry_schema_version`, and an `install_id` when one is available. The install ID is a random GUID generated once on first launch and stored locally. It is used only to count unique installs; it is not tied to an account or identity.
+
+Properties are allow-listed per event in the catalog: anything a caller passes that the event does not declare is reported as a schema violation, and every value is truncated to 200 characters. Both measures exist to keep paths, file names, and recognised text out of telemetry by construction rather than by convention.
 
 The `last_action` value attached to `unhandled_exception` is the name of the most recent **product** event — background diagnostic events such as `app_heartbeat` never overwrite it.
 

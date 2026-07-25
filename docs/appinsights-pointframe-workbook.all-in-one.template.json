@@ -205,7 +205,7 @@
         "resourceType": "microsoft.insights/components",
         "visualization": "table",
         "title": "Annotation tool usage mix (30d)",
-        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| where event_name == \"annotation_committed\"\n| summarize commits=count(), sessions=dcount(tostring(customDimensions.session_id)) by tool=tostring(customDimensions.tool)\n| order by commits desc"
+        "query": "let lookback = 30d;\nlet Events = union isfuzzy=true (customEvents | where timestamp > ago(lookback) | project event_name=tostring(name), customDimensions), (traces | where timestamp > ago(lookback) and isnotempty(message) | project event_name=tostring(message), customDimensions);\nEvents\n| where tostring(customDimensions.telemetry_channel) == \"product\"\n| where event_name == \"annotation_committed\"\n| summarize commits=sum(toint(customDimensions.count)), sessions=dcount(tostring(customDimensions.session_id)) by tool=tostring(customDimensions.tool)\n| order by commits desc"
       }
     },
     {

@@ -688,14 +688,112 @@ public sealed class AnnotationViewModelTests
     private sealed class TestAnnotationViewModel(
         AnnotationGeometryService geom,
         IEventAggregator? eventAggregator = null,
-        IUserSettingsService? settingsService = null)
+        IUserSettingsService? settingsService = null,
+        ITelemetryService? telemetry = null)
         : AnnotationViewModel(
             geom,
             NullLogger<AnnotationViewModel>.Instance,
             settingsService ?? Mock.Of<IUserSettingsService>(s => s.Current == new UserSettings()),
             eventAggregator ?? new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance),
-            Mock.Of<ITelemetryService>())
+            telemetry ?? Mock.Of<ITelemetryService>())
         { }
+
+    // -----------------------------------------------------------------------
+    // Annotation telemetry aggregation
+    // -----------------------------------------------------------------------
+
+    private static void CommitOneShape(TestAnnotationViewModel vm)
+    {
+        vm.BeginGroup();
+        vm.TrackElement(new object());
+        vm.CommitGroup();
+    }
+
+    [Fact]
+    public void CommitGroup_DoesNotEmitTelemetryForEveryShape()
+    {
+        // Arrange
+        var telemetry = new Mock<ITelemetryService>();
+        var vm = new TestAnnotationViewModel(Geom(), telemetry: telemetry.Object);
+
+        // Act
+        CommitOneShape(vm);
+        CommitOneShape(vm);
+
+        // Assert
+        telemetry.Verify(
+            t => t.TrackEvent(It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>?>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public void FlushAnnotationTelemetry_EmitsOneEventPerToolCarryingTheCommitCount()
+    {
+        // Arrange
+        var telemetry = new Mock<ITelemetryService>();
+        var vm = new TestAnnotationViewModel(Geom(), telemetry: telemetry.Object);
+
+        vm.SelectedTool = AnnotationTool.Rectangle;
+        CommitOneShape(vm);
+        CommitOneShape(vm);
+        vm.SelectedTool = AnnotationTool.Arrow;
+        CommitOneShape(vm);
+
+        // Act
+        vm.FlushAnnotationTelemetry();
+
+        // Assert
+        telemetry.Verify(
+            t => t.TrackEvent(
+                TelemetryEvents.AnnotationCommitted,
+                It.Is<IReadOnlyDictionary<string, string>?>(p =>
+                    p != null
+                    && p[TelemetryPropertyKeys.Tool] == "Rectangle"
+                    && p[TelemetryPropertyKeys.Count] == "2")),
+            Times.Once);
+        telemetry.Verify(
+            t => t.TrackEvent(
+                TelemetryEvents.AnnotationCommitted,
+                It.Is<IReadOnlyDictionary<string, string>?>(p =>
+                    p != null
+                    && p[TelemetryPropertyKeys.Tool] == "Arrow"
+                    && p[TelemetryPropertyKeys.Count] == "1")),
+            Times.Once);
+    }
+
+    [Fact]
+    public void FlushAnnotationTelemetry_WhenCalledTwice_DoesNotDoubleCount()
+    {
+        // Arrange
+        var telemetry = new Mock<ITelemetryService>();
+        var vm = new TestAnnotationViewModel(Geom(), telemetry: telemetry.Object);
+        CommitOneShape(vm);
+
+        // Act
+        vm.FlushAnnotationTelemetry();
+        vm.FlushAnnotationTelemetry();
+
+        // Assert
+        telemetry.Verify(
+            t => t.TrackEvent(TelemetryEvents.AnnotationCommitted, It.IsAny<IReadOnlyDictionary<string, string>?>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public void FlushAnnotationTelemetry_WithoutCommits_EmitsNothing()
+    {
+        // Arrange
+        var telemetry = new Mock<ITelemetryService>();
+        var vm = new TestAnnotationViewModel(Geom(), telemetry: telemetry.Object);
+
+        // Act
+        vm.FlushAnnotationTelemetry();
+
+        // Assert
+        telemetry.Verify(
+            t => t.TrackEvent(It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>?>()),
+            Times.Never);
+    }
 
     // -----------------------------------------------------------------------
     // Style Preset tests
