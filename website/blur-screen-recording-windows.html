@@ -29,6 +29,8 @@
             "@context": "https://schema.org",
             "@type": "HowTo",
             "name": "How to blur sensitive content in a screen recording on Windows",
+            "datePublished": "2026-07-27",
+            "dateModified": "2026-07-27",
             "description": "Apply a live Gaussian blur to passwords, emails, and private data while recording your screen on Windows using Pointframe.",
             "step": [
                 {
@@ -55,6 +57,46 @@
             "url": "https://dimitar-radenkov.github.io/Pointframe/blur-screen-recording-windows.html"
         }
     </script>
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": "Can I blur part of the screen while recording on Windows?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Yes. Pointframe applies blur live during the recording, so the sensitive area is already redacted in the exported MP4 or GIF. You do not need a video editor afterwards."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Does the blur move if the window moves?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "The blur region stays where you place it on screen. If the content you are hiding moves, pause the recording, reposition the blur, and resume."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Is the blurred content recoverable from the video file?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "No. The blur is applied to the frames as they are encoded, so the original pixels never reach the output file."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "What formats can I export a blurred recording to?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "MP4 and GIF. Both embed directly in Jira, GitHub, Slack, and most documentation tools."
+                    }
+                }
+            ]
+        }
+    </script>
 </head>
 <body>
     <nav class="site-nav">
@@ -66,7 +108,7 @@
             <div class="nav-links">
                 <a href="./index.html#compare" class="nav-link">Compare</a>
                 <a href="./index.html#resources" class="nav-link">Guides</a>
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-link">Download</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-link js-utm-link" data-utm-campaign="blur_screen_recording" data-utm-medium="cta" data-utm-content="blur_screen_recording_nav" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="nav">Download</a>
             </div>
         </div>
     </nav>
@@ -77,8 +119,26 @@
             <h1 class="hero-title article-title">How to Blur a Screen Recording on Windows</h1>
             <p class="hero-copy">Most screen recording tools require you to blur sensitive content in a video editor after the fact. Pointframe lets you draw blur annotations live while you record — the redaction is baked into the exported video with no post-processing needed.</p>
             <div class="hero-actions">
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button">Download for Windows</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="blur_screen_recording" data-utm-medium="cta" data-utm-content="blur_screen_recording_hero" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="hero">Download for Windows</a>
                 <a href="./index.html#features" class="secondary-link">See all features</a>
+            </div>
+            <div class="install-row">
+                <div class="command-group">
+                    <div class="install-tabs" role="group" aria-label="Choose a package manager">
+                        <button type="button" class="install-tab is-active" data-manager="winget" data-command="winget install DimitarRadenkov.Pointframe" aria-pressed="true">winget</button>
+                        <button type="button" class="install-tab" data-manager="scoop" data-command="scoop install pointframe" aria-pressed="false">scoop</button>
+                    </div>
+                    <button id="copy-command-button" type="button" class="command-button" aria-describedby="copy-command-status">
+                        <span class="command-content">
+                            <span class="command-text"><span class="command-prefix">$</span> <span id="copy-command-text">winget install DimitarRadenkov.Pointframe</span></span>
+                        </span>
+                        <span class="command-icon" aria-hidden="true">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </span>
+                        <span class="command-tooltip">Copy command</span>
+                    </button>
+                </div>
+                <p id="copy-command-status" class="copy-status" role="status" aria-live="polite"></p>
             </div>
         </div>
     </main>
@@ -118,9 +178,28 @@
                         <h3>Blur sensitive content without a video editor</h3>
                         <p>Pointframe is free, open-source, and ships as a signed Windows installer. No account or subscription required.</p>
                         <div class="hero-actions compact-actions">
-                            <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button">Get Pointframe Free</a>
+                            <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="blur_screen_recording" data-utm-medium="cta" data-utm-content="blur_screen_recording_article_cta" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="article_cta">Get Pointframe Free</a>
                             <a href="./screen-recorder-with-annotations-windows.html" class="secondary-link">See the full recording workflow</a>
                         </div>
+                    </div>
+                    <h2>Frequently asked questions</h2>
+                    <div class="faq-list">
+                        <details class="faq-item">
+                            <summary>Can I blur part of the screen while recording on Windows?</summary>
+                            <p>Yes. Pointframe applies blur live during the recording, so the sensitive area is already redacted in the exported MP4 or GIF. You do not need a video editor afterwards.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Does the blur move if the window moves?</summary>
+                            <p>The blur region stays where you place it on screen. If the content you are hiding moves, pause the recording, reposition the blur, and resume.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Is the blurred content recoverable from the video file?</summary>
+                            <p>No. The blur is applied to the frames as they are encoded, so the original pixels never reach the output file.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>What formats can I export a blurred recording to?</summary>
+                            <p>MP4 and GIF. Both embed directly in Jira, GitHub, Slack, and most documentation tools.</p>
+                        </details>
                     </div>
                 </article>
 
@@ -139,6 +218,10 @@
                             <h3 class="resource-title">Free Snagit alternative</h3>
                             <p class="resource-copy">See how Pointframe compares with Snagit for everyday capture workflows.</p>
                         </a>
+                        <a href="./blur-sensitive-info-screenshots-windows.html" class="resource-card">
+                            <h3 class="resource-title">Blur sensitive info in screenshots</h3>
+                            <p class="resource-copy">The same redaction pass, applied to stills before you share them.</p>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -154,9 +237,10 @@
             <div class="footer-links">
                 <a href="./index.html">Home</a>
                 <a href="https://github.com/dimitar-radenkov/Pointframe">GitHub</a>
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest">Download</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="js-utm-link" data-utm-campaign="blur_screen_recording" data-utm-medium="cta" data-utm-content="blur_screen_recording_footer" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="footer">Download</a>
             </div>
         </div>
     </footer>
+    <script type="module" src="./index.js"></script>
 </body>
 </html>

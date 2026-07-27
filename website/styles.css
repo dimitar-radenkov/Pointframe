@@ -563,6 +563,13 @@ h1, h2, h3, h4 {
     font-weight: 600;
 }
 
+.comparison-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    margin: 16px 0 0;
+}
+
 .workflow-link:hover {
     color: #bae6fd;
 }
@@ -831,8 +838,112 @@ h1, h2, h3, h4 {
 .content-card h2 { margin: 0 0 20px; font-size: 1.8rem; }
 .content-card h3 { margin: 32px 0 16px; font-size: 1.4rem; }
 .content-card p, .content-card li { margin-bottom: 16px; color: var(--muted); font-size: 1.05rem; }
-.content-card ul { margin-bottom: 24px; padding-left: 20px; }
+.content-card ul, .content-card ol { margin-bottom: 24px; padding-left: 22px; }
 .content-card li { margin-bottom: 8px; }
+.content-card kbd {
+    display: inline-block;
+    padding: 2px 8px;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    color: #cbd5e1;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Comparison table: scrolls independently so narrow screens never pan the page. */
+.table-scroll {
+    margin: 0 0 28px;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.compare-table {
+    width: 100%;
+    min-width: 540px;
+    border-collapse: collapse;
+    font-size: 0.98rem;
+}
+
+.compare-table th, .compare-table td {
+    padding: 14px 18px;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+}
+
+.compare-table thead th {
+    color: var(--text);
+    font-family: var(--font-display);
+    font-size: 0.82rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.compare-table tbody th {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.compare-table td { color: var(--muted); }
+.compare-table tbody tr:last-child th, .compare-table tbody tr:last-child td { border-bottom: 0; }
+.compare-table .col-us { background: rgba(56, 189, 248, 0.06); }
+
+/* FAQ: native disclosure widgets, so answers stay in the DOM for crawlers. */
+.faq-list { margin: 0 0 8px; }
+
+.faq-item {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface);
+    margin-bottom: 12px;
+    padding: 0 20px;
+}
+
+.faq-item summary {
+    padding: 16px 0;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 1.05rem;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+}
+
+.faq-item summary::-webkit-details-marker { display: none; }
+
+.faq-item summary::after {
+    content: "+";
+    flex-shrink: 0;
+    color: var(--accent);
+    font-size: 1.4rem;
+    line-height: 1;
+    transition: transform 0.2s ease;
+}
+
+.faq-item[open] summary::after { content: "\2212"; }
+.faq-item summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+.faq-item > p { margin: 0 0 18px; color: var(--muted); }
 
 .article-hero {
     padding: 72px 0 56px;
@@ -863,6 +974,15 @@ h1, h2, h3, h4 {
 .cta-panel h3 { margin: 0 0 12px; }
 
 .compact-actions { margin-bottom: 0; justify-content: flex-start; }
+
+/* Install command row on landing pages: mirrors the homepage one-line install. */
+.install-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 20px;
+}
 
 .secondary-link {
     display: inline-flex;
@@ -996,6 +1116,14 @@ h1, h2, h3, h4 {
     /* On the homepage the section links don't fit next to the CTA — anchor targets
        remain reachable by scrolling, so keep only the GitHub icon and Download. */
     .nav-links-primary .nav-link { display: none; }
+}
+
+/* Landing pages keep their nav links (they point at other pages, not anchors),
+   so let the row wrap instead of pushing the page into a horizontal scroll. */
+@media (max-width: 480px) {
+    .nav-inner { flex-wrap: wrap; row-gap: 10px; }
+    .nav-links { flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
+    .nav-link { font-size: 0.8rem; }
 }
 
 @media (max-width: 640px) {

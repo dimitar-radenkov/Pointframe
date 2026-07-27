@@ -10,8 +10,8 @@
 
 
 <p align="center">
-  <b>The free, open-source Windows screen tool that lets you annotate and blur your screen <i>while</i> you record — no post-editing.</b><br>
-  Capture, annotate, redact, record to MP4/GIF, and pull text off the screen with OCR — all from one lightweight tray app.
+  <b>A free Windows screenshot and recording tool built for fast bug reports, walkthroughs, and support replies.</b><br>
+  Capture, annotate, blur, record to MP4/GIF, and extract text with OCR in one lightweight tray app.
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@
 
 ## 🚀 Quick Start
 
-Get up and running in seconds using the Windows Package Manager (winget):
+Install in seconds with the Windows Package Manager:
 
 Starting with the `5.0` release line, the winget package ID is `DimitarRadenkov.Pointframe`.
 
@@ -43,8 +43,10 @@ winget install DimitarRadenkov.Pointframe
 *Prefer a manual install? Download the latest installer from the [Releases](https://github.com/dimitar-radenkov/Pointframe/releases) page.*
 
 1. Install Pointframe with `winget install DimitarRadenkov.Pointframe` or download the latest installer from [Releases](https://github.com/dimitar-radenkov/Pointframe/releases).
-2. Press `Print Screen` to open the capture overlay and select the region you want.
-3. Annotate, copy, save, pin, or record the region from the overlay and recording HUD.
+2. Press `Print Screen` to capture a region.
+3. Add arrows, text, or blur and then copy, save, pin, or record.
+
+You can complete your first capture workflow in under a minute.
 
 If you find Pointframe useful, a ⭐ on GitHub helps others discover it — thank you!
 

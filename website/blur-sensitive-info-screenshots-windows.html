@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How to Blur Sensitive Info in Screenshots on Windows | Pointframe</title>
+    <meta name="description" content="Learn how to blur sensitive information in screenshots on Windows before sharing bug reports, support replies, or internal docs.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://dimitar-radenkov.github.io/Pointframe/blur-sensitive-info-screenshots-windows.html">
+    <link rel="icon" href="./favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="./app-icon.png">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="How to Blur Sensitive Info in Screenshots on Windows | Pointframe">
+    <meta property="og:description" content="A quick workflow to hide passwords, emails, and tokens in screenshots before you share them.">
+    <meta property="og:url" content="https://dimitar-radenkov.github.io/Pointframe/blur-sensitive-info-screenshots-windows.html">
+    <meta property="og:site_name" content="Pointframe">
+    <meta property="og:image" content="https://dimitar-radenkov.github.io/Pointframe/social-preview.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Pointframe social preview showing screen capture, recording, and OCR workflow highlights.">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="How to Blur Sensitive Info in Screenshots on Windows | Pointframe">
+    <meta name="twitter:description" content="Step-by-step guide to redact private details in screenshots on Windows before posting them in tickets, chats, and docs.">
+    <meta name="twitter:image" content="https://dimitar-radenkov.github.io/Pointframe/social-preview.png">
+    <meta name="twitter:image:alt" content="Pointframe social preview showing screen capture, recording, and OCR workflow highlights.">
+    <link rel="stylesheet" href="./styles.css">
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "HowTo",
+            "name": "How to blur sensitive info in screenshots on Windows",
+            "datePublished": "2026-07-27",
+            "dateModified": "2026-07-27",
+            "description": "Step-by-step process to redact private details in screenshots before sharing.",
+            "step": [
+                {
+                    "@type": "HowToStep",
+                    "name": "Capture your screenshot",
+                    "text": "Open Pointframe with Print Screen and select the region you need to share."
+                },
+                {
+                    "@type": "HowToStep",
+                    "name": "Apply blur to private content",
+                    "text": "Choose the Blur tool and drag over passwords, emails, tokens, or account IDs."
+                },
+                {
+                    "@type": "HowToStep",
+                    "name": "Review and share",
+                    "text": "Confirm all sensitive fields are redacted, then copy or save the final screenshot."
+                }
+            ]
+        }
+    </script>
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": "What is the fastest way to blur a password in a screenshot on Windows?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Capture the region, pick the Blur tool from the annotation toolbar, and drag over the password. Then copy or save. The whole pass takes a few seconds and needs no separate image editor."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Is blurring safer than drawing a black box?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "A solid box is safer than a light blur, because a weak blur can sometimes be partially reversed on short, predictable text. Pointframe's blur is strong enough for normal sharing, but for high-value secrets treat the screenshot as compromised and rotate the credential anyway."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Can I blur information in a screen recording too?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Yes. Pointframe applies blur live while recording, so the redaction is baked into the exported video."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Does Pointframe upload my screenshots anywhere?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "No. Captures stay on your machine — copied to the clipboard or saved to disk. There is no account and no upload step."
+                    }
+                }
+            ]
+        }
+    </script>
+</head>
+<body>
+    <nav class="site-nav">
+        <div class="container nav-inner">
+            <a class="brand" href="./index.html" aria-label="Go to the Pointframe homepage">
+                <img src="./app-icon.png" alt="" class="brand-logo" width="32" height="32">
+                <span>Pointframe</span>
+            </a>
+            <div class="nav-links">
+                <a href="./index.html#features" class="nav-link">Features</a>
+                <a href="./index.html#resources" class="nav-link">Guides</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-link js-utm-link" data-utm-campaign="blur_sensitive_info" data-utm-medium="cta" data-utm-content="blur_sensitive_info_nav" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="nav">Download</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="hero article-hero">
+        <div class="container hero-panel">
+            <p class="hero-eyebrow">Windows screenshot privacy workflow</p>
+            <h1 class="hero-title article-title">How to Blur Sensitive Info in Screenshots on Windows</h1>
+            <p class="hero-copy">Before posting screenshots in tickets, chats, or docs, redact private details first. This workflow keeps your context useful while protecting passwords, emails, tokens, and account data.</p>
+            <div class="hero-actions">
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="blur_sensitive_info" data-utm-medium="cta" data-utm-content="blur_sensitive_info_hero" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="hero">Download for Windows</a>
+                <a href="./blur-screen-recording-windows.html" class="secondary-link">Need to blur in video too?</a>
+            </div>
+            <div class="install-row">
+                <div class="command-group">
+                    <div class="install-tabs" role="group" aria-label="Choose a package manager">
+                        <button type="button" class="install-tab is-active" data-manager="winget" data-command="winget install DimitarRadenkov.Pointframe" aria-pressed="true">winget</button>
+                        <button type="button" class="install-tab" data-manager="scoop" data-command="scoop install pointframe" aria-pressed="false">scoop</button>
+                    </div>
+                    <button id="copy-command-button" type="button" class="command-button" aria-describedby="copy-command-status">
+                        <span class="command-content">
+                            <span class="command-text"><span class="command-prefix">$</span> <span id="copy-command-text">winget install DimitarRadenkov.Pointframe</span></span>
+                        </span>
+                        <span class="command-icon" aria-hidden="true">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </span>
+                        <span class="command-tooltip">Copy command</span>
+                    </button>
+                </div>
+                <p id="copy-command-status" class="copy-status" role="status" aria-live="polite"></p>
+            </div>
+        </div>
+    </main>
+
+    <section class="section section-alt">
+        <div class="container">
+            <div class="content-shell">
+                <article class="content-card">
+                    <h2>Why this matters</h2>
+                    <p>Screenshots shared in issue trackers and chat apps often contain more than intended: access tokens, internal URLs, customer data, or email addresses. A quick blur pass before sharing reduces accidental exposure while keeping the screenshot useful for collaboration.</p>
+
+                    <h2>Step-by-step workflow</h2>
+                    <ol>
+                        <li><strong>Capture the relevant area</strong> with <kbd>Print Screen</kbd> and select the exact region.</li>
+                        <li><strong>Select the Blur tool</strong> in the annotation toolbar.</li>
+                        <li><strong>Drag blur over each sensitive field</strong> such as passwords, API keys, account numbers, and personal data.</li>
+                        <li><strong>Zoom and verify redaction coverage</strong> so no private values remain visible.</li>
+                        <li><strong>Copy or save</strong> and then share the sanitized image.</li>
+                    </ol>
+
+                    <h2>What to always blur</h2>
+                    <ul>
+                        <li>Passwords and passphrases</li>
+                        <li>API keys, tokens, and secret IDs</li>
+                        <li>Email addresses and phone numbers</li>
+                        <li>Customer names tied to internal IDs</li>
+                        <li>Billing details and account identifiers</li>
+                    </ul>
+
+                    <h2>Common mistake to avoid</h2>
+                    <p>Do not share the original screenshot and then post a corrected version. Always redact first, then share. If a screenshot was posted unredacted, treat it as an incident and rotate exposed credentials immediately.</p>
+
+                    <div class="cta-panel">
+                        <h3>Need fast screenshot redaction on Windows?</h3>
+                        <p>Pointframe lets you capture, blur, and share in one flow without exporting to a separate editor.</p>
+                        <div class="hero-actions compact-actions">
+                            <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="blur_sensitive_info" data-utm-medium="cta" data-utm-content="blur_sensitive_info_article_cta" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="article_cta">Get Pointframe Free</a>
+                            <a href="./screen-capture-bug-reports.html" class="secondary-link">See bug-report workflow</a>
+                        </div>
+                    </div>
+                    <h2>Frequently asked questions</h2>
+                    <div class="faq-list">
+                        <details class="faq-item">
+                            <summary>What is the fastest way to blur a password in a screenshot on Windows?</summary>
+                            <p>Capture the region, pick the Blur tool from the annotation toolbar, and drag over the password. Then copy or save. The whole pass takes a few seconds and needs no separate image editor.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Is blurring safer than drawing a black box?</summary>
+                            <p>A solid box is safer than a light blur, because a weak blur can sometimes be partially reversed on short, predictable text. Pointframe's blur is strong enough for normal sharing, but for high-value secrets treat the screenshot as compromised and rotate the credential anyway.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Can I blur information in a screen recording too?</summary>
+                            <p>Yes. Pointframe applies blur live while recording, so the redaction is baked into the exported video.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Does Pointframe upload my screenshots anywhere?</summary>
+                            <p>No. Captures stay on your machine — copied to the clipboard or saved to disk. There is no account and no upload step.</p>
+                        </details>
+                    </div>
+                </article>
+
+                <div class="related-links-block">
+                    <h2 class="related-heading">Related pages</h2>
+                    <div class="resource-grid compact-grid">
+                        <a href="./blur-screen-recording-windows.html" class="resource-card">
+                            <h3 class="resource-title">How to blur screen recordings</h3>
+                            <p class="resource-copy">Apply live blur while recording without extra editing software.</p>
+                        </a>
+                        <a href="./screen-capture-bug-reports.html" class="resource-card">
+                            <h3 class="resource-title">Screen capture for bug reports</h3>
+                            <p class="resource-copy">Create clearer tickets with annotations and redaction built in.</p>
+                        </a>
+                        <a href="./copy-text-from-screenshot-windows.html" class="resource-card">
+                            <h3 class="resource-title">Copy text from screenshot</h3>
+                            <p class="resource-copy">Use OCR when you need to extract text from non-selectable UI.</p>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container footer-inner">
+            <div class="brand">
+                <img src="./app-icon.png" alt="" class="brand-logo" width="32" height="32">
+                <span>Pointframe</span>
+            </div>
+            <div class="footer-links">
+                <a href="./index.html">Home</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe">GitHub</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="js-utm-link" data-utm-campaign="blur_sensitive_info" data-utm-medium="cta" data-utm-content="blur_sensitive_info_footer" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="footer">Download</a>
+            </div>
+        </div>
+    </footer>
+    <script type="module" src="./index.js"></script>
+</body>
+</html>

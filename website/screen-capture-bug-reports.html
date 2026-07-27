@@ -29,6 +29,8 @@
             "@context": "https://schema.org",
             "@type": "TechArticle",
             "headline": "Best Screen Capture Tool for Bug Reports",
+            "datePublished": "2026-07-27",
+            "dateModified": "2026-07-27",
             "description": "How to speed up bug reporting with a screen capture tool that includes live annotations, blur redaction, region recording, and OCR.",
             "url": "https://dimitar-radenkov.github.io/Pointframe/screen-capture-bug-reports.html",
             "author": {
@@ -39,6 +41,46 @@
                 "@type": "Organization",
                 "name": "Pointframe"
             }
+        }
+    </script>
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": "What makes a good screenshot for a bug report?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Show the whole relevant window rather than a tight crop, mark the failure point with an arrow or numbered step, include any error text, and blur customer data before attaching it."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Should I attach a screenshot or a recording?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Use a screenshot for a single wrong state, and a short recording for anything involving a sequence of steps, timing, or an interaction that is hard to describe in words."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "How do I get the error text into the ticket as text?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Use OCR on the captured dialog. Pasting the real error string makes the ticket searchable, which a screenshot alone never is."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Can I redact customer data before attaching evidence?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Yes. Drag the blur tool over names, emails, tokens, or account IDs before you copy or save the capture."
+                    }
+                }
+            ]
         }
     </script>
 </head>
@@ -52,7 +94,7 @@
             <div class="nav-links">
                 <a href="./index.html#compare" class="nav-link">Compare</a>
                 <a href="./index.html#resources" class="nav-link">Guides</a>
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-link">Download</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-link js-utm-link" data-utm-campaign="bug_reports" data-utm-medium="cta" data-utm-content="bug_reports_nav" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="nav">Download</a>
             </div>
         </div>
     </nav>
@@ -63,8 +105,26 @@
             <h1 class="hero-title article-title">The Screen Capture Tool Built for Bug Reports</h1>
             <p class="hero-copy">A good bug report shows the problem — it does not just describe it. Pointframe is designed around this idea: capture the region, annotate the issue, blur what should stay private, and attach the result to your ticket in seconds.</p>
             <div class="hero-actions">
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button">Download for Windows</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="bug_reports" data-utm-medium="cta" data-utm-content="bug_reports_hero" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="hero">Download for Windows</a>
                 <a href="./index.html#features" class="secondary-link">See all features</a>
+            </div>
+            <div class="install-row">
+                <div class="command-group">
+                    <div class="install-tabs" role="group" aria-label="Choose a package manager">
+                        <button type="button" class="install-tab is-active" data-manager="winget" data-command="winget install DimitarRadenkov.Pointframe" aria-pressed="true">winget</button>
+                        <button type="button" class="install-tab" data-manager="scoop" data-command="scoop install pointframe" aria-pressed="false">scoop</button>
+                    </div>
+                    <button id="copy-command-button" type="button" class="command-button" aria-describedby="copy-command-status">
+                        <span class="command-content">
+                            <span class="command-text"><span class="command-prefix">$</span> <span id="copy-command-text">winget install DimitarRadenkov.Pointframe</span></span>
+                        </span>
+                        <span class="command-icon" aria-hidden="true">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </span>
+                        <span class="command-tooltip">Copy command</span>
+                    </button>
+                </div>
+                <p id="copy-command-status" class="copy-status" role="status" aria-live="polite"></p>
             </div>
         </div>
     </main>
@@ -103,9 +163,28 @@
                         <h3>Show the bug, not just describe it</h3>
                         <p>Pointframe is free, open-source, and ships as a signed Windows installer. No account or subscription required.</p>
                         <div class="hero-actions compact-actions">
-                            <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button">Get Pointframe Free</a>
+                            <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="bug_reports" data-utm-medium="cta" data-utm-content="bug_reports_article_cta" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="article_cta">Get Pointframe Free</a>
                             <a href="./screen-recorder-with-annotations-windows.html" class="secondary-link">See the recording workflow</a>
                         </div>
+                    </div>
+                    <h2>Frequently asked questions</h2>
+                    <div class="faq-list">
+                        <details class="faq-item">
+                            <summary>What makes a good screenshot for a bug report?</summary>
+                            <p>Show the whole relevant window rather than a tight crop, mark the failure point with an arrow or numbered step, include any error text, and blur customer data before attaching it.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Should I attach a screenshot or a recording?</summary>
+                            <p>Use a screenshot for a single wrong state, and a short recording for anything involving a sequence of steps, timing, or an interaction that is hard to describe in words.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>How do I get the error text into the ticket as text?</summary>
+                            <p>Use OCR on the captured dialog. Pasting the real error string makes the ticket searchable, which a screenshot alone never is.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Can I redact customer data before attaching evidence?</summary>
+                            <p>Yes. Drag the blur tool over names, emails, tokens, or account IDs before you copy or save the capture.</p>
+                        </details>
                     </div>
                 </article>
 
@@ -124,6 +203,10 @@
                             <h3 class="resource-title">Copy text from a screenshot</h3>
                             <p class="resource-copy">Extract error messages and stack traces from screenshots using OCR.</p>
                         </a>
+                        <a href="./blur-sensitive-info-screenshots-windows.html" class="resource-card">
+                            <h3 class="resource-title">Blur sensitive info in screenshots</h3>
+                            <p class="resource-copy">Redact customer data and tokens before attaching evidence.</p>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -139,9 +222,10 @@
             <div class="footer-links">
                 <a href="./index.html">Home</a>
                 <a href="https://github.com/dimitar-radenkov/Pointframe">GitHub</a>
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest">Download</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="js-utm-link" data-utm-campaign="bug_reports" data-utm-medium="cta" data-utm-content="bug_reports_footer" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="footer">Download</a>
             </div>
         </div>
     </footer>
+    <script type="module" src="./index.js"></script>
 </body>
 </html>

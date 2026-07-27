@@ -29,6 +29,8 @@
             "@context": "https://schema.org",
             "@type": "HowTo",
             "name": "How to copy text from a screenshot on Windows",
+            "datePublished": "2026-07-27",
+            "dateModified": "2026-07-27",
             "description": "Extract text from screenshots using Pointframe OCR on Windows.",
             "step": [
                 {
@@ -50,6 +52,46 @@
             "url": "https://dimitar-radenkov.github.io/Pointframe/copy-text-from-screenshot-windows.html"
         }
     </script>
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": "How do I copy text from an image on Windows?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Capture the region with Pointframe, run OCR on the selection, and the recognised text goes to your clipboard ready to paste."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Does OCR work on error dialogs that block text selection?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Yes. That is one of the most common uses — error dialogs, installers, and remote desktop sessions all render text that cannot be selected normally."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Does OCR run offline?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Yes. Text recognition happens locally on your machine, so screenshots are not sent to a server."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Can I search my old screenshots by their text?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Yes. The capture library indexes recognised text, so you can find a screenshot by a word that appeared inside it."
+                    }
+                }
+            ]
+        }
+    </script>
 </head>
 <body>
     <nav class="site-nav">
@@ -61,7 +103,7 @@
             <div class="nav-links">
                 <a href="./index.html#features" class="nav-link">Features</a>
                 <a href="./index.html#resources" class="nav-link">Guides</a>
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-link">Download</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-link js-utm-link" data-utm-campaign="copy_text_ocr" data-utm-medium="cta" data-utm-content="copy_text_ocr_nav" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="nav">Download</a>
             </div>
         </div>
     </nav>
@@ -72,8 +114,26 @@
             <h1 class="hero-title article-title">How to Copy Text from a Screenshot on Windows</h1>
             <p class="hero-copy">When text is trapped in an image, screenshot, dialog box, or paused video frame, OCR is the fastest way to get it back into a usable form. Pointframe includes that OCR workflow directly in the capture tool.</p>
             <div class="hero-actions">
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button">Download for Windows</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="copy_text_ocr" data-utm-medium="cta" data-utm-content="copy_text_ocr_hero" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="hero">Download for Windows</a>
                 <a href="./index.html#features" class="secondary-link">See all product features</a>
+            </div>
+            <div class="install-row">
+                <div class="command-group">
+                    <div class="install-tabs" role="group" aria-label="Choose a package manager">
+                        <button type="button" class="install-tab is-active" data-manager="winget" data-command="winget install DimitarRadenkov.Pointframe" aria-pressed="true">winget</button>
+                        <button type="button" class="install-tab" data-manager="scoop" data-command="scoop install pointframe" aria-pressed="false">scoop</button>
+                    </div>
+                    <button id="copy-command-button" type="button" class="command-button" aria-describedby="copy-command-status">
+                        <span class="command-content">
+                            <span class="command-text"><span class="command-prefix">$</span> <span id="copy-command-text">winget install DimitarRadenkov.Pointframe</span></span>
+                        </span>
+                        <span class="command-icon" aria-hidden="true">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </span>
+                        <span class="command-tooltip">Copy command</span>
+                    </button>
+                </div>
+                <p id="copy-command-status" class="copy-status" role="status" aria-live="polite"></p>
             </div>
         </div>
     </main>
@@ -99,9 +159,28 @@
                         <h3>Need OCR from screenshots on Windows?</h3>
                         <p>Use Pointframe when screenshots are part of your support, research, development, or documentation workflow.</p>
                         <div class="hero-actions compact-actions">
-                            <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button">Get Pointframe</a>
+                            <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="copy_text_ocr" data-utm-medium="cta" data-utm-content="copy_text_ocr_article_cta" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="article_cta">Get Pointframe</a>
                             <a href="./screen-recorder-with-annotations-windows.html" class="secondary-link">See the recording workflow</a>
                         </div>
+                    </div>
+                    <h2>Frequently asked questions</h2>
+                    <div class="faq-list">
+                        <details class="faq-item">
+                            <summary>How do I copy text from an image on Windows?</summary>
+                            <p>Capture the region with Pointframe, run OCR on the selection, and the recognised text goes to your clipboard ready to paste.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Does OCR work on error dialogs that block text selection?</summary>
+                            <p>Yes. That is one of the most common uses — error dialogs, installers, and remote desktop sessions all render text that cannot be selected normally.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Does OCR run offline?</summary>
+                            <p>Yes. Text recognition happens locally on your machine, so screenshots are not sent to a server.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Can I search my old screenshots by their text?</summary>
+                            <p>Yes. The capture library indexes recognised text, so you can find a screenshot by a word that appeared inside it.</p>
+                        </details>
                     </div>
                 </article>
 
@@ -115,6 +194,10 @@
                         <a href="./screen-recorder-with-annotations-windows.html" class="resource-card">
                             <h3 class="resource-title">Screen recorder with annotations</h3>
                             <p class="resource-copy">Explore the live recording workflow built for tutorials and issue reports.</p>
+                        </a>
+                        <a href="./sharex-alternative-windows.html" class="resource-card">
+                            <h3 class="resource-title">ShareX alternative</h3>
+                            <p class="resource-copy">Compare the wider capture workflow, not just OCR.</p>
                         </a>
                     </div>
                 </div>
@@ -131,9 +214,10 @@
             <div class="footer-links">
                 <a href="./index.html">Home</a>
                 <a href="https://github.com/dimitar-radenkov/Pointframe">GitHub</a>
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest">Download</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="js-utm-link" data-utm-campaign="copy_text_ocr" data-utm-medium="cta" data-utm-content="copy_text_ocr_footer" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="footer">Download</a>
             </div>
         </div>
     </footer>
+    <script type="module" src="./index.js"></script>
 </body>
 </html>

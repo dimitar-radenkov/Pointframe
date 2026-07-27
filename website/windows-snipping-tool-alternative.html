@@ -29,6 +29,8 @@
             "@context": "https://schema.org",
             "@type": "TechArticle",
             "headline": "Free Windows Snipping Tool Alternative",
+            "datePublished": "2026-07-27",
+            "dateModified": "2026-07-27",
             "description": "A practical alternative to the built-in Windows Snipping Tool for screenshots, OCR, recording, and blur workflows.",
             "url": "https://dimitar-radenkov.github.io/Pointframe/windows-snipping-tool-alternative.html",
             "author": {
@@ -39,6 +41,46 @@
                 "@type": "Organization",
                 "name": "Pointframe"
             }
+        }
+    </script>
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": "Why replace the built-in Windows Snipping Tool?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "The built-in tool captures and saves well but stops there. People switch when they need OCR, blur redaction, pinned screenshots, or a recording with live annotations."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Is there a free Snipping Tool alternative with OCR?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Yes. Pointframe includes offline OCR, so you can lasso text in any capture and paste it straight into a ticket or document."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Can I keep using Print Screen as my capture key?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Yes. Pointframe binds Print Screen by default and the hotkey is configurable in Settings if you would rather keep the built-in behaviour."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Does it work on Windows 10 as well as Windows 11?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Yes, on both, including multi-monitor setups with mixed display scaling."
+                    }
+                }
+            ]
         }
     </script>
 </head>
@@ -52,7 +94,7 @@
             <div class="nav-links">
                 <a href="./index.html#compare" class="nav-link">Compare</a>
                 <a href="./index.html#resources" class="nav-link">Guides</a>
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-link">Download</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-link js-utm-link" data-utm-campaign="snipping_tool_alternative" data-utm-medium="cta" data-utm-content="snipping_tool_alternative_nav" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="nav">Download</a>
             </div>
         </div>
     </nav>
@@ -63,8 +105,26 @@
             <h1 class="hero-title article-title">A Free Windows Snipping Tool Alternative</h1>
             <p class="hero-copy">The built-in Windows Snipping Tool is fine for quick screenshots. Pointframe is for the moment when you need more: OCR, blur, pinned screenshots, and recording with live annotations.</p>
             <div class="hero-actions">
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button">Download for Windows</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="snipping_tool_alternative" data-utm-medium="cta" data-utm-content="snipping_tool_alternative_hero" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="hero">Download for Windows</a>
                 <a href="./index.html#compare" class="secondary-link">See the main comparison</a>
+            </div>
+            <div class="install-row">
+                <div class="command-group">
+                    <div class="install-tabs" role="group" aria-label="Choose a package manager">
+                        <button type="button" class="install-tab is-active" data-manager="winget" data-command="winget install DimitarRadenkov.Pointframe" aria-pressed="true">winget</button>
+                        <button type="button" class="install-tab" data-manager="scoop" data-command="scoop install pointframe" aria-pressed="false">scoop</button>
+                    </div>
+                    <button id="copy-command-button" type="button" class="command-button" aria-describedby="copy-command-status">
+                        <span class="command-content">
+                            <span class="command-text"><span class="command-prefix">$</span> <span id="copy-command-text">winget install DimitarRadenkov.Pointframe</span></span>
+                        </span>
+                        <span class="command-icon" aria-hidden="true">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </span>
+                        <span class="command-tooltip">Copy command</span>
+                    </button>
+                </div>
+                <p id="copy-command-status" class="copy-status" role="status" aria-live="polite"></p>
             </div>
         </div>
     </main>
@@ -92,9 +152,28 @@
                         <h3>Want more than a basic screenshot tool?</h3>
                         <p>Pointframe keeps the fast capture workflow but adds the features that matter when screenshots are part of real work.</p>
                         <div class="hero-actions compact-actions">
-                            <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button">Get Pointframe</a>
+                            <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="snipping_tool_alternative" data-utm-medium="cta" data-utm-content="snipping_tool_alternative_article_cta" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="article_cta">Get Pointframe</a>
                             <a href="./copy-text-from-screenshot-windows.html" class="secondary-link">See the OCR workflow</a>
                         </div>
+                    </div>
+                    <h2>Frequently asked questions</h2>
+                    <div class="faq-list">
+                        <details class="faq-item">
+                            <summary>Why replace the built-in Windows Snipping Tool?</summary>
+                            <p>The built-in tool captures and saves well but stops there. People switch when they need OCR, blur redaction, pinned screenshots, or a recording with live annotations.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Is there a free Snipping Tool alternative with OCR?</summary>
+                            <p>Yes. Pointframe includes offline OCR, so you can lasso text in any capture and paste it straight into a ticket or document.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Can I keep using Print Screen as my capture key?</summary>
+                            <p>Yes. Pointframe binds Print Screen by default and the hotkey is configurable in Settings if you would rather keep the built-in behaviour.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Does it work on Windows 10 as well as Windows 11?</summary>
+                            <p>Yes, on both, including multi-monitor setups with mixed display scaling.</p>
+                        </details>
                     </div>
                 </article>
 
@@ -108,6 +187,14 @@
                         <a href="./copy-text-from-screenshot-windows.html" class="resource-card">
                             <h3 class="resource-title">Copy text from a screenshot</h3>
                             <p class="resource-copy">Learn how OCR turns screenshots into usable text on Windows.</p>
+                        </a>
+                        <a href="./greenshot-alternative-windows.html" class="resource-card">
+                            <h3 class="resource-title">Greenshot alternative</h3>
+                            <p class="resource-copy">Compare Pointframe with the popular free capture tool.</p>
+                        </a>
+                        <a href="./sharex-alternative-windows.html" class="resource-card">
+                            <h3 class="resource-title">ShareX alternative</h3>
+                            <p class="resource-copy">Fewer setup steps than the most configurable option.</p>
                         </a>
                     </div>
                 </div>
@@ -124,9 +211,10 @@
             <div class="footer-links">
                 <a href="./index.html">Home</a>
                 <a href="https://github.com/dimitar-radenkov/Pointframe">GitHub</a>
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest">Download</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="js-utm-link" data-utm-campaign="snipping_tool_alternative" data-utm-medium="cta" data-utm-content="snipping_tool_alternative_footer" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="footer">Download</a>
             </div>
         </div>
     </footer>
+    <script type="module" src="./index.js"></script>
 </body>
 </html>
