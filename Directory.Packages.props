@@ -23,7 +23,7 @@
     <PackageVersion Include="Nerdbank.GitVersioning" Version="3.10.85" />
     <PackageVersion Include="OpenTelemetry" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.16.0" />
-    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.4" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageVersion Include="Serilog" Version="4.3.1" />
     <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" />
     <PackageVersion Include="Serilog.Sinks.Debug" Version="3.0.0" />
