@@ -24,6 +24,7 @@ public partial class OverlayWindow : Window
     private readonly IMessageBoxService _messageBox;
     private readonly IFileSystemService _fileSystem;
     private readonly IOcrService _ocrService;
+    private readonly ISmartRedactionService _smartRedactionService;
     private readonly ITelemetryService _telemetry;
     private readonly RecordingAnnotationViewModel _recordingAnnotationViewModel;
     private readonly ILoggerFactory _loggerFactory;
@@ -47,6 +48,7 @@ public partial class OverlayWindow : Window
     private SelectionSessionMode _selectionSessionMode = SelectionSessionMode.Region;
     private SelectionSessionResult? _pendingSelectionSession;
     private readonly List<SelectionBackdropWindow> _annotatingBackdropWindows = [];
+    private bool _isSmartRedactionInProgress;
 
     internal OverlayWindow(
         OverlayViewModel vm,
@@ -60,6 +62,7 @@ public partial class OverlayWindow : Window
         IMessageBoxService messageBox,
         IFileSystemService fileSystem,
         IOcrService ocrService,
+        ISmartRedactionService smartRedactionService,
         ITelemetryService telemetry,
         RecordingAnnotationViewModel recordingAnnotationViewModel,
         Func<BitmapSource, BeautifierWindow> beautifierWindowFactory)
@@ -76,6 +79,7 @@ public partial class OverlayWindow : Window
         _messageBox = messageBox;
         _fileSystem = fileSystem;
         _ocrService = ocrService;
+        _smartRedactionService = smartRedactionService;
         _telemetry = telemetry;
         _recordingAnnotationViewModel = recordingAnnotationViewModel;
         _beautifierWindowFactory = beautifierWindowFactory;

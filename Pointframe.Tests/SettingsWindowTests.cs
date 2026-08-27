@@ -398,6 +398,28 @@ public sealed class SettingsWindowTests
     }
 
     [Fact]
+    public void SettingsWindow_ContainsSmartRedactionContent()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var window = CreateWindow();
+            window.Show();
+            window.UpdateLayout();
+
+            var navigation = FindByAutomationId<ListBox>(window, "SettingsWindow.SectionNavigation");
+            Assert.NotNull(navigation);
+            navigation!.SelectedValue = SettingsSection.SmartRedaction;
+            window.UpdateLayout();
+
+            var smartRedactionContent = FindByAutomationId<TextBlock>(window, "SettingsWindow.SmartRedactionContent");
+            Assert.NotNull(smartRedactionContent);
+            Assert.Equal(Visibility.Visible, smartRedactionContent!.Visibility);
+            Assert.NotNull(FindByAutomationId<CheckBox>(window, "SettingsWindow.SmartRedactionEnabled"));
+
+            window.Close();
+        });
+    }
+    [Fact]
     public void SettingsWindow_ContainsShortcutsReference()
     {
         StaTestHelper.Run(() =>
@@ -423,6 +445,20 @@ public sealed class SettingsWindowTests
         });
     }
 
+    [Fact]
+    public void SectionNavigation_ContainsSmartRedactionSection()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var window = CreateWindow();
+            window.Show();
+            window.UpdateLayout();
+
+            Assert.NotNull(FindByAutomationId<ListBoxItem>(window, "SettingsWindow.Section.SmartRedaction"));
+
+            window.Close();
+        });
+    }
     [Fact]
     public void SectionNavigation_ContainsShortcutsSection()
     {
@@ -541,3 +577,4 @@ public sealed class SettingsWindowTests
         return null;
     }
 }
+

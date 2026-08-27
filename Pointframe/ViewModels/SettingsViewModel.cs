@@ -10,11 +10,12 @@ public partial class SettingsViewModel : ObservableObject
     private const double MaxRecordingCursorHighlightSize = 96d;
     private static readonly SettingsSectionItem[] SectionItems =
     [
-        new(SettingsSection.Capture, "Capture", "Screenshot folders, timing, and the capture shortcut."),
-        new(SettingsSection.Recording, "Recording", "Output options, cursor effects, and advanced recording defaults."),
-        new(SettingsSection.Annotation, "Annotation", "Default annotation appearance and preview."),
-        new(SettingsSection.Shortcuts, "Shortcuts", "See all capture, recording, and overlay keyboard shortcuts."),
-        new(SettingsSection.App, "App", "Appearance, update checks, and reset actions."),
+        new(SettingsSection.Capture, "Capture", "Screenshot defaults."),
+        new(SettingsSection.SmartRedaction, "Smart redaction", "Built-in patterns and custom rules."),
+        new(SettingsSection.Recording, "Recording", "Recording output, pointer effects, and advanced options."),
+        new(SettingsSection.Annotation, "Annotation", "Annotation defaults, presets, and watermark."),
+        new(SettingsSection.Shortcuts, "Shortcuts", "All keyboard shortcuts in one place."),
+        new(SettingsSection.App, "App", "Theme and update checks."),
     ];
 
     private sealed record OverlayShortcutDescriptor(
@@ -23,6 +24,13 @@ public partial class SettingsViewModel : ObservableObject
         Func<UserSettings, HotkeyBinding> SettingOf,
         Func<SettingsViewModel, HotkeyBinding> Get,
         Action<SettingsViewModel, HotkeyBinding> Set);
+
+    private sealed record SmartRedactionBuiltInPatternDefinition(
+        SensitiveDataType Type,
+        string Name,
+        string Description,
+        string Example,
+        string Pattern);
 
     private static readonly OverlayShortcutDescriptor[] OverlayShortcutDescriptors =
     [
@@ -50,6 +58,46 @@ public partial class SettingsViewModel : ObservableObject
             s => new(s.OverlayCloseHotkey, s.OverlayCloseHotkeyModifiers),
             vm => new(vm.OverlayCloseHotkey, vm.OverlayCloseHotkeyModifiers),
             (vm, b) => (vm.OverlayCloseHotkey, vm.OverlayCloseHotkeyModifiers) = (b.Key, b.Modifiers)),
+    ];
+
+    private static readonly SmartRedactionBuiltInPatternDefinition[] SmartRedactionBuiltInPatterns =
+    [
+        new(
+            SensitiveDataType.Email,
+            "Email addresses",
+            "Detects email-like addresses.",
+            "dev@example.com",
+            @"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b"),
+        new(
+            SensitiveDataType.Phone,
+            "Phone numbers",
+            "Detects phone numbers and tolerates common OCR digit substitutions.",
+            "555-123-4567",
+            @"\b(?:\+?\d[\d\-\s().]{6,}\d)\b"),
+        new(
+            SensitiveDataType.UrlQueryToken,
+            "URL/query secrets",
+            "Detects token-like values in query strings or key=value text.",
+            "token=abc123def456",
+            @"\b(?:token|access_token|apikey|api_key|secret|password)\s*=\s*[^&\s]+"),
+        new(
+            SensitiveDataType.Ipv4,
+            "IPv4 addresses",
+            "Detects IPv4 addresses and tolerates common OCR digit substitutions.",
+            "192.168.10.42",
+            @"\b(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b"),
+        new(
+            SensitiveDataType.AccessKeyLike,
+            "Access key-like strings",
+            "Detects common token formats such as AWS keys and GitHub personal access tokens.",
+            "ghp_abcdefghijklmnopqrstuvwxyz123456",
+            @"\b(?:AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,})\b"),
+        new(
+            SensitiveDataType.JwtLike,
+            "JWT-like tokens",
+            "Detects three-part JWT-style tokens.",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturepart",
+            @"\b[A-Za-z0-9\-_]{12,}\.[A-Za-z0-9\-_]{12,}\.[A-Za-z0-9\-_]{12,}\b"),
     ];
 
     private static OverlayShortcutDescriptor? FindOverlayShortcut(string shortcutKey) =>
@@ -93,6 +141,7 @@ public partial class SettingsViewModel : ObservableObject
         var s = settingsService.Current;
         _screenshotSavePath = s.ScreenshotSavePath;
         _autoSaveScreenshots = s.AutoSaveScreenshots;
+        _smartRedactionEnabled = s.SmartRedactionEnabled;
         _recordingOutputPath = s.RecordingOutputPath;
         _recordMicrophone = s.RecordMicrophone;
         _selectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(s.RecordingMicrophoneDeviceName);
@@ -144,6 +193,23 @@ public partial class SettingsViewModel : ObservableObject
             OnPropertyChanged(nameof(CanAddPreset));
             AddPresetCommand.NotifyCanExecuteChanged();
         };
+        var excludedBuiltInPatternTypes = (s.SmartRedactionExcludedBuiltInTypes ?? [])
+            .ToHashSet();
+        _builtInSmartRedactionPatterns = new ObservableCollection<SmartRedactionBuiltInPatternViewModel>(
+            SmartRedactionBuiltInPatterns.Select(pattern => new SmartRedactionBuiltInPatternViewModel(
+                pattern.Type,
+                pattern.Name,
+                pattern.Description,
+                pattern.Example,
+                pattern.Pattern,
+                !excludedBuiltInPatternTypes.Contains(pattern.Type))));
+        _customRedactionPatterns = new ObservableCollection<SmartRedactionPatternViewModel>(
+            (s.CustomRedactionPatterns ?? []).Select(pattern => new SmartRedactionPatternViewModel(pattern)));
+        _customRedactionPatterns.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(CanAddCustomRedactionPattern));
+            AddCustomRedactionPatternCommand.NotifyCanExecuteChanged();
+        };
 
         _telemetry.TrackEvent(TelemetryEvents.SettingsOpened, new Dictionary<string, string>
         {
@@ -158,6 +224,9 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _autoSaveScreenshots;
+
+    [ObservableProperty]
+    private bool _smartRedactionEnabled;
 
     [ObservableProperty]
     private string _recordingOutputPath;
@@ -317,6 +386,7 @@ public partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SelectedSectionDisplayName))]
     [NotifyPropertyChangedFor(nameof(SelectedSectionDescription))]
     [NotifyPropertyChangedFor(nameof(IsCaptureSectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsSmartRedactionSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsRecordingSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsAnnotationSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsShortcutsSectionSelected))]
@@ -341,6 +411,7 @@ public partial class SettingsViewModel : ObservableObject
     public IReadOnlyList<string> AvailableMicrophoneDevices => _availableMicrophoneDevices;
     public bool HasAvailableMicrophoneDevices => _availableMicrophoneDevices.Count > 0;
     public bool IsCaptureSectionSelected => SelectedSection == SettingsSection.Capture;
+    public bool IsSmartRedactionSectionSelected => SelectedSection == SettingsSection.SmartRedaction;
     public bool IsRecordingSectionSelected => SelectedSection == SettingsSection.Recording;
     public bool IsAnnotationSectionSelected => SelectedSection == SettingsSection.Annotation;
     public bool IsShortcutsSectionSelected => SelectedSection == SettingsSection.Shortcuts;
@@ -365,6 +436,11 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ObservableCollection<AnnotationStylePresetViewModel> _stylePresets;
     public ObservableCollection<AnnotationStylePresetViewModel> StylePresets => _stylePresets;
     public bool CanAddPreset => _stylePresets.Count < AnnotationStylePreset.MaxCount;
+    private readonly ObservableCollection<SmartRedactionBuiltInPatternViewModel> _builtInSmartRedactionPatterns;
+    public ObservableCollection<SmartRedactionBuiltInPatternViewModel> BuiltInSmartRedactionPatterns => _builtInSmartRedactionPatterns;
+    private readonly ObservableCollection<SmartRedactionPatternViewModel> _customRedactionPatterns;
+    public ObservableCollection<SmartRedactionPatternViewModel> CustomRedactionPatterns => _customRedactionPatterns;
+    public bool CanAddCustomRedactionPattern => _customRedactionPatterns.Count < SmartRedactionPattern.MaxCount;
 
     public event Action? RequestClose;
 
@@ -415,6 +491,28 @@ public partial class SettingsViewModel : ObservableObject
         _stylePresets.Remove(preset);
     }
 
+    [RelayCommand(CanExecute = nameof(CanAddCustomRedactionPattern))]
+    private void AddCustomRedactionPattern()
+    {
+        _customRedactionPatterns.Add(new SmartRedactionPatternViewModel(new SmartRedactionPattern
+        {
+            Name = $"Pattern {_customRedactionPatterns.Count + 1}",
+            Pattern = string.Empty,
+            IsEnabled = true,
+        }));
+    }
+
+    [RelayCommand]
+    private void RemoveCustomRedactionPattern(SmartRedactionPatternViewModel? pattern)
+    {
+        if (pattern is null)
+        {
+            return;
+        }
+
+        _customRedactionPatterns.Remove(pattern);
+    }
+
     [RelayCommand]
     private void PickPresetColor(AnnotationStylePresetViewModel preset)
     {
@@ -437,6 +535,14 @@ public partial class SettingsViewModel : ObservableObject
         {
             ScreenshotSavePath = ScreenshotSavePath,
             AutoSaveScreenshots = AutoSaveScreenshots,
+            SmartRedactionEnabled = SmartRedactionEnabled,
+            SmartRedactionExcludedBuiltInTypes =
+            [
+                .. _builtInSmartRedactionPatterns
+                    .Where(pattern => !pattern.IsEnabled)
+                    .Select(pattern => pattern.Type),
+            ],
+            CustomRedactionPatterns = [.. _customRedactionPatterns.Select(pattern => pattern.ToModel())],
             RecordingOutputPath = RecordingOutputPath,
             RecordMicrophone = RecordMicrophone,
             RecordingMicrophoneDeviceName = SelectedMicrophoneDeviceName,
@@ -639,15 +745,11 @@ public partial class SettingsViewModel : ObservableObject
                 ScreenshotSavePath = defaults.ScreenshotSavePath;
                 AutoSaveScreenshots = defaults.AutoSaveScreenshots;
                 CaptureDelaySeconds = defaults.CaptureDelaySeconds;
-                WatermarkEnabled = defaults.ScreenshotWatermark.Enabled;
-                WatermarkTextTemplate = defaults.ScreenshotWatermark.TextTemplate;
-                WatermarkPosition = defaults.ScreenshotWatermark.Position;
-                WatermarkFontSize = defaults.ScreenshotWatermark.FontSize;
-                WatermarkApplyToCopy = defaults.ScreenshotWatermark.ApplyToCopy;
-                WatermarkApplyToSave = defaults.ScreenshotWatermark.ApplyToSave;
-                RegionCaptureHotkey = defaults.RegionCaptureHotkey;
-                RegionCaptureHotkeyModifiers = defaults.RegionCaptureHotkeyModifiers;
-                IsRecordingHotkey = false;
+                break;
+            case SettingsSection.SmartRedaction:
+                SmartRedactionEnabled = defaults.SmartRedactionEnabled;
+                ResetBuiltInSmartRedactionPatterns(defaults.SmartRedactionExcludedBuiltInTypes);
+                ResetCustomRedactionPatterns(defaults.CustomRedactionPatterns);
                 break;
             case SettingsSection.Recording:
                 RecordingOutputPath = defaults.RecordingOutputPath;
@@ -657,23 +759,32 @@ public partial class SettingsViewModel : ObservableObject
                 RecordingCursorHighlightEnabled = defaults.RecordingCursorHighlightEnabled;
                 RecordingClickRippleEnabled = defaults.RecordingClickRippleEnabled;
                 RecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(defaults.RecordingCursorHighlightSize);
-                WholeScreenRecordHotkey = defaults.WholeScreenRecordHotkey;
-                WholeScreenRecordHotkeyModifiers = defaults.WholeScreenRecordHotkeyModifiers;
-                IsCapturingWholeScreenRecordHotkey = false;
-                CleanWindowCaptureHotkey = defaults.CleanWindowCaptureHotkey;
-                CleanWindowCaptureHotkeyModifiers = defaults.CleanWindowCaptureHotkeyModifiers;
-                IsCapturingCleanWindowCaptureHotkey = false;
                 break;
             case SettingsSection.Annotation:
                 DefaultAnnotationColor = ParseAnnotationColorOrFallback(defaults.DefaultAnnotationColor);
                 DefaultStrokeThickness = defaults.DefaultStrokeThickness;
                 ResetStylePresets(defaults.StylePresets);
+                WatermarkEnabled = defaults.ScreenshotWatermark.Enabled;
+                WatermarkTextTemplate = defaults.ScreenshotWatermark.TextTemplate;
+                WatermarkPosition = defaults.ScreenshotWatermark.Position;
+                WatermarkFontSize = defaults.ScreenshotWatermark.FontSize;
+                WatermarkApplyToCopy = defaults.ScreenshotWatermark.ApplyToCopy;
+                WatermarkApplyToSave = defaults.ScreenshotWatermark.ApplyToSave;
                 break;
             case SettingsSection.App:
                 AutoUpdateCheckInterval = defaults.AutoUpdateCheckInterval;
                 AppTheme = defaults.Theme;
                 break;
             case SettingsSection.Shortcuts:
+                RegionCaptureHotkey = defaults.RegionCaptureHotkey;
+                RegionCaptureHotkeyModifiers = defaults.RegionCaptureHotkeyModifiers;
+                IsRecordingHotkey = false;
+                WholeScreenRecordHotkey = defaults.WholeScreenRecordHotkey;
+                WholeScreenRecordHotkeyModifiers = defaults.WholeScreenRecordHotkeyModifiers;
+                IsCapturingWholeScreenRecordHotkey = false;
+                CleanWindowCaptureHotkey = defaults.CleanWindowCaptureHotkey;
+                CleanWindowCaptureHotkeyModifiers = defaults.CleanWindowCaptureHotkeyModifiers;
+                IsCapturingCleanWindowCaptureHotkey = false;
                 ResetOverlayShortcutsTo(defaults);
                 IsCapturingOverlayShortcut = false;
                 OverlayShortcutCaptureTarget = string.Empty;
@@ -694,6 +805,9 @@ public partial class SettingsViewModel : ObservableObject
         _lastAutoUpdateCheckUtc = defaults.LastAutoUpdateCheckUtc;
         ScreenshotSavePath = defaults.ScreenshotSavePath;
         AutoSaveScreenshots = defaults.AutoSaveScreenshots;
+        SmartRedactionEnabled = defaults.SmartRedactionEnabled;
+        ResetBuiltInSmartRedactionPatterns(defaults.SmartRedactionExcludedBuiltInTypes);
+        ResetCustomRedactionPatterns(defaults.CustomRedactionPatterns);
         RecordingOutputPath = defaults.RecordingOutputPath;
         RecordMicrophone = defaults.RecordMicrophone;
         SelectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(defaults.RecordingMicrophoneDeviceName);
@@ -749,6 +863,27 @@ public partial class SettingsViewModel : ObservableObject
 
         AddPresetCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanAddPreset));
+    }
+
+    private void ResetBuiltInSmartRedactionPatterns(IReadOnlyList<SensitiveDataType>? excludedPatternTypes)
+    {
+        var excludedPatternTypeSet = (excludedPatternTypes ?? []).ToHashSet();
+        foreach (var pattern in _builtInSmartRedactionPatterns)
+        {
+            pattern.IsEnabled = !excludedPatternTypeSet.Contains(pattern.Type);
+        }
+    }
+
+    private void ResetCustomRedactionPatterns(List<SmartRedactionPattern> patterns)
+    {
+        _customRedactionPatterns.Clear();
+        foreach (var pattern in patterns)
+        {
+            _customRedactionPatterns.Add(new SmartRedactionPatternViewModel(pattern));
+        }
+
+        AddCustomRedactionPatternCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanAddCustomRedactionPattern));
     }
 
     private void ResetOverlayShortcutsTo(UserSettings settings)
@@ -810,3 +945,4 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 }
+

@@ -109,6 +109,7 @@ For full detail by version, see the [Releases](https://github.com/dimitar-radenk
 - **Color picker tool** — Sample any pixel color from the frozen screenshot; the loupe zooms in with a hex preview and sets the active annotation color
 - **Pixel ruler tool** — Draw a ruler across the screenshot to measure distances in pixels
 - **Blur tool** — Drag over sensitive content (faces, emails, passwords) to apply a Gaussian blur before sharing
+- **Smart redact (local only)** — One-click detection of sensitive text (emails, tokens, phone numbers, IPs) with automatic blur suggestions
 - **OCR — Copy Text** — Draw a lasso around text in the screenshot to extract it via OCR and copy to clipboard (uses Windows.Media.Ocr, no external dependencies)
 - **Capture Library** — Browse your saved captures, filter by date range, and search by filename or OCR text from the tray Library entry
 - **Open existing image** — Load a PNG, JPG/JPEG, or BMP from the tray menu and annotate it without taking a new screenshot
@@ -166,6 +167,9 @@ Open **Settings** from the tray icon to configure:
 |---|---|
 | Screenshot save folder | Where auto-saved screenshots are written |
 | Auto-save on copy | Automatically save every screenshot when copied |
+| Smart redaction | Enable/disable local-only sensitive-text detection in the capture overlay |
+| Built-in smart redaction patterns | Review and include/exclude built-in pattern categories (email, phone, tokens, IP, keys, JWT-like) |
+| Custom regex patterns | Add, edit, enable, or remove local .NET regex rules used by Smart Redact |
 | Capture delay | Countdown (sec) before the selection overlay opens: 0 / 3 / 5 / 10 |
 | Capture hotkey | The key that triggers the region-capture overlay (default: `Print Screen`); supports modifier keys (Ctrl, Shift, Alt) |
 

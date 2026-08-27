@@ -56,7 +56,10 @@ internal static class AppServiceRegistration
             sp.GetRequiredService<ITelemetryService>(),
             sp.GetRequiredService<ILogger<TrimViewModel>>()));
         services.AddSingleton<IAnnotationGeometryService, AnnotationGeometryService>();
-        services.AddSingleton<IOcrService, WindowsOcrService>();
+        services.AddSingleton<WindowsOcrService>();
+        services.AddSingleton<IOcrService>(sp => sp.GetRequiredService<WindowsOcrService>());
+        services.AddSingleton<IOcrRegionService>(sp => sp.GetRequiredService<WindowsOcrService>());
+        services.AddSingleton<ISmartRedactionService, SmartRedactionService>();
         services.AddTransient<OverlayViewModel>();
         services.AddTransient<LibraryViewModel>();
         services.AddTransient<RecordingAnnotationViewModel>();
@@ -111,6 +114,7 @@ internal static class AppServiceRegistration
         sp.GetRequiredService<IMessageBoxService>(),
         sp.GetRequiredService<IFileSystemService>(),
         sp.GetRequiredService<IOcrService>(),
+        sp.GetRequiredService<ISmartRedactionService>(),
         sp.GetRequiredService<ITelemetryService>(),
         sp.GetRequiredService<RecordingAnnotationViewModel>(),
         sp.GetRequiredService<Func<BitmapSource, BeautifierWindow>>());

@@ -29,6 +29,7 @@ public sealed class AppTests
         Assert.IsType<DialogService>(provider.GetRequiredService<IDialogService>());
         Assert.IsType<MessageBoxService>(provider.GetRequiredService<IMessageBoxService>());
         Assert.IsType<TrayIconManager>(provider.GetRequiredService<ITrayIconManager>());
+        Assert.IsType<SmartRedactionService>(provider.GetRequiredService<ISmartRedactionService>());
         Assert.NotNull(provider.GetRequiredService<Func<IScreenRecordingService, string, RecordingHudViewModel>>());
     }
 

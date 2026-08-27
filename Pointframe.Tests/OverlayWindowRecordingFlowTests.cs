@@ -178,6 +178,7 @@ public sealed class OverlayWindowRecordingFlowTests
             messageBoxMock.Object,
             fileSystemMock.Object,
             ocrServiceMock.Object,
+            Mock.Of<ISmartRedactionService>(),
             Mock.Of<ITelemetryService>(),
             recordingAnnotationViewModel,
             _ => throw new NotImplementedException());

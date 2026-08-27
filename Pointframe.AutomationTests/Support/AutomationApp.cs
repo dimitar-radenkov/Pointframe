@@ -176,6 +176,11 @@ public sealed class AutomationApp : IDisposable
         FindFirstRequiredElement(automationIds).AsButton().Invoke();
     }
 
+    public bool IsFirstButtonEnabled(params string[] automationIds)
+    {
+        return FindFirstRequiredElement(automationIds).AsButton().IsEnabled;
+    }
+
     public void ClickSave()
     {
         ClickButton(AutomationIds.SettingsWindowSave);

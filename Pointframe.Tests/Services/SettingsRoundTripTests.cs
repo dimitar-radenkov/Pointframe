@@ -104,6 +104,27 @@ public sealed class SettingsRoundTripTests : IDisposable
         {
             ScreenshotSavePath = @"C:\changed\screenshots",
             AutoSaveScreenshots = false,
+            SmartRedactionEnabled = false,
+            SmartRedactionExcludedBuiltInTypes =
+            [
+                SensitiveDataType.Email,
+                SensitiveDataType.JwtLike,
+            ],
+            CustomRedactionPatterns =
+            [
+                new SmartRedactionPattern
+                {
+                    Name = "Customer ID",
+                    Pattern = @"\bCUST-\d{5}\b",
+                    IsEnabled = true,
+                },
+                new SmartRedactionPattern
+                {
+                    Name = "Secret Label",
+                    Pattern = @"\bSECRET:\s*\w+\b",
+                    IsEnabled = false,
+                },
+            ],
             RecordingOutputPath = @"C:\changed\videos",
             RecordMicrophone = false,
             RecordingMicrophoneDeviceName = "Changed Mic",

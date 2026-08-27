@@ -40,6 +40,8 @@ public sealed class UserSettingsService : IUserSettingsService
             var loaded = JsonSerializer.Deserialize<UserSettings>(json);
             if (loaded is not null)
             {
+                loaded.SmartRedactionExcludedBuiltInTypes ??= [];
+                loaded.CustomRedactionPatterns ??= [];
                 loaded.ScreenshotWatermark ??= new Pointframe.Models.ScreenshotWatermarkSettings();
                 loaded.VideoWatermark ??= CloneVideoWatermark(loaded.ScreenshotWatermark);
                 _logger.LogInformation("Settings loaded from {Path}", _settingsPath);
@@ -118,6 +120,8 @@ public sealed class UserSettingsService : IUserSettingsService
         // identical to Save/Load by construction — a property the serializer would
         // drop here is already dropped on disk.
         var clone = JsonSerializer.Deserialize<UserSettings>(JsonSerializer.Serialize(settings))!;
+        clone.SmartRedactionExcludedBuiltInTypes ??= [];
+        clone.CustomRedactionPatterns ??= [];
         clone.StylePresets ??= [];
         clone.ScreenshotWatermark ??= new Pointframe.Models.ScreenshotWatermarkSettings();
         clone.VideoWatermark ??= new Pointframe.Models.VideoWatermarkSettings();

@@ -51,7 +51,8 @@ public class DesktopAutomationFixture : IDisposable
 
     public void SeedSettings(
         bool autoSaveScreenshots,
-        int recordingFps = 20)
+        int recordingFps = 20,
+        bool smartRedactionEnabled = true)
     {
         if (Directory.Exists(OutputDirectory))
         {
@@ -67,6 +68,7 @@ public class DesktopAutomationFixture : IDisposable
             ScreenshotSavePath = ScreenshotOutputPath,
             RecordingOutputPath = RecordingOutputPath,
             RecordingFps = recordingFps,
+            SmartRedactionEnabled = smartRedactionEnabled,
         };
 
         File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, SerializerOptions));

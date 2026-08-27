@@ -13,11 +13,17 @@ internal static class AutomationIds
     public const string SettingsWindowSave = "SettingsWindow.Save";
     public const string SettingsWindowSectionNavigation = "SettingsWindow.SectionNavigation";
     public const string SettingsWindowSectionCapture = "SettingsWindow.Section.Capture";
+    public const string SettingsWindowSectionSmartRedaction = "SettingsWindow.Section.SmartRedaction";
     public const string SettingsWindowSectionRecording = "SettingsWindow.Section.Recording";
     public const string SettingsWindowSectionAnnotation = "SettingsWindow.Section.Annotation";
     public const string SettingsWindowSectionShortcuts = "SettingsWindow.Section.Shortcuts";
     public const string SettingsWindowSectionApp = "SettingsWindow.Section.App";
     public const string SettingsWindowCaptureContent = "SettingsWindow.CaptureContent";
+    public const string SettingsWindowSmartRedactionContent = "SettingsWindow.SmartRedactionContent";
+    public const string SettingsWindowSmartRedactionEnabled = "SettingsWindow.SmartRedactionEnabled";
+    public const string SettingsWindowBuiltInRedactionPatternList = "SettingsWindow.BuiltInRedactionPatternList";
+    public const string SettingsWindowCustomRedactionPatternList = "SettingsWindow.CustomRedactionPatternList";
+    public const string SettingsWindowAddCustomRedactionPattern = "SettingsWindow.AddCustomRedactionPattern";
     public const string SettingsWindowRecordingContent = "SettingsWindow.RecordingContent";
     public const string SettingsWindowAnnotationContent = "SettingsWindow.AnnotationContent";
     public const string SettingsWindowAppContent = "SettingsWindow.AppContent";
@@ -32,8 +38,10 @@ internal static class AutomationIds
     public const string OverlayWindowCompactRecord = "OverlayWindow.CompactRecord";
     public const string OverlayWindowCopy = "OverlayWindow.Copy";
     public const string OverlayWindowSaveAs = "OverlayWindow.SaveAs";
+    public const string OverlayWindowSmartRedact = "OverlayWindow.SmartRedact";
     public const string OverlayWindowCompactCopy = "OverlayWindow.CompactCopy";
     public const string OverlayWindowCompactSaveAs = "OverlayWindow.CompactSaveAs";
+    public const string OverlayWindowCompactSmartRedact = "OverlayWindow.CompactSmartRedact";
     public const string OverlayWindowPin = "OverlayWindow.Pin";
     public const string OverlayWindowCompactPin = "OverlayWindow.CompactPin";
     public const string OverlayWindowClose = "OverlayWindow.Close";
@@ -71,3 +79,4 @@ internal static class AutomationIds
     public const string RecordingOverlayWindowToolText = "RecordingOverlayWindow.Tool.Text";
     public const string RecordingOverlayWindowToolBlur = "RecordingOverlayWindow.Tool.Blur";
 }
+

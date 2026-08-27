@@ -458,6 +458,103 @@ public sealed class OverlayWindowInteractionTests
         });
     }
 
+    [Fact]
+    public void ApplySmartRedactionAsync_WhenDisabled_DoesNotCallDetectionService()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var context = CreateContext(userSettings: new UserSettings
+            {
+                DefaultAnnotationColor = "#FFFF0000",
+                RecordingOutputPath = @"C:\\recordings",
+                ScreenshotSavePath = @"C:\\shots",
+                SmartRedactionEnabled = false,
+            });
+            try
+            {
+                SetRendererBackground(context.Window, CreateBitmap(64, 40), dpiX: 1d, dpiY: 1d);
+                var task = Assert.IsAssignableFrom<Task>(InvokePrivate(context.Window, "ApplySmartRedactionAsync"));
+                task.GetAwaiter().GetResult();
+
+                context.SmartRedactionServiceMock.Verify(
+                    service => service.DetectAsync(It.IsAny<BitmapSource>(), It.IsAny<CancellationToken>()),
+                    Times.Never);
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        });
+    }
+
+    [Fact]
+    public void ApplySmartRedactionAsync_WhenSuggestionsReturned_CommitsBlurElementsAsOneUndoGroup()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var context = CreateContext();
+            try
+            {
+                SetRendererBackground(context.Window, CreateBitmap(120, 80), dpiX: 1d, dpiY: 1d);
+                context.SmartRedactionServiceMock
+                    .Setup(service => service.DetectAsync(It.IsAny<BitmapSource>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(
+                    [
+                        new SmartRedactionSuggestion(new Int32Rect(10, 12, 28, 14), SensitiveDataType.Email),
+                        new SmartRedactionSuggestion(new Int32Rect(55, 30, 20, 16), SensitiveDataType.UrlQueryToken),
+                    ]);
+
+                var task = Assert.IsAssignableFrom<Task>(InvokePrivate(context.Window, "ApplySmartRedactionAsync"));
+                task.GetAwaiter().GetResult();
+
+                var annotationCanvas = Assert.IsType<Canvas>(context.Window.FindName("AnnotationCanvas"));
+                Assert.Equal(2, annotationCanvas.Children.Count);
+                Assert.Equal(1, context.ViewModel.UndoCount);
+                context.SmartRedactionServiceMock.Verify(
+                    service => service.DetectAsync(It.IsAny<BitmapSource>(), It.IsAny<CancellationToken>()),
+                    Times.Once);
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        });
+    }
+
+    [Fact]
+    public void ApplySmartRedactionAsync_WhenSuggestionsReturned_InflatesRedactionBounds()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var context = CreateContext();
+            try
+            {
+                SetRendererBackground(context.Window, CreateBitmap(200, 120), dpiX: 1d, dpiY: 1d);
+                context.SmartRedactionServiceMock
+                    .Setup(service => service.DetectAsync(It.IsAny<BitmapSource>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(
+                    [
+                        new SmartRedactionSuggestion(new Int32Rect(30, 20, 40, 18), SensitiveDataType.Email),
+                    ]);
+
+                var task = Assert.IsAssignableFrom<Task>(InvokePrivate(context.Window, "ApplySmartRedactionAsync"));
+                task.GetAwaiter().GetResult();
+
+                var annotationCanvas = Assert.IsType<Canvas>(context.Window.FindName("AnnotationCanvas"));
+                var redaction = Assert.IsType<Image>(Assert.Single(annotationCanvas.Children));
+
+                Assert.True(Canvas.GetLeft(redaction) < 30d);
+                Assert.True(Canvas.GetTop(redaction) < 20d);
+                Assert.True(redaction.Width > 40d);
+                Assert.True(redaction.Height > 18d);
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        });
+    }
+
     private static TestContext CreateContext(bool isRecorderRecording = false, UserSettings? userSettings = null)
     {
         var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
@@ -502,6 +599,7 @@ public sealed class OverlayWindowInteractionTests
         var mouseHookMock = new Mock<IMouseHookService>();
         var messageBoxMock = new Mock<IMessageBoxService>();
         var ocrServiceMock = new Mock<IOcrService>();
+        var smartRedactionServiceMock = new Mock<ISmartRedactionService>();
         var telemetryMock = new Mock<ITelemetryService>();
 
         var recordingAnnotationViewModel = new RecordingAnnotationViewModel(
@@ -527,6 +625,7 @@ public sealed class OverlayWindowInteractionTests
             messageBoxMock.Object,
             fileSystemMock.Object,
             ocrServiceMock.Object,
+            smartRedactionServiceMock.Object,
             telemetryMock.Object,
             recordingAnnotationViewModel,
             _ => throw new NotImplementedException());
@@ -536,6 +635,7 @@ public sealed class OverlayWindowInteractionTests
             viewModel,
             recorderMock,
             ocrServiceMock,
+            smartRedactionServiceMock,
             telemetryMock,
             dialogMock,
             fileSystemMock,
@@ -599,6 +699,7 @@ public sealed class OverlayWindowInteractionTests
         OverlayViewModel ViewModel,
         Mock<IScreenRecordingService> RecorderMock,
         Mock<IOcrService> OcrServiceMock,
+        Mock<ISmartRedactionService> SmartRedactionServiceMock,
         Mock<ITelemetryService> TelemetryMock,
         Mock<IDialogService> DialogMock,
         Mock<IFileSystemService> FileSystemMock,

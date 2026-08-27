@@ -611,6 +611,30 @@
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
+                Click="SmartRedact_Click" ToolTip="Smart redact sensitive text"
+                IsEnabled="{Binding IsSmartRedactionEnabled}"
+                AutomationProperties.AutomationId="OverlayWindow.SmartRedact">
+          <StackPanel>
+            <Border Width="15" Height="15"
+                    CornerRadius="2"
+                    BorderBrush="{DynamicResource PrimaryText}"
+                    BorderThickness="1.2"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+              <TextBlock Text="AI"
+                         FontSize="7"
+                         FontWeight="SemiBold"
+                         Foreground="{DynamicResource PrimaryText}"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"/>
+            </Border>
+            <TextBlock Text="Redact" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
                 Command="{Binding BeautifyCommand}" ToolTip="Beautify screenshot"
                 AutomationProperties.AutomationId="OverlayWindow.Beautify">
           <StackPanel>
@@ -711,6 +735,27 @@
               <Rectangle Width="6" Height="1.2" Fill="{DynamicResource PrimaryText}" VerticalAlignment="Top" Margin="0,6.3,0,0"/>
               <TextBlock Text="A" FontSize="7" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,1"/>
             </Grid>
+          </Border>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
+                Click="SmartRedact_Click" ToolTip="Smart redact sensitive text"
+                IsEnabled="{Binding IsSmartRedactionEnabled}"
+                AutomationProperties.AutomationId="OverlayWindow.CompactSmartRedact">
+          <Border Width="15" Height="15"
+                  CornerRadius="2"
+                  BorderBrush="{DynamicResource PrimaryText}"
+                  BorderThickness="1.2"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center">
+            <TextBlock Text="AI"
+                       FontSize="7"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource PrimaryText}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
           </Border>
         </Button>
 

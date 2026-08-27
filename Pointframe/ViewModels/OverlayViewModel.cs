@@ -61,6 +61,7 @@ public partial class OverlayViewModel : AnnotationViewModel
     public string OverlayRedoHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlayRedoHotkey, _settings.Current.OverlayRedoHotkeyModifiers).DisplayName;
     public string OverlayToggleShortcutsHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlayToggleShortcutsHotkey, _settings.Current.OverlayToggleShortcutsHotkeyModifiers).DisplayName;
     public string OverlayCloseHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlayCloseHotkey, _settings.Current.OverlayCloseHotkeyModifiers).DisplayName;
+    public bool IsSmartRedactionEnabled => _settings.Current.SmartRedactionEnabled;
 
     public string CopyToolTip => $"Copy to clipboard ({OverlayCopyHotkeyDisplayName})";
     public string SaveAsToolTip => $"Save As ({OverlaySaveAsHotkeyDisplayName})";

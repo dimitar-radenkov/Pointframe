@@ -236,6 +236,27 @@ public sealed class AnnotationCanvasRendererTests
         });
     }
 
+    [Fact]
+    public void CommitBlurSuggestions_WithBackground_CommitsAndTracksBlurElements()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var renderer = CreateRenderer(out var canvas, out _, out var tracked);
+            renderer.SetBackground(CreateSolidBitmap(120, 80, Colors.Blue), 1.0, 1.0);
+
+            var committed = renderer.CommitBlurSuggestions(
+            [
+                new Rect(10, 15, 30, 20),
+                new Rect(60, 25, 25, 18),
+            ]);
+
+            Assert.Equal(2, committed.Count);
+            Assert.Equal(2, canvas.Children.Count);
+            Assert.Equal(2, tracked.Count);
+            Assert.All(committed, element => Assert.IsType<System.Windows.Controls.Image>(element));
+        });
+    }
+
     private static AnnotationCanvasRenderer CreateRenderer(out Canvas canvas, out AnnotationViewModel vm)
     {
         var renderer = CreateRenderer(out canvas, out vm, out _);

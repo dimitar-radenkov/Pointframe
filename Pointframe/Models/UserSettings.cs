@@ -8,6 +8,9 @@ public sealed class UserSettings
             "Pointframe", "Screenshots");
 
     public bool AutoSaveScreenshots { get; set; } = true;
+    public bool SmartRedactionEnabled { get; set; } = true;
+    public List<SensitiveDataType> SmartRedactionExcludedBuiltInTypes { get; set; } = [];
+    public List<SmartRedactionPattern> CustomRedactionPatterns { get; set; } = [];
 
     public string RecordingOutputPath { get; set; } =
         System.IO.Path.Combine(

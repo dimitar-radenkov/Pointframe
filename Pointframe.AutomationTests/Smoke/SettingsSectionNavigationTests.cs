@@ -15,6 +15,22 @@ public sealed class SettingsSectionNavigationTests : IClassFixture<SettingsAutom
 
     [Fact]
     [Trait("Category", "DesktopAutomation")]
+    public void NavigateToSmartRedactionSection_ShowsSmartRedactionContent()
+    {
+        _fixture.SeedSettings(autoSaveScreenshots: false);
+
+        using var app = AutomationApp.LaunchSettingsWindow(_fixture.SettingsPath);
+        Assert.Equal(AutomationIds.SettingsWindowRoot, app.MainWindow.AutomationId);
+
+        app.SelectListItem(AutomationIds.SettingsWindowSectionSmartRedaction);
+
+        Assert.NotNull(app.FindRequiredElement(AutomationIds.SettingsWindowSmartRedactionContent));
+
+        app.ClickCancel();
+        app.WaitForExit();
+    }
+    [Fact]
+    [Trait("Category", "DesktopAutomation")]
     public void NavigateToRecordingSection_ShowsRecordingContent()
     {
         _fixture.SeedSettings(autoSaveScreenshots: false);

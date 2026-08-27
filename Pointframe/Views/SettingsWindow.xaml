@@ -144,7 +144,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="290"/>
+            <ColumnDefinition Width="220"/>
             <ColumnDefinition Width="16"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
@@ -176,6 +176,9 @@
                                 <DataTrigger Binding="{Binding Section}" Value="{x:Static models:SettingsSection.Capture}">
                                     <Setter Property="AutomationProperties.AutomationId" Value="SettingsWindow.Section.Capture"/>
                                 </DataTrigger>
+                                <DataTrigger Binding="{Binding Section}" Value="{x:Static models:SettingsSection.SmartRedaction}">
+                                    <Setter Property="AutomationProperties.AutomationId" Value="SettingsWindow.Section.SmartRedaction"/>
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding Section}" Value="{x:Static models:SettingsSection.Recording}">
                                     <Setter Property="AutomationProperties.AutomationId" Value="SettingsWindow.Section.Recording"/>
                                 </DataTrigger>
@@ -193,11 +196,7 @@
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel>
-                                <TextBlock Text="{Binding DisplayName}" Style="{StaticResource SidebarTitleText}"/>
-                                <TextBlock Text="{Binding Description}"
-                                           Style="{StaticResource SidebarDescriptionText}"/>
-                            </StackPanel>
+                            <TextBlock Text="{Binding DisplayName}" Style="{StaticResource SidebarTitleText}"/>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -226,9 +225,9 @@
                 <StackPanel Visibility="{Binding IsCaptureSectionSelected, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
-                            <TextBlock Text="Storage" Style="{StaticResource GroupTitle}"
+                            <TextBlock Text="Screenshots" Style="{StaticResource GroupTitle}"
                                        AutomationProperties.AutomationId="SettingsWindow.CaptureContent"/>
-                            <TextBlock Text="Choose where screenshots go and whether copied captures are also saved."
+                            <TextBlock Text="Set where screenshots go, when the overlay opens, and whether copied captures are also saved."
                                        Style="{StaticResource GroupDescription}"/>
 
                             <Grid Margin="0,18,0,0">
@@ -280,14 +279,46 @@
                                           IsChecked="{Binding AutoSaveScreenshots}"
                                           VerticalAlignment="Center"
                                           AutomationProperties.AutomationId="SettingsWindow.AutoSaveScreenshots"/>
+
+                                <Border Grid.Row="3"
+                                        Grid.ColumnSpan="2"
+                                        Height="1"
+                                        Background="{DynamicResource DividerColor}"
+                                        Margin="0,16,0,16"/>
+
+                                <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,16,0">
+                                    <TextBlock Text="Capture delay" Style="{StaticResource RowTitle}"/>
+                                    <TextBlock Text="Wait before the overlay opens so menus and hover states stay visible."
+                                               Style="{StaticResource RowDescription}"/>
+                                </StackPanel>
+                                <TextBox Grid.Row="4"
+                                         Grid.Column="1"
+                                         Width="140"
+                                         HorizontalAlignment="Left"
+                                         Text="{Binding CaptureDelaySeconds, UpdateSourceTrigger=PropertyChanged}"/>
                             </Grid>
                         </StackPanel>
                     </Border>
 
+                    <StackPanel Visibility="Collapsed">
+                        <StackPanel x:Name="HotkeyRecordingPanel"
+                                    Orientation="Horizontal"
+                                    Focusable="True"
+                                    Margin="0"
+                                    PreviewKeyDown="HotkeyCapture_PreviewKeyDown"
+                                    PreviewKeyUp="HotkeyCapture_PreviewKeyUp"
+                                    IsVisibleChanged="HotkeyRecordingPanel_IsVisibleChanged">
+                            <TextBlock x:Name="CaptureHotkeyCurrentInput"
+                                       Text="—"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding IsSmartRedactionSectionSelected, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
-                            <TextBlock Text="Behavior" Style="{StaticResource GroupTitle}"/>
-                            <TextBlock Text="Control how capture starts and how quickly you can trigger it."
+                            <TextBlock Text="Smart redaction" Style="{StaticResource GroupTitle}" AutomationProperties.AutomationId="SettingsWindow.SmartRedactionContent"/>
+                            <TextBlock Text="Detect and blur sensitive text locally. Built-in patterns are always visible below so custom rules are easier to create."
                                        Style="{StaticResource GroupDescription}"/>
 
                             <Grid Margin="0,18,0,0">
@@ -295,122 +326,176 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="320"/>
                                 </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
 
-                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,16,0">
-                                    <TextBlock Text="Capture delay" Style="{StaticResource RowTitle}"/>
-                                    <TextBlock Text="Wait before the overlay opens so menus and hover states stay visible."
+                                <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                    <TextBlock Text="Overlay action" Style="{StaticResource RowTitle}"/>
+                                    <TextBlock Text="Show Smart Redact in the overlay toolbar. All processing stays local on this machine."
                                                Style="{StaticResource RowDescription}"/>
                                 </StackPanel>
-                                <TextBox
-    Grid.Row="0"
-    Grid.Column="1"
-    Width="140"
-    Text="{Binding CaptureDelaySeconds, UpdateSourceTrigger=PropertyChanged}" />
-
-                                <Border Grid.Row="1"
-                                        Grid.ColumnSpan="2"
-                                        Height="1"
-                                        Background="{DynamicResource DividerColor}"
-                                        Margin="0,16,0,16"/>
-
-                                <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,16,0">
-                                    <TextBlock Text="Capture hotkey" Style="{StaticResource RowTitle}"/>
-                                    <TextBlock Text="Hold Ctrl, Shift, Alt or any combination, then press a key to open the capture overlay."
-                                               Style="{StaticResource RowDescription}"/>
-                                </StackPanel>
-                                <StackPanel Grid.Row="2" Grid.Column="1">
-                                    <StackPanel Orientation="Horizontal">
-                                        <StackPanel.Style>
-                                            <Style TargetType="StackPanel">
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsRecordingHotkey}" Value="True">
-                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </StackPanel.Style>
-                                        <Border Background="{DynamicResource KbdBadgeBackground}"
-                                                BorderBrush="{DynamicResource KbdBadgeBorder}"
-                                                BorderThickness="1,1,1,3"
-                                                CornerRadius="4"
-                                                Padding="8,4"
-                                                Margin="0,0,8,0">
-                                            <TextBlock Text="{Binding RegionCaptureHotkeyDisplayName}"
-                                                       FontFamily="Consolas"
-                                                       FontSize="11"
-                                                       VerticalAlignment="Center"
-                                                       Foreground="{DynamicResource PrimaryText}"/>
-                                        </Border>
-                                        <Button Content="Change"
-                                                Style="{StaticResource BrowseBtn}"
-                                                Command="{Binding StartRecordingHotkeyCommand}"
-                                                Margin="0,0,6,0"/>
-                                        <Button Content="Reset key"
-                                                Style="{StaticResource BrowseBtn}"
-                                                Command="{Binding ResetHotkeyCommand}"/>
-                                    </StackPanel>
-
-                                    <StackPanel x:Name="HotkeyRecordingPanel"
-                                                Orientation="Horizontal"
-                                                Focusable="True"
-                                                Margin="0"
-                                                PreviewKeyDown="HotkeyCapture_PreviewKeyDown"
-                                                PreviewKeyUp="HotkeyCapture_PreviewKeyUp"
-                                                IsVisibleChanged="HotkeyRecordingPanel_IsVisibleChanged">
-                                        <StackPanel.Style>
-                                            <Style TargetType="StackPanel">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsRecordingHotkey}" Value="True">
-                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </StackPanel.Style>
-                                        <Border BorderBrush="{DynamicResource HotkeyRecordingBorder}"
-                                                BorderThickness="2"
-                                                CornerRadius="6"
-                                                Padding="12,10"
-                                                Background="{DynamicResource HotkeyRecordingBackground}">
-                                            <StackPanel>
-                                                <TextBlock Text="Press your hotkey combination"
-                                                           Foreground="{DynamicResource HotkeyRecordingText}"
-                                                           FontSize="11"
-                                                           Opacity="0.75"/>
-                                                <TextBlock x:Name="CaptureHotkeyCurrentInput"
-                                                           Text="—"
-                                                           Foreground="{DynamicResource HotkeyRecordingText}"
-                                                           FontFamily="Consolas"
-                                                           FontSize="16"
-                                                           FontWeight="Bold"
-                                                           Margin="0,5,0,5"/>
-                                                <TextBlock Text="Esc to cancel"
-                                                           Foreground="{DynamicResource HotkeyRecordingText}"
-                                                           FontSize="10"
-                                                           Opacity="0.6"/>
-                                            </StackPanel>
-                                        </Border>
-                                    </StackPanel>
-                                </StackPanel>
-
+                                <CheckBox Grid.Column="1"
+                                          Content="Enable smart redaction (local only)"
+                                          IsChecked="{Binding SmartRedactionEnabled}"
+                                          VerticalAlignment="Center"
+                                          AutomationProperties.AutomationId="SettingsWindow.SmartRedactionEnabled"/>
                             </Grid>
                         </StackPanel>
                     </Border>
 
-                </StackPanel>
+                    <Border Style="{StaticResource GroupCard}"
+                            IsEnabled="{Binding SmartRedactionEnabled}">
+                        <StackPanel>
+                            <TextBlock Text="Built-in patterns" Style="{StaticResource GroupTitle}"/>
+                            <TextBlock Text="Review the current detectors before creating a custom rule."
+                                       Style="{StaticResource GroupDescription}"/>
 
+                            <ItemsControl ItemsSource="{Binding BuiltInSmartRedactionPatterns}"
+                                          Margin="0,16,0,0"
+                                          AutomationProperties.AutomationId="SettingsWindow.BuiltInRedactionPatternList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,10"
+                                                Padding="12"
+                                                Background="{DynamicResource InputBackground}"
+                                                BorderBrush="{DynamicResource ControlBorder}"
+                                                BorderThickness="1"
+                                                CornerRadius="6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <CheckBox Grid.Column="0"
+                                                          Margin="0,2,10,0"
+                                                          IsChecked="{Binding IsEnabled}"
+                                                          VerticalAlignment="Top"/>
+
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{Binding Name}" Style="{StaticResource RowTitle}"/>
+                                                    <TextBlock Text="{Binding Description}"
+                                                               Style="{StaticResource RowDescription}"
+                                                               Margin="0,2,0,0"/>
+
+                                                    <TextBlock Text="Example"
+                                                               Style="{StaticResource RowDescription}"
+                                                               Margin="0,10,0,0"/>
+                                                    <Border Margin="0,4,0,0"
+                                                            Padding="10,8"
+                                                            Background="{DynamicResource SurfaceBackground}"
+                                                            BorderBrush="{DynamicResource SurfaceBorder}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="4">
+                                                        <TextBlock Text="{Binding Example}"
+                                                                   FontFamily="Consolas"
+                                                                   Foreground="{DynamicResource PrimaryText}"
+                                                                   TextWrapping="Wrap"/>
+                                                    </Border>
+
+                                                    <TextBlock Text="Regex"
+                                                               Style="{StaticResource RowDescription}"
+                                                               Margin="0,10,0,0"/>
+                                                    <Border Margin="0,4,0,0"
+                                                            Padding="10,8"
+                                                            Background="{DynamicResource SurfaceBackground}"
+                                                            BorderBrush="{DynamicResource SurfaceBorder}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="4">
+                                                        <TextBlock Text="{Binding Pattern}"
+                                                                   FontFamily="Consolas"
+                                                                   Foreground="{DynamicResource PrimaryText}"
+                                                                   TextWrapping="Wrap"/>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource GroupCard}"
+                            IsEnabled="{Binding SmartRedactionEnabled}">
+                        <StackPanel>
+                            <TextBlock Text="Custom patterns" Style="{StaticResource GroupTitle}"/>
+                            <TextBlock Text="Add your own .NET regex rules after checking the built-in patterns above."
+                                       Style="{StaticResource GroupDescription}"/>
+
+                            <ItemsControl ItemsSource="{Binding CustomRedactionPatterns}"
+                                          Margin="0,16,0,0"
+                                          AutomationProperties.AutomationId="SettingsWindow.CustomRedactionPatternList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,8"
+                                                Padding="10"
+                                                Background="{DynamicResource InputBackground}"
+                                                BorderBrush="{DynamicResource ControlBorder}"
+                                                BorderThickness="1"
+                                                CornerRadius="6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="150"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <CheckBox Grid.Column="0"
+                                                          Margin="0,4,8,0"
+                                                          IsChecked="{Binding IsEnabled}"
+                                                          VerticalAlignment="Top"
+                                                          ToolTip="Enable this pattern"/>
+
+                                                <TextBox Grid.Column="1"
+                                                         Margin="0,0,8,0"
+                                                         Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                         MaxLength="{x:Static models:SmartRedactionPattern.MaxNameLength}"
+                                                         VerticalContentAlignment="Center"
+                                                         ToolTip="Pattern name"/>
+
+                                                <TextBox Grid.Column="2"
+                                                         Margin="0,0,8,0"
+                                                         Text="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}"
+                                                         MaxLength="{x:Static models:SmartRedactionPattern.MaxPatternLength}"
+                                                         VerticalContentAlignment="Center"
+                                                         ToolTip="Regex pattern"/>
+
+                                                <Button Grid.Column="3"
+                                                        Width="28"
+                                                        Height="28"
+                                                        Cursor="Hand"
+                                                        Style="{StaticResource BrowseBtn}"
+                                                        Command="{Binding DataContext.RemoveCustomRedactionPatternCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="Remove custom pattern">
+                                                    <TextBlock Text="&#xE74D;"
+                                                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                               FontSize="12"
+                                                               Foreground="#D96464"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"/>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Button Content="+ Add pattern"
+                                    Style="{StaticResource BrowseBtn}"
+                                    Command="{Binding AddCustomRedactionPatternCommand}"
+                                    HorizontalAlignment="Left"
+                                    Margin="0,6,0,0"
+                                    AutomationProperties.AutomationId="SettingsWindow.AddCustomRedactionPattern"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
                 <StackPanel Visibility="{Binding IsRecordingSectionSelected, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
-                            <TextBlock Text="Output" Style="{StaticResource GroupTitle}"
+                            <TextBlock Text="Recording defaults" Style="{StaticResource GroupTitle}"
                                        AutomationProperties.AutomationId="SettingsWindow.RecordingContent"/>
-                            <TextBlock Text="Control where recordings are saved and which format is used by default."
+                            <TextBlock Text="Choose where recordings go and how pointer feedback looks. Manage shortcuts from the Shortcuts section."
                                        Style="{StaticResource GroupDescription}"/>
 
                             <Grid Margin="0,18,0,0">
@@ -452,199 +537,11 @@
                                         Margin="0,16,0,16"/>
 
                                 <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,16,0">
-                                    <TextBlock Text="Record hotkey" Style="{StaticResource RowTitle}"/>
-                                    <TextBlock Text="Hold Ctrl, Shift, Alt or any combination, then press a key to trigger a whole-screen recording."
-                                               Style="{StaticResource RowDescription}"/>
-                                </StackPanel>
-                                <StackPanel Grid.Row="2" Grid.Column="1">
-                                    <StackPanel Orientation="Horizontal">
-                                        <StackPanel.Style>
-                                            <Style TargetType="StackPanel">
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsCapturingWholeScreenRecordHotkey}" Value="True">
-                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </StackPanel.Style>
-                                        <Border Background="{DynamicResource KbdBadgeBackground}"
-                                                BorderBrush="{DynamicResource KbdBadgeBorder}"
-                                                BorderThickness="1,1,1,3"
-                                                CornerRadius="4"
-                                                Padding="8,4"
-                                                Margin="0,0,8,0">
-                                            <TextBlock Text="{Binding WholeScreenRecordHotkeyDisplayName}"
-                                                       FontFamily="Consolas"
-                                                       FontSize="11"
-                                                       VerticalAlignment="Center"
-                                                       Foreground="{DynamicResource PrimaryText}"/>
-                                        </Border>
-                                        <Button Content="Change"
-                                                Style="{StaticResource BrowseBtn}"
-                                                Command="{Binding StartCapturingWholeScreenRecordHotkeyCommand}"
-                                                Margin="0,0,6,0"/>
-                                        <Button Content="Reset key"
-                                                Style="{StaticResource BrowseBtn}"
-                                                Command="{Binding ResetRecordHotkeyCommand}"/>
-                                    </StackPanel>
-
-                                     <StackPanel x:Name="RecordHotkeyRecordingPanel"
-                                                Orientation="Horizontal"
-                                                Focusable="True"
-                                                Margin="0"
-                                                PreviewKeyDown="RecordHotkeyCapture_PreviewKeyDown"
-                                                PreviewKeyUp="RecordHotkeyCapture_PreviewKeyUp"
-                                                IsVisibleChanged="WholeScreenRecordHotkeyRecordingPanel_IsVisibleChanged">
-                                        <StackPanel.Style>
-                                            <Style TargetType="StackPanel">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsCapturingWholeScreenRecordHotkey}" Value="True">
-                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </StackPanel.Style>
-                                        <Border BorderBrush="{DynamicResource HotkeyRecordingBorder}"
-                                                BorderThickness="2"
-                                                CornerRadius="6"
-                                                Padding="12,10"
-                                                Background="{DynamicResource HotkeyRecordingBackground}">
-                                            <StackPanel>
-                                                <TextBlock Text="Press your hotkey combination"
-                                                           Foreground="{DynamicResource HotkeyRecordingText}"
-                                                           FontSize="11"
-                                                           Opacity="0.75"/>
-                                                <TextBlock x:Name="RecordHotkeyCurrentInput"
-                                                           Text="—"
-                                                           Foreground="{DynamicResource HotkeyRecordingText}"
-                                                           FontFamily="Consolas"
-                                                           FontSize="16"
-                                                           FontWeight="Bold"
-                                                           Margin="0,5,0,5"/>
-                                                <TextBlock Text="Esc to cancel"
-                                                           Foreground="{DynamicResource HotkeyRecordingText}"
-                                                           FontSize="10"
-                                                           Opacity="0.6"/>
-                                            </StackPanel>
-                                        </Border>
-                                    </StackPanel>
-                                </StackPanel>
-
-                                <Border Grid.Row="3"
-                                        Grid.ColumnSpan="2"
-                                        Height="1"
-                                        Background="{DynamicResource DividerColor}"
-                                        Margin="0,16,0,16"/>
-
-                                <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,16,0">
-                                    <TextBlock Text="Clean window snip hotkey" Style="{StaticResource RowTitle}"/>
-                                    <TextBlock Text="Hold Ctrl, Shift, Alt or any combination, then press a key to capture the window under cursor with shadow."
-                                               Style="{StaticResource RowDescription}"/>
-                                </StackPanel>
-                                <StackPanel Grid.Row="4" Grid.Column="1">
-                                    <StackPanel Orientation="Horizontal">
-                                        <StackPanel.Style>
-                                            <Style TargetType="StackPanel">
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsCapturingCleanWindowCaptureHotkey}" Value="True">
-                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </StackPanel.Style>
-                                        <Border Background="{DynamicResource KbdBadgeBackground}"
-                                                BorderBrush="{DynamicResource KbdBadgeBorder}"
-                                                BorderThickness="1,1,1,3"
-                                                CornerRadius="4"
-                                                Padding="8,4"
-                                                Margin="0,0,8,0">
-                                            <TextBlock Text="{Binding CleanWindowCaptureHotkeyDisplayName}"
-                                                       FontFamily="Consolas"
-                                                       FontSize="11"
-                                                       VerticalAlignment="Center"
-                                                       Foreground="{DynamicResource PrimaryText}"/>
-                                        </Border>
-                                        <Button Content="Change"
-                                                Style="{StaticResource BrowseBtn}"
-                                                Command="{Binding StartCapturingCleanWindowCaptureHotkeyCommand}"
-                                                Margin="0,0,6,0"/>
-                                        <Button Content="Reset key"
-                                                Style="{StaticResource BrowseBtn}"
-                                                Command="{Binding ResetCleanWindowCaptureHotkeyCommand}"/>
-                                    </StackPanel>
-
-                                    <StackPanel x:Name="CleanWindowHotkeyRecordingPanel"
-                                                Orientation="Horizontal"
-                                                Focusable="True"
-                                                Margin="0"
-                                                PreviewKeyDown="CleanWindowHotkeyCapture_PreviewKeyDown"
-                                                PreviewKeyUp="CleanWindowHotkeyCapture_PreviewKeyUp"
-                                                IsVisibleChanged="CleanWindowHotkeyRecordingPanel_IsVisibleChanged">
-                                        <StackPanel.Style>
-                                            <Style TargetType="StackPanel">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsCapturingCleanWindowCaptureHotkey}" Value="True">
-                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </StackPanel.Style>
-                                        <Border BorderBrush="{DynamicResource HotkeyRecordingBorder}"
-                                                BorderThickness="2"
-                                                CornerRadius="6"
-                                                Padding="12,10"
-                                                Background="{DynamicResource HotkeyRecordingBackground}">
-                                            <StackPanel>
-                                                <TextBlock Text="Press your hotkey combination"
-                                                           Foreground="{DynamicResource HotkeyRecordingText}"
-                                                           FontSize="11"
-                                                           Opacity="0.75"/>
-                                                <TextBlock x:Name="CleanWindowHotkeyCurrentInput"
-                                                           Text="—"
-                                                           Foreground="{DynamicResource HotkeyRecordingText}"
-                                                           FontFamily="Consolas"
-                                                           FontSize="16"
-                                                           FontWeight="Bold"
-                                                           Margin="0,5,0,5"/>
-                                                <TextBlock Text="Esc to cancel"
-                                                           Foreground="{DynamicResource HotkeyRecordingText}"
-                                                           FontSize="10"
-                                                           Opacity="0.6"/>
-                                            </StackPanel>
-                                        </Border>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource GroupCard}">
-                        <StackPanel>
-                            <TextBlock Text="Pointer effects" Style="{StaticResource GroupTitle}"/>
-                            <TextBlock Text="Help viewers follow your mouse without cluttering the recording."
-                                       Style="{StaticResource GroupDescription}"/>
-
-                            <Grid Margin="0,18,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="320"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,16,0">
                                     <TextBlock Text="Cursor highlight" Style="{StaticResource RowTitle}"/>
                                     <TextBlock Text="Add a visible ring around the cursor while recording."
                                                Style="{StaticResource RowDescription}"/>
                                 </StackPanel>
-                                <StackPanel Grid.Row="0" Grid.Column="1">
+                                <StackPanel Grid.Row="2" Grid.Column="1">
                                     <CheckBox Content="Enable cursor highlight"
                                               IsChecked="{Binding RecordingCursorHighlightEnabled}"/>
                                     <StackPanel Margin="24,10,0,0"
@@ -658,18 +555,18 @@
                                     </StackPanel>
                                 </StackPanel>
 
-                                <Border Grid.Row="1"
+                                <Border Grid.Row="3"
                                         Grid.ColumnSpan="2"
                                         Height="1"
                                         Background="{DynamicResource DividerColor}"
                                         Margin="0,16,0,16"/>
 
-                                <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,16,0">
+                                <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,16,0">
                                     <TextBlock Text="Click ripple" Style="{StaticResource RowTitle}"/>
                                     <TextBlock Text="Show a ripple effect when you click during recording."
                                                Style="{StaticResource RowDescription}"/>
                                 </StackPanel>
-                                <CheckBox Grid.Row="2"
+                                <CheckBox Grid.Row="4"
                                           Grid.Column="1"
                                           Content="Enable click ripple"
                                           IsChecked="{Binding RecordingClickRippleEnabled}"
@@ -678,6 +575,29 @@
                         </StackPanel>
                     </Border>
 
+                    <StackPanel Visibility="Collapsed">
+                        <StackPanel x:Name="RecordHotkeyRecordingPanel"
+                                    Orientation="Horizontal"
+                                    Focusable="True"
+                                    Margin="0"
+                                    PreviewKeyDown="RecordHotkeyCapture_PreviewKeyDown"
+                                    PreviewKeyUp="RecordHotkeyCapture_PreviewKeyUp"
+                                    IsVisibleChanged="WholeScreenRecordHotkeyRecordingPanel_IsVisibleChanged">
+                            <TextBlock x:Name="RecordHotkeyCurrentInput"
+                                       Text="—"/>
+                        </StackPanel>
+
+                        <StackPanel x:Name="CleanWindowHotkeyRecordingPanel"
+                                    Orientation="Horizontal"
+                                    Focusable="True"
+                                    Margin="0"
+                                    PreviewKeyDown="CleanWindowHotkeyCapture_PreviewKeyDown"
+                                    PreviewKeyUp="CleanWindowHotkeyCapture_PreviewKeyUp"
+                                    IsVisibleChanged="CleanWindowHotkeyRecordingPanel_IsVisibleChanged">
+                            <TextBlock x:Name="CleanWindowHotkeyCurrentInput"
+                                       Text="—"/>
+                        </StackPanel>
+                    </StackPanel>
                     <Border Style="{StaticResource GroupCard}">
                         <StackPanel>
                             <TextBlock Text="Advanced" Style="{StaticResource GroupTitle}"/>
@@ -780,7 +700,7 @@
                         <StackPanel>
                             <TextBlock Text="Defaults" Style="{StaticResource GroupTitle}"
                                        AutomationProperties.AutomationId="SettingsWindow.AnnotationContent"/>
-                            <TextBlock Text="Choose the look new annotation tools start with."
+                            <TextBlock Text="Choose how new annotations start."
                                        Style="{StaticResource GroupDescription}"/>
 
                             <Grid Margin="0,18,0,0">
@@ -830,170 +750,7 @@
                                          PreviewTextInput="DoubleInput_PreviewTextInput"
                                          DataObject.Pasting="DoubleInput_Pasting"/>
                             </Grid>
-                        </StackPanel>
-                    </Border>
 
-                    <Border Style="{StaticResource GroupCard}">
-                        <StackPanel>
-                            <TextBlock Text="Style Presets" Style="{StaticResource GroupTitle}"/>
-                            <TextBlock Text="Up to 5 color and thickness shortcuts in the annotation toolbar."
-                                       Style="{StaticResource GroupDescription}"/>
-
-                            <ItemsControl ItemsSource="{Binding StylePresets}" Margin="0,14,0,0">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid Margin="0,0,0,8">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="90"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-
-                                            <!-- Color swatch (click to pick) -->
-                                            <Button Grid.Column="0"
-                                                    Width="28" Height="28"
-                                                    Margin="0,0,10,0"
-                                                    Padding="4"
-                                                    Cursor="Hand"
-                                                    Style="{StaticResource BrowseBtn}"
-                                                    Command="{Binding DataContext.PickPresetColorCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding}"
-                                                    ToolTip="Click to change color">
-                                                <Border Width="16" Height="16"
-                                                        CornerRadius="8"
-                                                        Background="{Binding ColorBrush}"
-                                                        BorderBrush="{DynamicResource ControlBorder}"
-                                                        BorderThickness="1"/>
-                                            </Button>
-
-                                            <!-- Name -->
-                                            <TextBox Grid.Column="1"
-                                                     Margin="0,0,10,0"
-                                                     Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                                                     MaxLength="{x:Static models:AnnotationStylePreset.MaxNameLength}"
-                                                     VerticalContentAlignment="Center"/>
-
-                                            <!-- Thickness -->
-                                            <TextBox Grid.Column="2"
-                                                     Margin="0,0,10,0"
-                                                     Text="{Binding StrokeThickness, UpdateSourceTrigger=PropertyChanged}"
-                                                     ToolTip="Stroke thickness"
-                                                     VerticalContentAlignment="Center"
-                                                     PreviewTextInput="DoubleInput_PreviewTextInput"
-                                                     DataObject.Pasting="DoubleInput_Pasting"/>
-
-                                            <!-- Delete -->
-                                            <Button Grid.Column="3"
-                                                    Width="28" Height="28"
-                                                    Cursor="Hand"
-                                                    Style="{StaticResource BrowseBtn}"
-                                                    Command="{Binding DataContext.RemovePresetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding}"
-                                                    ToolTip="Remove preset">
-                                                <TextBlock Text="&#xE74D;"
-                                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                           FontSize="12"
-                                                           Foreground="#D96464"
-                                                           HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center"/>
-                                            </Button>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-
-                            <Button Content="+ Add preset"
-                                    Style="{StaticResource BrowseBtn}"
-                                    Command="{Binding AddPresetCommand}"
-                                    HorizontalAlignment="Left"
-                                    Margin="0,4,0,0"
-                                    AutomationProperties.AutomationId="SettingsWindow.AddStylePreset"/>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource GroupCard}">
-                        <StackPanel>
-                            <TextBlock Text="Watermark" Style="{StaticResource GroupTitle}"/>
-                            <TextBlock Text="Automatically stamp a date/time watermark onto screenshots when copying or saving."
-                                       Style="{StaticResource GroupDescription}"/>
-
-                            <CheckBox Content="Enable screenshot watermark"
-                                      Margin="0,14,0,0"
-                                      IsChecked="{Binding WatermarkEnabled}"
-                                      Foreground="{DynamicResource PrimaryText}"
-                                      AutomationProperties.AutomationId="SettingsWindow.WatermarkEnabled"/>
-
-                            <Grid Margin="0,14,0,0" IsEnabled="{Binding WatermarkEnabled}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="320"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,16,0">
-                                    <TextBlock Text="Text format" Style="{StaticResource RowTitle}"/>
-                                    <TextBlock Text="Choose the watermark text pattern from predefined options."
-                                               Style="{StaticResource RowDescription}"/>
-                                </StackPanel>
-                                <ComboBox Grid.Row="0"
-                                          Grid.Column="1"
-                                          ItemsSource="{Binding WatermarkTextTemplates}"
-                                          SelectedItem="{Binding WatermarkTextTemplate}"
-                                          AutomationProperties.AutomationId="SettingsWindow.WatermarkTextTemplate"/>
-
-                                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,14,16,0">
-                                    <TextBlock Text="Position" Style="{StaticResource RowTitle}"/>
-                                    <TextBlock Text="Where the watermark is placed on the image."
-                                               Style="{StaticResource RowDescription}"/>
-                                </StackPanel>
-                                <ComboBox Grid.Row="1"
-                                          Grid.Column="1"
-                                          Margin="0,14,0,0"
-                                          ItemsSource="{Binding WatermarkPositions}"
-                                          SelectedItem="{Binding WatermarkPosition}"
-                                          AutomationProperties.AutomationId="SettingsWindow.WatermarkPosition"/>
-
-                                <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,14,16,0">
-                                    <TextBlock Text="Font size" Style="{StaticResource RowTitle}"/>
-                                    <TextBlock Text="Watermark text size in pixels."
-                                               Style="{StaticResource RowDescription}"/>
-                                </StackPanel>
-                                <TextBox Grid.Row="2"
-                                         Grid.Column="1"
-                                         Width="80"
-                                         HorizontalAlignment="Left"
-                                         Margin="0,14,0,0"
-                                         Text="{Binding WatermarkFontSize, UpdateSourceTrigger=PropertyChanged}"
-                                         PreviewTextInput="DoubleInput_PreviewTextInput"
-                                         DataObject.Pasting="DoubleInput_Pasting"
-                                         AutomationProperties.AutomationId="SettingsWindow.WatermarkFontSize"/>
-
-                                <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Margin="0,14,0,0">
-                                    <CheckBox Content="Apply when copying to clipboard"
-                                              IsChecked="{Binding WatermarkApplyToCopy}"
-                                              Foreground="{DynamicResource PrimaryText}"
-                                              AutomationProperties.AutomationId="SettingsWindow.WatermarkApplyToCopy"/>
-                                    <CheckBox Content="Apply when saving to a file"
-                                              Margin="0,8,0,0"
-                                              IsChecked="{Binding WatermarkApplyToSave}"
-                                              Foreground="{DynamicResource PrimaryText}"
-                                              AutomationProperties.AutomationId="SettingsWindow.WatermarkApplyToSave"/>
-                                </StackPanel>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource GroupCard}">
-                        <StackPanel>
-                            <TextBlock Text="Preview" Style="{StaticResource GroupTitle}"/>
-                            <TextBlock Text="See the current annotation defaults before saving."
-                                       Style="{StaticResource GroupDescription}"/>
                             <Border Margin="0,16,0,0"
                                     Padding="14"
                                     Background="{DynamicResource InputBackground}"
@@ -1019,6 +776,161 @@
                                 </StackPanel>
                             </Border>
                         </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource GroupCard}">
+                        <Expander Header="Style presets (optional)"
+                                  Foreground="{DynamicResource PrimaryText}">
+                            <StackPanel Margin="0,12,0,0">
+                                <TextBlock Text="Optional toolbar shortcuts for color and thickness."
+                                           Style="{StaticResource GroupDescription}"
+                                           Margin="0,0,0,12"/>
+
+                                <ItemsControl ItemsSource="{Binding StylePresets}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="90"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <Button Grid.Column="0"
+                                                        Width="28" Height="28"
+                                                        Margin="0,0,10,0"
+                                                        Padding="4"
+                                                        Cursor="Hand"
+                                                        Style="{StaticResource BrowseBtn}"
+                                                        Command="{Binding DataContext.PickPresetColorCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="Click to change color">
+                                                    <Border Width="16" Height="16"
+                                                            CornerRadius="8"
+                                                            Background="{Binding ColorBrush}"
+                                                            BorderBrush="{DynamicResource ControlBorder}"
+                                                            BorderThickness="1"/>
+                                                </Button>
+
+                                                <TextBox Grid.Column="1"
+                                                         Margin="0,0,10,0"
+                                                         Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                         MaxLength="{x:Static models:AnnotationStylePreset.MaxNameLength}"
+                                                         VerticalContentAlignment="Center"/>
+
+                                                <TextBox Grid.Column="2"
+                                                         Margin="0,0,10,0"
+                                                         Text="{Binding StrokeThickness, UpdateSourceTrigger=PropertyChanged}"
+                                                         ToolTip="Stroke thickness"
+                                                         VerticalContentAlignment="Center"
+                                                         PreviewTextInput="DoubleInput_PreviewTextInput"
+                                                         DataObject.Pasting="DoubleInput_Pasting"/>
+
+                                                <Button Grid.Column="3"
+                                                        Width="28" Height="28"
+                                                        Cursor="Hand"
+                                                        Style="{StaticResource BrowseBtn}"
+                                                        Command="{Binding DataContext.RemovePresetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="Remove preset">
+                                                    <TextBlock Text="&#xE74D;"
+                                                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                               FontSize="12"
+                                                               Foreground="#D96464"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"/>
+                                                </Button>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Button Content="+ Add preset"
+                                        Style="{StaticResource BrowseBtn}"
+                                        Command="{Binding AddPresetCommand}"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,4,0,0"
+                                        AutomationProperties.AutomationId="SettingsWindow.AddStylePreset"/>
+                            </StackPanel>
+                        </Expander>
+                    </Border>
+                    <Border Style="{StaticResource GroupCard}">
+                        <Expander Header="Screenshot watermark (optional)"
+                                  Foreground="{DynamicResource PrimaryText}">
+                            <StackPanel Margin="0,12,0,0">
+                                <TextBlock Text="Stamp date and time on screenshots when copying or saving."
+                                           Style="{StaticResource GroupDescription}"
+                                           Margin="0,0,0,12"/>
+
+                                <CheckBox Content="Enable screenshot watermark"
+                                          IsChecked="{Binding WatermarkEnabled}"
+                                          Foreground="{DynamicResource PrimaryText}"
+                                          AutomationProperties.AutomationId="SettingsWindow.WatermarkEnabled"/>
+
+                                <Grid Margin="0,14,0,0" IsEnabled="{Binding WatermarkEnabled}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="320"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,16,0">
+                                        <TextBlock Text="Text format" Style="{StaticResource RowTitle}"/>
+                                        <TextBlock Text="Choose the watermark text pattern from predefined options."
+                                                   Style="{StaticResource RowDescription}"/>
+                                    </StackPanel>
+                                    <ComboBox Grid.Row="0"
+                                              Grid.Column="1"
+                                              ItemsSource="{Binding WatermarkTextTemplates}"
+                                              SelectedItem="{Binding WatermarkTextTemplate}"
+                                              AutomationProperties.AutomationId="SettingsWindow.WatermarkTextTemplate"/>
+
+                                    <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,14,16,0">
+                                        <TextBlock Text="Position" Style="{StaticResource RowTitle}"/>
+                                        <TextBlock Text="Where the watermark is placed on the image."
+                                                   Style="{StaticResource RowDescription}"/>
+                                    </StackPanel>
+                                    <ComboBox Grid.Row="1"
+                                              Grid.Column="1"
+                                              Margin="0,14,0,0"
+                                              ItemsSource="{Binding WatermarkPositions}"
+                                              SelectedItem="{Binding WatermarkPosition}"
+                                              AutomationProperties.AutomationId="SettingsWindow.WatermarkPosition"/>
+
+                                    <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,14,16,0">
+                                        <TextBlock Text="Font size" Style="{StaticResource RowTitle}"/>
+                                        <TextBlock Text="Watermark text size in pixels."
+                                                   Style="{StaticResource RowDescription}"/>
+                                    </StackPanel>
+                                    <TextBox Grid.Row="2"
+                                             Grid.Column="1"
+                                             Width="80"
+                                             HorizontalAlignment="Left"
+                                             Margin="0,14,0,0"
+                                             Text="{Binding WatermarkFontSize, UpdateSourceTrigger=PropertyChanged}"
+                                             PreviewTextInput="DoubleInput_PreviewTextInput"
+                                             DataObject.Pasting="DoubleInput_Pasting"
+                                             AutomationProperties.AutomationId="SettingsWindow.WatermarkFontSize"/>
+
+                                    <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Margin="0,14,0,0">
+                                        <CheckBox Content="Apply when copying to clipboard"
+                                                  IsChecked="{Binding WatermarkApplyToCopy}"
+                                                  Foreground="{DynamicResource PrimaryText}"
+                                                  AutomationProperties.AutomationId="SettingsWindow.WatermarkApplyToCopy"/>
+                                        <CheckBox Content="Apply when saving to a file"
+                                                  Margin="0,8,0,0"
+                                                  IsChecked="{Binding WatermarkApplyToSave}"
+                                                  Foreground="{DynamicResource PrimaryText}"
+                                                  AutomationProperties.AutomationId="SettingsWindow.WatermarkApplyToSave"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Expander>
                     </Border>
                 </StackPanel>
 
@@ -1435,3 +1347,5 @@
         </Grid>
     </Grid>
 </Window>
+
+

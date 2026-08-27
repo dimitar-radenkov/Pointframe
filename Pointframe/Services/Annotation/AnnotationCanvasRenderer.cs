@@ -150,6 +150,35 @@ internal sealed class AnnotationCanvasRenderer
         _activeHandler = null;
     }
 
+    public IReadOnlyList<UIElement> CommitBlurSuggestions(IReadOnlyList<Rect> blurRects)
+    {
+        ArgumentNullException.ThrowIfNull(blurRects);
+
+        var committedElements = new List<UIElement>(blurRects.Count);
+        foreach (var rect in blurRects)
+        {
+            if (rect.Width <= 0d || rect.Height <= 0d)
+            {
+                continue;
+            }
+
+            var parameters = new BlurShapeParameters(rect.Left, rect.Top, rect.Width, rect.Height);
+            var handler = new BlurShapeHandler(
+                () => parameters,
+                () => _backgroundCapture,
+                () => _dpiX,
+                () => _dpiY);
+
+            handler.Commit(_canvas, element =>
+            {
+                committedElements.Add(element);
+                _onAdd(element);
+            });
+        }
+
+        return committedElements;
+    }
+
     public void CancelShape()
     {
         _activeHandler?.Cancel(_canvas);

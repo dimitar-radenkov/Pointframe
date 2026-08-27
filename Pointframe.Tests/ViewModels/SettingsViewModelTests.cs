@@ -158,6 +158,217 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void LoadsFromSettings_SmartRedactionEnabled()
+    {
+        var vm = CreateVm(new UserSettings { SmartRedactionEnabled = false });
+
+        Assert.False(vm.SmartRedactionEnabled);
+    }
+
+    [Fact]
+    public void Save_PersistsSmartRedactionEnabled()
+    {
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(new UserSettings());
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>(), CreateMicrophoneDeviceService())
+        {
+            SmartRedactionEnabled = false,
+        };
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.NotNull(saved);
+        Assert.False(saved!.SmartRedactionEnabled);
+    }
+
+    [Fact]
+    public void ResetCurrentSection_SmartRedactionSection_ResetsSmartRedactionEnabled()
+    {
+        var vm = CreateVm(new UserSettings { SmartRedactionEnabled = false });
+        vm.SelectedSection = SettingsSection.SmartRedaction;
+        vm.SmartRedactionEnabled = false;
+
+        vm.ResetCurrentSectionCommand.Execute(null);
+
+        Assert.True(vm.SmartRedactionEnabled);
+    }
+
+    [Fact]
+    public void LoadsFromSettings_BuiltInSmartRedactionPatternSelection()
+    {
+        var vm = CreateVm(new UserSettings
+        {
+            SmartRedactionExcludedBuiltInTypes =
+            [
+                SensitiveDataType.Email,
+                SensitiveDataType.Ipv4,
+            ],
+        });
+
+        Assert.Contains(vm.BuiltInSmartRedactionPatterns, pattern =>
+            pattern.Type == SensitiveDataType.Email && !pattern.IsEnabled);
+        Assert.Contains(vm.BuiltInSmartRedactionPatterns, pattern =>
+            pattern.Type == SensitiveDataType.Ipv4 && !pattern.IsEnabled);
+        Assert.Contains(vm.BuiltInSmartRedactionPatterns, pattern =>
+            pattern.Type == SensitiveDataType.Phone && pattern.IsEnabled);
+    }
+
+    [Fact]
+    public void Save_PersistsExcludedBuiltInSmartRedactionPatternTypes()
+    {
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(new UserSettings());
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>(), CreateMicrophoneDeviceService());
+        var emailPattern = Assert.Single(vm.BuiltInSmartRedactionPatterns, pattern => pattern.Type == SensitiveDataType.Email);
+        var phonePattern = Assert.Single(vm.BuiltInSmartRedactionPatterns, pattern => pattern.Type == SensitiveDataType.Phone);
+        emailPattern.IsEnabled = false;
+        phonePattern.IsEnabled = false;
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.NotNull(saved);
+        Assert.Contains(SensitiveDataType.Email, saved!.SmartRedactionExcludedBuiltInTypes);
+        Assert.Contains(SensitiveDataType.Phone, saved.SmartRedactionExcludedBuiltInTypes);
+    }
+
+    [Fact]
+    public void ResetCurrentSection_SmartRedactionSection_ResetsBuiltInSmartRedactionPatternSelection()
+    {
+        var vm = CreateVm(new UserSettings
+        {
+            SmartRedactionExcludedBuiltInTypes =
+            [
+                SensitiveDataType.Email,
+            ],
+        });
+        vm.SelectedSection = SettingsSection.SmartRedaction;
+        var emailPattern = Assert.Single(vm.BuiltInSmartRedactionPatterns, pattern => pattern.Type == SensitiveDataType.Email);
+        emailPattern.IsEnabled = false;
+
+        vm.ResetCurrentSectionCommand.Execute(null);
+
+        Assert.All(vm.BuiltInSmartRedactionPatterns, pattern => Assert.True(pattern.IsEnabled));
+    }
+
+    [Fact]
+    public void LoadsFromSettings_CustomRedactionPatterns()
+    {
+        var vm = CreateVm(new UserSettings
+        {
+            CustomRedactionPatterns =
+            [
+                new SmartRedactionPattern
+                {
+                    Name = "Customer ID",
+                    Pattern = @"\bCUST-\d{5}\b",
+                    IsEnabled = true,
+                },
+                new SmartRedactionPattern
+                {
+                    Name = "Secret Label",
+                    Pattern = @"\bSECRET:\s*\w+\b",
+                    IsEnabled = false,
+                },
+            ],
+        });
+
+        Assert.Equal(2, vm.CustomRedactionPatterns.Count);
+        Assert.Equal("Customer ID", vm.CustomRedactionPatterns[0].Name);
+        Assert.Equal(@"\bCUST-\d{5}\b", vm.CustomRedactionPatterns[0].Pattern);
+        Assert.True(vm.CustomRedactionPatterns[0].IsEnabled);
+        Assert.False(vm.CustomRedactionPatterns[1].IsEnabled);
+    }
+
+    [Fact]
+    public void Save_PersistsCustomRedactionPatterns()
+    {
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(new UserSettings());
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>(), CreateMicrophoneDeviceService());
+
+        vm.AddCustomRedactionPatternCommand.Execute(null);
+        var pattern = Assert.Single(vm.CustomRedactionPatterns);
+        pattern.Name = "Customer ID";
+        pattern.Pattern = @"\bCUST-\d{5}\b";
+        pattern.IsEnabled = false;
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.NotNull(saved);
+        var persisted = Assert.Single(saved!.CustomRedactionPatterns);
+        Assert.Equal("Customer ID", persisted.Name);
+        Assert.Equal(@"\bCUST-\d{5}\b", persisted.Pattern);
+        Assert.False(persisted.IsEnabled);
+    }
+
+    [Fact]
+    public void ResetCurrentSection_SmartRedactionSection_ResetsCustomRedactionPatterns()
+    {
+        var vm = CreateVm(new UserSettings
+        {
+            CustomRedactionPatterns =
+            [
+                new SmartRedactionPattern
+                {
+                    Name = "Customer ID",
+                    Pattern = @"\bCUST-\d{5}\b",
+                    IsEnabled = true,
+                },
+            ],
+        });
+        vm.SelectedSection = SettingsSection.SmartRedaction;
+        vm.AddCustomRedactionPatternCommand.Execute(null);
+        Assert.Equal(2, vm.CustomRedactionPatterns.Count);
+
+        vm.ResetCurrentSectionCommand.Execute(null);
+
+        Assert.Empty(vm.CustomRedactionPatterns);
+    }
+
+    [Fact]
+    public void RestoreDefaultsCommand_ResetsCustomRedactionPatterns()
+    {
+        var vm = CreateVm(new UserSettings
+        {
+            CustomRedactionPatterns =
+            [
+                new SmartRedactionPattern
+                {
+                    Name = "Customer ID",
+                    Pattern = @"\bCUST-\d{5}\b",
+                    IsEnabled = true,
+                },
+            ],
+        });
+        vm.AddCustomRedactionPatternCommand.Execute(null);
+        Assert.Equal(2, vm.CustomRedactionPatterns.Count);
+
+        vm.RestoreDefaultsCommand.Execute(null);
+
+        Assert.Empty(vm.CustomRedactionPatterns);
+    }
+
+    [Fact]
+    public void AddCustomRedactionPatternCommand_RespectsMaxCount()
+    {
+        var vm = CreateVm();
+
+        for (var index = 0; index < SmartRedactionPattern.MaxCount; index++)
+        {
+            vm.AddCustomRedactionPatternCommand.Execute(null);
+        }
+
+        Assert.Equal(SmartRedactionPattern.MaxCount, vm.CustomRedactionPatterns.Count);
+        Assert.False(vm.AddCustomRedactionPatternCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void CaptureDelaySeconds_PropertyChanged_Fired()
     {
         // Arrange
@@ -747,10 +958,10 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
-    public void ResetCurrentSectionCommand_CaptureSection_ResetsHotkeyAndModifiers()
+    public void ResetCurrentSectionCommand_ShortcutsSection_ResetsRegionHotkeyAndModifiers()
     {
         var vm = CreateVm(new UserSettings { RegionCaptureHotkey = 0x41, RegionCaptureHotkeyModifiers = HotkeyModifiers.Ctrl });
-        vm.SelectedSection = SettingsSection.Capture;
+        vm.SelectedSection = SettingsSection.Shortcuts;
         vm.StartRecordingHotkeyCommand.Execute(null);
 
         vm.ResetCurrentSectionCommand.Execute(null);
@@ -761,10 +972,10 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
-    public void ResetCurrentSectionCommand_RecordingSection_ResetsWholeScreenRecordHotkeyAndModifiers()
+    public void ResetCurrentSectionCommand_ShortcutsSection_ResetsWholeScreenRecordHotkeyAndModifiers()
     {
         var vm = CreateVm(new UserSettings { WholeScreenRecordHotkey = 0x41, WholeScreenRecordHotkeyModifiers = HotkeyModifiers.Alt });
-        vm.SelectedSection = SettingsSection.Recording;
+        vm.SelectedSection = SettingsSection.Shortcuts;
         vm.StartCapturingWholeScreenRecordHotkeyCommand.Execute(null);
 
         vm.ResetCurrentSectionCommand.Execute(null);
@@ -798,10 +1009,10 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
-    public void ResetCurrentSectionCommand_CaptureSection_ResetsWatermarkFields()
+    public void ResetCurrentSectionCommand_AnnotationSection_ResetsWatermarkFields()
     {
         var vm = CreateVm();
-        vm.SelectedSection = SettingsSection.Capture;
+        vm.SelectedSection = SettingsSection.Annotation;
         vm.WatermarkEnabled = true;
         vm.WatermarkTextTemplate = WatermarkTextTemplate.TimezoneOnly;
         vm.WatermarkPosition = WatermarkPosition.TopLeft;
@@ -885,3 +1096,5 @@ public sealed class SettingsViewModelTests
         Assert.Equal(current.ScreenshotWatermark.Margin, saved.VideoWatermark.Margin);
     }
 }
+
+
