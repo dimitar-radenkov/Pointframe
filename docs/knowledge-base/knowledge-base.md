@@ -8,7 +8,7 @@ Last full review against the code: 2026-09-05.
 
 **What belongs here.** How a subsystem is composed and where its entry points are; decisions with lasting impact and their reasons; rules the code must keep, why, and what breaks; recipes for recurring changes; stable facts such as paths, lifetimes, pipelines, and tools.
 
-**What goes elsewhere.** Bug post-mortems: `lessons.md` (Problem, Root cause, What fixed it, Takeaway). Roadmap, plans, task status: `plan/`. Contributor setup: `docs/developer-guide.md`. Per-session instructions: `CLAUDE.md`, one line per topic pointing here. Test counts, PR numbers, "verified on my machine": the PR description.
+**What goes elsewhere.** Bug post-mortems: `lessons.md` (Problem, Root cause, What fixed it, Takeaway). Roadmap, plans, task status: `plan/` (local-only, not in git). Contributor setup: `docs/developer-guide.md`. Per-session instructions: `CLAUDE.md`, one line per topic pointing here. Test counts, PR numbers, "verified on my machine": the PR description.
 
 **Structure.** Five fixed groups, each a `##` heading; one `###` section per topic. Templates per group:
 
@@ -319,7 +319,7 @@ Text and Callout edit in a live `TextBox`; `LostFocus` converts it to a `TextBlo
 - Migrations live in `Pointframe.Data/Migrations/` and run at startup from `App.ApplyDataMigrations`. Add one with the `dotnet ef` tool from `dotnet-tools.json` (`dotnet tool restore` first); `PointframeDataContextFactory` is the design-time factory.
 - Generic `IRepository<T>` and `IReadOnlyRepository<T>` in `Pointframe.Data/Abstractions/` back the concrete repositories.
 
-**Tests.** `Pointframe.Tests/ViewModels/LibraryViewModelTests.cs`, `Pointframe.Tests/Services/CaptureLibraryServiceTests.cs`, `Pointframe.Tests/Services/CaptureLibrarySearchTests.cs`, `Pointframe.Tests/Services/CaptureLibraryOcrSearchTests.cs`, `Pointframe.Tests/Services/CaptureTextLookupServiceTests.cs`, `Pointframe.Tests/Services/SqliteCaptureTextCacheRepositoryTests.cs`. Build narrative and acceptance criteria: `docs/capture-library.md`.
+**Tests.** `Pointframe.Tests/ViewModels/LibraryViewModelTests.cs`, `Pointframe.Tests/Services/CaptureLibraryServiceTests.cs`, `Pointframe.Tests/Services/CaptureLibrarySearchTests.cs`, `Pointframe.Tests/Services/CaptureLibraryOcrSearchTests.cs`, `Pointframe.Tests/Services/CaptureTextLookupServiceTests.cs`, `Pointframe.Tests/Services/SqliteCaptureTextCacheRepositoryTests.cs`.
 
 **Files.** `Pointframe/Views/LibraryWindow.xaml.cs`, `Pointframe/ViewModels/LibraryViewModel.cs`, `Pointframe/Services/Capture/ICaptureLibraryService.cs`, `Pointframe/Services/Capture/CaptureLibraryService.cs`, `Pointframe/Services/Capture/ICaptureTextLookupService.cs`, `Pointframe/Services/Capture/CaptureTextLookupService.cs`, `Pointframe/Models/CaptureItem.cs`, `Pointframe/Models/CaptureSearchProgress.cs`, `Pointframe.Data/DependencyInjection.cs`, `Pointframe.Data/Context/PointframeDataContext.cs`, `Pointframe.Data/Context/PointframeDataContextFactory.cs`, `Pointframe.Data/Entities/CaptureTextCacheEntry.cs`, `Pointframe.Data/Repository/CaptureTextCacheRepository.cs`, `Pointframe.Data/Repository/PointframeDataUnitOfWork.cs`, `Pointframe.Data/Services/MigrationService.cs`.
 
@@ -346,7 +346,7 @@ Text and Callout edit in a live `TextBox`; `LostFocus` converts it to a `TextBlo
 - The README section `### What is collected` lists every catalog event with its required properties and nothing else. `TelemetryDocumentationTests` parses that table and fails the build on drift, so an event change and its README row ship in the same change.
 - Properties are labels (tool, capture type, URL host), never content. Do not add file paths, OCR text, or image data.
 
-**Analysis.** Kusto queries and the workbook template: `docs/appinsights-handy-queries.md`, `docs/appinsights-feature-usage-queries.kql`, `docs/appinsights-pointframe-workbook.all-in-one.template.json`.
+**Analysis.** Kusto queries and the workbook template: `docs/appinsights-feature-usage-queries.kql` and `docs/appinsights-pointframe-workbook.all-in-one.template.json`.
 
 **Tests.** `Pointframe.Tests/Services/TelemetryServiceTests.cs`, `Pointframe.Tests/Services/TelemetryEventCatalogTests.cs`, `Pointframe.Tests/Services/TelemetryDocumentationTests.cs`, `Pointframe.Tests/Services/ActivationTelemetryServiceTests.cs`.
 

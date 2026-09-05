@@ -57,7 +57,7 @@ dotnet format Pointframe/Pointframe.csproj --verify-no-changes
 
 **Recording:** user selects region from overlay → recording pipeline starts (`ScreenRecordingService` → `IVideoWriter`/`FFMpegVideoWriter`) → `RecordingOverlayWindow` provides live annotation surface → `RecordingHudViewModel` controls pause/resume/stop.
 
-**Settings persistence:** never cache settings in fields — always read from `IUserSettingsService.Current` at the point of use. Adding a new setting requires updating three places together or the value is silently dropped on save: `Models/UserSettings.cs` (the property + default), `UserSettingsService.Clone(...)`, and `SettingsViewModel.Save()`.
+**Settings persistence:** never cache settings in fields — always read from `IUserSettingsService.Current` at the point of use. Adding a new setting requires updating three places together or the value is silently dropped on save: `Pointframe/Models/UserSettings.cs` (the property + default), `UserSettingsService.Clone(...)`, and `SettingsViewModel.Save()`.
 
 ### MVVM Conventions
 
@@ -74,12 +74,12 @@ WPF uses Device-Independent Pixels (DIPs); screen/GDI operations use physical pi
 
 ### Adding a New Annotation Tool
 
-1. Add enum value to `Models/AnnotationTool.cs`
-2. Add sealed record to `Models/ShapeParameters.cs`
+1. Add enum value to `Pointframe/Models/AnnotationTool.cs`
+2. Add sealed record to `Pointframe/Models/ShapeParameters.cs`
 3. Handle case in `AnnotationViewModel.TryGetShapeParameters()`
-4. Add `Services/Annotation/Handlers/<Name>ShapeHandler.cs` implementing `IAnnotationShapeHandler` (`Begin`/`Update` draft, `Commit` tracks final elements, `Cancel` removes the draft) and register it in the `_handlers` dictionary in `AnnotationCanvasRenderer`
+4. Add `Pointframe/Services/Annotation/Handlers/<Name>ShapeHandler.cs` implementing `IAnnotationShapeHandler` (`Begin`/`Update` draft, `Commit` tracks final elements, `Cancel` removes the draft) and register it in the `_handlers` dictionary in `AnnotationCanvasRenderer`
 5. Add geometry helpers to `IAnnotationGeometryService`
-6. Add toolbar button in `Views/OverlayWindow.xaml` with an `AutomationId`
+6. Add toolbar button in `Pointframe/Views/OverlayWindow.xaml` with an `AutomationId`
 7. Add unit tests (handler, `TryGetShapeParameters`, geometry)
 8. Keep overlay smoke coverage in sync: register the tool in `Pointframe.AutomationTests/Support/AutomationIds.cs` and `Pointframe.AutomationTests/Smoke/AnnotationToolSmokeTests.cs`
 

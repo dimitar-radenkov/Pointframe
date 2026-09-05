@@ -14,6 +14,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..' '..')).Path
@@ -137,9 +138,11 @@ else
     }
 }
 
-# Repo paths in backticks: must exist. Placeholders (<Name>, *) and URLs are skipped.
+# Repo paths in backticks: must exist and must not be gitignored (an ignored file is
+# visible on this machine but absent on every clone). Placeholders (<Name>, *) and URLs are skipped.
 $body = $lines -join "`n"
 $seen = @{}
+$existing = [System.Collections.Generic.List[string]]::new()
 foreach ($m in [regex]::Matches($body, '`((?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9]+)`'))
 {
     $p = $m.Groups[1].Value
@@ -148,9 +151,36 @@ foreach ($m in [regex]::Matches($body, '`((?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9]+)`')
         continue
     }
     $seen[$p] = $true
-    if (-not (Test-Path (Join-Path $RepoRoot $p)))
+    if (Test-Path (Join-Path $RepoRoot $p))
+    {
+        $existing.Add($p)
+    }
+    else
     {
         $errors.Add("path does not exist: $p")
+    }
+}
+if ($existing.Count -gt 0)
+{
+    try
+    {
+        # Paths go as arguments in batches; piping to --stdin from PowerShell appends CRLF and nothing matches.
+        for ($i = 0; $i -lt $existing.Count; $i += 50)
+        {
+            $batch = @($existing.GetRange($i, [Math]::Min(50, $existing.Count - $i)))
+            $out = & git -C $RepoRoot check-ignore -- @batch 2>$null
+            foreach ($p in @($out))
+            {
+                if ($p)
+                {
+                    $errors.Add("path is gitignored and will not exist on a clone: $($p.Trim())")
+                }
+            }
+        }
+    }
+    catch
+    {
+        $notes.Add('git not available; gitignore check skipped')
     }
 }
 

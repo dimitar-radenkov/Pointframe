@@ -19,7 +19,7 @@ Script: `pwsh .claude/skills/knowledge-base/knowledge-base.ps1` refreshes the ta
 | A recipe for a recurring change | `## How-tos` |
 | A stable table of paths, lifetimes, pipelines, tools | `## References` |
 | A bug, its root cause, and the fix | `lessons.md` (Problem, Root cause, What fixed it, Takeaway), then a `- Lesson: <heading>` line in the owning section |
-| A task, plan, status, or roadmap item | `plan/`, not the knowledge base |
+| A task, plan, status, or roadmap item | `plan/` (local-only, not in git), not the knowledge base |
 
 Not knowledge: test counts, PR numbers, "verified on my machine", what was tried and abandoned, anything derivable from `git log`.
 

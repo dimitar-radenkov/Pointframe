@@ -26,19 +26,19 @@ dotnet format Pointframe/Pointframe.csproj
 ## Key Conventions
 
 - **MVVM:** Use `[ObservableProperty]` and `[RelayCommand]` from CommunityToolkit.Mvvm. Never raise `PropertyChanged` manually.
-- **DI:** Every service must have an interface (`IMyService`). Register new services in `App.xaml.cs → ConfigureServices()`.
-- **Models:** Shape data belongs in `Models/ShapeParameters.cs` as an immutable `sealed record`, never a mutable class.
+- **DI:** Every service must have an interface (`IMyService`). Register new services in `AppServiceRegistration.cs → AddPointframeAppServices()`.
+- **Models:** Shape data belongs in `Pointframe/Models/ShapeParameters.cs` as an immutable `sealed record`, never a mutable class.
 - **Braces:** Always use `{}` blocks for `if`/`else`/`for`/`foreach` — even single-line bodies.
 - **Nullable:** All reference-type fields and parameters must be non-nullable unless genuinely optional (use `?`).
 - **No XML doc comments** (`/// <summary>`).
 
 ## Adding a New Annotation Tool
 
-1. Add a value to the `AnnotationTool` enum in `AnnotationTool.cs`.
-2. Add a matching `sealed record` in `Models/ShapeParameters.cs`.
+1. Add a value to the `AnnotationTool` enum in `Pointframe/Models/AnnotationTool.cs`.
+2. Add a matching `sealed record` in `Pointframe/Models/ShapeParameters.cs`.
 3. Handle the new case in `AnnotationViewModel.TryGetShapeParameters()`.
-4. Render it in `AnnotationCanvasRenderer` (`UpdateDragFeedback` + `CommitShape`).
-5. Add unit tests in `Pointframe.Tests/ViewModels/AnnotationViewModelTests.cs`.
+4. Add a `<Name>ShapeHandler` under `Pointframe/Services/Annotation/Handlers/` implementing `IAnnotationShapeHandler`, and register it in `AnnotationCanvasRenderer`.
+5. Add unit tests in `Pointframe.Tests/ViewModels/AnnotationViewModelTests.cs`. The [Developer Guide](docs/developer-guide.md) §8 and the [knowledge base](docs/knowledge-base/knowledge-base.md) carry the full recipe.
 
 ## Pull Request Tips
 

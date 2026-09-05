@@ -26,6 +26,9 @@
 !lessons.md
 !docs/developer-guide.md
 
+# Claude Code per-user settings
+.claude/settings.local.json
+
 # Mono auto generated files
 mono_crash.*
 

@@ -198,7 +198,7 @@ public sealed record MyNewToolShapeParameters(
 
 **Step 3** — Handle the new case in `AnnotationViewModel.TryGetShapeParameters()` so the ViewModel can produce a snapshot of the committed shape.
 
-**Step 4** — Create `Services/Annotation/Handlers/MyNewToolShapeHandler.cs` implementing `IAnnotationShapeHandler`:
+**Step 4** — Create `Pointframe/Services/Annotation/Handlers/MyNewToolShapeHandler.cs` implementing `IAnnotationShapeHandler`:
 - `Begin(point, brush, thickness, canvas)` creates the draft element.
 - `Update(point)` mutates the draft only.
 - `Commit(canvas, trackElement)` adds the final elements and calls `trackElement` for each.
@@ -212,7 +212,7 @@ Copy `RectShapeHandler` for a simple drag shape or `TextShapeHandler` for an edi
 
 **Step 6** — Put pure math in `IAnnotationGeometryService` and `AnnotationGeometryService`, not in the handler, so it is unit-testable without WPF.
 
-**Step 7** — Add a toolbar button in `Views/OverlayWindow.xaml` bound to `SelectedTool`, with an `AutomationProperties.AutomationId`.
+**Step 7** — Add a toolbar button in `Pointframe/Views/OverlayWindow.xaml` bound to `SelectedTool`, with an `AutomationProperties.AutomationId`.
 
 **Step 8** — Tests: a handler test under `Pointframe.Tests/Services/Handlers/`, a `TryGetShapeParameters` case in `Pointframe.Tests/ViewModels/AnnotationViewModelTests.cs`, geometry cases in `Pointframe.Tests/Services/AnnotationGeometryServiceTests.cs`.
 
@@ -267,7 +267,7 @@ Pointframe.Tests/
 1. Add a property to `UserSettings` in [Models/UserSettings.cs](../Pointframe/Models/UserSettings.cs) with a sensible default.
 2. Copy the property in `UserSettingsService.Clone(...)`. `Update(...)` goes through this clone; a property missing here is silently dropped.
 3. Add a corresponding `[ObservableProperty]` in `SettingsViewModel`, initialised from `Current` in the constructor, and write it back in `Save()`.
-4. Add the UI control to `Views/SettingsWindow.xaml` in the right section, bound to the new VM property, with an `AutomationProperties.AutomationId`.
+4. Add the UI control to `Pointframe/Views/SettingsWindow.xaml` in the right section, bound to the new VM property, with an `AutomationProperties.AutomationId`.
 5. Consume the value by reading `IUserSettingsService.Current.NewProperty` at the point of use — never cache it at construction.
 
 `Pointframe.Tests/Services/SettingsRoundTripTests.cs` round-trips every property by reflection and fails if step 2 or step 3 was skipped.
@@ -276,7 +276,7 @@ Pointframe.Tests/
 
 ## 11. Registering a New Service
 
-1. Create the interface `IMyService` and the implementation `MyService` in the matching folder under `Services/`.
+1. Create the interface `IMyService` and the implementation `MyService` in the matching folder under `Pointframe/Services/`.
 2. Register in `AppServiceRegistration.cs → AddPointframeAppServices()`:
    ```csharp
    services.AddSingleton<IMyService, MyService>();   // or AddTransient
