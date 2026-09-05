@@ -113,11 +113,14 @@ For full detail by version, see the [Releases](https://github.com/dimitar-radenk
 - **Capture Library** — Browse your saved captures, filter by date range, and search by filename or OCR text from the tray Library entry
 - **Open existing image** — Load a PNG, JPG/JPEG, or BMP from the tray menu and annotate it without taking a new screenshot
 - **Pin screenshot** — Pin the captured screenshot as a floating, always-on-top, resizable window for quick reference while you work
+- **Screenshot Beautifier** — Frame a capture on a gradient or solid background (seven presets) for a presentation-ready image
+- **Screenshot watermark** — Optionally stamp a configurable text watermark on captured screenshots
 - **Undo / redo** — Full undo/redo stack during annotation
 - **Copy & auto-save** — Copy to clipboard; optional auto-save to a configurable folder
 - **Screen recording** — Record a selected region to MP4 (H.264 via ffmpeg) or start a whole-screen recording instantly with `Ctrl+Shift+R` (default); optional microphone audio from a selected Windows input device
 - **Recording-time annotations** — Add shapes and text directly on top of a recording while it is in progress; switch between draw mode and interact mode from the floating HUD
 - **Video watermark** — Optionally burn a configurable watermark into MP4 recordings
+- **Video trim** — Trim the start and end of a recent recording from the tray's Recent recordings menu (requires ffmpeg)
 - **Tray menu icons** — Core tray actions now include consistent glyph icons for faster scanning
 - **Cursor highlight** — Configurable glowing ring around the cursor during recording so viewers never lose track of your pointer
 - **Click ripple** — Visual ripple effect on mouse clicks during recording to make interactions obvious
@@ -316,8 +319,8 @@ To bump the version:
 We welcome contributions! Whether it's reporting a bug, suggesting a feature, or submitting a pull request.
 Pointframe is built on a very clean, modern stack (.NET 10, WPF, CommunityToolkit.Mvvm) making it a great jumping-off point for developers.
 
-1. Check out our [Developer Guide](docs/developer-guide.md) and [Architecture Knowledge Base](docs/project-knowledge-base.md).
-2. Browse our [Planned Features](docs/planned-features.md) or look for issues tagged `good first issue`.
+1. Check out our [Developer Guide](docs/developer-guide.md) and [Architecture Knowledge Base](docs/knowledge-base/knowledge-base.md).
+2. Browse the [open issues](https://github.com/dimitar-radenkov/Pointframe/issues) or look for ones tagged `good first issue`.
 3. Open a Pull Request!
 
 ## Privacy & Telemetry

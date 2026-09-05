@@ -20,6 +20,11 @@
 !SECURITY.md
 !CHANGELOG.md
 !packaging/scoop/README.md
+!docs/knowledge-base/*.md
+!.claude/skills/knowledge-base/*.md
+!CLAUDE.md
+!lessons.md
+!docs/developer-guide.md
 
 # Mono auto generated files
 mono_crash.*
