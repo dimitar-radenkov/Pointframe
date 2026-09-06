@@ -1,9 +1,8 @@
 using System.Drawing.Imaging;
 using System.Security.Cryptography;
 using System.Text.Json;
-using Pointframe.Engine;
 
-namespace Pointframe.Mcp;
+namespace Pointframe.Engine;
 
 public interface IDirectCaptureService
 {
@@ -38,9 +37,7 @@ public sealed class DirectCaptureService : IDirectCaptureService
 
     public string ListDisplays()
     {
-        var displays = _displayCaptureEngine.GetDisplays()
-            .Select(ToDisplayDescriptor)
-            .ToArray();
+        var displays = _displayCaptureEngine.GetDisplays();
         return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Displays: displays));
     }
 
@@ -76,25 +73,10 @@ public sealed class DirectCaptureService : IDirectCaptureService
             capturedMonitor.Display.MonitorName,
             capturedMonitor.Display.DpiScaleX,
             capturedMonitor.Display.DpiScaleY,
-            ToPixelBounds(capturedMonitor.Display.BoundsPixels));
+            capturedMonitor.Display.BoundsPixels);
         await WriteMetadataSidecarAsync(metadata, cancellationToken);
         var artifact = new ArtifactDescriptor(SchemaVersion, artifactId, metadata);
         return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Artifact: artifact));
-    }
-
-    private static DisplayDescriptor ToDisplayDescriptor(Pointframe.Engine.DisplayDescriptor display)
-    {
-        return new DisplayDescriptor(
-            SchemaVersion,
-            display.MonitorName,
-            display.DpiScaleX,
-            display.DpiScaleY,
-            ToPixelBounds(display.BoundsPixels));
-    }
-
-    private static PixelBounds ToPixelBounds(Pointframe.Engine.PixelBounds bounds)
-    {
-        return new PixelBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height);
     }
 
     private static async Task WriteMetadataSidecarAsync(ImageArtifactMetadata metadata, CancellationToken cancellationToken)
@@ -129,10 +111,6 @@ public sealed record DirectCaptureResponse(
 
 public sealed record DirectCaptureError(string Code, string Message);
 
-public sealed record DisplayDescriptor(int SchemaVersion, string MonitorName, double DpiScaleX, double DpiScaleY, PixelBounds BoundsPixels);
-
-public sealed record PixelBounds(int X, int Y, int Width, int Height);
-
 public sealed record ArtifactDescriptor(int SchemaVersion, string OperationId, ImageArtifactMetadata Metadata);
 
 public sealed record ImageArtifactMetadata(
@@ -148,53 +126,3 @@ public sealed record ImageArtifactMetadata(
     double DpiScaleX,
     double DpiScaleY,
     PixelBounds CaptureBoundsPixels);
-
-public interface IDirectRecordingMcpService
-{
-    string StartRecording(string monitorName, IReadOnlyList<PixelBounds> redactionRegionsCaptureLocalPixels, int framesPerSecond);
-
-    Task<string> StopRecordingAsync(CancellationToken cancellationToken = default);
-}
-
-public sealed class DirectRecordingMcpService : IDirectRecordingMcpService
-{
-    private const int SchemaVersion = 1;
-    private readonly IDirectRecordingService _directRecordingService;
-
-    public DirectRecordingMcpService(IDirectRecordingService directRecordingService)
-    {
-        _directRecordingService = directRecordingService;
-    }
-
-    public string StartRecording(string monitorName, IReadOnlyList<PixelBounds> redactionRegionsCaptureLocalPixels, int framesPerSecond)
-    {
-        var result = _directRecordingService.Start(new DirectRecordingRequest(
-            monitorName,
-            redactionRegionsCaptureLocalPixels.Select(region => new Pointframe.Engine.PixelBounds(region.X, region.Y, region.Width, region.Height)).ToArray(),
-            framesPerSecond));
-        return JsonSerializer.Serialize(ToResponse(result));
-    }
-
-    public async Task<string> StopRecordingAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await _directRecordingService.StopAsync(cancellationToken).ConfigureAwait(false);
-        return JsonSerializer.Serialize(ToResponse(result));
-    }
-
-    private static DirectRecordingResponse ToResponse(DirectRecordingResult result)
-    {
-        return new DirectRecordingResponse(
-            SchemaVersion,
-            result.Success,
-            result.ErrorCode is null ? null : new DirectCaptureError(result.ErrorCode, result.ErrorMessage ?? "Unknown error."),
-            result.Session,
-            result.Artifact);
-    }
-}
-
-public sealed record DirectRecordingResponse(
-    int SchemaVersion,
-    bool Success,
-    DirectCaptureError? Error = null,
-    DirectRecordingSession? Session = null,
-    DirectRecordingArtifact? Artifact = null);

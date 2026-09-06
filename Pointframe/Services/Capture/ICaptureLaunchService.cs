@@ -6,8 +6,6 @@ internal interface ICaptureLaunchService
 
     void StartWholeScreenSnip(string source = "tray");
 
-    bool StartMonitorSnip(string monitorName, string source = "agent", string? agentOperationId = null);
-
     void StartCleanWindowSnip(string source = "tray");
 
     void StartWholeScreenRecord();

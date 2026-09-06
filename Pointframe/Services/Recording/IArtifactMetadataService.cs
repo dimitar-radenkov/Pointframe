@@ -1,4 +1,4 @@
-namespace Pointframe.Automation.Bridge;
+namespace Pointframe.Services;
 
 internal interface IArtifactMetadataService
 {

@@ -10,6 +10,6 @@ internal sealed class PointframeMcpResources
     [Description("Returns the available direct Pointframe MCP command identifiers.")]
     public static string GetCommands()
     {
-        return "[\"displays.list\",\"capture.monitor\"]";
+        return "[\"list_displays\",\"capture_monitor\",\"start_recording\",\"stop_recording\"]";
     }
 }

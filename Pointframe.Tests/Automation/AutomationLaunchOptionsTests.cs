@@ -5,21 +5,6 @@ namespace Pointframe.Tests.Automation;
 
 public sealed class AutomationLaunchOptionsTests
 {
-    [Fact]
-    public void Parse_WhenAgentBridgeArgumentIsPresent_EnablesBridgeWithoutUiAutomationMode()
-    {
-        var options = AutomationLaunchOptions.Parse(["--agent-bridge"]);
-
-        Assert.True(options.EnableAgentBridge);
-        Assert.False(options.IsAutomationMode);
-        Assert.False(options.OpenSettingsWindow);
-        Assert.False(options.OpenAboutWindow);
-        Assert.False(options.OpenLibraryWindow);
-        Assert.False(options.OpenSampleOverlayWindow);
-        Assert.False(options.OpenSampleRecordingOverlayWindow);
-        Assert.False(options.OpenTraySampleOverlayWindow);
-    }
-
     [Theory]
     [InlineData("--automation-open-settings", true, false, false, false, false, false)]
     [InlineData("--automation-open-about", false, true, false, false, false, false)]
@@ -76,7 +61,6 @@ public sealed class AutomationLaunchOptionsTests
         Assert.False(options.OpenSampleOverlayWindow);
         Assert.False(options.OpenSampleRecordingOverlayWindow);
         Assert.False(options.OpenTraySampleOverlayWindow);
-        Assert.False(options.EnableAgentBridge);
         Assert.False(options.IsAutomationMode);
     }
 }

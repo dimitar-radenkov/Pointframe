@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Pointframe.Automation;
-using Pointframe.Automation.Bridge;
 using Pointframe.Data;
 using Pointframe.Engine;
 using Pointframe.Services;
@@ -27,11 +26,6 @@ internal static class AppServiceRegistration
         services.AddSingleton(automationLaunchOptions ?? AutomationLaunchOptions.Parse([]));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IArtifactMetadataService, ArtifactMetadataService>();
-        services.AddSingleton<IAgentBridgeSessionCoordinator, AgentBridgeSessionCoordinator>();
-        services.AddSingleton<IAgentBridgeDispatcher, AgentBridgeDispatcher>();
-        services.AddSingleton<IAgentBridgeCommandService, AgentBridgeCommandService>();
-        services.AddSingleton<AgentBridgeConnectionOptions>(_ => AgentBridgeConnectionOptions.FromEnvironment());
-        services.AddSingleton<IAgentBridgeServer, NamedPipeAgentBridgeServer>();
         services.AddSingleton<ITelemetryService, TelemetryService>();
         services.AddSingleton<IActivationTelemetryService, ActivationTelemetryService>();
         services.AddSingleton<IThemeService, ThemeService>();

@@ -1,6 +1,6 @@
-namespace Pointframe.Automation.Bridge;
+using Pointframe.Engine;
 
-internal sealed record PixelBounds(int X, int Y, int Width, int Height);
+namespace Pointframe.Services;
 
 internal sealed record ImageArtifactMetadata(
     int SchemaVersion,

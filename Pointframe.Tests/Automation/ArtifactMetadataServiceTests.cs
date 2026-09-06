@@ -1,8 +1,9 @@
 using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json;
-using Pointframe.Automation.Bridge;
+using Pointframe.Services;
 using Xunit;
+using EnginePixelBounds = Pointframe.Engine.PixelBounds;
 
 namespace Pointframe.Tests.Automation;
 
@@ -31,7 +32,7 @@ public sealed class ArtifactMetadataServiceTests
                 @"\\.\DISPLAY1",
                 1.5d,
                 1.5d,
-                new PixelBounds(0, 0, 2560, 1440)));
+                new EnginePixelBounds(0, 0, 2560, 1440)));
 
             var metadataPath = $"{artifactPath}.metadata.json";
             var persisted = await File.ReadAllTextAsync(metadataPath);
@@ -61,7 +62,7 @@ public sealed class ArtifactMetadataServiceTests
             @"\\.\DISPLAY1",
             1d,
             1d,
-            new PixelBounds(0, 0, 1, 1))));
+            new EnginePixelBounds(0, 0, 1, 1))));
     }
 
     [Fact]
@@ -111,9 +112,9 @@ public sealed class ArtifactMetadataServiceTests
             Assert.Equal(TimeSpan.FromSeconds(83), result.ElapsedDuration);
             Assert.True(result.HadMicrophoneAudio);
             Assert.Equal(@"\\.\DISPLAY2", result.MonitorName);
-            Assert.Equal(new PixelBounds(-1800, 20, 1280, 720), result.CaptureBoundsPixels);
-            Assert.Equal(new PixelBounds(-1920, 0, 1920, 1080), result.HostBoundsPixels);
-            Assert.Equal(new PixelBounds(-1920, 0, 1920, 1040), result.WorkAreaBoundsPixels);
+            Assert.Equal(new EnginePixelBounds(-1800, 20, 1280, 720), result.CaptureBoundsPixels);
+            Assert.Equal(new EnginePixelBounds(-1920, 0, 1920, 1080), result.HostBoundsPixels);
+            Assert.Equal(new EnginePixelBounds(-1920, 0, 1920, 1040), result.WorkAreaBoundsPixels);
             Assert.Equal(eventTrackSummary.SidecarPath, result.EventSidecarPath);
             Assert.Equal(eventTrackSummary.EventCount, result.EventCount);
             Assert.Equal(eventTrackSummary.SchemaVersion, result.EventTrackSchemaVersion);

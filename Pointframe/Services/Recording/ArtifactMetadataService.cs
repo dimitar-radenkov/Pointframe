@@ -1,7 +1,8 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using Pointframe.Engine;
 
-namespace Pointframe.Automation.Bridge;
+namespace Pointframe.Services;
 
 internal sealed class ArtifactMetadataService : IArtifactMetadataService
 {

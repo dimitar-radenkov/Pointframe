@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using ModelContextProtocol.Server;
+using Pointframe.Engine;
 
 namespace Pointframe.Mcp;
 

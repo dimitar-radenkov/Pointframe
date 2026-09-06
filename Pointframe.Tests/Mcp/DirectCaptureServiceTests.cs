@@ -3,10 +3,9 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Pointframe.Engine;
-using Pointframe.Mcp;
 using Xunit;
 
-namespace Pointframe.Tests.Mcp;
+namespace Pointframe.Tests.Engine;
 
 public sealed class DirectCaptureServiceTests : IDisposable
 {
@@ -40,7 +39,7 @@ public sealed class DirectCaptureServiceTests : IDisposable
         Assert.Equal(display.MonitorName, metadata.MonitorName);
         Assert.Equal(display.DpiScaleX, metadata.DpiScaleX);
         Assert.Equal(display.DpiScaleY, metadata.DpiScaleY);
-        Assert.Equal(new Pointframe.Mcp.PixelBounds(-20, 10, 2, 3), metadata.CaptureBoundsPixels);
+        Assert.Equal(new Pointframe.Engine.PixelBounds(-20, 10, 2, 3), metadata.CaptureBoundsPixels);
     }
 
     [Fact]
@@ -57,9 +56,9 @@ public sealed class DirectCaptureServiceTests : IDisposable
 
         Assert.NotNull(response);
         Assert.True(response.Success);
-        var returnedDisplay = Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<Pointframe.Mcp.DisplayDescriptor>>(response.Displays));
+        var returnedDisplay = Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<Pointframe.Engine.DisplayDescriptor>>(response.Displays));
         Assert.Equal(display.MonitorName, returnedDisplay.MonitorName);
-        Assert.Equal(new Pointframe.Mcp.PixelBounds(0, 0, 100, 200), returnedDisplay.BoundsPixels);
+        Assert.Equal(new Pointframe.Engine.PixelBounds(0, 0, 100, 200), returnedDisplay.BoundsPixels);
     }
 
     public void Dispose()

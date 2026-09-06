@@ -2,7 +2,6 @@ namespace Pointframe.Automation;
 
 internal sealed class AutomationLaunchOptions
 {
-    private const string EnableAgentBridgeArgument = "--agent-bridge";
     private const string OpenSettingsArgument = "--automation-open-settings";
     private const string OpenAboutArgument = "--automation-open-about";
     private const string OpenLibraryArgument = "--automation-open-library";
@@ -11,7 +10,6 @@ internal sealed class AutomationLaunchOptions
     private const string OpenTraySampleOverlayArgument = "--automation-open-tray-sample-overlay";
 
     private AutomationLaunchOptions(
-        bool enableAgentBridge,
         bool openSettingsWindow,
         bool openAboutWindow,
         bool openLibraryWindow,
@@ -19,7 +17,6 @@ internal sealed class AutomationLaunchOptions
         bool openSampleRecordingOverlayWindow,
         bool openTraySampleOverlayWindow)
     {
-        EnableAgentBridge = enableAgentBridge;
         OpenSettingsWindow = openSettingsWindow;
         OpenAboutWindow = openAboutWindow;
         OpenLibraryWindow = openLibraryWindow;
@@ -35,8 +32,6 @@ internal sealed class AutomationLaunchOptions
         || OpenSampleOverlayWindow
         || OpenSampleRecordingOverlayWindow
         || OpenTraySampleOverlayWindow;
-
-    public bool EnableAgentBridge { get; }
 
     public bool OpenSettingsWindow { get; }
 
@@ -57,7 +52,6 @@ internal sealed class AutomationLaunchOptions
         var parsedArguments = args.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         return new AutomationLaunchOptions(
-            parsedArguments.Contains(EnableAgentBridgeArgument),
             parsedArguments.Contains(OpenSettingsArgument),
             parsedArguments.Contains(OpenAboutArgument),
             parsedArguments.Contains(OpenLibraryArgument),

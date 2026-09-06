@@ -1,6 +1,5 @@
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
-using Pointframe.Automation.Bridge;
 using Pointframe.Services.Messaging;
 using Pointframe.ViewModels;
 using Forms = System.Windows.Forms;
@@ -18,7 +17,6 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
     private readonly ITelemetryService _telemetry;
     private readonly IWindowCaptureService _windowCaptureService;
     private readonly BeautifierRenderService _beautifierRenderService;
-    private readonly IAgentBridgeSessionCoordinator _agentBridgeSessionCoordinator;
 
     public CaptureLaunchService(
         IServiceProvider services,
@@ -29,8 +27,7 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         ILogger<CaptureLaunchService> logger,
         ITelemetryService telemetry,
         IWindowCaptureService windowCaptureService,
-        BeautifierRenderService beautifierRenderService,
-        IAgentBridgeSessionCoordinator agentBridgeSessionCoordinator)
+        BeautifierRenderService beautifierRenderService)
     {
         _services = services;
         _userSettings = userSettings;
@@ -41,7 +38,6 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         _telemetry = telemetry;
         _windowCaptureService = windowCaptureService;
         _beautifierRenderService = beautifierRenderService;
-        _agentBridgeSessionCoordinator = agentBridgeSessionCoordinator;
     }
 
     public void StartRegionSnip(string source = "tray")
@@ -64,40 +60,6 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
             [TelemetryPropertyKeys.Source] = source,
         });
         LaunchCapture(wholeScreen: true);
-    }
-
-    public bool StartMonitorSnip(string monitorName, string source = "agent", string? agentOperationId = null)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(monitorName);
-
-        var targetScreen = Forms.Screen.AllScreens.FirstOrDefault(screen =>
-            string.Equals(screen.DeviceName, monitorName, StringComparison.OrdinalIgnoreCase));
-        if (targetScreen is null)
-        {
-            _logger.LogWarning("Monitor snip requested for unknown monitor {Monitor}", monitorName);
-            return false;
-        }
-
-        _logger.LogDebug("Monitor snip started for {Monitor}", targetScreen.DeviceName);
-        _telemetry.TrackEvent(TelemetryEvents.SnipStarted, new Dictionary<string, string>
-        {
-            [TelemetryPropertyKeys.Type] = "whole_screen",
-            [TelemetryPropertyKeys.Source] = source,
-        });
-
-        var delay = _userSettings.Current.CaptureDelaySeconds;
-        if (delay > 0)
-        {
-            _telemetry.TrackEvent(TelemetryEvents.CaptureDelayUsed, new Dictionary<string, string>
-            {
-                [TelemetryPropertyKeys.DelaySeconds] = delay.ToString(),
-            });
-            new CountdownWindow(delay, () => ShowWholeScreenOverlay(targetScreen, agentOperationId)).Show();
-            return true;
-        }
-
-        ShowWholeScreenOverlay(targetScreen, agentOperationId);
-        return true;
     }
 
     public void StartCleanWindowSnip(string source = "tray")
@@ -186,7 +148,7 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         DpiAwarenessScope.RunPerMonitorV2(() => overlay.Show());
     }
 
-    private void ShowWholeScreenOverlay(Forms.Screen targetScreen, string? agentOperationId = null)
+    private void ShowWholeScreenOverlay(Forms.Screen targetScreen)
     {
         var screenCapture = _services.GetRequiredService<IScreenCaptureService>();
         var monitorScale = MonitorDpiHelper.GetMonitorScale(targetScreen.Bounds.Location);
@@ -210,22 +172,6 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         var overlay = _services.GetRequiredService<OverlayWindow>();
         overlay.InitializeFromSelectionSession(selection);
         DpiAwarenessScope.RunPerMonitorV2(() => overlay.Show());
-
-        if (!string.IsNullOrWhiteSpace(agentOperationId))
-        {
-            _agentBridgeSessionCoordinator.RegisterActiveSession(new AgentBridgeActiveSession(
-                agentOperationId,
-                selection.MonitorName,
-                selection.DpiScaleX,
-                selection.DpiScaleY,
-                new PixelBounds(
-                    selection.SelectionBoundsPixels.X,
-                    selection.SelectionBoundsPixels.Y,
-                    selection.SelectionBoundsPixels.Width,
-                    selection.SelectionBoundsPixels.Height),
-                overlay.ViewModel.SaveCommand));
-            overlay.Closed += (_, _) => _agentBridgeSessionCoordinator.ClearSession(agentOperationId);
-        }
     }
 
     public async void StartWholeScreenRecord()

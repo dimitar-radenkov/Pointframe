@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using Pointframe.Cli;
+using Pointframe.Engine;
 using Xunit;
 
 namespace Pointframe.Tests.Cli;
@@ -10,15 +11,15 @@ public sealed class CliApplicationTests
     [Fact]
     public async Task RunAsync_Displays_WritesDisplayDescriptorsJson()
     {
-        var bridgeClient = new FakeBridgeClient();
+        var directCaptureService = new FakeDirectCaptureService();
         var standardOutput = new StringWriter();
         var standardError = new StringWriter();
-        var application = new CliApplication(bridgeClient, standardOutput, standardError);
+        var application = new CliApplication(directCaptureService, standardOutput, standardError);
 
         var exitCode = await application.RunAsync(["displays"]);
 
         Assert.Equal(0, exitCode);
-        Assert.Equal([("displays.list", (string?)null)], bridgeClient.Calls);
+        Assert.Equal(1, directCaptureService.ListDisplaysCallCount);
         using var output = JsonDocument.Parse(standardOutput.ToString());
         Assert.Equal(@"\\.\DISPLAY1", output.RootElement[0].GetProperty("monitorName").GetString());
         Assert.Empty(standardError.ToString());
@@ -31,7 +32,7 @@ public sealed class CliApplicationTests
 
         Assert.True(parsed);
         Assert.Null(error);
-        Assert.Equal("displays.list", command.BridgeCommand);
+        Assert.Equal("displays", command.Name);
         Assert.Null(command.MonitorName);
     }
 
@@ -42,7 +43,7 @@ public sealed class CliApplicationTests
 
         Assert.True(parsed);
         Assert.Null(error);
-        Assert.Equal("capture.monitor", command.BridgeCommand);
+        Assert.Equal("capture", command.Name);
         Assert.Equal(@"\\.\DISPLAY1", command.MonitorName);
     }
 
@@ -56,58 +57,37 @@ public sealed class CliApplicationTests
     }
 
     [Fact]
-    public async Task RunAsync_Capture_SendsCaptureThenSaveAndWritesArtifactJson()
+    public async Task RunAsync_Capture_WritesDirectArtifactJson()
     {
-        var bridgeClient = new FakeBridgeClient();
+        var directCaptureService = new FakeDirectCaptureService();
         var standardOutput = new StringWriter();
         var standardError = new StringWriter();
-        var application = new CliApplication(bridgeClient, standardOutput, standardError);
+        var application = new CliApplication(directCaptureService, standardOutput, standardError);
 
         var exitCode = await application.RunAsync(["capture", "--monitor", @"\\.\DISPLAY1"]);
 
         Assert.Equal(0, exitCode);
-        Assert.Equal(
-            [("capture.monitor", @"\\.\DISPLAY1"), ("overlay.save", (string?)null)],
-            bridgeClient.Calls);
+        Assert.Equal(@"\\.\DISPLAY1", directCaptureService.CapturedMonitorName);
         Assert.Contains("artifact-1", standardOutput.ToString(), StringComparison.Ordinal);
         Assert.Empty(standardError.ToString());
     }
 
-    private sealed class FakeBridgeClient : IAgentBridgeClient
+    private sealed class FakeDirectCaptureService : IDirectCaptureService
     {
-        public List<(string Command, string? MonitorName)> Calls { get; } = [];
+        public string? CapturedMonitorName { get; private set; }
 
-        public Task<BridgeResponse> SendAsync(string command, string? monitorName = null, CancellationToken cancellationToken = default)
+        public int ListDisplaysCallCount { get; private set; }
+
+        public string ListDisplays()
         {
-            Calls.Add((command, monitorName));
-            var response = command switch
-            {
-                "displays.list" => new BridgeResponse(1, "displays", true, Displays: [new DisplayDescriptor(1, @"\\.\DISPLAY1", 1d, 1d, new PixelBounds(0, 0, 100, 100))]),
-                "capture.monitor" => new BridgeResponse(1, "capture", true),
-                "overlay.save" => new BridgeResponse(1, "save", true, Artifact: CreateArtifact()),
-                _ => throw new InvalidOperationException($"Unexpected command '{command}'."),
-            };
-            return Task.FromResult(response);
+            ListDisplaysCallCount++;
+            return "[{\"monitorName\":\"\\\\\\\\.\\\\DISPLAY1\"}]";
         }
 
-        private static ArtifactDescriptor CreateArtifact()
+        public Task<string> CaptureMonitorAsync(string monitorName, CancellationToken cancellationToken = default)
         {
-            return new ArtifactDescriptor(
-                1,
-                "operation-1",
-                new ImageArtifactMetadata(
-                    1,
-                    "artifact-1",
-                    "image/png",
-                    "C:\\capture.png",
-                    "abc",
-                    1,
-                    DateTimeOffset.UnixEpoch,
-                    "agent",
-                    @"\\.\DISPLAY1",
-                    1d,
-                    1d,
-                    new PixelBounds(0, 0, 100, 100)));
+            CapturedMonitorName = monitorName;
+            return Task.FromResult("{\"artifact\":{\"metadata\":{\"artifactId\":\"artifact-1\"}}}");
         }
     }
 }

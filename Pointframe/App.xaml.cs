@@ -4,7 +4,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Pointframe.Automation;
-using Pointframe.Automation.Bridge;
 using Pointframe.Data.Abstractions;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
@@ -30,8 +29,6 @@ public partial class App : Application
     private ICaptureLaunchService _captureLaunch = null!;
     private IActivationTelemetryService _activationTelemetry = null!;
     private IArtifactMetadataService _artifactMetadataService = null!;
-    private IAgentBridgeCommandService _agentBridgeCommandService = null!;
-    private IAgentBridgeServer? _agentBridgeServer;
     private readonly List<IEventSubscription> _eventSubscriptions = [];
     private ITelemetryService _telemetry = null!;
     private ITranscriptionQueue _transcriptionQueue = null!;
@@ -93,12 +90,6 @@ public partial class App : Application
         _telemetry = _host.Services.GetRequiredService<ITelemetryService>();
         _activationTelemetry = _host.Services.GetRequiredService<IActivationTelemetryService>();
         _artifactMetadataService = _host.Services.GetRequiredService<IArtifactMetadataService>();
-        _agentBridgeCommandService = _host.Services.GetRequiredService<IAgentBridgeCommandService>();
-        if (automationLaunchOptions.EnableAgentBridge)
-        {
-            _agentBridgeServer = _host.Services.GetRequiredService<IAgentBridgeServer>();
-            _agentBridgeServer.Start();
-        }
         _transcriptionQueue = _host.Services.GetRequiredService<ITranscriptionQueue>();
         _transcriptionQueue.Completed += HandleTranscriptionCompleted;
         _transcriptionQueue.ActivityChanged += HandleTranscriptionActivityChanged;
@@ -206,7 +197,6 @@ public partial class App : Application
 
         _globalHotkey.Dispose();
         _trayIconManager?.Dispose();
-        _agentBridgeServer?.Dispose();
         _host.StopAsync().GetAwaiter().GetResult();
         _telemetry?.Flush();
         _host.Dispose();
@@ -579,11 +569,6 @@ public partial class App : Application
 
     private async ValueTask HandleCaptureCompleted(CaptureCompletedMessage message)
     {
-        if (_agentBridgeCommandService is not null)
-        {
-            await _agentBridgeCommandService.HandleCaptureCompletedAsync(message);
-        }
-
         if (!string.IsNullOrWhiteSpace(message.OutputPath))
         {
             _trayIconManager.HandleCaptureCompleted(message.OutputPath);
