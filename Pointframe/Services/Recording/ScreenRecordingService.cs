@@ -252,7 +252,14 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     {
         if (_eventTrack is not null)
         {
-            EventTrackSummary = _eventTrack.Complete();
+            try
+            {
+                EventTrackSummary = _eventTrack.Complete();
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception, "Failed to finalize the recording event sidecar. The video recording was finalized successfully.");
+            }
         }
     }
 

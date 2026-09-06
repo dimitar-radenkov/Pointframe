@@ -381,6 +381,7 @@ public partial class RecordingOverlayWindow : Window
     {
         _recordingAnnotationSurfaceCoordinator.HandleClearRequested(_recordingInteractionController.Cancel);
         _recorder.ClearRedactions();
+        _recordingRedactions.Clear();
     }
 
     private void HandleRecordingBlurCommitted(UIElement element, BlurShapeParameters parameters)
