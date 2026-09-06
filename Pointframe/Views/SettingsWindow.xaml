@@ -763,7 +763,7 @@
                                     <StackPanel Grid.Row="4" Grid.Column="1" VerticalAlignment="Center">
                                         <CheckBox Content="Generate transcript after recording"
                                                   IsChecked="{Binding RecordingTranscriptEnabled}"
-                                                  IsEnabled="{Binding CanEnableTranscript}"
+                                                  IsEnabled="{Binding CanToggleTranscript}"
                                                   AutomationProperties.AutomationId="SettingsWindow.RecordingTranscriptEnabled"/>
                                         <TextBlock Text="{Binding TranscriptStatusText}"
                                                    Style="{StaticResource RowDescription}"

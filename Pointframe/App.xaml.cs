@@ -505,6 +505,14 @@ public partial class App : Application
 
         _telemetry.TrackEvent(TelemetryEvents.TranscriptCompleted, properties);
 
+        if (result.SkipReason is null)
+        {
+            _telemetry.TrackEvent(TelemetryEvents.TranscriptFailed, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.ExceptionType] = "TranscriptionFailure",
+            });
+        }
+
         // Transcripts are on by default, so on a machine without the model every
         // recording would otherwise raise the same balloon. Say it once per session:
         // enough to be discoverable, not enough to nag.

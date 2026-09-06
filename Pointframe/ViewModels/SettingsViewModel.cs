@@ -854,6 +854,8 @@ public partial class SettingsViewModel : ObservableObject
 
     public bool CanEnableTranscript => RecordMicrophone && TranscriptModelInstalled;
 
+    public bool CanToggleTranscript => RecordMicrophone;
+
     public bool ShowTranscriptModelDownload => !TranscriptModelInstalled;
 
     public string TranscriptStatusText

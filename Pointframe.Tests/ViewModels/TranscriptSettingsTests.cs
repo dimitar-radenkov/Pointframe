@@ -61,6 +61,36 @@ public sealed class TranscriptSettingsTests
     }
 
     [Fact]
+    public void TranscriptCheckbox_CanStillBeTurnedOff_WhenPrerequisitesAreMissing()
+    {
+        var settings = new UserSettings
+        {
+            RecordMicrophone = true,
+            RecordingTranscriptEnabled = true,
+        };
+        var service = new Mock<IUserSettingsService>();
+        service.SetupGet(s => s.Current).Returns(settings);
+
+        var vm = new SettingsViewModel(
+            service.Object,
+            Mock.Of<IThemeService>(),
+            Mock.Of<IDialogService>(),
+            Mock.Of<IMicrophoneDeviceService>(s =>
+                s.GetAvailableCaptureDeviceNames() == new[] { "Studio Mic" } &&
+                s.GetDefaultCaptureDeviceName() == "Studio Mic"),
+            Mock.Of<ITelemetryService>(),
+            ModelService(installed: false));
+
+        Assert.True(vm.RecordingTranscriptEnabled);
+        Assert.True(vm.CanToggleTranscript);
+        Assert.False(vm.CanEnableTranscript);
+
+        vm.RecordingTranscriptEnabled = false;
+
+        Assert.False(vm.RecordingTranscriptEnabled);
+    }
+
+    [Fact]
     public void DownloadPrompt_IsShownOnlyWhenModelIsMissing()
     {
         Assert.True(CreateVm(true, ModelService(installed: false)).ShowTranscriptModelDownload);
