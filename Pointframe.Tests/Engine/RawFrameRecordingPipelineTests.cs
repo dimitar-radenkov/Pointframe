@@ -26,7 +26,7 @@ public sealed class RawFrameRecordingPipelineTests
     [Fact]
     public void Pipeline_PixelatesRedactionsBeforeWritingFrames()
     {
-        var writer = new CollectingWriter();
+        using var writer = new CollectingWriter();
         using var pipeline = new RawFrameRecordingPipeline(
             writer,
             new RawFrameRecordingOptions(
@@ -35,7 +35,7 @@ public sealed class RawFrameRecordingPipelineTests
                 () => new PixelBounds[] { new(0, 0, 8, 2) }),
             new IndexedFrameCapture());
 
-        Thread.Sleep(75);
+        Assert.True(writer.FirstFrameWritten.Wait(TimeSpan.FromSeconds(1)));
         pipeline.Stop(TimeSpan.Zero);
 
         Assert.NotEmpty(writer.Frames);
