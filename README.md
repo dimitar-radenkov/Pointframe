@@ -77,24 +77,36 @@ Metadata includes the artifact path, byte length, SHA-256, timestamp, monitor, D
 
 ### Install a published MCP server
 
-Build a self-contained `win-x64` package from the repository:
+The standard release artifact is a versioned `.mcpb` bundle. It contains the
+self-contained `win-x64` server, `ffmpeg.exe`, and an MCPB `manifest.json`.
+Download the matching `Pointframe.Mcp-*-win-x64.mcpb` asset from the
+[latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest)
+and install it in an MCPB-compatible host. Verify the adjacent `.sha256` file
+before installation when the host does not verify the bundle automatically.
+
+For clients that use the MCP Registry, each release also publishes a matching
+`*.server.json` file. It uses the `io.github.dimitar-radenkov/pointframe-mcp`
+server name, pins the MCPB URL, and includes the bundle SHA-256.
+
+To build the same artifacts locally:
 
 ```powershell
-dotnet restore Pointframe.Mcp/Pointframe.Mcp.csproj -r win-x64
-dotnet publish Pointframe.Mcp/Pointframe.Mcp.csproj `
-  /p:PublishProfile=win-x64 `
-  --no-restore
-```
-
-For a portable ZIP containing `ffmpeg.exe` for recording, use the package builder:
-
-```powershell
-pwsh -NoProfile -File packaging/build-mcp-package.ps1 `
+dotnet restore Pointframe.Mcp/Pointframe.Mcp.csproj
+./packaging/build-mcp-package.ps1 `
   -Version "6.7.0" `
   -FfmpegPath "C:\path\to\ffmpeg.exe"
 ```
 
-Copy the resulting `Pointframe.Mcp-*-win-x64.zip` to the target Windows computer and extract it to a directory such as `C:\Program Files\Pointframe.Mcp`. The package contains the standalone MCP executable and `ffmpeg.exe`; it does not contain the WPF Pointframe application.
+The script also emits a legacy ZIP, the MCPB bundle, a SHA-256 checksum, and
+release-ready `server.json` metadata under `packaging/output`.
+
+```powershell
+Get-FileHash packaging/output/Pointframe.Mcp-*-win-x64.mcpb -Algorithm SHA256
+```
+
+The legacy ZIP remains useful for manual installation. Extract it to a
+directory such as `C:\Program Files\Pointframe.Mcp`; it contains the standalone
+MCP executable and `ffmpeg.exe`, not the WPF Pointframe application.
 
 ### Configure VS Code
 

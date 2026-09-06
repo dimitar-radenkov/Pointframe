@@ -36,6 +36,20 @@ jobs:
       - name: Build
         run: dotnet build Pointframe.Tests/Pointframe.Tests.csproj --no-restore --configuration Release
 
+      - name: Publish MCP server
+        run: >
+          dotnet publish Pointframe.Mcp/Pointframe.Mcp.csproj
+          --configuration Release
+          /p:PublishProfile=win-x64
+          --no-restore
+          --nologo
+
+      - name: MCP stdio smoke test
+        shell: pwsh
+        run: >
+          ./packaging/test-mcp-stdio.ps1
+          -ExecutablePath Pointframe.Mcp/bin/publish/win-x64/Pointframe.Mcp.exe
+
       - name: Format check
         run: dotnet format Pointframe/Pointframe.csproj --verify-no-changes --no-restore
 
