@@ -20,7 +20,17 @@ $checksumPath = "$packageDirectory.mcpb.sha256"
 $serverJsonPath = "$packageDirectory.server.json"
 $serverName = "io.github.dimitar-radenkov/pointframe-mcp"
 
-dotnet publish $projectPath /p:PublishProfile=win-x64 /p:Version=$Version --nologo
+dotnet publish $projectPath `
+    --configuration Release `
+    --runtime win-x64 `
+    --self-contained true `
+    /p:PublishSingleFile=true `
+    /p:PublishReadyToRun=true `
+    /p:EnableCompressionInSingleFile=true `
+    /p:PublishTrimmed=false `
+    /p:PublishDir="$publishDirectory\" `
+    /p:Version=$Version `
+    --nologo
 if ($LASTEXITCODE -ne 0)
 {
     exit $LASTEXITCODE
