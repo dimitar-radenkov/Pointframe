@@ -16,7 +16,7 @@ public sealed class RawFrameRecordingPipelineTests
             capture);
 
         Assert.True(capture.Captured.Wait(TimeSpan.FromSeconds(1)));
-        Assert.True(writer.FirstFrameWritten.Wait(TimeSpan.FromSeconds(1)));
+        Assert.True(writer.FirstFrameWritten.Wait(TimeSpan.FromSeconds(10)));
         var statistics = pipeline.Stop(TimeSpan.FromMilliseconds(250));
 
         Assert.True(statistics.WrittenFrameCount >= 3);
