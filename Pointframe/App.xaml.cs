@@ -30,6 +30,8 @@ public partial class App : Application
     private IActivationTelemetryService _activationTelemetry = null!;
     private readonly List<IEventSubscription> _eventSubscriptions = [];
     private ITelemetryService _telemetry = null!;
+    private ITranscriptionQueue _transcriptionQueue = null!;
+    private bool _reportedMissingTranscriptModel;
     private DateTime _sessionStartTime;
     private SettingsWindow? _settingsWindow;
     private AboutWindow? _aboutWindow;
@@ -86,6 +88,9 @@ public partial class App : Application
         _captureLaunch = _host.Services.GetRequiredService<ICaptureLaunchService>();
         _telemetry = _host.Services.GetRequiredService<ITelemetryService>();
         _activationTelemetry = _host.Services.GetRequiredService<IActivationTelemetryService>();
+        _transcriptionQueue = _host.Services.GetRequiredService<ITranscriptionQueue>();
+        _transcriptionQueue.Completed += HandleTranscriptionCompleted;
+        _transcriptionQueue.ActivityChanged += HandleTranscriptionActivityChanged;
 
         try
         {
@@ -180,6 +185,14 @@ public partial class App : Application
         }
 
         _eventSubscriptions.Clear();
+
+        if (_transcriptionQueue is not null)
+        {
+            _transcriptionQueue.Completed -= HandleTranscriptionCompleted;
+            _transcriptionQueue.ActivityChanged -= HandleTranscriptionActivityChanged;
+            _transcriptionQueue.CancelAll();
+        }
+
         _globalHotkey.Dispose();
         _trayIconManager?.Dispose();
         _host.StopAsync().GetAwaiter().GetResult();
@@ -436,7 +449,105 @@ public partial class App : Application
     {
         _trayIconManager.HandleRecordingCompleted(message.OutputPath, message.ElapsedText);
         _activationTelemetry.TrackRecordingCompleted(message.ElapsedText);
+
+        if (message.HadMicrophoneAudio && _userSettings.Current.RecordingTranscriptEnabled)
+        {
+            _transcriptionQueue.Enqueue(message.OutputPath);
+        }
+
         return ValueTask.CompletedTask;
+    }
+
+    // The queue runs on a thread pool thread; the tray icon is a WPF element with
+    // dispatcher affinity, so every notification has to hop back to the UI thread.
+    private void HandleTranscriptionCompleted(TranscriptionCompletion completion)
+    {
+        Dispatcher.InvokeAsync(() => ReportTranscription(completion));
+    }
+
+    private void HandleTranscriptionActivityChanged()
+    {
+        var pending = _transcriptionQueue.PendingCount;
+        Dispatcher.InvokeAsync(() => _trayIconManager.SetTranscriptionActivity(pending));
+    }
+
+    private void ReportTranscription(TranscriptionCompletion completion)
+    {
+        var result = completion.Result;
+        var durationSeconds = ((int)completion.Duration.TotalSeconds).ToString();
+
+        if (result.Success)
+        {
+            _telemetry.TrackEvent(TelemetryEvents.TranscriptCompleted, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.Success] = "true",
+                [TelemetryPropertyKeys.DurationSeconds] = durationSeconds,
+                [TelemetryPropertyKeys.SegmentCount] = result.SegmentCount.ToString(),
+            });
+
+            var directory = Path.GetDirectoryName(result.SrtPath) ?? result.SrtPath;
+            _trayIconManager.ShowTranscriptBalloon(
+                "Transcript ready",
+                $"{Path.GetFileName(result.SrtPath)} • {Path.GetFileName(result.TxtPath)}{Environment.NewLine}{directory}",
+                isError: false);
+            return;
+        }
+
+        var properties = new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Success] = "false",
+            [TelemetryPropertyKeys.DurationSeconds] = durationSeconds,
+        };
+        if (result.SkipReason is not null)
+        {
+            properties[TelemetryPropertyKeys.SkipReason] = result.SkipReason;
+        }
+
+        _telemetry.TrackEvent(TelemetryEvents.TranscriptCompleted, properties);
+
+        if (result.SkipReason is null)
+        {
+            _telemetry.TrackEvent(TelemetryEvents.TranscriptFailed, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.ExceptionType] = "TranscriptionFailure",
+            });
+        }
+
+        // Transcripts are on by default, so on a machine without the model every
+        // recording would otherwise raise the same balloon. Say it once per session:
+        // enough to be discoverable, not enough to nag.
+        if (result.SkipReason == TranscriptionSkipReasons.ModelNotFound)
+        {
+            if (_reportedMissingTranscriptModel)
+            {
+                return;
+            }
+
+            _reportedMissingTranscriptModel = true;
+        }
+
+        // A skip is an expected outcome with a specific cause the user can act on;
+        // anything else is a genuine failure. Both must be reported — reporting
+        // neither is what made a missing model look like the feature doing nothing.
+        _trayIconManager.ShowTranscriptBalloon(
+            result.SkipReason is not null ? "Transcript skipped" : "Transcript failed",
+            DescribeTranscriptFailure(result, completion.VideoPath),
+            isError: result.SkipReason is null);
+    }
+
+    private static string DescribeTranscriptFailure(TranscriptionResult result, string videoPath)
+    {
+        var fileName = Path.GetFileName(videoPath);
+
+        return result.SkipReason switch
+        {
+            TranscriptionSkipReasons.ModelNotFound =>
+                $"The speech model is not installed, so {fileName} was not transcribed. Open Settings ▸ Recording to download it.",
+            TranscriptionSkipReasons.NoSpeechDetected =>
+                $"No speech was detected in {fileName}, so no transcript was written.",
+            not null => $"{result.SkipReason} — {fileName} was not transcribed.",
+            null => $"Could not generate a transcript for {fileName}.",
+        };
     }
 
     private ValueTask HandleCaptureCompleted(CaptureCompletedMessage message)

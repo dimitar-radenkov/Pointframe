@@ -17,6 +17,7 @@ public sealed class UserSettings
     public bool RecordMicrophone { get; set; } = true;
     public string? RecordingMicrophoneDeviceName { get; set; }
     public int RecordingFps { get; set; } = 20;
+    public bool RecordingTranscriptEnabled { get; set; } = true;
     public int GifFps { get; set; } = 10;
     public int HudGapPixels { get; set; } = 8;
     public bool RecordingCursorHighlightEnabled { get; set; } = true;

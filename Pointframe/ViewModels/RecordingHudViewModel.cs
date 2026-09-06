@@ -147,6 +147,7 @@ public partial class RecordingHudViewModel : ObservableObject
         _logger.LogInformation("Stop command executed");
         CanPauseResume = false;
         CancelElapsedTimer();
+        var hadMicrophoneAudio = _svc.IsRecordingMicrophoneEnabled;
         await Task.Run(() => _svc.Stop()).ConfigureAwait(true);
         _logger.LogInformation("Recording saved to {Path}", OutputPath);
         _telemetry.TrackEvent(TelemetryEvents.RecordingHudStopped, new Dictionary<string, string>
@@ -155,7 +156,7 @@ public partial class RecordingHudViewModel : ObservableObject
         });
 
         CloseRequested?.Invoke();
-        await _eventAggregator.Publish(new RecordingCompletedMessage(OutputPath, ElapsedText)).ConfigureAwait(true);
+        await _eventAggregator.Publish(new RecordingCompletedMessage(OutputPath, ElapsedText, hadMicrophoneAudio)).ConfigureAwait(true);
     }
 
     [RelayCommand]

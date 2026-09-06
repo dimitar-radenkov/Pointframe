@@ -39,6 +39,7 @@ public sealed class InstallerSmokeTests : IClassFixture<DesktopAutomationFixture
         {
             Assert.True(File.Exists(installedApp.InstalledExecutablePath));
             Assert.True(File.Exists(installedApp.UninstallerPath));
+            AssertNativeLibrariesInstalled(installedApp.InstalledExecutablePath);
 
             _fixture.SeedSettings(autoSaveScreenshots: false);
 
@@ -58,6 +59,31 @@ public sealed class InstallerSmokeTests : IClassFixture<DesktopAutomationFixture
         finally
         {
             installedApp.Dispose();
+        }
+    }
+
+    // The single-file publish leaves these outside the bundle
+    // (IncludeNativeLibrariesForSelfExtract is false so Whisper.net can probe
+    // runtimes\win-x64 on disk), so the installer has to ship them explicitly.
+    // Without them the installed app cannot start at all, and an installer that
+    // silently drops them is the exact regression this guards.
+    private static void AssertNativeLibrariesInstalled(string installedExecutablePath)
+    {
+        var installDirectory = Path.GetDirectoryName(installedExecutablePath)!;
+
+        string[] requiredNativeLibraries =
+        [
+            "e_sqlite3.dll",
+            "wpfgfx_cor3.dll",
+            "PresentationNative_cor3.dll",
+            "vcruntime140_cor3.dll",
+            Path.Combine("runtimes", "win-x64", "whisper.dll"),
+        ];
+
+        foreach (var relativePath in requiredNativeLibraries)
+        {
+            var fullPath = Path.Combine(installDirectory, relativePath);
+            Assert.True(File.Exists(fullPath), $"Installer did not ship {relativePath}.");
         }
     }
 
@@ -166,7 +192,31 @@ public sealed class InstallerSmokeTests : IClassFixture<DesktopAutomationFixture
 
             if (_uninstalled && Directory.Exists(_workspaceDirectory))
             {
-                Directory.Delete(_workspaceDirectory, recursive: true);
+                TryDeleteWorkspace();
+            }
+        }
+
+        // The Inno uninstaller relaunches itself from a temp copy, so the process we
+        // waited on can exit while the real uninstall is still writing uninstall.log.
+        // Deleting the workspace immediately then fails on the open handle. Cleanup is
+        // teardown: retry briefly, and never fail the test over a leftover temp folder.
+        private void TryDeleteWorkspace()
+        {
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                try
+                {
+                    Directory.Delete(_workspaceDirectory, recursive: true);
+                    return;
+                }
+                catch (IOException)
+                {
+                    Thread.Sleep(500);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    Thread.Sleep(500);
+                }
             }
         }
 

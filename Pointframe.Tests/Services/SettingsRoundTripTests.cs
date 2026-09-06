@@ -113,6 +113,7 @@ public sealed class SettingsRoundTripTests : IDisposable
             RecordingCursorHighlightEnabled = false,
             RecordingClickRippleEnabled = false,
             RecordingCursorHighlightSize = 42d,
+            RecordingTranscriptEnabled = false,
             DefaultAnnotationColor = "#FF336699",
             DefaultStrokeThickness = 5.5,
             CaptureDelaySeconds = 5,

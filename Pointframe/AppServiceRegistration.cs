@@ -50,6 +50,13 @@ internal static class AppServiceRegistration
         services.AddTransient<IScreenRecordingService, ScreenRecordingService>();
         services.AddSingleton<IGifExportService, GifExportService>();
         services.AddSingleton<IVideoTrimService, VideoTrimService>();
+        services.AddSingleton<IAudioExtractor, FfmpegAudioExtractor>();
+        services.AddSingleton<ISpeechRecognizer, WhisperSpeechRecognizer>();
+        services.AddSingleton<ITranscriptionService, TranscriptionService>();
+        services.AddSingleton<ITranscriptionQueue, TranscriptionQueue>();
+        services.AddSingleton<ITranscriptModelService>(sp => new TranscriptModelService(
+            UpdateDownloadViewModel.SharedHttp,
+            sp.GetRequiredService<ILogger<TranscriptModelService>>()));
         services.AddTransient<Func<string, TrimViewModel>>(sp => inputPath => new TrimViewModel(
             inputPath,
             sp.GetRequiredService<IVideoTrimService>(),
@@ -70,7 +77,13 @@ internal static class AppServiceRegistration
             window.Initialize(bitmap);
             return window;
         });
-        services.AddTransient<SettingsViewModel>();
+        services.AddTransient<SettingsViewModel>(sp => new SettingsViewModel(
+            sp.GetRequiredService<IUserSettingsService>(),
+            sp.GetRequiredService<IThemeService>(),
+            sp.GetRequiredService<IDialogService>(),
+            sp.GetRequiredService<IMicrophoneDeviceService>(),
+            sp.GetRequiredService<ITelemetryService>(),
+            sp.GetRequiredService<ITranscriptModelService>()));
         services.AddTransient<SettingsWindow>();
         services.AddTransient<Func<IScreenRecordingService, string, RecordingHudViewModel>>(sp =>
             (screenRecordingService, outputPath) => new RecordingHudViewModel(

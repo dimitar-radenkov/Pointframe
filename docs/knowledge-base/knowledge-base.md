@@ -44,15 +44,19 @@ pwsh .claude/skills/knowledge-base/knowledge-base.ps1 -Check   # check only
   - [Capture library and data layer](#capture-library-and-data-layer)
   - [Telemetry](#telemetry)
   - [Update flow](#update-flow)
+  - [Recording transcription](#recording-transcription)
 - [Decisions](#decisions)
   - [D-001 MVVM plus DI is the composition model](#d-001-mvvm-plus-di-is-the-composition-model)
   - [D-002 One knowledge base file, checked by script](#d-002-one-knowledge-base-file-checked-by-script)
   - [D-003 Recording uses one authoritative session geometry](#d-003-recording-uses-one-authoritative-session-geometry)
+  - [D-004 Native libraries ship loose and the installer packages them](#d-004-native-libraries-ship-loose-and-the-installer-packages-them)
+  - [D-005 The speech model is delivered by both the installer and the app](#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app)
 - [Invariants](#invariants)
   - [Undo groups are added only on commit](#undo-groups-are-added-only-on-commit)
   - [Settings are read at the point of use and persisted through three files](#settings-are-read-at-the-point-of-use-and-persisted-through-three-files)
   - [Recording width and height are even](#recording-width-and-height-are-even)
   - [DIPs and physical pixels are converted explicitly per monitor](#dips-and-physical-pixels-are-converted-explicitly-per-monitor)
+  - [Everything emitted next to the exe must be in the installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list)
 - [How-tos](#how-tos)
   - [Add an annotation tool](#add-an-annotation-tool)
   - [Add a user setting](#add-a-user-setting)
@@ -227,7 +231,7 @@ Text and Callout edit in a live `TextBox`; `LostFocus` converts it to a `TextBlo
 3. `IScreenRecordingService.Start(x, y, width, height, outputPath)` (transient `ScreenRecordingService`) truncates width and height to even numbers, starts the capture loop, and writes frames through `IVideoWriterFactory` to `FFMpegVideoWriter`, which pipes into an ffmpeg process located by `FfmpegResolver`.
 4. `RecordingOverlayWindow` hosts the border, HUD, and annotation surface for that monitor in PerMonitorV2 context. `RecordingHudCoordinator`, `RecordingAnnotationSurfaceCoordinator`, and `RecordingMousePassthroughCoordinator` place them and toggle click-through; `RecordingOverlayNativeInterop` holds the Win32 calls.
 5. `RecordingHudViewModel` (one per session through `Func<IScreenRecordingService, string, RecordingHudViewModel>`) drives pause, resume, stop, microphone, and tool selection. `RecordingMicrophoneSession` restores the device's original mute state on stop.
-6. Stop publishes `RecordingCompletedMessage`. `GifExportService` and `VideoTrimService` post-process through ffmpeg. `WatermarkTokenResolver` expands watermark text templates.
+6. Stop publishes `RecordingCompletedMessage`, carrying whether the microphone was captured. `GifExportService` and `VideoTrimService` post-process through ffmpeg. `WatermarkTokenResolver` expands watermark text templates. See [Recording transcription](#recording-transcription).
 
 `FfmpegResolver` order: `AppContext` data key override, `ffmpeg.exe` next to the binary, `Assets\ffmpeg\ffmpeg.exe`, then `PATH`. See [Runtime paths](#runtime-paths-and-external-binaries).
 
@@ -372,6 +376,47 @@ Text and Callout edit in a live `TextBox`; `LostFocus` converts it to a `TextBlo
 
 **Files.** `Pointframe/Services/Update/IUpdateService.cs`, `Pointframe/Services/Update/GitHubUpdateService.cs`, `Pointframe/Services/Update/IAutoUpdateService.cs`, `Pointframe/Services/Update/AutoUpdateService.cs`, `Pointframe/Services/Update/IUpdateDownloadService.cs`, `Pointframe/Services/Update/UpdateDownloadWindowService.cs`, `Pointframe/ViewModels/UpdateDownloadViewModel.cs`, `Pointframe/Views/UpdateDownloadWindow.xaml.cs`, `Pointframe/ViewModels/AboutViewModel.cs`, `Pointframe/Models/UpdateCheckResult.cs`, `Pointframe/Models/UpdateCheckInterval.cs`, `Pointframe/Services/Infrastructure/AppVersionService.cs`, `Pointframe/Services/Messaging/UpdateAvailableMessage.cs`.
 
+### Recording transcription
+
+**Responsibility.** After a recording that captured microphone audio, produce `.srt` and `.txt` transcripts next to the MP4, entirely on the local machine. Nothing is uploaded and no API key exists. English only, narration only: the recorder captures a microphone, never system audio, so a meeting or a played video produces nothing.
+
+**Entry points.**
+
+| Trigger | Path |
+|---|---|
+| A recording finishes | `App.HandleRecordingCompleted` enqueues when `RecordingTranscriptEnabled` and the message's `HadMicrophoneAudio` are both true |
+| The user asks for the model | `SettingsViewModel.DownloadTranscriptModelCommand` in the Settings Recording section |
+| Setup optional component | The `whispermodel` task in `installer/Pointframe.iss` |
+
+**Flow.**
+
+1. `RecordingHudViewModel.Stop` reads `IScreenRecordingService.IsRecordingMicrophoneEnabled` *before* awaiting `Stop()`, because the flag resets inside it, and passes it on `RecordingCompletedMessage`.
+2. `ITranscriptionQueue` (`TranscriptionQueue`) accepts the path and runs jobs serially on one background consumer built on `Channel<string>`.
+3. `TranscriptionService` resolves the model through `ITranscriptModelService`. A missing model returns a skip result before ffmpeg is ever started.
+4. `IAudioExtractor` (`FfmpegAudioExtractor`) writes a temp 16 kHz mono `pcm_s16le` WAV, the only format Whisper accepts. The temp file is deleted in a `finally`.
+5. `ISpeechRecognizer` (`WhisperSpeechRecognizer`) is handed the already-resolved model path and streams `TranscriptSegment` values.
+6. `SubtitleFormatter` renders both sidecars; `TranscriptionService` writes them without a byte-order mark.
+7. `App.HandleTranscriptionCompleted` marshals to the dispatcher, then reports through `ITrayIconManager.ShowTranscriptBalloon` and the telemetry catalog.
+
+**Key types.** `TranscriptionResult(Success, SrtPath, TxtPath, SkipReason, ErrorMessage, SegmentCount)` distinguishes an expected skip from a genuine failure; `TranscriptionSkipReasons` holds the two skip strings so the service and `App` cannot drift. `TranscriptSegment(Start, End, Text)`.
+
+**Invariants.**
+
+- The model path is resolved once, by `ITranscriptModelService`, and passed to the recognizer. Two independent resolutions previously disagreed: one skipped gracefully, the other threw.
+- `TranscriptModelResolver` returns a path only when the file exists, the `AppContext` override included. A stale override otherwise reports a model that is not there and fails inside Whisper instead of skipping.
+- Jobs are queued, never cancelled by a newer recording, or a second clip silently discards the first clip's transcript.
+- The queue runs on a thread pool thread; every tray call hops back through `Dispatcher.InvokeAsync` because `TaskbarIcon` has dispatcher affinity.
+- Every non-success outcome is reported. Reporting only `ErrorMessage` made a missing model look like the feature doing nothing at all.
+- `.srt` is UTF-8 without a BOM and CRLF; blank segments are skipped rather than written as empty-bodied cues, or strict parsers drop every cue that follows.
+
+**Tests.** `Pointframe.Tests/Services/TranscriptionServiceTests.cs`, `Pointframe.Tests/Services/SubtitleFormatterTests.cs`, `Pointframe.Tests/Services/TranscriptionQueueTests.cs`, `Pointframe.Tests/Services/FfmpegAudioExtractorTests.cs`, `Pointframe.Tests/Services/TranscriptModelResolverTests.cs`, `Pointframe.Tests/ViewModels/TranscriptSettingsTests.cs`.
+
+**Files.** `Pointframe/Services/Transcription/ITranscriptionService.cs`, `Pointframe/Services/Transcription/TranscriptionService.cs`, `Pointframe/Services/Transcription/ITranscriptionQueue.cs`, `Pointframe/Services/Transcription/TranscriptionQueue.cs`, `Pointframe/Services/Transcription/IAudioExtractor.cs`, `Pointframe/Services/Transcription/FfmpegAudioExtractor.cs`, `Pointframe/Services/Transcription/ISpeechRecognizer.cs`, `Pointframe/Services/Transcription/WhisperSpeechRecognizer.cs`, `Pointframe/Services/Transcription/SubtitleFormatter.cs`, `Pointframe/Services/Transcription/TranscriptModelResolver.cs`, `Pointframe/Services/Transcription/ITranscriptModelService.cs`, `Pointframe/Services/Transcription/TranscriptModelService.cs`, `Pointframe/Services/Transcription/NullTranscriptModelService.cs`, `Pointframe/Models/TranscriptSegment.cs`, `Pointframe/Models/TranscriptionResult.cs`. See [Recording pipeline](#recording-pipeline) and [D-005](#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app).
+
+**Lessons.**
+
+- Lesson: Encoding.UTF8 emits a BOM, which corrupts the first SRT cue
+
 ## Decisions
 
 ### D-001 MVVM plus DI is the composition model
@@ -426,6 +471,38 @@ Decided 2026-04-09.
 - Lesson: Recording mode must use one authoritative geometry model
 - Lesson: Mixed-DPI multi-monitor capture features need PerMonitorV2 process DPI awareness
 
+### D-004 Native libraries ship loose and the installer packages them
+
+Decided 2026-09-06.
+
+**Context.** Whisper.net resolves its native runtime by probing `runtimes\win-x64` on disk, which the self-extract directory of a single-file build is not. Setting `IncludeNativeLibrariesForSelfExtract` to `false` in `Pointframe/Properties/PublishProfiles/win-x64.pubxml` fixes that, but the flag is all-or-nothing: it pushes *every* native out of the bundle, not just Whisper's.
+
+**Decision.** Keep the flag `false` and make the installer package the publish output: `{#PublishDir}\*.dll` for the six loose WPF and SQLite natives, plus `{#PublishDir}\runtimes\win-x64\*` for the four Whisper DLLs. The arm64 and x86 copies the SDK emits are not shipped; this is an x64 build and they would only add weight.
+
+**Consequences.** A publish-property change that alters what lands next to the exe now has to change the installer file list in the same commit. `Pointframe.AutomationTests/Installer/InstallerSmokeTests.cs` asserts the natives exist after install, so the failure names the missing file rather than a vague launch error. `{app}\runtimes` is removed on uninstall.
+
+**Alternatives rejected.** Leaving the flag `true` and letting Whisper load from the self-extract directory: its loader does not look there. Copying only Whisper's DLLs out of the bundle: the flag has no per-library granularity.
+
+**Files.** `Pointframe/Properties/PublishProfiles/win-x64.pubxml`, `installer/Pointframe.iss`, `Pointframe.AutomationTests/Installer/InstallerSmokeTests.cs`. See [Everything emitted next to the exe must be in the installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list) and [CI, CD, and versioning](#ci-cd-and-versioning).
+
+**Lessons.**
+
+- Lesson: Turning off single-file native bundling silently breaks the installer, not the dev build
+
+### D-005 The speech model is delivered by both the installer and the app
+
+Decided 2026-09-06.
+
+**Context.** `ggml-base.en.bin` is about 141 MB, far too large to bundle. Delivering it only as an unchecked installer component means anyone who skips the checkbox has no way to get it later: they enable transcripts, record, and nothing happens. Delivering it only in-app leaves setup unable to prepare a machine up front.
+
+**Decision.** Ship both. The installer's optional `whispermodel` task downloads to `{app}\models\`; `SettingsViewModel.DownloadTranscriptModelCommand` downloads to `%LOCALAPPDATA%\Pointframe\models\`. `TranscriptModelResolver` probes, in order: the `AppContext` override, `{app}\models\`, next to the binary, then the per-user folder.
+
+**Consequences.** The per-user copy survives upgrades and reinstalls because it lives outside `{app}`; the installer copy does not, and is removed on uninstall. The installer runs elevated, so it must not write to `{localappdata}` — that would resolve to the administrator's profile, not the installing user's. Settings shows which prerequisite is missing and offers the download, so a skipped component is recoverable. Model URLs live in two places, `installer/Pointframe.iss` and `TranscriptModelService`, and change together.
+
+**Alternatives rejected.** Installer-only, the original plan: unchecked by default, so most installs would never have had the model, with no in-app remedy. In-app only: setup cannot pre-provision a machine, which matters for managed deployments.
+
+**Files.** `Pointframe/Services/Transcription/TranscriptModelResolver.cs`, `Pointframe/Services/Transcription/TranscriptModelService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `installer/Pointframe.iss`. See [Recording transcription](#recording-transcription) and [Runtime paths and external binaries](#runtime-paths-and-external-binaries).
+
 ## Invariants
 
 ### Undo groups are added only on commit
@@ -446,11 +523,11 @@ Decided 2026-04-09.
 
 1. Read `IUserSettingsService.Current.X` where the value is used. Do not copy it into a field or a constructor parameter.
 2. Partial changes go through `Update(settings => settings.X = ...)`, which clones, mutates, and saves.
-3. A new property exists in three places in one change: the `UserSettings` property with its default, the `Clone` method in `UserSettingsService`, and the read-back in `SettingsViewModel.Save()`. The Settings window binding is a fourth, UI-only step.
+3. A new property exists in two places in one change: the `UserSettings` property with its default, and the read-back in `SettingsViewModel.Save()`. `Clone` needs no edit — it round-trips through the persistence serializer. The Settings window binding is a third, UI-only step.
 
-**Why.** The settings service is a singleton and the user can change values while the app runs, so a cached field goes stale until restart. `Clone` is a hand-written copy: a property missing from it is dropped by every `Update` call. A property missing from `SettingsViewModel.Save()` is reset to its default the next time the user presses Save.
+**Why.** The settings service is a singleton and the user can change values while the app runs, so a cached field goes stale until restart. `Clone` serializes and deserializes through the same converters as save and load, so it covers new properties automatically and drops exactly what the on-disk format would drop. A property missing from `SettingsViewModel.Save()` is still reset to its default the next time the user presses Save.
 
-**Enforced by.** `SettingsRoundTripTests` populates every property of `UserSettings` by reflection and round-trips it through save, load, `Update`, and `SettingsViewModel.Save`. A property missing from `Clone` or from `Save()` fails this test. Reading at the point of use is not enforced by tests; review for `Current` captured in fields.
+**Enforced by.** `SettingsRoundTripTests` populates every property of `UserSettings` by reflection and round-trips it through save, load, `Update`, and `SettingsViewModel.Save`. A property missing from `Save()`, or one whose populated value equals its default, fails this test. Reading at the point of use is not enforced by tests; review for `Current` captured in fields.
 
 **Symptoms when violated.** A setting reverts after restart or after saving an unrelated setting. A hotkey or theme change takes effect only after restart.
 
@@ -494,6 +571,22 @@ dip         = physical_px / scale
 - Lesson: Full-desktop selection overlays are safer in a system-aware DPI context while monitor-scoped recording hosts stay PerMonitorV2
 - Lesson: Active-window capture must map Win32 screen coordinates into overlay space instead of dividing by one overlay DPI
 
+### Everything emitted next to the exe must be in the installer file list
+
+**Rule.** Whatever `dotnet publish` leaves in `Pointframe/bin/publish/win-x64/` beside `Pointframe.exe` is required at runtime and must appear in the `[Files]` section of `installer/Pointframe.iss`. Changing a publish property that alters that set changes the installer in the same commit.
+
+**Why.** The build is self-contained and single-file, so it is tempting to read the installer as needing only the exe — the script said exactly that in a comment for months. It is only true while every native is bundled. `IncludeNativeLibrariesForSelfExtract` controls that for all natives at once; see [D-004](#d-004-native-libraries-ship-loose-and-the-installer-packages-them).
+
+**Enforced by.** `Pointframe.AutomationTests/Installer/InstallerSmokeTests.cs` installs silently, asserts each required native exists under the install directory, launches the app, and uninstalls. It is opt-in: set `POINTFRAME_RUN_INSTALLER_SMOKE=1` and run elevated.
+
+**Symptoms when violated.** Nothing fails on a developer machine, where the DLLs resolve from other locations, and CI stays green because it never installs. On a clean machine the installed app dies at startup: without `e_sqlite3.dll` the EF Core migration throws and the user is told the database migration failed, which points away from the real cause. Verify by inspecting the *installed* directory, never `bin\`.
+
+**Files.** `installer/Pointframe.iss`, `Pointframe/Properties/PublishProfiles/win-x64.pubxml`, `Pointframe.AutomationTests/Installer/InstallerSmokeTests.cs`, `installer/build-installer.ps1`.
+
+**Lessons.**
+
+- Lesson: Turning off single-file native bundling silently breaks the installer, not the dev build
+
 ## How-tos
 
 ### Add an annotation tool
@@ -531,11 +624,10 @@ Then draw with the tool, undo once, redo once, and export. The shape must surviv
 **Steps.**
 
 1. `Pointframe/Models/UserSettings.cs`: add the property with its default in the initializer. Use an enum for choices, not strings.
-2. `Pointframe/Services/Infrastructure/UserSettingsService.cs`: copy the property in `Clone`.
-3. `Pointframe/ViewModels/SettingsViewModel.cs`: add an `[ObservableProperty]` field, load it from `Current` in the constructor, write it back in `Save()`.
-4. `Pointframe/Views/SettingsWindow.xaml`: bind a control in the right section (Capture, Recording, Annotation, Shortcuts, App) and give it an `AutomationProperties.AutomationId` that matches a new constant in `Pointframe.AutomationTests/Support/AutomationIds.cs`.
-5. Consumers read `IUserSettingsService.Current.<Name>` at the point of use.
-6. If the setting has a hidden or derived companion value, make Restore Defaults reset it directly.
+2. `Pointframe/ViewModels/SettingsViewModel.cs`: add an `[ObservableProperty]` field, load it from `Current` in the constructor, write it back in `Save()`.
+3. `Pointframe/Views/SettingsWindow.xaml`: bind a control in the right section (Capture, Recording, Annotation, Shortcuts, App) and give it an `AutomationProperties.AutomationId` that matches a new constant in `Pointframe.AutomationTests/Support/AutomationIds.cs`.
+4. Consumers read `IUserSettingsService.Current.<Name>` at the point of use.
+5. If the setting has a hidden or derived companion value, make Restore Defaults reset it directly.
 
 **Verify.**
 
@@ -544,7 +636,7 @@ dotnet format Pointframe/Pointframe.csproj
 dotnet test Pointframe.Tests/Pointframe.Tests.csproj --filter "FullyQualifiedName~Settings"
 ```
 
-`SettingsRoundTripTests` fails if step 2 or step 3 was skipped. Then change the value in the running app, restart, and confirm it persisted.
+`SettingsRoundTripTests` fails if step 2 was skipped, and also if the test fixture does not set the new property to a non-default value. Then change the value in the running app, restart, and confirm it persisted.
 
 **Files.** `Pointframe/Models/UserSettings.cs`, `Pointframe/Services/Infrastructure/UserSettingsService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs`. See [Settings persistence](#settings-are-read-at-the-point-of-use-and-persisted-through-three-files) and [User settings](#user-settings).
 

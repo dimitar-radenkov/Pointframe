@@ -22,6 +22,7 @@
 !packaging/scoop/README.md
 !docs/knowledge-base/*.md
 !.claude/skills/knowledge-base/*.md
+!.github/copilot-instructions.md
 !CLAUDE.md
 !lessons.md
 !docs/developer-guide.md
@@ -388,3 +389,6 @@ MigrationBackup/
 .playwright-mcp/
 *.lscache
 /.understand-anything
+
+# Built installers — 100+ MB artifacts, produced by installer/build-installer.ps1
+installer/output/
