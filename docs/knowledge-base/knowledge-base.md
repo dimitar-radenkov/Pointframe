@@ -40,6 +40,7 @@ pwsh .claude/skills/knowledge-base/knowledge-base.ps1 -Check   # check only
   - [Capture overlay and selection](#capture-overlay-and-selection)
   - [Annotation engine](#annotation-engine)
   - [Recording pipeline](#recording-pipeline)
+  - [Standalone CLI and MCP automation](#standalone-cli-and-mcp-automation)
   - [User settings](#user-settings)
   - [Capture library and data layer](#capture-library-and-data-layer)
   - [Telemetry](#telemetry)
@@ -232,6 +233,7 @@ Text and Callout edit in a live `TextBox`; `LostFocus` converts it to a `TextBlo
 4. `RecordingOverlayWindow` hosts the border, HUD, and annotation surface for that monitor in PerMonitorV2 context. `RecordingHudCoordinator`, `RecordingAnnotationSurfaceCoordinator`, and `RecordingMousePassthroughCoordinator` place them and toggle click-through; `RecordingOverlayNativeInterop` holds the Win32 calls.
 5. `RecordingHudViewModel` (one per session through `Func<IScreenRecordingService, string, RecordingHudViewModel>`) drives pause, resume, stop, microphone, and tool selection. `RecordingMicrophoneSession` restores the device's original mute state on stop.
 6. Stop publishes `RecordingCompletedMessage`, carrying whether the microphone was captured. `GifExportService` and `VideoTrimService` post-process through ffmpeg. `WatermarkTokenResolver` expands watermark text templates. See [Recording transcription](#recording-transcription).
+7. Committed blur elements retain their `RecordingRedactionRegion` identity. Recording annotation undo removes that exact region from the frame redaction snapshot, and redo restores it. The event sidecar uses an unbounded producer queue so event bursts do not fail before recording cleanup.
 
 `FfmpegResolver` order: `AppContext` data key override, `ffmpeg.exe` next to the binary, `Assets\ffmpeg\ffmpeg.exe`, then `PATH`. See [Runtime paths](#runtime-paths-and-external-binaries).
 
@@ -245,7 +247,39 @@ Text and Callout edit in a live `TextBox`; `LostFocus` converts it to a `TextBlo
 
 **Tests.** Services: `Pointframe.Tests/Services/ScreenRecordingServiceTests.cs`, `Pointframe.Tests/Services/FFMpegVideoWriterTests.cs`, `Pointframe.Tests/Services/VideoWriterFactoryTests.cs`, `Pointframe.Tests/Services/RecordingMicrophoneSessionTests.cs`, `Pointframe.Tests/Services/RecordingCursorEffectsServiceTests.cs`, `Pointframe.Tests/Services/GifExportServiceTests.cs`, `Pointframe.Tests/Services/VideoTrimServiceTests.cs`, `Pointframe.Tests/Services/WatermarkTokenResolverTests.cs`. Models and ViewModels: `Pointframe.Tests/Models/RecordingSessionGeometryTests.cs`, `Pointframe.Tests/ViewModels/RecordingHudViewModelTests.cs`, `Pointframe.Tests/ViewModels/TrimViewModelTests.cs`. Windows: `Pointframe.Tests/RecordingHudPositionTests.cs`, `Pointframe.Tests/RecordingOverlayWindowTests.cs`, `Pointframe.Tests/OverlayWindowRecordingFlowTests.cs`, `Pointframe.Tests/OverlayWindowRecordingAnnotationTests.cs`. Automation: `Pointframe.AutomationTests/Smoke/RecordingOverlaySmokeTests.cs`, `Pointframe.AutomationTests/Smoke/RecordingHudInteractionTests.cs`.
 
-**Files.** `Pointframe/Services/Recording/ScreenRecordingService.cs`, `Pointframe/Services/Recording/IScreenRecordingService.cs`, `Pointframe/Services/Recording/VideoWriterFactory.cs`, `Pointframe/Services/Recording/FFMpegVideoWriter.cs`, `Pointframe/Services/Recording/FfmpegResolver.cs`, `Pointframe/Models/RecordingSessionGeometry.cs`, `Pointframe/Views/RecordingOverlayWindow.xaml.cs`, `Pointframe/Views/OverlayWindow.Recording.cs`, `Pointframe/Views/OverlayWindow.RecordingHud.cs`, `Pointframe/Views/OverlayWindow.RecordingAnnotation.cs`, `Pointframe/Views/CountdownWindow.xaml.cs`, `Pointframe/ViewModels/RecordingHudViewModel.cs`, `Pointframe/Services/Recording/RecordingHudCoordinator.cs`, `Pointframe/Services/Recording/RecordingAnnotationSurfaceCoordinator.cs`, `Pointframe/Services/Recording/RecordingMousePassthroughCoordinator.cs`, `Pointframe/Services/Recording/RecordingOverlayNativeInterop.cs`, `Pointframe/Services/Recording/RecordingCursorEffectsService.cs`, `Pointframe/Services/Recording/RecordingMicrophoneSession.cs`, `Pointframe/Services/Infrastructure/MicrophoneDeviceService.cs`, `Pointframe/Services/Recording/GifExportService.cs`, `Pointframe/Services/Recording/VideoTrimService.cs`, `Pointframe/ViewModels/TrimViewModel.cs`, `Pointframe/Services/Recording/WatermarkTokenResolver.cs`, `Pointframe/Services/Messaging/RecordingCompletedMessage.cs`, `Pointframe/Services/Messaging/TrimRecordingRequestedMessage.cs`.
+### Standalone CLI and MCP automation
+
+**Responsibility.** Provide agent-facing desktop capture and whole-monitor recording without starting the WPF tray application or creating overlay windows. Both hosts call the shared `Pointframe.Engine` services directly and require an interactive Windows desktop session.
+
+**Entry points.**
+
+| Host | Entry point | Transport |
+|---|---|---|
+| CLI | `Pointframe.Cli/Program.cs` and `CliApplication.RunAsync` | Process arguments and stdout/stderr |
+| MCP server | `Pointframe.Mcp/Program.cs`, `PointframeMcpTools`, and `PointframeMcpResources` | MCP stdio |
+
+**Capabilities.**
+
+- The CLI accepts `displays` or `capture --monitor <exact Windows device name>`. Invalid or incomplete commands print usage and return exit code 2; execution failures return exit code 1.
+- The MCP resource `pointframe://commands` lists the supported command identifiers.
+- MCP tools list displays, capture a named monitor to a PNG artifact, start a no-microphone MP4 recording, and stop that recording with finalized artifact and sidecar metadata.
+- Recording requires an explicit redaction-region array. Regions are capture-local physical pixels and are applied before frames reach ffmpeg.
+
+**Packaging and configuration.**
+
+`Pointframe.Mcp` is published self-contained for `win-x64`. `packaging/build-mcp-package.ps1` copies the published executable and a supplied `ffmpeg.exe` into a versioned ZIP. The standalone package contains no WPF application. VS Code and other MCP clients launch the executable as a local stdio server.
+
+**Invariants.**
+
+- Capture and recording must run in the logged-in interactive desktop session; Windows services in session 0 cannot capture the user desktop.
+- Monitor names passed to CLI/MCP commands are exact Windows device names, such as `\\.\DISPLAY1`.
+- Artifact paths and metadata are produced through the shared direct services under `%LOCALAPPDATA%\Pointframe`; recording also emits an event sidecar without bitmap data, OCR text, clipboard contents, or prompts.
+
+**Tests.** `Pointframe.Tests/Cli/CliApplicationTests.cs`, `Pointframe.Tests/Mcp/DirectCaptureServiceTests.cs`, `Pointframe.Tests/Mcp/DirectRecordingMcpServiceTests.cs`, and `Pointframe.Tests/Engine/DirectRecordingServiceTests.cs`.
+
+**Files.** `Pointframe.Cli/Program.cs`, `Pointframe.Cli/CliApplication.cs`, `Pointframe.Mcp/Program.cs`, `Pointframe.Mcp/PointframeMcpTools.cs`, `Pointframe.Mcp/PointframeMcpResources.cs`, `Pointframe.Mcp/DirectRecordingMcpService.cs`, `Pointframe.Engine/DirectCaptureService.cs`, `Pointframe.Engine/DirectRecordingService.cs`, `Pointframe.Engine/DisplayCaptureEngine.cs`, `Pointframe.Engine/RawFrameRecordingPipeline.cs`, `Pointframe.Engine/FfmpegDirectVideoWriter.cs`, `Pointframe/Services/Recording/ArtifactMetadataService.cs`, `packaging/build-mcp-package.ps1`.
+
+**Files.** `Pointframe/Services/Recording/ScreenRecordingService.cs`, `Pointframe/Services/Recording/IScreenRecordingService.cs`, `Pointframe/Services/Recording/IRecordingRedactionSession.cs`, `Pointframe/Services/Recording/RecordingRedactionSession.cs`, `Pointframe/Services/Recording/IRecordingEventTrack.cs`, `Pointframe/Services/Recording/RecordingEventTrack.cs`, `Pointframe/Services/Recording/VideoWriterFactory.cs`, `Pointframe/Services/Recording/FFMpegVideoWriter.cs`, `Pointframe/Services/Recording/FfmpegResolver.cs`, `Pointframe/Models/RecordingSessionGeometry.cs`, `Pointframe/Views/RecordingOverlayWindow.xaml.cs`, `Pointframe/Views/OverlayWindow.Recording.cs`, `Pointframe/Views/OverlayWindow.RecordingHud.cs`, `Pointframe/Views/OverlayWindow.RecordingAnnotation.cs`, `Pointframe/Views/CountdownWindow.xaml.cs`, `Pointframe/ViewModels/RecordingHudViewModel.cs`, `Pointframe/Services/Recording/RecordingHudCoordinator.cs`, `Pointframe/Services/Recording/RecordingAnnotationSurfaceCoordinator.cs`, `Pointframe/Services/Recording/RecordingMousePassthroughCoordinator.cs`, `Pointframe/Services/Recording/RecordingOverlayNativeInterop.cs`, `Pointframe/Services/Recording/RecordingCursorEffectsService.cs`, `Pointframe/Services/Recording/RecordingMicrophoneSession.cs`, `Pointframe/Services/Infrastructure/MicrophoneDeviceService.cs`, `Pointframe/Services/Recording/GifExportService.cs`, `Pointframe/Services/Recording/VideoTrimService.cs`, `Pointframe/ViewModels/TrimViewModel.cs`, `Pointframe/Services/Recording/WatermarkTokenResolver.cs`, `Pointframe/Services/Messaging/RecordingCompletedMessage.cs`, `Pointframe/Services/Messaging/TrimRecordingRequestedMessage.cs`.
 
 **Lessons.**
 
@@ -260,6 +294,7 @@ Text and Callout edit in a live `TextBox`; `LostFocus` converts it to a `TextBlo
 - Lesson: Visible recording adornments are burned into CopyFromScreen output
 - Lesson: Full-screen recording HUDs need a compact default, not the region-recording layout
 - Lesson: ffmpeg microphone capture must use Windows capture-device names compatible with the recording backend
+- Lesson: Recording annotation undo must reconcile output redactions
 - Lesson: ffmpeg screen-plus-microphone recordings must stop when the video input ends
 - Lesson: Recording HUD microphone toggles must restore the device's original mute state
 - Lesson: Dropped recording frames shorten the final MP4 duration

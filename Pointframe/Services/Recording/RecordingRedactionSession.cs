@@ -48,6 +48,44 @@ public sealed class RecordingRedactionSession : IRecordingRedactionSession
         }
     }
 
+    public bool Remove(RecordingRedactionRegion region)
+    {
+        lock (_mutationLock)
+        {
+            var index = Array.FindIndex(_regions, existing => existing.Revision == region.Revision);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            RemoveAt(index);
+            _eventTrack.Write("redaction.removed", CreatePayload(region, "removed"));
+            return true;
+        }
+    }
+
+    public bool Restore(RecordingRedactionRegion region)
+    {
+        lock (_mutationLock)
+        {
+            if (_regions.Any(existing => existing.Revision == region.Revision))
+            {
+                return false;
+            }
+
+            var updatedRegions = new RecordingRedactionRegion[_regions.Length + 1];
+            Array.Copy(_regions, updatedRegions, _regions.Length);
+            updatedRegions[^1] = region;
+            var updatedPixelBounds = new PixelBounds[_pixelBounds.Length + 1];
+            Array.Copy(_pixelBounds, updatedPixelBounds, _pixelBounds.Length);
+            updatedPixelBounds[^1] = ToPixelBounds(region.CaptureLocalBounds);
+            Volatile.Write(ref _regions, updatedRegions);
+            Volatile.Write(ref _pixelBounds, updatedPixelBounds);
+            _eventTrack.Write("redaction.added", CreatePayload(region, "restored"));
+            return true;
+        }
+    }
+
     public bool Clear()
     {
         lock (_mutationLock)
@@ -65,6 +103,23 @@ public sealed class RecordingRedactionSession : IRecordingRedactionSession
                 RedactionOperation: "cleared"));
             return true;
         }
+    }
+
+    private void RemoveAt(int index)
+    {
+        var updatedRegions = new RecordingRedactionRegion[_regions.Length - 1];
+        var updatedPixelBounds = new PixelBounds[_pixelBounds.Length - 1];
+        Array.Copy(_regions, 0, updatedRegions, 0, index);
+        Array.Copy(_regions, index + 1, updatedRegions, index, updatedRegions.Length - index);
+        Array.Copy(_pixelBounds, 0, updatedPixelBounds, 0, index);
+        Array.Copy(_pixelBounds, index + 1, updatedPixelBounds, index, updatedPixelBounds.Length - index);
+        Volatile.Write(ref _regions, updatedRegions);
+        Volatile.Write(ref _pixelBounds, updatedPixelBounds);
+    }
+
+    private static PixelBounds ToPixelBounds(Int32Rect bounds)
+    {
+        return new PixelBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height);
     }
 
     private static RecordingEventPayload CreatePayload(RecordingRedactionRegion region, string operation)

@@ -10,6 +10,31 @@ namespace Pointframe.Tests.Services;
 public sealed class RecordingEventTrackTests
 {
     [Fact]
+    public void Write_WhenManyEventsAreQueued_AcceptsAllEvents()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"pointframe-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var recordingPath = Path.Combine(directory, "recording.mp4");
+        var track = new RecordingEventTrack(recordingPath, Stopwatch.StartNew());
+
+        try
+        {
+            for (var i = 0; i < 256; i++)
+            {
+                track.Write("recording.progress", new RecordingEventPayload());
+            }
+
+            var summary = track.Complete();
+
+            Assert.Equal(256, summary.EventCount);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Complete_WithLifecycleEvents_WritesOrderedUtf8JsonlAndFinalizesSidecar()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"pointframe-tests-{Guid.NewGuid():N}");

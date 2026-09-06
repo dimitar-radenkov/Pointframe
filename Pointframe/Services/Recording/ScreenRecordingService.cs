@@ -167,13 +167,27 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
     public bool TryAddRedaction(Int32Rect captureLocalBounds)
     {
+        return AddRedaction(captureLocalBounds) is not null;
+    }
+
+    public RecordingRedactionRegion? AddRedaction(Int32Rect captureLocalBounds)
+    {
         if (!IsRecording || _redactionSession is null)
         {
-            return false;
+            return null;
         }
 
-        _redactionSession.Add(captureLocalBounds);
-        return true;
+        return _redactionSession.Add(captureLocalBounds);
+    }
+
+    public bool RemoveRedaction(RecordingRedactionRegion region)
+    {
+        return IsRecording && _redactionSession?.Remove(region) == true;
+    }
+
+    public bool RestoreRedaction(RecordingRedactionRegion region)
+    {
+        return IsRecording && _redactionSession?.Restore(region) == true;
     }
 
     public bool ClearRedactions()

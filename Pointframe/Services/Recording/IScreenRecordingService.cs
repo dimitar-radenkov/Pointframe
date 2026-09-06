@@ -21,5 +21,8 @@ public interface IScreenRecordingService : IDisposable
     void Resume();
     bool TrySetMicrophoneMuted(bool isMuted);
     bool TryAddRedaction(Int32Rect captureLocalBounds);
+    RecordingRedactionRegion? AddRedaction(Int32Rect captureLocalBounds);
+    bool RemoveRedaction(RecordingRedactionRegion region);
+    bool RestoreRedaction(RecordingRedactionRegion region);
     bool ClearRedactions();
 }

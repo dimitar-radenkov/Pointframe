@@ -16,7 +16,7 @@ internal sealed class BlurShapeHandler : IAnnotationShapeHandler
     private readonly Func<double> _getDpiX;
     private readonly Func<double> _getDpiY;
     private readonly Func<BlurShapeParameters, BitmapSource?>? _captureLiveBlurSource;
-    private readonly Action<BlurShapeParameters>? _onBlurCommitted;
+    private readonly Action<UIElement, BlurShapeParameters>? _onBlurCommitted;
 
     private Rectangle? _draft;
 
@@ -26,7 +26,7 @@ internal sealed class BlurShapeHandler : IAnnotationShapeHandler
         Func<double> getDpiX,
         Func<double> getDpiY,
         Func<BlurShapeParameters, BitmapSource?>? captureLiveBlurSource = null,
-        Action<BlurShapeParameters>? onBlurCommitted = null)
+        Action<UIElement, BlurShapeParameters>? onBlurCommitted = null)
     {
         _getShapeParameters = getShapeParameters;
         _getBackgroundCapture = getBackgroundCapture;
@@ -124,7 +124,7 @@ internal sealed class BlurShapeHandler : IAnnotationShapeHandler
         Canvas.SetTop(image, parameters.Top);
         canvas.Children.Add(image);
         trackElement(image);
-        _onBlurCommitted?.Invoke(parameters);
+        _onBlurCommitted?.Invoke(image, parameters);
     }
 
     public void Cancel(Canvas canvas)

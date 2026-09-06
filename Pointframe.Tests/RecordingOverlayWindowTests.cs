@@ -100,10 +100,11 @@ public sealed class RecordingOverlayWindowTests
                 InvokePrivate(
                     context.Window,
                     "HandleRecordingBlurCommitted",
+                    new System.Windows.Controls.Image(),
                     new BlurShapeParameters(10, 20, 30, 40));
 
                 context.RecorderMock.Verify(
-                    recorder => recorder.TryAddRedaction(new Int32Rect(10, 20, 30, 40)),
+                    recorder => recorder.AddRedaction(new Int32Rect(10, 20, 30, 40)),
                     Times.Once);
             }
             finally

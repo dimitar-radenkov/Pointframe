@@ -9,8 +9,6 @@ public sealed class RecordingEventTrack : IRecordingEventTrack
 {
     public const int CurrentSchemaVersion = 1;
 
-    private const int BufferCapacity = 64;
-
     private readonly object _writeLock = new();
     private readonly Channel<RecordingEvent> _events;
     private readonly Stopwatch _sessionStopwatch;
@@ -28,9 +26,8 @@ public sealed class RecordingEventTrack : IRecordingEventTrack
 
         _sessionStopwatch = sessionStopwatch;
         _sidecarPath = Path.GetFullPath($"{recordingPath}.events.jsonl");
-        _events = Channel.CreateBounded<RecordingEvent>(new BoundedChannelOptions(BufferCapacity)
+        _events = Channel.CreateUnbounded<RecordingEvent>(new UnboundedChannelOptions
         {
-            FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
             SingleWriter = false,
             AllowSynchronousContinuations = false,

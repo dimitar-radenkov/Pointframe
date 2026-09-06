@@ -1,4 +1,5 @@
 using System.Windows;
+using Pointframe.Engine;
 using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
@@ -45,6 +46,28 @@ public sealed class RecordingRedactionSessionTests
                 Assert.Null(recordingEvent.Payload.RedactionX);
                 Assert.Null(recordingEvent.Payload.RedactionY);
             });
+    }
+
+    [Fact]
+    public void RemoveAndRestore_TargetsOneRegionAndUpdatesPixelSnapshot()
+    {
+        var eventTrack = new RecordingEventTrackStub();
+        var session = new RecordingRedactionSession(eventTrack);
+        var first = session.Add(new Int32Rect(10, 20, 30, 40));
+        var second = session.Add(new Int32Rect(50, 60, 70, 80));
+
+        Assert.True(session.Remove(first));
+        Assert.Collection(session.Snapshot().Span.ToArray(), region => Assert.Equal(second, region));
+        Assert.Equal(new PixelBounds(50, 60, 70, 80), Assert.Single(session.SnapshotPixelBounds().Span.ToArray()));
+
+        Assert.True(session.Restore(first));
+        Assert.Equal(2, session.Snapshot().Length);
+        Assert.False(session.Restore(first));
+        Assert.Collection(eventTrack.Events,
+            added => Assert.Equal("redaction.added", added.EventType),
+            added => Assert.Equal("redaction.added", added.EventType),
+            removed => Assert.Equal("removed", removed.Payload.RedactionOperation),
+            restored => Assert.Equal("restored", restored.Payload.RedactionOperation));
     }
 
     private sealed class RecordingEventTrackStub : IRecordingEventTrack

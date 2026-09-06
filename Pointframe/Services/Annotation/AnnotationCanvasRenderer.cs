@@ -78,7 +78,7 @@ internal sealed class AnnotationCanvasRenderer
         ILogger<AnnotationCanvasRenderer> logger,
         Action? onCanvasChanged = null,
         Func<BlurShapeParameters, BitmapSource?>? captureLiveBlurSource = null,
-        Action<BlurShapeParameters>? onBlurCommitted = null)
+        Action<UIElement, BlurShapeParameters>? onBlurCommitted = null)
     {
         _canvas = canvas;
         _vm = vm;
