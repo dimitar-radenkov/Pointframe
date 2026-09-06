@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Interop;
+using Pointframe.Engine;
 using Pointframe.Services;
 
 namespace Pointframe;
@@ -7,13 +8,17 @@ namespace Pointframe;
 internal sealed class ScreenCaptureService : IScreenCaptureService
 {
     private readonly ILogger<ScreenCaptureService> _logger;
+    private readonly IDisplayCaptureEngine _displayCaptureEngine;
 
     [DllImport("gdi32.dll")]
     private static extern bool DeleteObject(IntPtr hObject);
 
-    public ScreenCaptureService(ILogger<ScreenCaptureService> logger)
+    public ScreenCaptureService(
+        ILogger<ScreenCaptureService> logger,
+        IDisplayCaptureEngine displayCaptureEngine)
     {
         _logger = logger;
+        _displayCaptureEngine = displayCaptureEngine;
     }
 
     public BitmapSource Capture(
@@ -25,13 +30,7 @@ internal sealed class ScreenCaptureService : IScreenCaptureService
         _logger.LogInformation("Capture started: ({X},{Y}) {W}\u00d7{H}", x, y, width, height);
         try
         {
-            using var bmp = new System.Drawing.Bitmap(
-                width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-
-            using var g = System.Drawing.Graphics.FromImage(bmp);
-            g.CopyFromScreen(x, y, 0, 0,
-                new System.Drawing.Size(width, height),
-                System.Drawing.CopyPixelOperation.SourceCopy);
+            using var bmp = _displayCaptureEngine.Capture(new PixelBounds(x, y, width, height));
 
             var hBitmap = bmp.GetHbitmap();
             try

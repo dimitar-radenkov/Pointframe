@@ -53,21 +53,23 @@ internal sealed class RecordingAnnotationSurfaceCoordinator
         SyncAnnotationState();
     }
 
-    public void ApplyUndo(IEnumerable<object> elements)
+    public void ApplyUndo(IEnumerable<object> elements, Action<UIElement>? onElementRemoved = null)
     {
         foreach (var element in elements.OfType<UIElement>())
         {
             _recordingAnnotationCanvas.Children.Remove(element);
+            onElementRemoved?.Invoke(element);
         }
 
         SyncAnnotationState();
     }
 
-    public void ApplyRedo(IEnumerable<object> elements)
+    public void ApplyRedo(IEnumerable<object> elements, Action<UIElement>? onElementAdded = null)
     {
         foreach (var element in elements.OfType<UIElement>())
         {
             _recordingAnnotationCanvas.Children.Add(element);
+            onElementAdded?.Invoke(element);
         }
 
         SyncAnnotationState();

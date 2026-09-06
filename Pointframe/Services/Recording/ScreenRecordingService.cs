@@ -1,61 +1,31 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Drawing.Imaging;
-using System.Threading.Channels;
+using System.Windows;
+using Pointframe.Engine;
 
 namespace Pointframe.Services;
 
 public sealed class ScreenRecordingService : IScreenRecordingService
 {
-    [DllImport("gdi32.dll")]
-    private static extern bool BitBlt(
-        IntPtr hdcDest, int xDest, int yDest, int width, int height,
-        IntPtr hdcSrc, int xSrc, int ySrc, int rop);
-
-    private const int SrcCopy = 0x00CC0020;
-
     private readonly ILogger<ScreenRecordingService> _logger;
     private readonly IMicrophoneDeviceService _microphoneDeviceService;
     private readonly IUserSettingsService _settings;
     private readonly IVideoWriterFactory _writerFactory;
-
     private IVideoWriter? _writer;
-    private CancellationTokenSource? _cts;
-    private Task? _captureLoop;
-    private Task? _encodeLoop;
-    private Channel<byte[]>? _encodeChannel;
-    private readonly ConcurrentQueue<byte[]> _bufferPool = new();
-
-    // Reused across every frame of a single recording session — allocated in Start, disposed in Stop.
-    private Bitmap? _captureBitmap;
-    private Graphics? _captureGraphics;
-    private ScreenDc? _screenDc;
-
-    private int _captureX;
-    private int _captureY;
-    private int _captureWidth;
-    private int _captureHeight;
+    private RawFrameRecordingPipeline? _pipeline;
     private int _fps;
     private RecordingMicrophoneSession? _microphoneSession;
-    private byte[]? _latestFrameBytes;
     private Stopwatch? _sessionStopwatch;
-    private int _attemptedFrameCount;
-    private int _writtenFrameCount;
-    private int _droppedFrameCount;
-    private long _firstFrameWrittenAtMilliseconds = -1;
-    private readonly SemaphoreSlim _pauseGate = new SemaphoreSlim(1, 1);
+    private IRecordingEventTrack? _eventTrack;
+    private IRecordingRedactionSession? _redactionSession;
 
     public bool IsRecording { get; private set; }
     public bool IsPaused { get; private set; }
     public bool IsRecordingMicrophoneEnabled { get; private set; }
     public bool CanToggleMicrophone { get; private set; }
     public bool IsMicrophoneMuted { get; private set; }
+    public RecordingEventTrackSummary? EventTrackSummary { get; private set; }
 
-    public ScreenRecordingService(
-        ILogger<ScreenRecordingService> logger,
-        IMicrophoneDeviceService microphoneDeviceService,
-        IUserSettingsService settings,
-        IVideoWriterFactory writerFactory)
+    public ScreenRecordingService(ILogger<ScreenRecordingService> logger, IMicrophoneDeviceService microphoneDeviceService, IUserSettingsService settings, IVideoWriterFactory writerFactory)
     {
         _logger = logger;
         _microphoneDeviceService = microphoneDeviceService;
@@ -63,99 +33,55 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _writerFactory = writerFactory;
     }
 
-    public void Start(
-        int x,
-        int y,
-        int width,
-        int height,
-        string outputPath)
+    public void Start(int x, int y, int width, int height, string outputPath)
     {
         var fps = _settings.Current.RecordingFps;
-        _logger.LogInformation("Recording Start requested: region=({X},{Y},{W},{H}), fps={Fps}, path={Path}",
-            x, y, width, height, fps, outputPath);
-
+        _logger.LogInformation("Recording Start requested: region=({X},{Y},{W},{H}), fps={Fps}, path={Path}", x, y, width, height, fps, outputPath);
         if (IsRecording)
         {
-            _logger.LogWarning("Start called while already recording — ignored");
+            _logger.LogWarning("Start called while already recording - ignored");
             return;
         }
 
-        // JPEG MCU requires even dimensions
-        width = width % 2 == 0 ? width : width - 1;
-        height = height % 2 == 0 ? height : height - 1;
+        width -= width % 2;
+        height -= height % 2;
         if (width <= 0 || height <= 0)
         {
-            _logger.LogError("Region too small after even-dimension truncation: {W}x{H} — aborting", width, height);
+            _logger.LogError("Region too small after even-dimension truncation: {W}x{H} - aborting", width, height);
             return;
         }
 
-        _captureX = x;
-        _captureY = y;
-        _captureWidth = width;
-        _captureHeight = height;
         _fps = fps;
-        _attemptedFrameCount = 0;
-        _writtenFrameCount = 0;
-        _droppedFrameCount = 0;
-        _firstFrameWrittenAtMilliseconds = -1;
-        _latestFrameBytes = null;
         _sessionStopwatch = Stopwatch.StartNew();
-
+        EventTrackSummary = null;
         try
         {
-            // Allocate the capture surface once per session — no per-frame allocation.
-            _captureBitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-            _captureGraphics = Graphics.FromImage(_captureBitmap);
-
-            // Pre-allocate a small pool of raw frame buffers so neither the capture nor the
-            // encode loop ever needs to allocate on the hot path.
-            var bufferSize = width * height * 4;
-            const int PoolSize = 4;
-            for (var i = 0; i < PoolSize; i++)
-            {
-                _bufferPool.Enqueue(new byte[bufferSize]);
-            }
-
             var microphoneDeviceName = ResolveMicrophoneDeviceName();
             _writer = _writerFactory.Create(width, height, fps, outputPath, microphoneDeviceName);
-
-            _screenDc = new ScreenDc();
             _microphoneSession = new RecordingMicrophoneSession(_microphoneDeviceService, _logger, microphoneDeviceName);
             IsRecordingMicrophoneEnabled = _microphoneSession.IsEnabled;
             CanToggleMicrophone = _microphoneSession.CanToggleMute;
             IsMicrophoneMuted = _microphoneSession.InitialMutedState;
-
-            // Bounded channel: if the encode loop falls behind, CaptureFrameToChannel will
-            // skip the newest frame (TryWrite returns false) rather than stalling the capture thread.
-            // DropWrite is used so TryWrite still returns false on a full channel, keeping the
-            // buffer-pool return and dropped-frame counter working correctly.
-            _encodeChannel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(PoolSize)
-            {
-                FullMode = BoundedChannelFullMode.DropWrite,
-                SingleReader = true,
-                SingleWriter = true,
-                AllowSynchronousContinuations = false,
-            });
-
-            _cts = new CancellationTokenSource();
+            _eventTrack = new RecordingEventTrack(outputPath, _sessionStopwatch);
+            _redactionSession = new RecordingRedactionSession(_eventTrack);
+            _eventTrack.Write("recording.started", new RecordingEventPayload(CaptureX: x, CaptureY: y, CaptureWidth: width, CaptureHeight: height, FramesPerSecond: fps, IsEnabled: IsRecordingMicrophoneEnabled, IsMuted: IsMicrophoneMuted));
+            _pipeline = new RawFrameRecordingPipeline(
+                new VideoWriterRawFrameWriter(_writer),
+                new RawFrameRecordingOptions(new PixelBounds(x, y, width, height), fps, () => _redactionSession?.SnapshotPixelBounds() ?? ReadOnlyMemory<PixelBounds>.Empty));
             IsRecording = true;
-            _captureLoop = Task.Run(() => CaptureLoop(_cts.Token));
-            _encodeLoop = Task.Run(EncodeLoop);
-            _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps (MP4) → {Path}", width, height, fps, outputPath);
+            _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps (MP4) to {Path}", width, height, fps, outputPath);
         }
         catch
         {
             IsRecording = false;
             IsPaused = false;
             ResetMicrophoneFlags();
-            // Nothing was muted yet on the failure path — discard without restoring.
-            _microphoneSession = null;
-            _cts?.Cancel();
-            WaitForStartFailureTaskShutdown(_captureLoop);
-            WaitForStartFailureTaskShutdown(_encodeLoop);
-            DisposeCaptureResources();
+            _pipeline?.Dispose();
+            _pipeline = null;
             _writer?.Dispose();
             _writer = null;
+            _microphoneSession = null;
+            CompleteEventTrack();
             ReleaseSessionReferences();
             throw;
         }
@@ -165,71 +91,113 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     {
         if (!IsRecording)
         {
-            _logger.LogDebug("Stop called while not recording — ignored");
+            _logger.LogDebug("Stop called while not recording - ignored");
             return;
         }
 
         _logger.LogInformation("Stopping recording");
         IsRecording = false;
-        var stopRequestedElapsed = _sessionStopwatch?.Elapsed ?? TimeSpan.Zero;
-        if (IsPaused)
-        {
-            IsPaused = false;
-            _pauseGate.Release();
-        }
-
-        _cts?.Cancel();
-
+        _eventTrack?.Write("recording.stopped", new RecordingEventPayload());
+        var elapsed = _sessionStopwatch?.Elapsed ?? TimeSpan.Zero;
+        RawFrameRecordingStatistics? statistics = null;
         try
         {
-            if (_captureLoop?.Wait(TimeSpan.FromSeconds(3)) == false)
-            {
-                _logger.LogWarning("Capture loop did not stop within 3 s");
-            }
-        }
-        catch (AggregateException ae) when (ae.InnerExceptions.All(ex => ex is OperationCanceledException))
-        {
-        }
-
-        // Complete the channel so the encode loop drains remaining buffered frames and exits.
-        _encodeChannel?.Writer.TryComplete();
-
-        try
-        {
-            if (_encodeLoop?.Wait(TimeSpan.FromSeconds(10)) == false)
-            {
-                _logger.LogWarning("Encode loop did not stop within 10 s");
-            }
-        }
-        catch (AggregateException ae) when (ae.InnerExceptions.All(ex => ex is OperationCanceledException))
-        {
-        }
-
-        try
-        {
-            PadRecordingToElapsedDuration(stopRequestedElapsed);
+            statistics = _pipeline?.Stop(elapsed);
         }
         finally
         {
-            LogSessionSummary(stopRequestedElapsed);
-            DisposeCaptureResources();
+            LogSessionSummary(elapsed, statistics ?? _pipeline?.GetStatistics());
+            _pipeline?.Dispose();
+            _pipeline = null;
             ResetMicrophoneFlags();
-
             try
             {
                 _writer?.Dispose();
-                _logger.LogInformation("Writer closed — file finalised");
+                _logger.LogInformation("Writer closed - file finalised");
             }
             finally
             {
-                // Restore only after the writer has fully closed — ffmpeg still owns the device until then.
                 _microphoneSession?.RestoreInitialMuteState();
                 _microphoneSession = null;
                 _writer = null;
+                CompleteEventTrack();
+                ReleaseSessionReferences();
             }
-
-            ReleaseSessionReferences();
         }
+    }
+
+    public void Pause()
+    {
+        if (!IsRecording || IsPaused)
+        {
+            return;
+        }
+
+        _pipeline?.Pause();
+        IsPaused = true;
+        _eventTrack?.Write("recording.paused", new RecordingEventPayload());
+        _logger.LogInformation("Recording paused");
+    }
+
+    public void Resume()
+    {
+        if (!IsRecording || !IsPaused)
+        {
+            return;
+        }
+
+        _pipeline?.Resume();
+        IsPaused = false;
+        _eventTrack?.Write("recording.resumed", new RecordingEventPayload());
+        _logger.LogInformation("Recording resumed");
+    }
+
+    public bool TrySetMicrophoneMuted(bool isMuted)
+    {
+        if (!CanToggleMicrophone || _microphoneSession is null || !_microphoneSession.TrySetMuted(isMuted))
+        {
+            return false;
+        }
+
+        IsMicrophoneMuted = isMuted;
+        _eventTrack?.Write("microphone.changed", new RecordingEventPayload(IsEnabled: IsRecordingMicrophoneEnabled, IsMuted: isMuted));
+        _logger.LogInformation("Recording microphone {State}", isMuted ? "muted" : "unmuted");
+        return true;
+    }
+
+    public bool TryAddRedaction(Int32Rect captureLocalBounds)
+    {
+        return AddRedaction(captureLocalBounds) is not null;
+    }
+
+    public RecordingRedactionRegion? AddRedaction(Int32Rect captureLocalBounds)
+    {
+        if (!IsRecording || _redactionSession is null)
+        {
+            return null;
+        }
+
+        return _redactionSession.Add(captureLocalBounds);
+    }
+
+    public bool RemoveRedaction(RecordingRedactionRegion region)
+    {
+        return IsRecording && _redactionSession?.Remove(region) == true;
+    }
+
+    public bool RestoreRedaction(RecordingRedactionRegion region)
+    {
+        return IsRecording && _redactionSession?.Restore(region) == true;
+    }
+
+    public bool ClearRedactions()
+    {
+        return IsRecording && _redactionSession?.Clear() == true;
+    }
+
+    public void Dispose()
+    {
+        Stop();
     }
 
     private void ResetMicrophoneFlags()
@@ -239,145 +207,13 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         IsMicrophoneMuted = false;
     }
 
-    private void DisposeCaptureResources()
-    {
-        _captureGraphics?.Dispose();
-        _captureGraphics = null;
-        _captureBitmap?.Dispose();
-        _captureBitmap = null;
-        var screenDc = _screenDc;
-        _screenDc = null;
-        screenDc?.Dispose();
-    }
-
     private void ReleaseSessionReferences()
     {
-        _latestFrameBytes = null;
-        ClearBufferPool();
-        _cts?.Dispose();
-        _cts = null;
-        _captureLoop = null;
-        _encodeLoop = null;
-        _encodeChannel = null;
         _sessionStopwatch = null;
-    }
-
-    private async Task CaptureLoop(CancellationToken ct)
-    {
-        _logger.LogDebug("Capture loop started");
-        var interval = TimeSpan.FromMilliseconds(1000.0 / _fps);
-        using var timer = new PeriodicTimer(interval);
-        var frameCount = 0;
-
-        try
-        {
-            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
-            {
-                await _pauseGate.WaitAsync(ct).ConfigureAwait(false);
-                _pauseGate.Release();
-                CaptureFrameToChannel();
-                frameCount++;
-                if (frameCount % 100 == 0)
-                {
-                    _logger.LogDebug("Captured {FrameCount} frames so far", frameCount);
-                }
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogError(ex, "Capture loop failed after {FrameCount} frames", frameCount);
-            throw;
-        }
-
-        _logger.LogDebug("Capture loop ended after {FrameCount} frames", frameCount);
-    }
-
-    private void CaptureFrameToChannel()
-    {
-        if (_encodeChannel is null || _captureBitmap is null || _captureGraphics is null || _screenDc is null)
-        {
-            return;
-        }
-
-        Interlocked.Increment(ref _attemptedFrameCount);
-
-        // Rent a pre-allocated buffer; skip this frame if the pool is empty (encode is behind).
-        if (!_bufferPool.TryDequeue(out var buffer))
-        {
-            buffer = new byte[_captureWidth * _captureHeight * 4];
-        }
-
-        // BitBlt is a direct GDI call, faster than the managed Graphics.CopyFromScreen wrapper.
-        var bitmapDc = _captureGraphics.GetHdc();
-        try
-        {
-            BitBlt(bitmapDc, 0, 0, _captureWidth, _captureHeight,
-                _screenDc.Handle, _captureX, _captureY, SrcCopy);
-        }
-        finally
-        {
-            _captureGraphics.ReleaseHdc(bitmapDc);
-        }
-
-        var bits = _captureBitmap.LockBits(
-            new Rectangle(0, 0, _captureWidth, _captureHeight),
-            ImageLockMode.ReadOnly,
-            PixelFormat.Format32bppArgb);
-        try
-        {
-            Marshal.Copy(bits.Scan0, buffer, 0, buffer.Length);
-        }
-        finally
-        {
-            _captureBitmap.UnlockBits(bits);
-        }
-
-        UpdateLatestFrame(buffer);
-
-        // TryWrite never blocks; dropped frames are logged at debug level above.
-        if (_encodeChannel.Writer.TryWrite(buffer))
-        {
-            return;
-        }
-
-        Interlocked.Increment(ref _droppedFrameCount);
-        _bufferPool.Enqueue(buffer);
-    }
-
-    // Runs on a dedicated background thread; WriteFrame may block on the pipe to ffmpeg
-    // without ever affecting the capture timing or the UI thread.
-    private async Task EncodeLoop()
-    {
-        _logger.LogDebug("Encode loop started");
-        if (_encodeChannel is null)
-        {
-            return;
-        }
-
-        try
-        {
-            // CancellationToken.None: drain all buffered frames before exiting even after Stop().
-            await foreach (var buffer in _encodeChannel.Reader.ReadAllAsync(CancellationToken.None).ConfigureAwait(false))
-            {
-                var writeStartedAt = Stopwatch.GetTimestamp();
-                _writer?.WriteFrame(buffer);
-                var writeElapsed = Stopwatch.GetElapsedTime(writeStartedAt);
-                var writtenFrameCount = Interlocked.Increment(ref _writtenFrameCount);
-                LogFirstFrameWriteIfNeeded();
-                if (writeElapsed > TimeSpan.FromMilliseconds(200))
-                {
-                    _logger.LogDebug("WriteFrame blocked for {DurationMs} ms at frame {FrameCount}", writeElapsed.TotalMilliseconds, writtenFrameCount);
-                }
-
-                _bufferPool.Enqueue(buffer);
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogError(ex, "Encode loop failed");
-        }
-
-        _logger.LogDebug("Encode loop ended");
+        _eventTrack = null;
+        _redactionSession = null;
+        _fps = 0;
+        IsPaused = false;
     }
 
     private string? ResolveMicrophoneDeviceName()
@@ -395,207 +231,55 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         }
 
         var availableDevices = _microphoneDeviceService.GetAvailableCaptureDeviceNames();
-        if (!string.IsNullOrWhiteSpace(microphoneDeviceName) &&
-            availableDevices.Any(device => string.Equals(device, microphoneDeviceName, StringComparison.OrdinalIgnoreCase)))
+        if (!string.IsNullOrWhiteSpace(microphoneDeviceName) && availableDevices.Any(device => string.Equals(device, microphoneDeviceName, StringComparison.OrdinalIgnoreCase)))
         {
             _logger.LogInformation("Microphone recording enabled using capture device '{DeviceName}'", microphoneDeviceName);
             return microphoneDeviceName;
         }
 
         microphoneDeviceName = _microphoneDeviceService.GetDefaultCaptureDeviceName();
-        if (!string.IsNullOrWhiteSpace(microphoneDeviceName) &&
-            availableDevices.Any(device => string.Equals(device, microphoneDeviceName, StringComparison.OrdinalIgnoreCase)))
+        if (!string.IsNullOrWhiteSpace(microphoneDeviceName) && availableDevices.Any(device => string.Equals(device, microphoneDeviceName, StringComparison.OrdinalIgnoreCase)))
         {
             _logger.LogInformation("Configured microphone device was unavailable; falling back to default capture device '{DeviceName}'", microphoneDeviceName);
             return microphoneDeviceName;
-        }
-
-        if (string.IsNullOrWhiteSpace(microphoneDeviceName))
-        {
-            _logger.LogWarning("Microphone recording is enabled, but no default capture device is available. Continuing with video only.");
-            return null;
         }
 
         _logger.LogWarning("Microphone recording is enabled, but no compatible capture device name could be resolved. Continuing with video only.");
         return null;
     }
 
-    public void Pause()
+    private void CompleteEventTrack()
     {
-        if (!IsRecording || IsPaused)
+        if (_eventTrack is not null)
         {
-            return;
-        }
-
-        _pauseGate.Wait();
-        IsPaused = true;
-        _logger.LogInformation("Recording paused");
-    }
-
-    public void Resume()
-    {
-        if (!IsRecording || !IsPaused)
-        {
-            return;
-        }
-
-        IsPaused = false;
-        _pauseGate.Release();
-        _logger.LogInformation("Recording resumed");
-    }
-
-    public bool TrySetMicrophoneMuted(bool isMuted)
-    {
-        if (!CanToggleMicrophone || _microphoneSession is null)
-        {
-            return false;
-        }
-
-        if (!_microphoneSession.TrySetMuted(isMuted))
-        {
-            return false;
-        }
-
-        IsMicrophoneMuted = isMuted;
-        _logger.LogInformation("Recording microphone {State}", isMuted ? "muted" : "unmuted");
-        return true;
-    }
-
-    public void Dispose() => Stop();
-
-    private void UpdateLatestFrame(byte[] source)
-    {
-        // Keep the most recent captured frame reference for stop-time padding.
-        // The frame content remains stable once capture stops and encode draining begins.
-        _latestFrameBytes = source;
-    }
-
-    private void PadRecordingToElapsedDuration(TimeSpan targetElapsed)
-    {
-        if (_fps <= 0)
-        {
-            return;
-        }
-
-        var paddingSource = _latestFrameBytes;
-        if (paddingSource is null)
-        {
-            if (_captureWidth <= 0 || _captureHeight <= 0)
-            {
-                return;
-            }
-
-            paddingSource = new byte[_captureWidth * _captureHeight * 4];
-            _logger.LogWarning("No captured frame was available for stop-time padding; using a blank frame to preserve recording duration");
-        }
-        else
-        {
-            paddingSource = (byte[])paddingSource.Clone();
-        }
-
-        var elapsedFrameCount = (int)Math.Ceiling(targetElapsed.TotalSeconds * _fps);
-        var writtenFrameCount = Volatile.Read(ref _writtenFrameCount);
-        var framesToPad = Math.Max(0, elapsedFrameCount - writtenFrameCount);
-
-        if (framesToPad == 0)
-        {
-            return;
-        }
-
-        _logger.LogInformation("Padding recording with {FrameCount} duplicate frames to match elapsed duration", framesToPad);
-
-        for (var index = 0; index < framesToPad; index++)
-        {
-            Interlocked.Increment(ref _attemptedFrameCount);
             try
             {
-                _writer?.WriteFrame(paddingSource);
+                EventTrackSummary = _eventTrack.Complete();
             }
-            catch (IOException ex)
+            catch (Exception exception)
             {
-                _logger.LogWarning(ex, "Padding aborted at frame {Index}/{Total} — writer pipe broken (ffmpeg exited early)", index + 1, framesToPad);
-                return;
+                _logger.LogWarning(exception, "Failed to finalize the recording event sidecar. The video recording was finalized successfully.");
             }
-
-            Interlocked.Increment(ref _writtenFrameCount);
         }
     }
 
-    private void LogFirstFrameWriteIfNeeded()
+    private void LogSessionSummary(TimeSpan elapsed, RawFrameRecordingStatistics? statistics)
     {
-        if (_sessionStopwatch is null)
+        if (_fps <= 0 || statistics is null)
         {
             return;
         }
 
-        var delayMilliseconds = (long)_sessionStopwatch.Elapsed.TotalMilliseconds;
-        if (Interlocked.CompareExchange(ref _firstFrameWrittenAtMilliseconds, delayMilliseconds, -1) == -1)
-        {
-            _logger.LogInformation("First frame submitted to ffmpeg after {DelayMs} ms", delayMilliseconds);
-        }
+        var outputDuration = TimeSpan.FromSeconds((double)statistics.WrittenFrameCount / _fps);
+        var droppedDuration = TimeSpan.FromSeconds((double)statistics.DroppedFrameCount / _fps);
+        _logger.LogInformation("Recording session stats: elapsed={ElapsedMs} ms, attemptedFrames={AttemptedFrames}, writtenFrames={WrittenFrames}, droppedFrames={DroppedFrames}, firstWriteDelayMs={FirstWriteDelayMs}, outputDuration={OutputDuration:c}, droppedDuration={DroppedDuration:c}", (long)elapsed.TotalMilliseconds, statistics.AttemptedFrameCount, statistics.WrittenFrameCount, statistics.DroppedFrameCount, statistics.FirstFrameWriteDelay?.TotalMilliseconds ?? -1, outputDuration, droppedDuration);
     }
 
-    private void LogSessionSummary(TimeSpan targetElapsed)
+    private sealed class VideoWriterRawFrameWriter(IVideoWriter writer) : IRawFrameWriter
     {
-        if (_fps <= 0)
+        public void WriteFrame(byte[] frameData)
         {
-            return;
+            writer.WriteFrame(frameData);
         }
-
-        var attemptedFrames = Volatile.Read(ref _attemptedFrameCount);
-        var writtenFrames = Volatile.Read(ref _writtenFrameCount);
-        var droppedFrames = Volatile.Read(ref _droppedFrameCount);
-        var firstFrameDelayMilliseconds = Volatile.Read(ref _firstFrameWrittenAtMilliseconds);
-        var effectiveOutputDuration = TimeSpan.FromSeconds((double)writtenFrames / _fps);
-        var droppedDuration = TimeSpan.FromSeconds((double)droppedFrames / _fps);
-
-        _logger.LogInformation(
-            "Recording session stats: elapsed={ElapsedMs} ms, attemptedFrames={AttemptedFrames}, writtenFrames={WrittenFrames}, droppedFrames={DroppedFrames}, firstWriteDelayMs={FirstWriteDelayMs}, outputDuration={OutputDuration:c}, droppedDuration={DroppedDuration:c}",
-            (long)targetElapsed.TotalMilliseconds,
-            attemptedFrames,
-            writtenFrames,
-            droppedFrames,
-            firstFrameDelayMilliseconds,
-            effectiveOutputDuration,
-            droppedDuration);
-    }
-
-    private void ClearBufferPool()
-    {
-        while (_bufferPool.TryDequeue(out _))
-        {
-        }
-    }
-
-    private static void WaitForStartFailureTaskShutdown(Task? task)
-    {
-        if (task is null)
-        {
-            return;
-        }
-
-        try
-        {
-            task.Wait(TimeSpan.FromSeconds(1));
-        }
-        catch (AggregateException ae) when (ae.InnerExceptions.All(ex => ex is OperationCanceledException))
-        {
-        }
-    }
-
-    // Lightweight RAII wrapper around the screen device context.
-    private sealed class ScreenDc : IDisposable
-    {
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetDC(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDc);
-
-        public IntPtr Handle { get; }
-
-        public ScreenDc() => Handle = GetDC(IntPtr.Zero);
-
-        public void Dispose() => ReleaseDC(IntPtr.Zero, Handle);
     }
 }

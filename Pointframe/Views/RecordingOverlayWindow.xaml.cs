@@ -37,6 +37,7 @@ public partial class RecordingOverlayWindow : Window
     private readonly IEventSubscription _recordingUndoSubscription;
     private readonly IEventSubscription _recordingRedoSubscription;
     private readonly Func<Point?> _getCursorScreenPoint;
+    private readonly Dictionary<UIElement, RecordingRedactionRegion> _recordingRedactions = [];
 
     private HwndSource? _windowSource;
 
@@ -79,7 +80,8 @@ public partial class RecordingOverlayWindow : Window
             element => _recordingAnnotationViewModel.TrackElement(element),
             loggerFactory.CreateLogger<AnnotationCanvasRenderer>(),
             () => _recordingAnnotationSurfaceCoordinator.SyncAnnotationState(),
-            CaptureLiveRecordingBlurSource);
+            CaptureLiveRecordingBlurSource,
+            HandleRecordingBlurCommitted);
         _recordingInteractionController = new AnnotationCanvasInteractionController(
             RecordingAnnotationCanvas,
             _recordingAnnotationViewModel,
@@ -130,6 +132,7 @@ public partial class RecordingOverlayWindow : Window
         InitializeRecordingAnnotationSurface();
 
         var hudViewModel = _recordingHudViewModelFactory(_recorder, _outputPath);
+        hudViewModel.SetRecordingSessionGeometry(_geometry);
         hudViewModel.AttachAnnotationSession(_recordingAnnotationViewModel, ToggleRecordingAnnotationInput);
         hudViewModel.InitializeDisplayMode(_geometry.IsFullScreenCapture);
         ShowRecordingHud(hudViewModel);
@@ -377,18 +380,50 @@ public partial class RecordingOverlayWindow : Window
     private void HandleRecordingClearRequested()
     {
         _recordingAnnotationSurfaceCoordinator.HandleClearRequested(_recordingInteractionController.Cancel);
+        _recorder.ClearRedactions();
+        _recordingRedactions.Clear();
+    }
+
+    private void HandleRecordingBlurCommitted(UIElement element, BlurShapeParameters parameters)
+    {
+        var captureLocalBounds = _geometry.MapCaptureLocalDipRectToCaptureLocalPixels(new Rect(
+            parameters.Left,
+            parameters.Top,
+            parameters.Width,
+            parameters.Height));
+        var redaction = _recorder.AddRedaction(captureLocalBounds);
+        if (redaction is not null)
+        {
+            _recordingRedactions[element] = redaction;
+        }
     }
 
     private ValueTask HandleRecordingUndoGroup(UndoGroupMessage message)
     {
-        _recordingAnnotationSurfaceCoordinator.ApplyUndo(message.Elements);
+        _recordingAnnotationSurfaceCoordinator.ApplyUndo(message.Elements, RemoveRecordingRedaction);
         return ValueTask.CompletedTask;
     }
 
     private ValueTask HandleRecordingRedoGroup(RedoGroupMessage message)
     {
-        _recordingAnnotationSurfaceCoordinator.ApplyRedo(message.Elements);
+        _recordingAnnotationSurfaceCoordinator.ApplyRedo(message.Elements, RestoreRecordingRedaction);
         return ValueTask.CompletedTask;
+    }
+
+    private void RemoveRecordingRedaction(UIElement element)
+    {
+        if (_recordingRedactions.TryGetValue(element, out var redaction))
+        {
+            _recorder.RemoveRedaction(redaction);
+        }
+    }
+
+    private void RestoreRecordingRedaction(UIElement element)
+    {
+        if (_recordingRedactions.TryGetValue(element, out var redaction))
+        {
+            _recorder.RestoreRedaction(redaction);
+        }
     }
 
     private void SetWindowMouseTransparency(bool isTransparent)

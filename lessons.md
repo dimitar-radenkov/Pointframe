@@ -1,5 +1,25 @@
 # Lessons Learned
 
+## Recording annotation undo must reconcile output redactions
+
+### Problem
+
+Undoing a blur annotation during recording removed its visual overlay but left the pixelation active in subsequent recorded frames.
+
+### Root cause
+
+The annotation undo stack tracked canvas elements independently from the recording redaction session, which only supported adding or clearing regions.
+
+### What fixed it
+
+- associate each committed blur element with its redaction region identity
+- remove and restore that exact region when the element is undone or redone
+- use an unbounded event queue so sidecar event bursts cannot throw before recording cleanup
+
+### Takeaway
+
+Recording-time visual undo must update both the annotation surface and every output transformation derived from it.
+
 ## Cursor-targeted tray captures must honor capture delay
 
 ### Problem

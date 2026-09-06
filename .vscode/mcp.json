@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "pointframe": {
+      "type": "stdio",
+      "command": "${workspaceFolder}\\Pointframe.Mcp\\bin\\Debug\\net10.0-windows10.0.18362.0\\Pointframe.Mcp.exe"
+    }
+  }
+}

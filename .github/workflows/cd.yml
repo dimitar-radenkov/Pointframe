@@ -68,6 +68,26 @@ jobs:
           /p:PublishProfile=win-x64
           --nologo
 
+      - name: Download ffmpeg for MCP package
+        shell: pwsh
+        run: |
+          $zipPath = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
+          $extractPath = Join-Path $env:RUNNER_TEMP 'ffmpeg'
+          Invoke-WebRequest `
+            -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip' `
+            -OutFile $zipPath
+          Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+          $ffmpeg = Get-ChildItem $extractPath -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if ($null -eq $ffmpeg) { throw 'ffmpeg.exe was not found in the downloaded archive.' }
+          "FFMPEG_PATH=$($ffmpeg.FullName)" >> $env:GITHUB_ENV
+
+      - name: Build MCP release package
+        shell: pwsh
+        run: |
+          ./packaging/build-mcp-package.ps1 `
+            -Version '${{ steps.version.outputs.display }}' `
+            -FfmpegPath $env:FFMPEG_PATH
+
       # Sign the published exe if a code-signing certificate is available.
       # Store your PFX as a base64 secret: SIGNING_CERT_B64
       # Store the PFX password as:          SIGNING_CERT_PASSWORD
@@ -134,9 +154,14 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.version.outputs.display }}
-          files: installer/output/Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe
+          files: |
+            installer/output/Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe
+            packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb
+            packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb.sha256
+            packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.server.json
           body: |
             Pointframe ${{ steps.version.outputs.display }}
 
             - Installer refresh and maintenance release.
+            - Includes the Pointframe MCPB stdio server bundle and registry metadata.
             - For the full list of commits, see Compare in this release page.
