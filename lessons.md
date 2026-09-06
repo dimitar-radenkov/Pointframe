@@ -828,3 +828,42 @@ Detection only evaluated raw OCR text (plus spacing/compact fallbacks). It had n
 ### Takeaway
 
 For OCR-driven redaction, strict regexes should stay strict, but numeric-sensitive categories need a bounded confusable-character fallback to remain robust on real UI captures.
+
+## Turning off single-file native bundling silently breaks the installer, not the dev build
+
+### Problem
+
+Whisper.net resolves its native runtime by probing `runtimes\win-x64` on disk, so `IncludeNativeLibrariesForSelfExtract` was flipped to `false` in `win-x64.pubxml`. Everything still worked when running from `bin\`, and the automated tests stayed green, but the installer would have shipped an app that could not start at all.
+
+### Root cause
+
+That flag is all-or-nothing. Turning it off pushes *every* native out of the bundle — `e_sqlite3.dll`, `wpfgfx_cor3.dll`, `PresentationNative_cor3.dll`, `vcruntime140_cor3.dll` and friends — not just the one that needed to be loose. `installer/Pointframe.iss` shipped only `Pointframe.exe` + `appsettings.json`, under a comment claiming "everything is bundled inside it", so those natives were never packaged. The first failure was the EF Core migration on startup, which reads as a database problem rather than a packaging one.
+
+### What fixed it
+
+- add `{#PublishDir}\*.dll` and `{#PublishDir}\runtimes\win-x64\*` to the installer `[Files]` section, plus `{app}\runtimes` and `{app}\models` to `[UninstallDelete]`
+- assert the natives exist after install in `InstallerSmokeTests.AssertNativeLibrariesInstalled`, so the failure names the missing file instead of a vague launch error
+
+### Takeaway
+
+A dev machine cannot detect this class of bug — the DLLs resolve from elsewhere. Any change to single-file publish settings must be validated by inspecting the *publish output* and the *installed* directory, not by running from `bin\`. If a publish property changes what lands next to the exe, the installer file list has to change in the same commit.
+
+## Encoding.UTF8 emits a BOM, which corrupts the first SRT cue
+
+### Problem
+
+Generated `.srt` files started with `EF BB BF` before the `1` cue index. Players and strict parsers treat the first subtitle as malformed and drop it. The `.srt` also used bare LF where SRT expects CRLF.
+
+### Root cause
+
+`File.WriteAllTextAsync(path, text, Encoding.UTF8)` writes a byte-order mark, because `Encoding.UTF8` is constructed with `encoderShouldEmitUTF8Identifier: true`. The feature plan actually specified "UTF-8 without BOM"; the implementation just used the obvious-looking constant. Nothing caught it because assertions compared decoded strings, where the BOM is invisible.
+
+### What fixed it
+
+- write with `new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)`
+- emit CRLF explicitly in `SubtitleFormatter`, and skip blank segments instead of writing empty-bodied cues
+- assert on raw *bytes* in `TranscriptionServiceTests`, not on the decoded string
+
+### Takeaway
+
+For any file consumed by an external parser, use `new UTF8Encoding(false)` rather than `Encoding.UTF8`, and test the bytes. String-level assertions cannot see a BOM or a wrong line ending.

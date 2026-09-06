@@ -699,6 +699,8 @@
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
                                     <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,16,0">
@@ -754,11 +756,46 @@
                                             Margin="0,16,0,16"/>
 
                                     <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,16,0">
+                                        <TextBlock Text="Transcript" Style="{StaticResource RowTitle}"/>
+                                        <TextBlock Text="Writes a .txt and .srt transcript next to the recording. Transcribes your narration only — system audio is not recorded. English speech, transcribed on this machine."
+                                                   Style="{StaticResource RowDescription}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="4" Grid.Column="1" VerticalAlignment="Center">
+                                        <CheckBox Content="Generate transcript after recording"
+                                                  IsChecked="{Binding RecordingTranscriptEnabled}"
+                                                  IsEnabled="{Binding CanEnableTranscript}"
+                                                  AutomationProperties.AutomationId="SettingsWindow.RecordingTranscriptEnabled"/>
+                                        <TextBlock Text="{Binding TranscriptStatusText}"
+                                                   Style="{StaticResource RowDescription}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,6,0,0"/>
+                                        <Button Content="Download speech model"
+                                                Style="{StaticResource SecondaryBtn}"
+                                                Command="{Binding DownloadTranscriptModelCommand}"
+                                                HorizontalAlignment="Left"
+                                                Margin="0,8,0,0"
+                                                AutomationProperties.AutomationId="SettingsWindow.DownloadTranscriptModel"
+                                                Visibility="{Binding ShowTranscriptModelDownload, Converter={StaticResource BoolToVis}}"/>
+                                        <ProgressBar Height="4"
+                                                     Margin="0,8,0,0"
+                                                     Minimum="0"
+                                                     Maximum="100"
+                                                     Value="{Binding TranscriptModelDownloadProgress}"
+                                                     Visibility="{Binding IsDownloadingTranscriptModel, Converter={StaticResource BoolToVis}}"/>
+                                    </StackPanel>
+
+                                    <Border Grid.Row="5"
+                                            Grid.ColumnSpan="2"
+                                            Height="1"
+                                            Background="{DynamicResource DividerColor}"
+                                            Margin="0,16,0,16"/>
+
+                                    <StackPanel Grid.Row="6" Grid.Column="0" Margin="0,0,16,0">
                                         <TextBlock Text="GIF export FPS" Style="{StaticResource RowTitle}"/>
                                         <TextBlock Text="Lower values make smaller files; higher values look smoother."
                                                    Style="{StaticResource RowDescription}"/>
                                     </StackPanel>
-                                    <ComboBox Grid.Row="4"
+                                    <ComboBox Grid.Row="6"
                                               Grid.Column="1"
                                               Width="140"
                                               Style="{StaticResource CompactComboBox}"

@@ -23,6 +23,12 @@
 #define FFmpegZipUrl  "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 #define FFmpegZipFile "ffmpeg.zip"
 
+; Whisper speech model for recording transcripts.
+; Note: the ggml-org/whisper.cpp path returns 401; ggerganov/whisper.cpp is the
+; repository that actually serves these files.
+#define WhisperModelUrl  "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+#define WhisperModelFile "ggml-base.en.bin"
+
 [Setup]
 AppId={{67DE561D-F02A-4E9F-AF4A-44D98A092D54}
 AppName={#AppName}
@@ -54,12 +60,22 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "startupicon"; Description: "Start automatically with Windows"; GroupDescription: "Startup:"
 Name: "ffmpeg"; Description: "Download ffmpeg for MP4 recording and GIF export (~80 MB, recommended)"; GroupDescription: "Optional components:"; Flags: checkedonce
+Name: "whispermodel"; Description: "Download English speech model for recording transcripts (~141 MB)"; GroupDescription: "Optional components:"; Flags: unchecked
 
 [Files]
-; The single-file publish exe — everything is bundled inside it
+; The single-file publish exe — managed code and assets are bundled inside it
 Source: "{#PublishDir}\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 ; Configuration file — ships alongside the exe
 Source: "{#PublishDir}\appsettings.json"; DestDir: "{app}"; Flags: ignoreversion
+; Native libraries. IncludeNativeLibrariesForSelfExtract is false in win-x64.pubxml
+; because Whisper.net probes runtimes\win-x64 on disk rather than the self-extract
+; directory, so every native ships loose next to the exe. Without these the app cannot
+; start at all: e_sqlite3.dll is needed for the EF Core migration on first run, and
+; wpfgfx_cor3.dll / PresentationNative_cor3.dll for WPF rendering.
+Source: "{#PublishDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
+; Whisper native runtime — x64 only; the arm64 and x86 copies in the publish output
+; are never loaded by this x64 build and would only bloat the installer.
+Source: "{#PublishDir}\runtimes\win-x64\*"; DestDir: "{app}\runtimes\win-x64"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -80,6 +96,8 @@ Filename: "{app}\{#AppExeName}"; \
 
 [UninstallDelete]
 Type: files; Name: "{app}\ffmpeg.exe"
+Type: filesandordirs; Name: "{app}\runtimes"
+Type: filesandordirs; Name: "{app}\models"
 
 [UninstallRun]
 Filename: "taskkill.exe"; Parameters: "/f /im {#AppExeName}"; Flags: runhidden
@@ -125,44 +143,57 @@ begin
     'You can continue without ffmpeg, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed next to the app or available on PATH.';
 end;
 
+// Each optional component downloads in its own pass so a failure is always
+// attributed to the right component, and skipping one never blocks the other.
+// Both are best-effort: setup always continues, the feature is simply unavailable.
+procedure DownloadOptionalComponent(const Caption, Description, Url, FileName, CancelMessage, FailMessage: String);
+begin
+  DownloadPage.Caption := Caption;
+  DownloadPage.Description := Description;
+  DownloadPage.Clear;
+  DownloadPage.Add(Url, FileName, '');
+  DownloadPage.Show;
+  try
+    try
+      DownloadPage.Download;
+      if not FileExists(AddBackslash(ExpandConstant('{tmp}')) + FileName) then
+        SuppressibleMsgBox(FailMessage, mbError, MB_OK, IDOK);
+    except
+      if DownloadPage.AbortedByUser then
+        SuppressibleMsgBox(CancelMessage, mbError, MB_OK, IDOK)
+      else
+        SuppressibleMsgBox(
+          FailMessage + #13#10#13#10 + 'Error: ' + GetExceptionMessage,
+          mbError, MB_OK, IDOK);
+    end;
+  finally
+    DownloadPage.Hide;
+  end;
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
-var
-  DownloadFailed: Boolean;
 begin
   Result := True;
-  if (CurPageID = wpReady) and IsTaskSelected('ffmpeg') then
-  begin
-    DownloadFailed := False;
-    DownloadPage.Clear;
-    DownloadPage.Add('{#FFmpegZipUrl}', '{#FFmpegZipFile}', '');
-    DownloadPage.Show;
-    try
-      try
-        DownloadPage.Download;
-      except
-        if DownloadPage.AbortedByUser then
-          SuppressibleMsgBox(
-            'ffmpeg download was cancelled. Pointframe will still install, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed.',
-            mbError, MB_OK, IDOK)
-        else
-          SuppressibleMsgBox(
-            'ffmpeg download failed. Pointframe will still install, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed.' + #13#10#13#10 + #13#10 +
-            'Error: ' + GetExceptionMessage,
-            mbError, MB_OK, IDOK);
+  if CurPageID <> wpReady then
+    Exit;
 
-        DownloadFailed := True;
-      end;
+  if WizardIsTaskSelected('ffmpeg') then
+    DownloadOptionalComponent(
+      'Installing ffmpeg',
+      'Pointframe requires ffmpeg for MP4 recording and GIF export. Please wait while the installer downloads it...',
+      '{#FFmpegZipUrl}',
+      '{#FFmpegZipFile}',
+      'ffmpeg download was cancelled. Pointframe will still install, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed.',
+      'ffmpeg download failed. Pointframe will still install, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed.');
 
-      if (not DownloadFailed) and not FileExists(ExpandConstant('{tmp}\{#FFmpegZipFile}')) then
-      begin
-        SuppressibleMsgBox(
-          'ffmpeg download did not produce the expected archive. Pointframe will still install, but MP4 recording and GIF export will be unavailable until ffmpeg.exe is installed.',
-          mbError, MB_OK, IDOK);
-      end;
-    finally
-      DownloadPage.Hide;
-    end;
-  end;
+  if WizardIsTaskSelected('whispermodel') then
+    DownloadOptionalComponent(
+      'Downloading speech model',
+      'Pointframe uses this model to transcribe recordings on your machine. Please wait while the installer downloads it...',
+      '{#WhisperModelUrl}',
+      '{#WhisperModelFile}',
+      'Speech model download was cancelled. Pointframe will still install; you can download the model later from Settings, under Recording.',
+      'Speech model download failed. Pointframe will still install; you can download the model later from Settings, under Recording.');
 end;
 
 procedure ExtractFfmpeg;
@@ -205,8 +236,47 @@ begin
       mbError, MB_OK, IDOK);
 end;
 
+// The download lands in {tmp}; move it next to the app so TranscriptModelResolver
+// finds it at its installer-layout location ({app}\models). The in-app download in
+// Settings writes to %LOCALAPPDATA% instead, and the resolver probes both.
+procedure InstallWhisperModel;
+var
+  SourcePath, DestDir, DestPath: String;
+begin
+  SourcePath := ExpandConstant('{tmp}\{#WhisperModelFile}');
+  if not FileExists(SourcePath) then
+  begin
+    Log('Speech model not downloaded - skipping install');
+    Exit;
+  end;
+
+  DestDir := ExpandConstant('{app}\models');
+  if not ForceDirectories(DestDir) then
+  begin
+    SuppressibleMsgBox(
+      'Could not create the models folder. Pointframe will still install; you can download the model later from Settings, under Recording.',
+      mbError, MB_OK, IDOK);
+    Exit;
+  end;
+
+  DestPath := AddBackslash(DestDir) + '{#WhisperModelFile}';
+  // RenameFile is a move when {tmp} and {app} share a volume, which avoids a
+  // second 141 MB copy; fall back to a copy when they do not.
+  if RenameFile(SourcePath, DestPath) then
+    Log('Speech model installed to ' + DestPath)
+  else if CopyFile(SourcePath, DestPath, False) then
+    Log('Speech model copied to ' + DestPath)
+  else
+    SuppressibleMsgBox(
+      'The speech model could not be saved. Pointframe will still install; you can download the model later from Settings, under Recording.',
+      mbError, MB_OK, IDOK);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
+  begin
     ExtractFfmpeg;
+    InstallWhisperModel;
+  end;
 end;

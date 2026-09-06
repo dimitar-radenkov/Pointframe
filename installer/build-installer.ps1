@@ -37,7 +37,9 @@ $OutputDir   = Join-Path $PSScriptRoot "output"
 # ── 1. Locate Inno Setup ────────────────────────────────────────────────────
 $IsccPaths = @(
     "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-    "C:\Program Files\Inno Setup 6\ISCC.exe"
+    "C:\Program Files\Inno Setup 6\ISCC.exe",
+    # winget (JRSoftware.InnoSetup) installs per-user by default
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 )
 $Iscc = $IsccPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
 

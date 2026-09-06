@@ -102,6 +102,36 @@ internal sealed class TrayIconManager : ITrayIconManager
         ShowRecordingCompletedBalloon(recentRecording);
     }
 
+    public void ShowTranscriptBalloon(string title, string message, bool isError)
+    {
+        if (_trayIcon is null)
+        {
+            return;
+        }
+
+        // Clear any pending click target from an earlier balloon. Balloons share one
+        // click handler, so leaving these set would make a click on this balloon open
+        // the previous recording or run the pending update instead.
+        _pendingRecordingBalloonPath = null;
+        _pendingUpdate = null;
+        _trayIcon.ShowBalloonTip(title, message, isError ? BalloonIcon.Warning : BalloonIcon.Info);
+    }
+
+    public void SetTranscriptionActivity(int pendingCount)
+    {
+        if (_trayIcon is null)
+        {
+            return;
+        }
+
+        _trayIcon.ToolTipText = pendingCount switch
+        {
+            <= 0 => "Pointframe",
+            1 => "Pointframe — transcribing a recording…",
+            _ => $"Pointframe — transcribing {pendingCount} recordings…",
+        };
+    }
+
     public void HandleCaptureCompleted(string outputPath)
     {
         _recentCaptures.RemoveAll(p => string.Equals(p, outputPath, StringComparison.OrdinalIgnoreCase));

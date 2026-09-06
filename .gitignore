@@ -388,3 +388,6 @@ MigrationBackup/
 .playwright-mcp/
 *.lscache
 /.understand-anything
+
+# Built installers — 100+ MB artifacts, produced by installer/build-installer.ps1
+installer/output/

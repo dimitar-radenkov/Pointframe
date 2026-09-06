@@ -25,9 +25,11 @@ public static class TelemetryPropertyKeys
     public const string LastAction = "last_action";
     public const string OsBuild = "os_build";
     public const string ScreenCount = "screen_count";
+    public const string SegmentCount = "segment_count";
     public const string SelectionHeightPx = "selection_height_px";
     public const string SelectionWidthPx = "selection_width_px";
     public const string SessionMinutes = "session_minutes";
+    public const string SkipReason = "skip_reason";
     public const string Source = "source";
     public const string State = "state";
     public const string Success = "success";
@@ -75,6 +77,8 @@ public static class TelemetryEvents
     public const string RecordingHudUndoAnnotations = "recording_hud_undo_annotations";
     public const string RecordingCompleted = "recording_completed";
     public const string RecordingStarted = "recording_started";
+    public const string TranscriptCompleted = "transcript_completed";
+    public const string TranscriptFailed = "transcript_failed";
     public const string SettingsCanceled = "settings_canceled";
     public const string SettingsDefaultsRestored = "settings_defaults_restored";
     public const string SettingsOpened = "settings_opened";
@@ -167,6 +171,8 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.RecordingHudUndoAnnotations] = Product(TelemetryEvents.RecordingHudUndoAnnotations),
             [TelemetryEvents.RecordingCompleted] = Product(TelemetryEvents.RecordingCompleted).WithOptional(TelemetryPropertyKeys.DurationSeconds),
             [TelemetryEvents.RecordingStarted] = Product(TelemetryEvents.RecordingStarted, TelemetryPropertyKeys.Type),
+            [TelemetryEvents.TranscriptCompleted] = Product(TelemetryEvents.TranscriptCompleted, TelemetryPropertyKeys.Success, TelemetryPropertyKeys.DurationSeconds).WithOptional(TelemetryPropertyKeys.SegmentCount, TelemetryPropertyKeys.SkipReason),
+            [TelemetryEvents.TranscriptFailed] = Diagnostic(TelemetryEvents.TranscriptFailed, TelemetryPropertyKeys.ExceptionType),
             [TelemetryEvents.SettingsCanceled] = Product(TelemetryEvents.SettingsCanceled),
             [TelemetryEvents.SettingsDefaultsRestored] = Product(TelemetryEvents.SettingsDefaultsRestored),
             [TelemetryEvents.SettingsOpened] = Product(TelemetryEvents.SettingsOpened, TelemetryPropertyKeys.AppSection),

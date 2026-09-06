@@ -57,6 +57,7 @@ public partial class SettingsViewModel : ObservableObject
 
     private readonly IDialogService _dialogService;
     private readonly IMicrophoneDeviceService _microphoneDeviceService;
+    private readonly ITranscriptModelService _transcriptModelService;
     private readonly IUserSettingsService _settingsService;
     private readonly ITelemetryService _telemetry;
     private readonly IThemeService _themeService;
@@ -82,7 +83,20 @@ public partial class SettingsViewModel : ObservableObject
         IDialogService dialogService,
         IMicrophoneDeviceService microphoneDeviceService,
         ITelemetryService telemetry)
+        : this(settingsService, themeService, dialogService, microphoneDeviceService, telemetry, NullTranscriptModelService.Instance)
     {
+    }
+
+    public SettingsViewModel(
+        IUserSettingsService settingsService,
+        IThemeService themeService,
+        IDialogService dialogService,
+        IMicrophoneDeviceService microphoneDeviceService,
+        ITelemetryService telemetry,
+        ITranscriptModelService transcriptModelService)
+    {
+        _transcriptModelService = transcriptModelService;
+        _transcriptModelInstalled = transcriptModelService.IsModelInstalled;
         _dialogService = dialogService;
         _microphoneDeviceService = microphoneDeviceService;
         _settingsService = settingsService;
@@ -95,6 +109,7 @@ public partial class SettingsViewModel : ObservableObject
         _autoSaveScreenshots = s.AutoSaveScreenshots;
         _recordingOutputPath = s.RecordingOutputPath;
         _recordMicrophone = s.RecordMicrophone;
+        _recordingTranscriptEnabled = s.RecordingTranscriptEnabled;
         _selectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(s.RecordingMicrophoneDeviceName);
         _gifFps = s.GifFps;
         _recordingCursorHighlightEnabled = s.RecordingCursorHighlightEnabled;
@@ -163,7 +178,31 @@ public partial class SettingsViewModel : ObservableObject
     private string _recordingOutputPath;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEnableTranscript))]
+    [NotifyPropertyChangedFor(nameof(TranscriptStatusText))]
     private bool _recordMicrophone;
+
+    [ObservableProperty]
+    private bool _recordingTranscriptEnabled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEnableTranscript))]
+    [NotifyPropertyChangedFor(nameof(ShowTranscriptModelDownload))]
+    [NotifyPropertyChangedFor(nameof(TranscriptStatusText))]
+    [NotifyCanExecuteChangedFor(nameof(DownloadTranscriptModelCommand))]
+    private bool _transcriptModelInstalled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TranscriptStatusText))]
+    [NotifyCanExecuteChangedFor(nameof(DownloadTranscriptModelCommand))]
+    private bool _isDownloadingTranscriptModel;
+
+    [ObservableProperty]
+    private double _transcriptModelDownloadProgress;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TranscriptStatusText))]
+    private bool _transcriptModelDownloadFailed;
 
     [ObservableProperty]
     private string? _selectedMicrophoneDeviceName;
@@ -440,6 +479,7 @@ public partial class SettingsViewModel : ObservableObject
             RecordingOutputPath = RecordingOutputPath,
             RecordMicrophone = RecordMicrophone,
             RecordingMicrophoneDeviceName = SelectedMicrophoneDeviceName,
+            RecordingTranscriptEnabled = RecordingTranscriptEnabled,
             RecordingFps = _recordingFps,
             GifFps = GifFps,
             RecordingCursorHighlightEnabled = RecordingCursorHighlightEnabled,
@@ -652,6 +692,7 @@ public partial class SettingsViewModel : ObservableObject
             case SettingsSection.Recording:
                 RecordingOutputPath = defaults.RecordingOutputPath;
                 RecordMicrophone = defaults.RecordMicrophone;
+                RecordingTranscriptEnabled = defaults.RecordingTranscriptEnabled;
                 SelectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(defaults.RecordingMicrophoneDeviceName);
                 GifFps = defaults.GifFps;
                 RecordingCursorHighlightEnabled = defaults.RecordingCursorHighlightEnabled;
@@ -695,6 +736,7 @@ public partial class SettingsViewModel : ObservableObject
         ScreenshotSavePath = defaults.ScreenshotSavePath;
         AutoSaveScreenshots = defaults.AutoSaveScreenshots;
         RecordingOutputPath = defaults.RecordingOutputPath;
+        RecordingTranscriptEnabled = defaults.RecordingTranscriptEnabled;
         RecordMicrophone = defaults.RecordMicrophone;
         SelectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(defaults.RecordingMicrophoneDeviceName);
         GifFps = defaults.GifFps;
@@ -809,4 +851,64 @@ public partial class SettingsViewModel : ObservableObject
             return Colors.Red;
         }
     }
+
+    public bool CanEnableTranscript => RecordMicrophone && TranscriptModelInstalled;
+
+    public bool ShowTranscriptModelDownload => !TranscriptModelInstalled;
+
+    public string TranscriptStatusText
+    {
+        get
+        {
+            if (IsDownloadingTranscriptModel)
+            {
+                return "Downloading the English speech model…";
+            }
+
+            if (TranscriptModelDownloadFailed)
+            {
+                return "The download failed. Check your internet connection and try again.";
+            }
+
+            if (!TranscriptModelInstalled)
+            {
+                return "The English speech model is not installed yet (about 141 MB).";
+            }
+
+            if (!RecordMicrophone)
+            {
+                return "Turn on \"Include microphone audio\" to transcribe your narration.";
+            }
+
+            return "Ready. Transcripts are generated on this machine — nothing is uploaded.";
+        }
+    }
+
+    private bool CanDownloadTranscriptModel() => !TranscriptModelInstalled && !IsDownloadingTranscriptModel;
+
+    [RelayCommand(CanExecute = nameof(CanDownloadTranscriptModel))]
+    private async Task DownloadTranscriptModel()
+    {
+        IsDownloadingTranscriptModel = true;
+        TranscriptModelDownloadFailed = false;
+        TranscriptModelDownloadProgress = 0;
+
+        try
+        {
+            var progress = new Progress<double>(percent => TranscriptModelDownloadProgress = percent);
+            var downloaded = await _transcriptModelService.DownloadModel(progress);
+
+            TranscriptModelInstalled = _transcriptModelService.IsModelInstalled;
+            TranscriptModelDownloadFailed = !downloaded && !TranscriptModelInstalled;
+        }
+        catch (OperationCanceledException)
+        {
+            TranscriptModelInstalled = _transcriptModelService.IsModelInstalled;
+        }
+        finally
+        {
+            IsDownloadingTranscriptModel = false;
+        }
+    }
+
 }

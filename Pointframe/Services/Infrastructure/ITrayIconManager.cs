@@ -13,4 +13,8 @@ internal interface ITrayIconManager : IDisposable
     void HandleRecordingCompleted(string outputPath, string elapsedText);
 
     void HandleCaptureCompleted(string outputPath);
+
+    void ShowTranscriptBalloon(string title, string message, bool isError);
+
+    void SetTranscriptionActivity(int pendingCount);
 }
