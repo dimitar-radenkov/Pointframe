@@ -57,7 +57,7 @@ dotnet format Pointframe/Pointframe.csproj --verify-no-changes
 
 **Recording:** user selects region from overlay → recording pipeline starts (`ScreenRecordingService` → `IVideoWriter`/`FFMpegVideoWriter`) → `RecordingOverlayWindow` provides live annotation surface → `RecordingHudViewModel` controls pause/resume/stop.
 
-**Settings persistence:** never cache settings in fields — always read from `IUserSettingsService.Current` at the point of use. Adding a new setting requires updating three places together or the value is silently dropped on save: `Pointframe/Models/UserSettings.cs` (the property + default), `UserSettingsService.Clone(...)`, and `SettingsViewModel.Save()`.
+**Settings persistence:** never cache settings in fields — always read from `IUserSettingsService.Current` at the point of use. Adding a new setting requires updating two places together or the value is silently reset on save: `Pointframe/Models/UserSettings.cs` (the property + default) and `SettingsViewModel.Save()`. `UserSettingsService.Clone(...)` needs no edit — it round-trips through the serializer.
 
 ### MVVM Conventions
 
