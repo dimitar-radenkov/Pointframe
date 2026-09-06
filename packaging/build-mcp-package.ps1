@@ -25,7 +25,7 @@ dotnet publish $projectPath `
     --runtime win-x64 `
     --self-contained true `
     /p:PublishSingleFile=true `
-    /p:PublishReadyToRun=true `
+    /p:PublishReadyToRun=false `
     /p:EnableCompressionInSingleFile=true `
     /p:PublishTrimmed=false `
     /p:PublishDir="$publishDirectory\" `
