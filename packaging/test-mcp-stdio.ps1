@@ -18,12 +18,15 @@ $startInfo.RedirectStandardError = $true
 
 $process = [System.Diagnostics.Process]::new()
 $process.StartInfo = $startInfo
+$started = $false
 try
 {
     if (-not $process.Start())
     {
         throw "Failed to start MCP executable."
     }
+
+    $started = $true
 
     $initialize = @{
         jsonrpc = "2.0"
@@ -61,7 +64,14 @@ try
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     while ($responses.Count -lt 2 -and [DateTime]::UtcNow -lt $deadline)
     {
-        $line = $process.StandardOutput.ReadLine()
+        $remainingMilliseconds = [Math]::Max(1, [int]($deadline - [DateTime]::UtcNow).TotalMilliseconds)
+        $readTask = $process.StandardOutput.ReadLineAsync()
+        if (-not $readTask.Wait($remainingMilliseconds))
+        {
+            throw "MCP smoke test timed out waiting for stdout after receiving $($responses.Count) response(s)."
+        }
+
+        $line = $readTask.Result
         if ($null -eq $line)
         {
             break
@@ -104,7 +114,7 @@ try
 }
 finally
 {
-    if (-not $process.HasExited)
+    if ($started -and -not $process.HasExited)
     {
         $process.Kill()
     }
