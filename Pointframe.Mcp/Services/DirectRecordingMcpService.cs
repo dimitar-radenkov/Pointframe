@@ -45,10 +45,3 @@ public sealed class DirectRecordingMcpService : IDirectRecordingMcpService
             result.Artifact);
     }
 }
-
-public sealed record DirectRecordingResponse(
-    int SchemaVersion,
-    bool Success,
-    DirectCaptureError? Error = null,
-    DirectRecordingSession? Session = null,
-    DirectRecordingArtifact? Artifact = null);

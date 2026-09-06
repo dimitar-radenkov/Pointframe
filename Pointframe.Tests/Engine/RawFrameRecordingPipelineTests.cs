@@ -8,7 +8,7 @@ public sealed class RawFrameRecordingPipelineTests
     [Fact]
     public void Stop_PadsUsingOneCloneOfTheLatestCapturedFrame()
     {
-        var writer = new CollectingWriter();
+        using var writer = new CollectingWriter();
         using var capture = new StaticFrameCapture([1, 2, 3, 4]);
         using var pipeline = new RawFrameRecordingPipeline(
             writer,
@@ -16,6 +16,7 @@ public sealed class RawFrameRecordingPipelineTests
             capture);
 
         Assert.True(capture.Captured.Wait(TimeSpan.FromSeconds(1)));
+        Assert.True(writer.FirstFrameWritten.Wait(TimeSpan.FromSeconds(1)));
         var statistics = pipeline.Stop(TimeSpan.FromMilliseconds(250));
 
         Assert.True(statistics.WrittenFrameCount >= 3);
@@ -48,13 +49,20 @@ public sealed class RawFrameRecordingPipelineTests
         return frame[offset..(offset + 4)];
     }
 
-    private sealed class CollectingWriter : IRawFrameWriter
+    private sealed class CollectingWriter : IRawFrameWriter, IDisposable
     {
         public List<byte[]> Frames { get; } = [];
+        public ManualResetEventSlim FirstFrameWritten { get; } = new();
 
         public void WriteFrame(byte[] frameData)
         {
             Frames.Add((byte[])frameData.Clone());
+            FirstFrameWritten.Set();
+        }
+
+        public void Dispose()
+        {
+            FirstFrameWritten.Dispose();
         }
     }
 

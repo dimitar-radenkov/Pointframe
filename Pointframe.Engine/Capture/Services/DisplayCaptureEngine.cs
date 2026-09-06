@@ -5,42 +5,6 @@ using System.Windows.Forms;
 
 namespace Pointframe.Engine;
 
-public readonly record struct PixelBounds(int X, int Y, int Width, int Height)
-{
-    public Rectangle ToRectangle()
-    {
-        return new Rectangle(X, Y, Width, Height);
-    }
-}
-
-public sealed record DisplayDescriptor(
-    string MonitorName,
-    double DpiScaleX,
-    double DpiScaleY,
-    PixelBounds BoundsPixels,
-    PixelBounds WorkAreaBoundsPixels = default);
-
-public sealed class CapturedMonitor(DisplayDescriptor Display, Bitmap Bitmap) : IDisposable
-{
-    public DisplayDescriptor Display { get; } = Display;
-
-    public Bitmap Bitmap { get; } = Bitmap;
-
-    public void Dispose()
-    {
-        Bitmap.Dispose();
-    }
-}
-
-public interface IDisplayCaptureEngine
-{
-    IReadOnlyList<DisplayDescriptor> GetDisplays();
-
-    Bitmap Capture(PixelBounds boundsPixels);
-
-    CapturedMonitor CaptureMonitor(string monitorName);
-}
-
 public sealed class DisplayCaptureEngine : IDisplayCaptureEngine
 {
     private const uint MonitorDefaultToNearest = 2;

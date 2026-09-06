@@ -7,28 +7,6 @@ using System.Threading.Channels;
 
 namespace Pointframe.Engine;
 
-public interface IRawFrameWriter
-{
-    void WriteFrame(byte[] frameData);
-}
-
-public interface IRawFrameCapture : IDisposable
-{
-    void Capture(byte[] frameData);
-}
-
-public sealed record RawFrameRecordingOptions(
-    PixelBounds CaptureBoundsPixels,
-    int FramesPerSecond,
-    Func<ReadOnlyMemory<PixelBounds>> RedactionRegionsProvider,
-    int BufferPoolSize = 4);
-
-public sealed record RawFrameRecordingStatistics(
-    int AttemptedFrameCount,
-    int WrittenFrameCount,
-    int DroppedFrameCount,
-    TimeSpan? FirstFrameWriteDelay);
-
 public sealed class RawFrameRecordingPipeline : IDisposable
 {
     private readonly IRawFrameWriter _writer;
