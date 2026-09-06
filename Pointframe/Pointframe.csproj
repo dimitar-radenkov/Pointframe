@@ -35,6 +35,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Pointframe.Engine\Pointframe.Engine.csproj" />
     <ProjectReference Include="..\Pointframe.Data\Pointframe.Data.csproj" />
 
     <Content Include="appsettings.json">

@@ -48,6 +48,8 @@ public partial class OverlayWindow : Window
     private SelectionSessionResult? _pendingSelectionSession;
     private readonly List<SelectionBackdropWindow> _annotatingBackdropWindows = [];
 
+    internal OverlayViewModel ViewModel => _vm;
+
     internal OverlayWindow(
         OverlayViewModel vm,
         IScreenCaptureService screenCapture,

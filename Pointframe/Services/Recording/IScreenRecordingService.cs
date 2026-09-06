@@ -1,3 +1,5 @@
+using System.Windows;
+
 namespace Pointframe.Services;
 
 public interface IScreenRecordingService : IDisposable
@@ -7,6 +9,7 @@ public interface IScreenRecordingService : IDisposable
     bool IsRecordingMicrophoneEnabled { get; }
     bool CanToggleMicrophone { get; }
     bool IsMicrophoneMuted { get; }
+    RecordingEventTrackSummary? EventTrackSummary { get; }
     void Start(
         int x,
         int y,
@@ -17,4 +20,6 @@ public interface IScreenRecordingService : IDisposable
     void Pause();
     void Resume();
     bool TrySetMicrophoneMuted(bool isMuted);
+    bool TryAddRedaction(Int32Rect captureLocalBounds);
+    bool ClearRedactions();
 }

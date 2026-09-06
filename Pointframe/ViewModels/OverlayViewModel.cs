@@ -209,10 +209,13 @@ public partial class OverlayViewModel : AnnotationViewModel
 
     private void SaveBitmapToPath(BitmapSource bitmap, string savePath, string captureAction)
     {
-        using var outputStream = _fileSystemService.OpenWrite(savePath);
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        encoder.Save(outputStream);
+        using (var outputStream = _fileSystemService.OpenWrite(savePath))
+        {
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            encoder.Save(outputStream);
+        }
+
         _ = _eventAggregator.Publish(new CaptureCompletedMessage(savePath, captureAction));
     }
 

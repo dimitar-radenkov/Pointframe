@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Pointframe.Models;
 
@@ -39,6 +40,17 @@ public class DesktopAutomationFixture : IDisposable
         {
             environmentVariables[AutomationOpenImagePathEnvironmentVariable] = SampleOverlayPath;
         }
+
+        return environmentVariables;
+    }
+
+    public IReadOnlyDictionary<string, string> CreateAgentBridgeEnvironmentVariables()
+    {
+        var environmentVariables = new Dictionary<string, string>(CreateEnvironmentVariables())
+        {
+            ["POINTFRAME_AGENT_BRIDGE_PIPE"] = $"pointframe-agent-test-{Guid.NewGuid():N}",
+            ["POINTFRAME_AGENT_BRIDGE_SECRET"] = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+        };
 
         return environmentVariables;
     }

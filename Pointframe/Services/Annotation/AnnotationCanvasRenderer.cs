@@ -77,7 +77,8 @@ internal sealed class AnnotationCanvasRenderer
         Action<UIElement> onAdd,
         ILogger<AnnotationCanvasRenderer> logger,
         Action? onCanvasChanged = null,
-        Func<BlurShapeParameters, BitmapSource?>? captureLiveBlurSource = null)
+        Func<BlurShapeParameters, BitmapSource?>? captureLiveBlurSource = null,
+        Action<BlurShapeParameters>? onBlurCommitted = null)
     {
         _canvas = canvas;
         _vm = vm;
@@ -94,7 +95,7 @@ internal sealed class AnnotationCanvasRenderer
             [AnnotationTool.Line] = new LineShapeHandler(GetShapeParameters),
             [AnnotationTool.Circle] = new EllipseShapeHandler(GetShapeParameters),
             [AnnotationTool.Number] = new NumberShapeHandler(_vm.IncrementNumberCounter),
-            [AnnotationTool.Blur] = new BlurShapeHandler(GetShapeParameters, () => _backgroundCapture, () => _dpiX, () => _dpiY, captureLiveBlurSource),
+            [AnnotationTool.Blur] = new BlurShapeHandler(GetShapeParameters, () => _backgroundCapture, () => _dpiX, () => _dpiY, captureLiveBlurSource, onBlurCommitted),
             [AnnotationTool.Callout] = new CalloutShapeHandler(GetShapeParameters, _vm.ReplaceTrackedElement, _vm.RemoveTrackedElement, onCanvasChanged),
             [AnnotationTool.ColorPicker] = new ColorPickerShapeHandler(),
             [AnnotationTool.PixelRuler] = new PixelRulerShapeHandler(GetShapeParameters),

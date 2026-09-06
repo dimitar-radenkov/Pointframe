@@ -79,7 +79,8 @@ public partial class RecordingOverlayWindow : Window
             element => _recordingAnnotationViewModel.TrackElement(element),
             loggerFactory.CreateLogger<AnnotationCanvasRenderer>(),
             () => _recordingAnnotationSurfaceCoordinator.SyncAnnotationState(),
-            CaptureLiveRecordingBlurSource);
+            CaptureLiveRecordingBlurSource,
+            HandleRecordingBlurCommitted);
         _recordingInteractionController = new AnnotationCanvasInteractionController(
             RecordingAnnotationCanvas,
             _recordingAnnotationViewModel,
@@ -130,6 +131,7 @@ public partial class RecordingOverlayWindow : Window
         InitializeRecordingAnnotationSurface();
 
         var hudViewModel = _recordingHudViewModelFactory(_recorder, _outputPath);
+        hudViewModel.SetRecordingSessionGeometry(_geometry);
         hudViewModel.AttachAnnotationSession(_recordingAnnotationViewModel, ToggleRecordingAnnotationInput);
         hudViewModel.InitializeDisplayMode(_geometry.IsFullScreenCapture);
         ShowRecordingHud(hudViewModel);
@@ -377,6 +379,17 @@ public partial class RecordingOverlayWindow : Window
     private void HandleRecordingClearRequested()
     {
         _recordingAnnotationSurfaceCoordinator.HandleClearRequested(_recordingInteractionController.Cancel);
+        _recorder.ClearRedactions();
+    }
+
+    private void HandleRecordingBlurCommitted(BlurShapeParameters parameters)
+    {
+        var captureLocalBounds = _geometry.MapCaptureLocalDipRectToCaptureLocalPixels(new Rect(
+            parameters.Left,
+            parameters.Top,
+            parameters.Width,
+            parameters.Height));
+        _recorder.TryAddRedaction(captureLocalBounds);
     }
 
     private ValueTask HandleRecordingUndoGroup(UndoGroupMessage message)
