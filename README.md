@@ -48,6 +48,84 @@ winget install DimitarRadenkov.Pointframe
 
 You can complete your first capture workflow in under a minute.
 
+## Pointframe MCP Server
+
+Pointframe also ships a standalone MCP server for agents that need to inspect the Windows desktop and produce verifiable screenshot or recording artifacts. The MCP server uses `Pointframe.Engine` directly; it does not start the Pointframe tray application, create a WPF overlay, or require the full Pointframe installer.
+
+The standalone host requires an interactive Windows desktop session. It is a local stdio server intended to be launched by VS Code, Copilot, or another MCP client.
+
+### MCP capabilities
+
+The server exposes:
+
+- `list_displays` — return monitor identifiers, physical pixel bounds, and DPI scales.
+- `capture_monitor` — capture a named monitor and return a PNG artifact plus metadata.
+- `start_recording` — start a whole-monitor MP4 recording. Recording requires an explicit `redactionRegionsCaptureLocalPixels` array, even when it is empty.
+- `stop_recording` — stop the active recording and return the finalized MP4 artifact, metadata, and event sidecar references.
+
+Artifacts are written beneath `%LOCALAPPDATA%\Pointframe`:
+
+```text
+Screenshots\*.png
+Screenshots\*.png.metadata.json
+Recordings\*.mp4
+Recordings\*.mp4.metadata.json
+Recordings\*.mp4.events.jsonl
+```
+
+Metadata includes the artifact path, byte length, SHA-256, timestamp, monitor, DPI, and physical capture bounds. Recording event sidecars contain lifecycle and declared-redaction events without bitmap data, OCR text, clipboard contents, or prompts.
+
+### Install a published MCP server
+
+Build a self-contained `win-x64` package from the repository:
+
+```powershell
+dotnet restore Pointframe.Mcp/Pointframe.Mcp.csproj -r win-x64
+dotnet publish Pointframe.Mcp/Pointframe.Mcp.csproj `
+  /p:PublishProfile=win-x64 `
+  --no-restore
+```
+
+For a portable ZIP containing `ffmpeg.exe` for recording, use the package builder:
+
+```powershell
+pwsh -NoProfile -File packaging/build-mcp-package.ps1 `
+  -Version "6.7.0" `
+  -FfmpegPath "C:\path\to\ffmpeg.exe"
+```
+
+Copy the resulting `Pointframe.Mcp-*-win-x64.zip` to the target Windows computer and extract it to a directory such as `C:\Program Files\Pointframe.Mcp`. The package contains the standalone MCP executable and `ffmpeg.exe`; it does not contain the WPF Pointframe application.
+
+### Configure VS Code
+
+Point VS Code at the published executable in `.vscode/mcp.json` or the user MCP configuration:
+
+```json
+{
+  "servers": {
+    "pointframe": {
+      "type": "stdio",
+      "command": "C:\\Program Files\\Pointframe.Mcp\\Pointframe.Mcp.exe"
+    }
+  }
+}
+```
+
+For local development, the workspace configuration can point at the Debug executable instead. Rebuild `Pointframe.Mcp` after code changes before restarting the MCP server.
+
+### Test the MCP server locally
+
+Start the built executable directly:
+
+```powershell
+dotnet build Pointframe.Mcp/Pointframe.Mcp.csproj
+& .\Pointframe.Mcp\bin\Debug\net10.0-windows10.0.18362.0\Pointframe.Mcp.exe
+```
+
+Then initialize the MCP stdio session and call `list_displays` or `capture_monitor` from the MCP client. A successful capture should have a matching `.metadata.json` sidecar whose SHA-256 and byte length agree with the image.
+
+Recording currently captures a whole monitor without microphone audio. Redaction regions are capture-local physical pixels and are applied before ffmpeg receives the frame. The process must run in the logged-in interactive Windows session; Windows services running in session 0 cannot capture the user desktop.
+
 If you find Pointframe useful, a ⭐ on GitHub helps others discover it — thank you!
 
 ## ✨ Key highlights
@@ -229,6 +307,7 @@ Open **Settings** from the tray icon to configure:
 - [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 - ffmpeg — for MP4 recording and GIF export. The installer offers to download it; it can also be placed next to the app or on `PATH`
 - English speech model (~141 MB) — only for recording transcripts. Tick the optional component during setup, or download it later from **Settings ▸ Recording**
+- Standalone MCP recording additionally requires `ffmpeg.exe`; the published MCP package builder places it next to `Pointframe.Mcp.exe`
 
 ## Installation
 
@@ -263,6 +342,9 @@ cd Pointframe
 
 dotnet build Pointframe/Pointframe.csproj
 dotnet run   --project Pointframe/Pointframe.csproj
+
+# Build the standalone MCP host
+dotnet build Pointframe.Mcp/Pointframe.Mcp.csproj
 ```
 
 ## Running tests
