@@ -649,6 +649,12 @@ h1, h2, h3, h4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.mcp-cli-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+}
+
 /* Bento grid for features */
 .feature-grid {
     display: grid;
@@ -725,6 +731,23 @@ h1, h2, h3, h4 {
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+.code-sample {
+    margin: 18px 0 0;
+    padding: 16px 20px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--background-accent);
+    overflow-x: auto;
+}
+
+.code-sample code {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: #a5f3fc;
+    white-space: pre;
 }
 
 .chip-new {
@@ -1129,7 +1152,7 @@ h1, h2, h3, h4 {
 @media (max-width: 640px) {
     .hero-title { font-size: 2.5rem; }
     .capture-frame { outline-offset: 5px; }
-    .feature-grid, .comparison-grid, .resource-grid, .use-case-grid, .workflow-grid, .trust-strip, .updates-grid, .compact-grid {
+    .feature-grid, .comparison-grid, .resource-grid, .use-case-grid, .workflow-grid, .trust-strip, .updates-grid, .compact-grid, .mcp-cli-grid {
         grid-template-columns: 1fr;
     }
     .proof-badges {

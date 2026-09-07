@@ -1,5 +1,23 @@
 # Lessons Learned
 
+## CI publish of a self-contained exe needs `<RuntimeIdentifiers>` even with `--runtime win-x64` on the command line
+
+### Problem
+
+CI's "Publish CLI" step failed with `NETSDK1047: ... doesn't have a target for 'net10.0-windows10.0.18362.0/win-x64'` even though the `dotnet publish` command explicitly passed `--runtime win-x64` and a solution-level `dotnet restore` had already run.
+
+### Root cause
+
+`dotnet restore Pointframe.slnx` only restores the RID-specific asset graph for a project if that project declares `<RuntimeIdentifiers>` (or `<RuntimeIdentifier>`) in its csproj. `Pointframe.Cli.csproj` had no RID declared, so the solution-level restore produced a RID-less `project.assets.json`. The later publish step used `--no-restore` (by design, to keep CI fast and catch drift), so it had no chance to restore the missing win-x64 graph and failed. `Pointframe.Mcp.csproj`, which already had `<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>`, was unaffected.
+
+### What fixed it
+
+Add `<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>` to `Pointframe.Cli.csproj`, matching `Pointframe.Mcp.csproj`.
+
+### Takeaway
+
+Any project that is `dotnet publish`'d with `--runtime <rid>` after a `--no-restore` step must declare that RID in `<RuntimeIdentifiers>`/`<RuntimeIdentifier>` — otherwise the solution-level restore silently skips the RID-specific graph and the failure only surfaces at publish time in CI, not locally where a plain `dotnet publish` implicitly restores.
+
 ## Recording annotation undo must reconcile output redactions
 
 ### Problem

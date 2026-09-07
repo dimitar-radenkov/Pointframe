@@ -54,7 +54,10 @@
                 "trim screen recording Windows",
                 "Snagit alternative",
                 "Greenshot alternative",
-                "ShareX alternative"
+                "ShareX alternative",
+                "MCP server for screenshots",
+                "screenshot CLI for Windows",
+                "AI agent screen capture automation"
             ]
         }
     </script>
@@ -72,6 +75,7 @@
             </a>
             <div class="nav-links nav-links-primary">
                 <a href="#features" class="nav-link">Features</a>
+                <a href="#mcp-cli" class="nav-link">MCP &amp; CLI</a>
                 <a href="#whats-new" class="nav-link">What's new</a>
                 <a href="#compare" class="nav-link">Compare</a>
                 <a href="#resources" class="nav-link">Guides</a>
@@ -282,6 +286,59 @@
         </div>
     </section>
 
+    <!-- MCP Server and CLI Section -->
+    <section id="mcp-cli" class="section section-alt">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Automate captures with the Pointframe MCP server and CLI</h2>
+                <p class="section-copy">Give AI agents and scripts direct access to monitor discovery, screenshots, and recordings on Windows — no tray app, overlay window, or manual capture required.</p>
+            </div>
+
+            <div class="mcp-cli-grid">
+                <article class="feature-card">
+                    <div class="feature-icon blue">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 7a2 2 0 012-2h10a2 2 0 012 2v2a2 2 0 01-2 2H7a2 2 0 01-2-2V7z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15a2 2 0 012-2h10a2 2 0 012 2v2a2 2 0 01-2 2H7a2 2 0 01-2-2v-2z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 8h.01M8 16h.01"></path>
+                        </svg>
+                    </div>
+                    <div class="feature-header">
+                        <h3 class="feature-title">Pointframe MCP Server</h3>
+                        <span class="chip-new">New</span>
+                    </div>
+                    <p class="feature-copy">A standalone Model Context Protocol server for AI agents that need a real, verifiable screenshot or recording instead of a text-only description. List displays, capture a monitor to a PNG artifact, or start and stop a redaction-aware MP4 recording — all as local MCP tools.</p>
+                    <pre class="code-sample"><code>list_displays
+capture_monitor   → PNG + metadata
+start_recording   → MP4 (redaction-aware)
+stop_recording    → finalized artifact</code></pre>
+                    <p class="comparison-links"><a href="https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server" target="_blank" rel="noopener noreferrer" class="workflow-link">Read the MCP server docs &rarr;</a></p>
+                </article>
+
+                <article class="feature-card">
+                    <div class="feature-icon teal">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a2 2 0 012-2h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V5z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3M13 15h3"></path>
+                        </svg>
+                    </div>
+                    <div class="feature-header">
+                        <h3 class="feature-title">Standalone CLI</h3>
+                        <span class="chip-new">New</span>
+                    </div>
+                    <p class="feature-copy">A self-contained Windows executable for scripts and terminals. Download the release ZIP, extract it, and run it directly — no installer, no .NET runtime, and no Pointframe app process required.</p>
+                    <pre class="code-sample"><code>.\Pointframe.Cli.exe displays
+.\Pointframe.Cli.exe capture --monitor \\.\DISPLAY1</code></pre>
+                    <p class="comparison-links"><a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" target="_blank" rel="noopener noreferrer" class="workflow-link">Download the CLI &rarr;</a></p>
+                </article>
+            </div>
+
+            <div class="seo-copy-block">
+                <p>Useful for AI-assisted bug reports, verifying that a UI change actually rendered, generating test evidence, and scripted diagnostics — every capture produces a local artifact with a SHA-256 hash, monitor geometry, and DPI metadata. Both the MCP server and the CLI are Windows-only and require an interactive desktop session.</p>
+            </div>
+        </div>
+    </section>
+
     <!-- What's New Section -->
     <section id="whats-new" class="section section-alt">
         <div class="container">
@@ -291,6 +348,15 @@
             </div>
 
             <div class="updates-grid">
+                <article class="update-card">
+                    <p class="update-date">Sep 2026</p>
+                    <h3 class="update-title">Built for AI agents and automation</h3>
+                    <ul>
+                        <li>New standalone MCP server exposing display, capture, and recording tools</li>
+                        <li>New self-contained CLI — no installer or .NET runtime required</li>
+                        <li>Every automated capture ships with SHA-256 checksum and metadata</li>
+                    </ul>
+                </article>
                 <article class="update-card">
                     <p class="update-date">Jul 2026</p>
                     <h3 class="update-title">Faster and more polished</h3>
@@ -307,15 +373,6 @@
                         <li>Clean Window Snip via tray and dedicated hotkey</li>
                         <li>In-app video trimming from Recent Recordings</li>
                         <li>Configurable watermark for MP4 recordings</li>
-                    </ul>
-                </article>
-                <article class="update-card">
-                    <p class="update-date">May 2026</p>
-                    <h3 class="update-title">Workflow upgrades</h3>
-                    <ul>
-                        <li>Capture delay presets for menus and hover states</li>
-                        <li>Screenshot watermark support</li>
-                        <li>Open Folders submenu and richer recents actions</li>
                     </ul>
                 </article>
             </div>

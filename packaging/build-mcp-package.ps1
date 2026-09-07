@@ -45,6 +45,9 @@ New-Item -ItemType Directory -Path $packageDirectory -Force | Out-Null
 Copy-Item (Join-Path $publishDirectory "*") $packageDirectory -Recurse -Force
 Copy-Item $FfmpegPath (Join-Path $packageDirectory "ffmpeg.exe") -Force
 
+$iconSourcePath = Join-Path $repositoryRoot "packaging\assets\mcp-icon.png"
+Copy-Item $iconSourcePath (Join-Path $packageDirectory "icon.png") -Force
+
 @{
     manifest_version = "0.3"
     name = "pointframe-mcp"
@@ -64,6 +67,7 @@ Copy-Item $FfmpegPath (Join-Path $packageDirectory "ffmpeg.exe") -Force
     documentation = "$RepositoryUrl/blob/master/README.md"
     support = "$RepositoryUrl/issues"
     license = "MIT"
+    icon = "icon.png"
     keywords = @("mcp", "screenshots", "screen-recording", "windows", "pointframe")
     compatibility = @{
         platforms = @("win32")
