@@ -24,6 +24,21 @@
   <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest"><img src="https://img.shields.io/github/v/release/dimitar-radenkov/Pointframe?color=success" alt="Latest release"></a>
   <a href="https://github.com/microsoft/winget-pkgs/tree/master/manifests/d/DimitarRadenkov/Pointframe"><img src="https://img.shields.io/winget/v/DimitarRadenkov.Pointframe?label=winget&color=blue" alt="winget"></a>
   <a href="https://github.com/dimitar-radenkov/Pointframe/releases"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/total?label=downloads&color=purple" alt="Downloads"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/latest/Pointframe.Cli-6.7.4-win-x64.zip?label=cli%20downloads&color=orange" alt="CLI downloads"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/latest/Pointframe.Mcp-6.7.4-win-x64.mcpb?label=mcp%20downloads&color=orange" alt="MCP downloads"></a>
+</p>
+
+<!--
+  NOTE: The CLI/MCP download badges above pin the exact versioned asset filename
+  from the latest release (shields.io has no wildcard/version-agnostic form for
+  GitHub release assets). Bump "6.7.4" in both URLs to match the current release
+  version whenever a new release ships, or the badges will show "asset not found".
+-->
+
+<p align="center">
+  <b>☕ If Pointframe saves you time, consider <a href="https://paypal.me/DimitarRadenkov">buying me a beer</a>:</b><br>
+  <a href="https://paypal.me/DimitarRadenkov"><img src="https://img.shields.io/badge/PayPal-donate-blue?logo=paypal" alt="PayPal"></a>
+  <a href="https://revolut.me/dimitarradenkov"><img src="https://img.shields.io/badge/Revolut-donate-black?logo=revolut" alt="Revolut"></a>
 </p>
 
 <p align="center">
@@ -658,11 +673,3 @@ Use the ready-to-run KQL report pack in [docs/appinsights-feature-usage-queries.
 - Feature funnel conversion (snip -> annotate -> pin/ocr)
 - Power-user and stickiness indicators
 - Version split and regression spotting after releases
-
-
-## Support
-
-If you find this tool useful, consider buying me a beer 🍺
-
-[![PayPal](https://img.shields.io/badge/PayPal-donate-blue?logo=paypal)](https://paypal.me/DimitarRadenkov)
-[![Revolut](https://img.shields.io/badge/Revolut-donate-black?logo=revolut)](https://revolut.me/dimitarradenkov)
