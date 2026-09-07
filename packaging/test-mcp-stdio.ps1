@@ -101,7 +101,7 @@ try
     }
 
     $toolNames = @($toolsResponse.result.tools | ForEach-Object { $_.name })
-    $expectedTools = @("list_displays", "capture_monitor", "start_recording", "stop_recording")
+    $expectedTools = @("list_displays", "capture_monitor", "read_text_from_monitor", "start_recording", "stop_recording")
     foreach ($expectedTool in $expectedTools)
     {
         if ($toolNames -notcontains $expectedTool)

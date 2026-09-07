@@ -2,6 +2,7 @@ using System.Drawing;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Moq;
 using Pointframe.Engine;
 using Xunit;
 
@@ -19,7 +20,7 @@ public sealed class DirectCaptureServiceTests : IDisposable
             1.5,
             1.25,
             new Pointframe.Engine.PixelBounds(-20, 10, 2, 3));
-        var sut = new DirectCaptureService(new FakeDisplayCaptureEngine(display), _screenshotsDirectory);
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), _screenshotsDirectory);
 
         var json = await sut.CaptureMonitorAsync(display.MonitorName);
         var response = JsonSerializer.Deserialize<DirectCaptureResponse>(json);
@@ -50,7 +51,7 @@ public sealed class DirectCaptureServiceTests : IDisposable
             1d,
             1d,
             new Pointframe.Engine.PixelBounds(0, 0, 100, 200));
-        var sut = new DirectCaptureService(new FakeDisplayCaptureEngine(display), _screenshotsDirectory);
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), _screenshotsDirectory);
 
         var response = JsonSerializer.Deserialize<DirectCaptureResponse>(sut.ListDisplays());
 
@@ -61,6 +62,75 @@ public sealed class DirectCaptureServiceTests : IDisposable
         Assert.Equal(new Pointframe.Engine.PixelBounds(0, 0, 100, 200), returnedDisplay.BoundsPixels);
     }
 
+    [Fact]
+    public async Task CaptureMonitorTextAsync_WritesArtifactAndReturnsRecognizedText()
+    {
+        var display = new Pointframe.Engine.DisplayDescriptor(
+            @"\\.\DISPLAY1",
+            1.5,
+            1.25,
+            new Pointframe.Engine.PixelBounds(-20, 10, 2, 3));
+        var ocrEngineService = new Mock<IOcrEngineService>();
+        ocrEngineService
+            .Setup(service => service.RecognizeAsync(It.IsAny<Bitmap>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Hello world");
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), _screenshotsDirectory, ocrEngineService: ocrEngineService.Object);
+
+        var json = await sut.CaptureMonitorTextAsync(display.MonitorName);
+        var response = JsonSerializer.Deserialize<DirectCaptureResponse>(json);
+
+        Assert.NotNull(response);
+        Assert.True(response.Success);
+        Assert.Equal("Hello world", response.RecognizedText);
+        var artifact = Assert.IsType<ArtifactDescriptor>(response.Artifact);
+        Assert.True(File.Exists(artifact.Metadata.Path));
+        ocrEngineService.Verify(service => service.RecognizeAsync(It.IsAny<Bitmap>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CaptureMonitorTextAsync_WhenOcrFindsNoText_ReturnsNullRecognizedText()
+    {
+        var display = new Pointframe.Engine.DisplayDescriptor(
+            @"\\.\DISPLAY1",
+            1d,
+            1d,
+            new Pointframe.Engine.PixelBounds(0, 0, 100, 200));
+        var ocrEngineService = new Mock<IOcrEngineService>();
+        ocrEngineService
+            .Setup(service => service.RecognizeAsync(It.IsAny<Bitmap>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), _screenshotsDirectory, ocrEngineService: ocrEngineService.Object);
+
+        var json = await sut.CaptureMonitorTextAsync(display.MonitorName);
+        var response = JsonSerializer.Deserialize<DirectCaptureResponse>(json);
+
+        Assert.NotNull(response);
+        Assert.True(response.Success);
+        Assert.Null(response.RecognizedText);
+    }
+
+    [Fact]
+    public async Task CaptureMonitorAsync_DoesNotInvokeOcr()
+    {
+        var display = new Pointframe.Engine.DisplayDescriptor(
+            @"\\.\DISPLAY1",
+            1d,
+            1d,
+            new Pointframe.Engine.PixelBounds(0, 0, 100, 200));
+        var ocrEngineService = new Mock<IOcrEngineService>();
+        ocrEngineService
+            .Setup(service => service.RecognizeAsync(It.IsAny<Bitmap>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("unused");
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), _screenshotsDirectory, ocrEngineService: ocrEngineService.Object);
+
+        var json = await sut.CaptureMonitorAsync(display.MonitorName);
+        var response = JsonSerializer.Deserialize<DirectCaptureResponse>(json);
+
+        Assert.NotNull(response);
+        Assert.Null(response.RecognizedText);
+        ocrEngineService.Verify(service => service.RecognizeAsync(It.IsAny<Bitmap>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_screenshotsDirectory))
@@ -69,26 +139,18 @@ public sealed class DirectCaptureServiceTests : IDisposable
         }
     }
 
-    private sealed class FakeDisplayCaptureEngine(Pointframe.Engine.DisplayDescriptor display) : IDisplayCaptureEngine
+    private static IDisplayCaptureEngine CreateDisplayCaptureEngine(Pointframe.Engine.DisplayDescriptor display)
     {
-        public IReadOnlyList<Pointframe.Engine.DisplayDescriptor> GetDisplays()
-        {
-            return [display];
-        }
-
-        public Bitmap Capture(Pointframe.Engine.PixelBounds boundsPixels)
-        {
-            return new Bitmap(boundsPixels.Width, boundsPixels.Height);
-        }
-
-        public CapturedMonitor CaptureMonitor(string monitorName)
-        {
-            if (!string.Equals(display.MonitorName, monitorName, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new ArgumentException("Unknown monitor.", nameof(monitorName));
-            }
-
-            return new CapturedMonitor(display, Capture(display.BoundsPixels));
-        }
+        var displayCaptureEngine = new Mock<IDisplayCaptureEngine>();
+        displayCaptureEngine
+            .Setup(engine => engine.GetDisplays())
+            .Returns([display]);
+        displayCaptureEngine
+            .Setup(engine => engine.Capture(It.IsAny<Pointframe.Engine.PixelBounds>()))
+            .Returns((Pointframe.Engine.PixelBounds bounds) => new Bitmap(bounds.Width, bounds.Height));
+        displayCaptureEngine
+            .Setup(engine => engine.CaptureMonitor(It.Is<string>(monitorName => string.Equals(monitorName, display.MonitorName, StringComparison.OrdinalIgnoreCase))))
+            .Returns(new CapturedMonitor(display, new Bitmap(display.BoundsPixels.Width, display.BoundsPixels.Height)));
+        return displayCaptureEngine.Object;
     }
 }

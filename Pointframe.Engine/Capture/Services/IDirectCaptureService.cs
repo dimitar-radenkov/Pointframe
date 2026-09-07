@@ -5,4 +5,6 @@ public interface IDirectCaptureService
     string ListDisplays();
 
     Task<string> CaptureMonitorAsync(string monitorName, CancellationToken cancellationToken = default);
+
+    Task<string> CaptureMonitorTextAsync(string monitorName, CancellationToken cancellationToken = default);
 }

@@ -76,12 +76,16 @@ desktop from a Windows service (session 0).
 ```powershell
 .\Pointframe.Cli.exe displays
 .\Pointframe.Cli.exe capture --monitor '\\.\DISPLAY1'
+.\Pointframe.Cli.exe ocr --monitor '\\.\DISPLAY1'
 ```
 
 Use the exact `monitorName` emitted by `displays`. A successful command writes JSON
 to standard output and exits with code `0`; invalid arguments exit with code `2`, and
 capture failures exit with code `1`. Screenshots and their metadata sidecars are saved
-under `%LOCALAPPDATA%\Pointframe\Screenshots`.
+under `%LOCALAPPDATA%\Pointframe\Screenshots`. `ocr` captures the monitor the same way
+`capture` does, then runs Windows OCR against the captured image and adds a
+`recognizedText` field to the JSON output (`null` when no text is found or no OCR
+language pack is installed).
 
 ## Pointframe MCP Server
 
@@ -93,15 +97,16 @@ The standalone host requires an interactive Windows desktop session. It is a loc
 
 The server exposes:
 
-- `list_displays` — return monitor identifiers, physical pixel bounds, and DPI scales.
-- `capture_monitor` — capture a named monitor and return a PNG artifact plus metadata.
-- `start_recording` — start a whole-monitor MP4 recording. Recording requires an explicit `redactionRegionsCaptureLocalPixels` array, even when it is empty.
-- `stop_recording` — stop the active recording and return the finalized MP4 artifact, metadata, and event sidecar references.
+- 🖥️ `list_displays` — return monitor identifiers, physical pixel bounds, and DPI scales.
+- 📸 `capture_monitor` — capture a named monitor and return a PNG artifact plus metadata.
+- 🔤 `read_text_from_monitor` — capture a named monitor and run OCR against it, returning the PNG artifact plus recognized text (`null` when no text is found or no OCR language pack is installed).
+- 🎥 `start_recording` — start a whole-monitor MP4 recording. Recording requires an explicit `redactionRegionsCaptureLocalPixels` array, even when it is empty.
+- ⏹️ `stop_recording` — stop the active recording and return the finalized MP4 artifact, metadata, and event sidecar references.
 
 The normal workflow is:
 
 1. Call `list_displays` and select a returned `monitorName`.
-2. Call `capture_monitor` with that exact monitor name, or call `start_recording`.
+2. Call `capture_monitor` with that exact monitor name, call `read_text_from_monitor` to also extract on-screen text, or call `start_recording`.
 3. For recording, pass redaction rectangles in capture-local physical pixels. Use `[]` when no redaction is required.
 4. Call `stop_recording` to finalize the MP4 and retrieve its metadata.
 
@@ -135,6 +140,9 @@ rather than a text-only description of the Windows desktop:
 - **Bug report capture:** call `list_displays`, select the affected monitor, then
   call `capture_monitor` to produce a PNG and metadata sidecar that can be attached
   to a report.
+- **Reading on-screen text:** call `read_text_from_monitor` to extract error dialogs,
+  logs, or terminal output as plain text alongside the screenshot, without a separate
+  OCR step.
 - **Privacy-safe support recording:** call `start_recording` with capture-local
   rectangles covering credentials, tokens, customer data, or other sensitive areas,
   then call `stop_recording` when the reproduction is complete. Redaction is applied
@@ -232,11 +240,11 @@ dotnet build Pointframe.Mcp/Pointframe.Mcp.csproj
   -ExecutablePath ".\Pointframe.Mcp\bin\Debug\net10.0-windows10.0.18362.0\Pointframe.Mcp.exe"
 ```
 
-The smoke test verifies the MCP initialize handshake and confirms that all four
+The smoke test verifies the MCP initialize handshake and confirms that all five
 tools are advertised. To test an actual capture, configure the executable in VS
-Code, call `list_displays`, then call `capture_monitor` with one of the returned
-monitor names. A successful capture should have a matching `.metadata.json`
-sidecar whose SHA-256 and byte length agree with the image.
+Code, call `list_displays`, then call `capture_monitor` (or `read_text_from_monitor`)
+with one of the returned monitor names. A successful capture should have a matching
+`.metadata.json` sidecar whose SHA-256 and byte length agree with the image.
 
 Recording currently captures a whole monitor without microphone audio. Redaction regions are capture-local physical pixels and are applied before ffmpeg receives the frame. The process must run in the logged-in interactive Windows session; Windows services running in session 0 cannot capture the user desktop.
 

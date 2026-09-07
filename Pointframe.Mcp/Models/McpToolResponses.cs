@@ -7,7 +7,8 @@ public sealed record McpCaptureResponse(
     bool Success,
     McpCaptureError? Error = null,
     IReadOnlyList<McpDisplayDescriptor>? Displays = null,
-    McpArtifactDescriptor? Artifact = null);
+    McpArtifactDescriptor? Artifact = null,
+    string? RecognizedText = null);
 
 public sealed record McpCaptureError(string Code, string Message);
 

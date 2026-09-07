@@ -10,6 +10,7 @@ builder.Logging.ClearProviders();
 builder.Logging.SetMinimumLevel(LogLevel.Debug);
 builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
 builder.Services.AddSingleton<IDisplayCaptureEngine, DisplayCaptureEngine>();
+builder.Services.AddSingleton<IOcrEngineService, WindowsOcrEngineService>();
 builder.Services.AddSingleton<IDirectCaptureService, DirectCaptureService>();
 builder.Services.AddSingleton<IDirectVideoWriterFactory, FfmpegDirectVideoWriterFactory>();
 builder.Services.AddSingleton<IDirectRecordingService, DirectRecordingService>();
