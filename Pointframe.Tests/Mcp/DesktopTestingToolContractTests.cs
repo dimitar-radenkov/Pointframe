@@ -8,14 +8,14 @@ namespace Pointframe.Tests.Mcp;
 public sealed class DesktopTestingToolContractTests
 {
     [Fact]
-    public void CatalogContainsExactlyElevenGateATools()
+    public void CatalogContainsExactlyFifteenGateATools()
     {
         Assert.Equal(15, PointframeCommandCatalog.DesktopTestingTools.Count);
         Assert.Equal(15, PointframeCommandCatalog.DesktopTestingTools.Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]
-    public void ToolTypeExposesElevenMethods()
+    public void ToolTypeExposesFifteenMethods()
     {
         var type = typeof(PointframeCommandCatalog).Assembly.GetType("Pointframe.Mcp.DesktopTestingMcpTools");
         Assert.NotNull(type);

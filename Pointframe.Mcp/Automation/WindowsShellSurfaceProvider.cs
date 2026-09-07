@@ -49,7 +49,15 @@ public sealed class WindowsShellSurfaceProvider
 
     private static bool IsApprovedOwner(string ownerProcessRef)
     {
-        return ownerProcessRef.Contains("explorer", StringComparison.OrdinalIgnoreCase)
-            || ownerProcessRef.Contains("shell", StringComparison.OrdinalIgnoreCase);
+        var fileName = Path.GetFileName(ownerProcessRef.Trim());
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return false;
+        }
+
+        return fileName.Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("explorer", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("ShellExperienceHost.exe", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase);
     }
 }

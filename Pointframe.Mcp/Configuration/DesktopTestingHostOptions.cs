@@ -27,8 +27,12 @@ public sealed record DesktopTestingHostOptions(
                     worker = true;
                     break;
                 case "--desktop-policy":
+                    policyPath = ReadValue(args, ref index, args[index]);
+                    enabled = true;
+                    break;
                 case "--desktop-testing-config":
-                    policyPath = ReadValue(args, ref index, "--desktop-policy");
+                    policyPath = ReadValue(args, ref index, args[index]);
+                    enabled = true;
                     break;
                 case "--desktop-pipe":
                     pipeName = ReadValue(args, ref index, "--desktop-pipe");

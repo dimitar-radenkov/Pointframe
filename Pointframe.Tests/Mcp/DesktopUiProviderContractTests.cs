@@ -1,3 +1,4 @@
+using System.IO;
 using Pointframe.Engine;
 using Pointframe.Engine.Automation.Models;
 using Pointframe.Engine.Automation.Services;
@@ -58,6 +59,20 @@ public sealed class DesktopUiProviderContractTests
         Assert.Null(provider.ResolveSurface(DesktopSurfaceKind.NotificationArea));
     }
 
+    [Fact]
+    public void ShellProvider_TrustsExplorerAndShellExperienceHostOwners()
+    {
+        var provider = new WindowsShellSurfaceProvider(new TrustedShellBackend());
+
+        var area = provider.ResolveSurface(DesktopSurfaceKind.NotificationArea);
+        var overflow = provider.ResolveSurface(DesktopSurfaceKind.NotificationOverflow);
+
+        Assert.NotNull(area);
+        Assert.NotNull(overflow);
+        Assert.Equal("explorer.exe", Path.GetFileName(area!.Identity.OwnerProcessRef), ignoreCase: true);
+        Assert.Equal("ShellExperienceHost.exe", Path.GetFileName(overflow!.Identity.OwnerProcessRef), ignoreCase: true);
+    }
+
     private sealed class FakeShellBackend : IWindowsShellSurfaceBackend
     {
         public IReadOnlyList<WindowsShellSurface> GetApprovedSurfaces()
@@ -67,6 +82,22 @@ public sealed class DesktopUiProviderContractTests
                 new WindowsShellSurface(
                     new DesktopSurfaceIdentity("surface-1", DesktopSurfaceKind.NotificationArea, "unknown-process"),
                     new PixelBounds(0, 0, 20, 20)),
+            ];
+        }
+    }
+
+    private sealed class TrustedShellBackend : IWindowsShellSurfaceBackend
+    {
+        public IReadOnlyList<WindowsShellSurface> GetApprovedSurfaces()
+        {
+            return
+            [
+                new WindowsShellSurface(
+                    new DesktopSurfaceIdentity("surface-1", DesktopSurfaceKind.NotificationArea, "C:\\Windows\\explorer.exe"),
+                    new PixelBounds(0, 0, 20, 20)),
+                new WindowsShellSurface(
+                    new DesktopSurfaceIdentity("surface-2", DesktopSurfaceKind.NotificationOverflow, "C:\\Windows\\SystemApps\\ShellExperienceHost\\ShellExperienceHost.exe"),
+                    new PixelBounds(0, 0, 30, 30)),
             ];
         }
     }
