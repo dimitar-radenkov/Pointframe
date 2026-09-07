@@ -103,14 +103,25 @@ Pointframe/                        Main WPF application (tray-first, no main win
   Automation/                      Launch options for the UI automation suite
 
 Pointframe.Data/                   EF Core + SQLite (capture OCR text cache) and migrations
+Pointframe.Engine/                 Reusable capture, OCR, recording, and desktop-automation engine
+Pointframe.Cli/                    Standalone monitor capture and OCR command-line client
+Pointframe.Mcp/                    Standalone MCP host and opt-in desktop-testing tools
 Pointframe.Tests/                  xUnit unit tests (Services/, ViewModels/, Models/, window tests)
-Pointframe.AutomationTests/        UI automation smoke tests (Smoke/, Support/AutomationIds.cs)
+Pointframe.AutomationTests/        UI automation smoke tests (Smoke/, Support/)
+Pointframe.DesktopTestFixture/     External black-box desktop-test fixture
 Pointframe.Benchmarks/             BenchmarkDotNet projects
 installer/                         Inno Setup script plus build and test scripts
 winget/, packaging/scoop/          Package manifests
 website/                           GitHub Pages site
 .github/workflows/                 CI, CD, desktop automation, winget, CodeQL, pages
 ```
+
+The projects are grouped in `Pointframe.slnx` without changing their
+repository paths:
+
+- `src/` — application, reusable libraries, CLI, and MCP host
+- `tests/` — unit and UI automation test projects
+- `tools/` — external desktop-test fixture
 
 Every service has an `I<ServiceName>` interface next to it. The knowledge base (§6.1) describes each subsystem in depth.
 
@@ -338,6 +349,15 @@ The process is PerMonitorV2 (`app.manifest`), so every monitor has its own scale
 - `desktop-automation.yml` — runs `Pointframe.AutomationTests` on a Windows runner; manual trigger.
 - `winget-release.yml` — submits the winget manifest after CD completes on `master`, or manually with a version.
 - `codeql.yml`, `release-drafter.yml`, `dependabot-auto-merge.yml`, and `pages.yml` (deploys `website/`).
+
+### MCP desktop-testing driver
+
+The opt-in driver contracts and worker are documented in
+[MCP desktop testing](mcp-desktop-testing.md). They are intentionally separate
+from the target WPF product: do not add target launch modes, storage overrides,
+synthetic controls, or machine-specific policies. The public MCP package
+currently exposes only the five capture/OCR/recording tools, and desktop gates
+remain unverified unless a disposable interactive environment supplies evidence.
 
 ### Installer (`installer/Pointframe.iss`)
 - Inno Setup script. Includes `CloseApplications` (prompts to close a running instance before upgrading) and an optional component that downloads ffmpeg next to the app.

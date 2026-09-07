@@ -1,5 +1,4 @@
 using System.Windows;
-using Pointframe.Models;
 using Xunit;
 
 namespace Pointframe.Tests.Models;

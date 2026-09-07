@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using Pointframe.Data.Context;
 using Pointframe.Data.Entities;
 using Pointframe.Data.Repository;
-using Pointframe.Services;
 using Xunit;
 
 namespace Pointframe.Tests.Services;

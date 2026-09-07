@@ -1,5 +1,3 @@
-using System.Drawing;
-
 namespace Pointframe.Engine;
 
 public readonly record struct PixelBounds(int X, int Y, int Width, int Height)

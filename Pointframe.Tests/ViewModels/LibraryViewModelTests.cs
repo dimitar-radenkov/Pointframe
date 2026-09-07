@@ -1,5 +1,4 @@
 using Moq;
-using Pointframe.Models;
 using Pointframe.Services;
 using Pointframe.ViewModels;
 using Xunit;

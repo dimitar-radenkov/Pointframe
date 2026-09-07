@@ -25,7 +25,7 @@ public sealed class AutomationLaunchOptionsTests
 
         Assert.Equal(openSettingsWindow, options.OpenSettingsWindow);
         Assert.Equal(openAboutWindow, options.OpenAboutWindow);
-    Assert.Equal(openLibraryWindow, options.OpenLibraryWindow);
+        Assert.Equal(openLibraryWindow, options.OpenLibraryWindow);
         Assert.Equal(openSampleOverlayWindow, options.OpenSampleOverlayWindow);
         Assert.Equal(openSampleRecordingOverlayWindow, options.OpenSampleRecordingOverlayWindow);
         Assert.Equal(openTraySampleOverlayWindow, options.OpenTraySampleOverlayWindow);

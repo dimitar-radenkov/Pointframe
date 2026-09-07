@@ -18,6 +18,7 @@ $archivePath = "$packageDirectory.zip"
 $mcpbPath = "$packageDirectory.mcpb"
 $checksumPath = "$packageDirectory.mcpb.sha256"
 $serverJsonPath = "$packageDirectory.server.json"
+$policyExamplePath = Join-Path $packageDirectory "desktop-testing-policy.example.json"
 $serverName = "io.github.dimitar-radenkov/pointframe-mcp"
 
 dotnet publish $projectPath `
@@ -53,8 +54,8 @@ Copy-Item $iconSourcePath (Join-Path $packageDirectory "icon.png") -Force
     name = "pointframe-mcp"
     display_name = "Pointframe MCP Server"
     version = $Version
-    description = "Local Windows MCP server for Pointframe monitor discovery, screenshots, and recordings."
-    long_description = "Runs as a local stdio MCP server in an interactive Windows desktop session. Captures and recordings are written to the user's local Pointframe data directory."
+    description = "Local Windows MCP server for Pointframe monitor discovery, OCR, screenshots, and recordings."
+    long_description = "Runs as a local stdio MCP server in an interactive Windows desktop session. Captures and recordings are written to the user's local Pointframe data directory. Desktop-testing services are opt-in and disabled unless explicitly enabled with a local policy."
     author = @{
         name = "Dimitar Radenkov"
         url = $RepositoryUrl
@@ -68,7 +69,7 @@ Copy-Item $iconSourcePath (Join-Path $packageDirectory "icon.png") -Force
     support = "$RepositoryUrl/issues"
     license = "MIT"
     icon = "icon.png"
-    keywords = @("mcp", "screenshots", "screen-recording", "windows", "pointframe")
+    keywords = @("mcp", "screenshots", "ocr", "screen-recording", "windows", "pointframe")
     compatibility = @{
         platforms = @("win32")
     }
@@ -83,11 +84,31 @@ Copy-Item $iconSourcePath (Join-Path $packageDirectory "icon.png") -Force
     tools = @(
         @{ name = "list_displays"; description = "List available Windows displays." },
         @{ name = "capture_monitor"; description = "Capture a monitor to a PNG artifact." },
+        @{ name = "read_text_from_monitor"; description = "Capture a monitor and return OCR text when a Windows language pack is available." },
         @{ name = "start_recording"; description = "Start a monitor recording with optional pixelation regions." },
         @{ name = "stop_recording"; description = "Stop the active recording and return its artifacts." }
     )
     tools_generated = $true
 } | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $packageDirectory "manifest.json") -Encoding utf8NoBOM
+
+@{
+    schemaVersion = 1
+    artifactRoot = "C:\\Path\\To\\DesktopTestArtifacts"
+    evidencePolicy = "Failures"
+    profiles = @(
+        @{
+            id = "pointframe"
+            executablePath = "C:\\Path\\To\\Pointframe.exe"
+            arguments = @()
+            workingDirectory = "C:\\Path\\To"
+            allowAttach = $false
+            allowedActions = @("ListApps", "StartTestSession", "ObserveApp", "FocusWindow", "Click", "PressKeys", "CheckUi", "GetActionResult", "GetTestReport", "EndTestSession")
+            allowedGlobalHotkeys = @{}
+            allowedShellSurfaces = @("NotificationArea", "NotificationOverflow")
+            allowMonitorObservation = $true
+        }
+    )
+} | ConvertTo-Json -Depth 10 | Set-Content $policyExamplePath -Encoding utf8NoBOM
 
 if (Test-Path $archivePath)
 {

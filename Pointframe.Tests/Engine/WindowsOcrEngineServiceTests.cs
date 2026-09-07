@@ -4,7 +4,6 @@ using System.Reflection;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Pointframe.Engine;
 using Windows.Graphics.Imaging;
-using Windows.Storage.Streams;
 using Xunit;
 
 namespace Pointframe.Tests.Engine;

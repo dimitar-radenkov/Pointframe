@@ -1,6 +1,5 @@
-using Moq;
 using System.Reflection;
-using Pointframe.Models;
+using Moq;
 using Pointframe.Services;
 using Pointframe.ViewModels;
 using Xunit;

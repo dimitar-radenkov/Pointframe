@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
@@ -7,7 +6,6 @@ using System.Windows;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
 

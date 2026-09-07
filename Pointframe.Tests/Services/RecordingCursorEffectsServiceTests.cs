@@ -3,7 +3,6 @@ using System.Windows.Controls;
 using System.Windows.Shapes;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Pointframe.Models;
 using Pointframe.Services;
 using Pointframe.Tests.Services.Handlers;
 using Xunit;

@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using Pointframe.Models;
 using Pointframe.Services.Handlers;
 using Xunit;
 using Rectangle = System.Windows.Shapes.Rectangle;

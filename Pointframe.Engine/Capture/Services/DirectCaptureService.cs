@@ -65,7 +65,7 @@ public sealed class DirectCaptureService : IDirectCaptureService
         var path = Path.Combine(_screenshotsDirectory, $"{createdUtc:yyyyMMdd-HHmmss}-{artifactId}.png");
         capturedMonitor.Bitmap.Save(path, ImageFormat.Png);
 
-        string? recognizedText = recognizeText
+        var recognizedText = recognizeText
             ? await _ocrEngineService.RecognizeAsync(capturedMonitor.Bitmap, cancellationToken).ConfigureAwait(false)
             : null;
 

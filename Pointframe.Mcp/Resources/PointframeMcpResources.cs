@@ -1,15 +1,17 @@
 using System.ComponentModel;
+using System.Text.Json;
 using ModelContextProtocol.Server;
+using Pointframe.Mcp.Configuration;
 
 namespace Pointframe.Mcp;
 
 [McpServerResourceType]
-internal sealed class PointframeMcpResources
+internal sealed class PointframeMcpResources(DesktopTestingHostOptions options)
 {
     [McpServerResource(UriTemplate = "pointframe://commands", Name = "Pointframe commands", MimeType = "application/json")]
     [Description("Returns the available direct Pointframe MCP command identifiers.")]
-    public static string GetCommands()
+    public string GetCommands()
     {
-        return "[\"list_displays\",\"capture_monitor\",\"read_text_from_monitor\",\"start_recording\",\"stop_recording\"]";
+        return JsonSerializer.Serialize(PointframeCommandCatalog.Create(options.Enabled));
     }
 }

@@ -3,7 +3,6 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
-using Pointframe.Models;
 using Pointframe.Services.Handlers;
 using Xunit;
 using Image = System.Windows.Controls.Image;

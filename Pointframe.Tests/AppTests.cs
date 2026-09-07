@@ -2,7 +2,6 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using Pointframe.Models;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 using Pointframe.Tests.Services.Handlers;

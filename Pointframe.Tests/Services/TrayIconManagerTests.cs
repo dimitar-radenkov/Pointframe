@@ -3,7 +3,6 @@ using System.IO;
 using System.Windows;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Pointframe.Models;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 using Pointframe.Tests.Services.Handlers;
@@ -591,7 +590,7 @@ public sealed class TrayIconManagerTests
             var recordingsField = manager.GetType().GetField("_recentRecordings", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
             Assert.NotNull(recordingsField);
             var recordings = (System.Collections.IList)recordingsField.GetValue(manager)!;
-            
+
             var rec1 = CreateRecentRecordingItem("C:\\test1.mp4", "00:05");
             var rec2 = CreateRecentRecordingItem("C:\\test2.mp4", "00:10");
             recordings.Add(rec1);
