@@ -339,6 +339,15 @@ The process is PerMonitorV2 (`app.manifest`), so every monitor has its own scale
 - `winget-release.yml` — submits the winget manifest after CD completes on `master`, or manually with a version.
 - `codeql.yml`, `release-drafter.yml`, `dependabot-auto-merge.yml`, and `pages.yml` (deploys `website/`).
 
+### MCP desktop-testing driver
+
+The opt-in driver contracts and worker are documented in
+[MCP desktop testing](mcp-desktop-testing.md). They are intentionally separate
+from the target WPF product: do not add target launch modes, storage overrides,
+synthetic controls, or machine-specific policies. The public MCP package
+currently exposes only the five capture/OCR/recording tools, and desktop gates
+remain unverified unless a disposable interactive environment supplies evidence.
+
 ### Installer (`installer/Pointframe.iss`)
 - Inno Setup script. Includes `CloseApplications` (prompts to close a running instance before upgrading) and an optional component that downloads ffmpeg next to the app.
 - `installer\build-installer.ps1` builds it locally (requires Inno Setup 6); `installer\test-installer.ps1` checks the output.

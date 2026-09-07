@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using Pointframe.Automation;
-using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
 

@@ -1,5 +1,3 @@
-using System.Drawing;
-
 namespace Pointframe.Engine;
 
 public sealed class CapturedMonitor(DisplayDescriptor Display, Bitmap Bitmap) : IDisposable

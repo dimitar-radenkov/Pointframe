@@ -1,8 +1,6 @@
 using System.Net.Http;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Pointframe.Models;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 using Xunit;

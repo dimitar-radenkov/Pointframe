@@ -8,7 +8,6 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Pointframe.Models;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 using Pointframe.Tests.Services.Handlers;

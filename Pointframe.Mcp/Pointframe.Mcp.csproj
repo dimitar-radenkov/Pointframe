@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Pointframe.Engine\Pointframe.Engine.csproj" />
+    <PackageReference Include="FlaUI.Core" />
+    <PackageReference Include="FlaUI.UIA3" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />

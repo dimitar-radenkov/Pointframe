@@ -1,11 +1,10 @@
 using System.IO;
-using Microsoft.Extensions.DependencyInjection;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Pointframe.Data.Abstractions;
 using Pointframe.Data.Entities;
-using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
 

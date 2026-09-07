@@ -2,7 +2,6 @@ using System.IO;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
 

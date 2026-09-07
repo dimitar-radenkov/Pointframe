@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Pointframe.Models;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 using Pointframe.ViewModels;
@@ -696,7 +695,7 @@ public sealed class AnnotationViewModelTests
             settingsService ?? Mock.Of<IUserSettingsService>(s => s.Current == new UserSettings()),
             eventAggregator ?? new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance),
             telemetry ?? Mock.Of<ITelemetryService>())
-        { }
+    { }
 
     // -----------------------------------------------------------------------
     // Annotation telemetry aggregation

@@ -63,6 +63,10 @@ winget install DimitarRadenkov.Pointframe
 
 You can complete your first capture workflow in under a minute.
 
+For the standalone command-line workflow, installation, artifact verification,
+exit codes, and troubleshooting, see the dedicated
+[Pointframe CLI README](docs/cli/README.md).
+
 ## Pointframe CLI
 
 Each GitHub Release includes `Pointframe.Cli-<version>-win-x64.zip`, a self-contained
@@ -178,6 +182,11 @@ Metadata includes the artifact path, byte length, SHA-256, timestamp, monitor, D
 
 The standard release artifact is a versioned `.mcpb` bundle. It contains the
 self-contained `win-x64` server, `ffmpeg.exe`, and an MCPB `manifest.json`.
+
+For the opt-in black-box desktop-testing driver, including policy validation,
+worker behavior, gate procedures, and evidence limits, see the dedicated
+[desktop-testing MCP README](docs/mcp-desktop-testing/README.md). Detailed
+operator notes remain in [MCP desktop testing](docs/mcp-desktop-testing.md).
 Download the matching `Pointframe.Mcp-*-win-x64.mcpb` asset from the
 [latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest)
 and install it in an MCPB-compatible host. Verify the adjacent `.sha256` file

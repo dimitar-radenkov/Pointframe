@@ -1,7 +1,6 @@
 using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
-using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
 
@@ -80,14 +79,14 @@ public sealed class UserSettingsServiceTests : IDisposable
         Assert.NotNull(sut.Current);
     }
 
-        [Fact]
-        public void Load_WhenVideoWatermarkMissing_DefaultsToScreenshotWatermark()
-        {
-                var settingsPath = Path.Combine(_tempDirectory, "settings.json");
-                Directory.CreateDirectory(_tempDirectory);
-                File.WriteAllText(
-                        settingsPath,
-                        """
+    [Fact]
+    public void Load_WhenVideoWatermarkMissing_DefaultsToScreenshotWatermark()
+    {
+        var settingsPath = Path.Combine(_tempDirectory, "settings.json");
+        Directory.CreateDirectory(_tempDirectory);
+        File.WriteAllText(
+                settingsPath,
+                """
                         {
                             "ScreenshotWatermark": {
                                 "Enabled": true,
@@ -104,13 +103,13 @@ public sealed class UserSettingsServiceTests : IDisposable
                         }
                         """);
 
-                var sut = new UserSettingsService(NullLogger<UserSettingsService>.Instance, settingsPath);
+        var sut = new UserSettingsService(NullLogger<UserSettingsService>.Instance, settingsPath);
 
-                Assert.NotNull(sut.Current.VideoWatermark);
-                Assert.True(sut.Current.VideoWatermark.Enabled);
-                Assert.Equal(24, sut.Current.VideoWatermark.FontSize);
-                Assert.Equal("#FFABCDEF", sut.Current.VideoWatermark.ColorHex);
-        }
+        Assert.NotNull(sut.Current.VideoWatermark);
+        Assert.True(sut.Current.VideoWatermark.Enabled);
+        Assert.Equal(24, sut.Current.VideoWatermark.FontSize);
+        Assert.Equal("#FFABCDEF", sut.Current.VideoWatermark.ColorHex);
+    }
 
     [Fact]
     public void Save_PersistsProvidedSettingsAndUpdatesCurrent()

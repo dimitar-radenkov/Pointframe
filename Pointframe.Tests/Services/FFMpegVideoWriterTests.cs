@@ -3,7 +3,6 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging.Abstractions;
-using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
 

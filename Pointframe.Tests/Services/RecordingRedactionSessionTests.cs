@@ -1,6 +1,5 @@
 using System.Windows;
 using Pointframe.Engine;
-using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
 

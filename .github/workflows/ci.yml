@@ -76,6 +76,15 @@ jobs:
           ./packaging/test-mcp-stdio.ps1
           -ExecutablePath Pointframe.Mcp/bin/publish/win-x64/Pointframe.Mcp.exe
 
+      - name: MCP contract and discovery tests
+        run: >
+          dotnet test Pointframe.Tests/Pointframe.Tests.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+          --verbosity normal
+          --filter "FullyQualifiedName~Mcp|FullyQualifiedName~DesktopTesting"
+
       - name: Format check
         run: dotnet format Pointframe/Pointframe.csproj --verify-no-changes --no-restore
 

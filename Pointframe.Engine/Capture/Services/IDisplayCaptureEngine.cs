@@ -1,5 +1,3 @@
-using System.Drawing;
-
 namespace Pointframe.Engine;
 
 public interface IDisplayCaptureEngine

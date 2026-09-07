@@ -2,7 +2,6 @@ using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using Pointframe.Models;
 using Pointframe.Services;
 using Pointframe.ViewModels;
 using Xunit;

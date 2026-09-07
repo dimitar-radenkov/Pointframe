@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
-using Pointframe.Models;
 using Pointframe.Services;
 using Xunit;
 

@@ -2,6 +2,27 @@ name: Desktop Automation
 
 on:
   workflow_dispatch:
+    inputs:
+      pointframe_executable:
+        description: Absolute path to the prebuilt Pointframe executable
+        required: true
+        type: string
+      mcp_executable:
+        description: Absolute path to the prebuilt Pointframe MCP executable
+        required: true
+        type: string
+      notepad_executable:
+        description: Absolute path to the Notepad executable
+        required: true
+        type: string
+      output_directory:
+        description: Absolute directory for desktop evidence
+        required: true
+        type: string
+      desktop_automation_ack:
+        description: Type true only after confirming this Windows account or machine is safe for automation
+        required: true
+        type: string
 
 concurrency:
   group: desktop-automation
@@ -40,12 +61,60 @@ jobs:
       - name: Build desktop automation tests
         run: dotnet build Pointframe.AutomationTests/Pointframe.AutomationTests.csproj --no-restore --configuration Release
 
+      - name: Validate desktop prerequisites before input
+        shell: pwsh
+        env:
+          POINTFRAME_EXECUTABLE: ${{ inputs.pointframe_executable }}
+          POINTFRAME_MCP_EXECUTABLE: ${{ inputs.mcp_executable }}
+          POINTFRAME_NOTEPAD_EXECUTABLE: ${{ inputs.notepad_executable }}
+          POINTFRAME_DESKTOP_TEST_OUTPUT: ${{ inputs.output_directory }}
+          POINTFRAME_MCP_TEST_APP_PATH: ${{ inputs.pointframe_executable }}
+          POINTFRAME_MCP_TEST_SERVER_PATH: ${{ inputs.mcp_executable }}
+          POINTFRAME_MCP_TEST_NOTEPAD_PATH: ${{ inputs.notepad_executable }}
+          POINTFRAME_MCP_TEST_OUTPUT_DIRECTORY: ${{ inputs.output_directory }}
+          POINTFRAME_MCP_TEST_DEDICATED_ENVIRONMENT: "1"
+          POINTFRAME_DESKTOP_TEST_ACK: ${{ inputs.desktop_automation_ack }}
+        run: |
+          $paths = @(
+            $env:POINTFRAME_EXECUTABLE,
+            $env:POINTFRAME_MCP_EXECUTABLE,
+            $env:POINTFRAME_NOTEPAD_EXECUTABLE
+          )
+          foreach ($path in $paths) {
+            if (-not [System.IO.Path]::IsPathFullyQualified($path) -or -not (Test-Path $path -PathType Leaf)) {
+              throw "Required executable path is missing or not absolute: $path"
+            }
+          }
+          if (-not [System.IO.Path]::IsPathFullyQualified($env:POINTFRAME_DESKTOP_TEST_OUTPUT)) {
+            throw "Desktop evidence output directory must be an absolute path."
+          }
+          if ($env:POINTFRAME_DESKTOP_TEST_ACK -ne "true") {
+            throw "This workflow requires explicit operator acknowledgement that the account or machine is safe for automation."
+          }
+          New-Item -ItemType Directory -Path $env:POINTFRAME_DESKTOP_TEST_OUTPUT -Force | Out-Null
+
       - name: Run desktop smoke tests
-        # InstallerSmoke is intentionally excluded from CI/CD.
+        # Manual dispatch only; no untrusted PR event can reach a private desktop runner.
+        # The real Gate A test remains skip-gated until a prepared dedicated test environment is supplied.
+        env:
+          POINTFRAME_EXECUTABLE: ${{ inputs.pointframe_executable }}
+          POINTFRAME_MCP_EXECUTABLE: ${{ inputs.mcp_executable }}
+          POINTFRAME_NOTEPAD_EXECUTABLE: ${{ inputs.notepad_executable }}
+          POINTFRAME_MCP_TEST_OUTPUT_DIRECTORY: ${{ inputs.output_directory }}
+          POINTFRAME_MCP_TEST_DEDICATED_ENVIRONMENT: "1"
+          POINTFRAME_DESKTOP_TEST_ACK: ${{ inputs.desktop_automation_ack }}
         run: >
           dotnet test Pointframe.AutomationTests/Pointframe.AutomationTests.csproj
           --configuration Release
           --no-build
           --no-restore
           --verbosity normal
-          --filter "Category=DesktopAutomation"
+          --filter "Category=DesktopAutomation|FullyQualifiedName~McpSettingsPersistenceTests"
+
+      - name: Upload consented desktop evidence
+        if: ${{ always() && vars.POINTFRAME_UPLOAD_DESKTOP_EVIDENCE == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pointframe-desktop-evidence
+          path: ${{ inputs.output_directory }}
+          if-no-files-found: ignore
