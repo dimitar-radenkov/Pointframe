@@ -58,6 +58,7 @@ pwsh .claude/skills/knowledge-base/knowledge-base.ps1 -Check   # check only
   - [Recording width and height are even](#recording-width-and-height-are-even)
   - [DIPs and physical pixels are converted explicitly per monitor](#dips-and-physical-pixels-are-converted-explicitly-per-monitor)
   - [Everything emitted next to the exe must be in the installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list)
+  - [The MCP command list resource must name every registered tool](#the-mcp-command-list-resource-must-name-every-registered-tool)
 - [How-tos](#how-tos)
   - [Add an annotation tool](#add-an-annotation-tool)
   - [Add a user setting](#add-a-user-setting)
@@ -260,9 +261,10 @@ Text and Callout edit in a live `TextBox`; `LostFocus` converts it to a `TextBlo
 
 **Capabilities.**
 
-- The CLI accepts `displays` or `capture --monitor <exact Windows device name>`. Invalid or incomplete commands print usage and return exit code 2; execution failures return exit code 1.
+- The CLI accepts `displays`, `capture --monitor <exact Windows device name>`, or `ocr --monitor <exact Windows device name>`. Invalid or incomplete commands print usage and return exit code 2; execution failures return exit code 1.
 - The MCP resource `pointframe://commands` lists the supported command identifiers.
-- MCP tools list displays, capture a named monitor to a PNG artifact, start a no-microphone MP4 recording, and stop that recording with finalized artifact and sidecar metadata.
+- MCP tools list displays, capture a named monitor to a PNG artifact, read text from a named monitor (capture plus OCR) via `read_text_from_monitor`, start a no-microphone MP4 recording, and stop that recording with finalized artifact and sidecar metadata.
+- OCR (`ocr` CLI command / `read_text_from_monitor` MCP tool) captures the monitor like `capture` does, then runs `Windows.Media.Ocr.OcrEngine` against the captured bitmap via `IOcrEngineService`/`WindowsOcrEngineService`. The response always includes the PNG artifact; `recognizedText` is `null` when no text is found or no OCR language pack is installed for the user's profile languages. `DirectCaptureService.CaptureMonitorInternalAsync` is the shared helper behind both `CaptureMonitorAsync` and `CaptureMonitorTextAsync` so save/hash/metadata-sidecar logic isn't duplicated.
 - Recording requires an explicit redaction-region array. Regions are capture-local physical pixels and are applied before frames reach ffmpeg.
 
 **Packaging and configuration.**
@@ -278,10 +280,11 @@ CI publishes the CLI and MCP executables and runs `packaging/test-mcp-stdio.ps1`
 - Capture and recording must run in the logged-in interactive desktop session; Windows services in session 0 cannot capture the user desktop.
 - Monitor names passed to CLI/MCP commands are exact Windows device names, such as `\\.\DISPLAY1`.
 - Artifact paths and metadata are produced through the shared direct services under `%LOCALAPPDATA%\Pointframe`; recording also emits an event sidecar without bitmap data, OCR text, clipboard contents, or prompts.
+- `Pointframe.Engine` targets `net10.0-windows10.0.18362.0` and can call WinRT APIs (`Windows.Media.Ocr`, `Windows.Graphics.Imaging`) directly without a WPF dependency. `WindowsOcrEngineService` converts from GDI+ `System.Drawing.Bitmap` (what the capture pipeline produces) straight to `SoftwareBitmap`, unlike the main WPF app's `WindowsOcrService`, which converts from WPF's `BitmapSource`. Do not introduce a WPF dependency into `Pointframe.Engine` to reuse the WPF OCR service; keep the two implementations separate.
 
-**Tests.** `Pointframe.Tests/Cli/CliApplicationTests.cs`, `Pointframe.Tests/Mcp/DirectCaptureServiceTests.cs`, `Pointframe.Tests/Mcp/DirectRecordingMcpServiceTests.cs`, and `Pointframe.Tests/Engine/DirectRecordingServiceTests.cs`. Protocol smoke coverage is in `packaging/test-mcp-stdio.ps1`.
+**Tests.** `Pointframe.Tests/Cli/CliApplicationTests.cs`, `Pointframe.Tests/Mcp/DirectCaptureServiceTests.cs`, `Pointframe.Tests/Mcp/DirectRecordingMcpServiceTests.cs`, `Pointframe.Tests/Engine/DirectRecordingServiceTests.cs`, and `Pointframe.Tests/Engine/WindowsOcrEngineServiceTests.cs`. Protocol smoke coverage is in `packaging/test-mcp-stdio.ps1`.
 
-**Files.** `Pointframe.Cli/Program.cs`, `Pointframe.Cli/Application/CliApplication.cs`, `Pointframe.Cli/Commands/CliCommandParser.cs`, `Pointframe.Cli/Commands/CliCommand.cs`, `Pointframe.Mcp/Program.cs`, `Pointframe.Mcp/Tools/PointframeMcpTools.cs`, `Pointframe.Mcp/Resources/PointframeMcpResources.cs`, `Pointframe.Mcp/Services/DirectRecordingMcpService.cs`, `Pointframe.Mcp/Mappers/McpResponseMapper.cs`, `Pointframe.Mcp/Models/DirectRecordingResponse.cs`, `Pointframe.Mcp/Models/McpToolResponses.cs`, `Pointframe.Engine/Capture/Services/DirectCaptureService.cs`, `Pointframe.Engine/Capture/Services/DisplayCaptureEngine.cs`, `Pointframe.Engine/Capture/Models/DirectCaptureModels.cs`, `Pointframe.Engine/Recording/Services/DirectRecordingService.cs`, `Pointframe.Engine/Recording/Services/RawFrameRecordingPipeline.cs`, `Pointframe.Engine/Recording/Services/FfmpegDirectVideoWriter.cs`, `Pointframe.Engine/Recording/Models/DirectRecordingModels.cs`, `Pointframe/Services/Recording/ArtifactMetadataService.cs`, `packaging/build-cli-package.ps1`, `packaging/build-mcp-package.ps1`, `packaging/test-mcp-stdio.ps1`, `.github/workflows/ci.yml`, `.github/workflows/cd.yml`.
+**Files.** `Pointframe.Cli/Program.cs`, `Pointframe.Cli/Application/CliApplication.cs`, `Pointframe.Cli/Commands/CliCommandParser.cs`, `Pointframe.Cli/Commands/CliCommand.cs`, `Pointframe.Mcp/Program.cs`, `Pointframe.Mcp/Tools/PointframeMcpTools.cs`, `Pointframe.Mcp/Resources/PointframeMcpResources.cs`, `Pointframe.Mcp/Services/DirectRecordingMcpService.cs`, `Pointframe.Mcp/Mappers/McpResponseMapper.cs`, `Pointframe.Mcp/Models/DirectRecordingResponse.cs`, `Pointframe.Mcp/Models/McpToolResponses.cs`, `Pointframe.Engine/Capture/Services/DirectCaptureService.cs`, `Pointframe.Engine/Capture/Services/DisplayCaptureEngine.cs`, `Pointframe.Engine/Capture/Models/DirectCaptureModels.cs`, `Pointframe.Engine/Ocr/Services/IOcrEngineService.cs`, `Pointframe.Engine/Ocr/Services/WindowsOcrEngineService.cs`, `Pointframe.Engine/Recording/Services/DirectRecordingService.cs`, `Pointframe.Engine/Recording/Services/RawFrameRecordingPipeline.cs`, `Pointframe.Engine/Recording/Services/FfmpegDirectVideoWriter.cs`, `Pointframe.Engine/Recording/Models/DirectRecordingModels.cs`, `Pointframe/Services/Recording/ArtifactMetadataService.cs`, `packaging/build-cli-package.ps1`, `packaging/build-mcp-package.ps1`, `packaging/test-mcp-stdio.ps1`, `.github/workflows/ci.yml`, `.github/workflows/cd.yml`.
 
 **Files.** `Pointframe/Services/Recording/ScreenRecordingService.cs`, `Pointframe/Services/Recording/IScreenRecordingService.cs`, `Pointframe/Services/Recording/IRecordingRedactionSession.cs`, `Pointframe/Services/Recording/RecordingRedactionSession.cs`, `Pointframe/Services/Recording/IRecordingEventTrack.cs`, `Pointframe/Services/Recording/RecordingEventTrack.cs`, `Pointframe/Services/Recording/VideoWriterFactory.cs`, `Pointframe/Services/Recording/FFMpegVideoWriter.cs`, `Pointframe/Services/Recording/FfmpegResolver.cs`, `Pointframe/Models/RecordingSessionGeometry.cs`, `Pointframe/Views/RecordingOverlayWindow.xaml.cs`, `Pointframe/Views/OverlayWindow.Recording.cs`, `Pointframe/Views/OverlayWindow.RecordingHud.cs`, `Pointframe/Views/OverlayWindow.RecordingAnnotation.cs`, `Pointframe/Views/CountdownWindow.xaml.cs`, `Pointframe/ViewModels/RecordingHudViewModel.cs`, `Pointframe/Services/Recording/RecordingHudCoordinator.cs`, `Pointframe/Services/Recording/RecordingAnnotationSurfaceCoordinator.cs`, `Pointframe/Services/Recording/RecordingMousePassthroughCoordinator.cs`, `Pointframe/Services/Recording/RecordingOverlayNativeInterop.cs`, `Pointframe/Services/Recording/RecordingCursorEffectsService.cs`, `Pointframe/Services/Recording/RecordingMicrophoneSession.cs`, `Pointframe/Services/Infrastructure/MicrophoneDeviceService.cs`, `Pointframe/Services/Recording/GifExportService.cs`, `Pointframe/Services/Recording/VideoTrimService.cs`, `Pointframe/ViewModels/TrimViewModel.cs`, `Pointframe/Services/Recording/WatermarkTokenResolver.cs`, `Pointframe/Services/Messaging/RecordingCompletedMessage.cs`, `Pointframe/Services/Messaging/TrimRecordingRequestedMessage.cs`.
 
@@ -625,6 +628,18 @@ dip         = physical_px / scale
 **Lessons.**
 
 - Lesson: Turning off single-file native bundling silently breaks the installer, not the dev build
+
+### The MCP command list resource must name every registered tool
+
+**Rule.** `PointframeMcpResources.GetCommands()` returns a hardcoded JSON array of command identifiers. Every `[McpServerTool]` method added to `PointframeMcpTools` needs its snake_case tool name (for example `read_text_from_monitor`) added to that array in the same change.
+
+**Why.** MCP clients that call the `pointframe://commands` resource before `tools/list` use it as a cheap capability check. The array is not generated from the tool attributes, so nothing keeps it in sync automatically; a new tool method compiles and works over MCP even if the resource still lists only the older commands, silently telling callers the new capability does not exist.
+
+**Enforced by.** `packaging/test-mcp-stdio.ps1`'s `$expectedTools` list checks `tools/list`, not the `pointframe://commands` resource, so it does not catch a stale resource. There is no automated check for this file; review `PointframeMcpResources.cs` whenever `PointframeMcpTools.cs` gains or removes a tool.
+
+**Symptoms when violated.** A client that gates on `pointframe://commands` never offers the new tool to the user or agent, even though calling it directly still succeeds.
+
+**Files.** `Pointframe.Mcp/Resources/PointframeMcpResources.cs`, `Pointframe.Mcp/Tools/PointframeMcpTools.cs`, `packaging/test-mcp-stdio.ps1`. See [Standalone CLI and MCP automation](#standalone-cli-and-mcp-automation).
 
 ## How-tos
 

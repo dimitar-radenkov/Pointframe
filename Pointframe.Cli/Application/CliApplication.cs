@@ -19,7 +19,7 @@ internal sealed class CliApplication
     {
         try
         {
-            var directCaptureService = new DirectCaptureService(new DisplayCaptureEngine());
+            var directCaptureService = new DirectCaptureService(new DisplayCaptureEngine(), ocrEngineService: new WindowsOcrEngineService());
             return await new CliApplication(directCaptureService, standardOutput, standardError).RunAsync(args);
         }
         catch (Exception exception)
@@ -44,6 +44,7 @@ internal sealed class CliApplication
             {
                 "displays" => _directCaptureService.ListDisplays(),
                 "capture" => await _directCaptureService.CaptureMonitorAsync(command.MonitorName!, cancellationToken),
+                "ocr" => await _directCaptureService.CaptureMonitorTextAsync(command.MonitorName!, cancellationToken),
                 _ => throw new InvalidOperationException($"Unsupported CLI command '{command.Name}'."),
             };
 

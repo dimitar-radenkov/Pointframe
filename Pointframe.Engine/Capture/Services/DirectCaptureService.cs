@@ -12,20 +12,24 @@ public sealed class DirectCaptureService : IDirectCaptureService
         WriteIndented = true,
     };
     private readonly IDisplayCaptureEngine _displayCaptureEngine;
+    private readonly IOcrEngineService _ocrEngineService;
     private readonly string _screenshotsDirectory;
     private readonly TimeProvider _timeProvider;
 
     public DirectCaptureService(
         IDisplayCaptureEngine displayCaptureEngine,
+        IOcrEngineService ocrEngineService,
         string? screenshotsDirectory = null,
         TimeProvider? timeProvider = null)
     {
+        ArgumentNullException.ThrowIfNull(ocrEngineService);
         _displayCaptureEngine = displayCaptureEngine;
         _screenshotsDirectory = screenshotsDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Pointframe",
             "Screenshots");
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _ocrEngineService = ocrEngineService;
     }
 
     public string ListDisplays()
@@ -36,6 +40,21 @@ public sealed class DirectCaptureService : IDirectCaptureService
 
     public async Task<string> CaptureMonitorAsync(string monitorName, CancellationToken cancellationToken = default)
     {
+        var (artifact, _) = await CaptureMonitorInternalAsync(monitorName, recognizeText: false, cancellationToken).ConfigureAwait(false);
+        return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Artifact: artifact));
+    }
+
+    public async Task<string> CaptureMonitorTextAsync(string monitorName, CancellationToken cancellationToken = default)
+    {
+        var (artifact, recognizedText) = await CaptureMonitorInternalAsync(monitorName, recognizeText: true, cancellationToken).ConfigureAwait(false);
+        return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Artifact: artifact, RecognizedText: recognizedText));
+    }
+
+    private async Task<(ArtifactDescriptor Artifact, string? RecognizedText)> CaptureMonitorInternalAsync(
+        string monitorName,
+        bool recognizeText,
+        CancellationToken cancellationToken)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(monitorName);
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -45,6 +64,10 @@ public sealed class DirectCaptureService : IDirectCaptureService
         var artifactId = Guid.NewGuid().ToString("N");
         var path = Path.Combine(_screenshotsDirectory, $"{createdUtc:yyyyMMdd-HHmmss}-{artifactId}.png");
         capturedMonitor.Bitmap.Save(path, ImageFormat.Png);
+
+        string? recognizedText = recognizeText
+            ? await _ocrEngineService.RecognizeAsync(capturedMonitor.Bitmap, cancellationToken).ConfigureAwait(false)
+            : null;
 
         string sha256;
         long byteLength;
@@ -69,7 +92,7 @@ public sealed class DirectCaptureService : IDirectCaptureService
             capturedMonitor.Display.BoundsPixels);
         await WriteMetadataSidecarAsync(metadata, cancellationToken);
         var artifact = new ArtifactDescriptor(SchemaVersion, artifactId, metadata);
-        return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Artifact: artifact));
+        return (artifact, recognizedText);
     }
 
     private static async Task WriteMetadataSidecarAsync(ImageArtifactMetadata metadata, CancellationToken cancellationToken)

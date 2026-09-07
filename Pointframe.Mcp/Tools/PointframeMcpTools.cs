@@ -34,6 +34,19 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
     }
 
     [McpServerTool(
+        Title = "Read text from monitor",
+        Destructive = false,
+        UseStructuredContent = true),
+     Description("Captures a Pointframe whole-monitor screenshot and recognizes on-screen text using Windows OCR. Returns both the saved PNG artifact and the recognized text; recognizedText is null when no text was found or no OCR language pack is installed.")]
+    public async Task<McpCaptureResponse> ReadTextFromMonitorAsync(
+        [Description("The exact Windows display device name, such as \\.\\DISPLAY1.")] string monitorName,
+        CancellationToken cancellationToken)
+    {
+        var json = await directCaptureService.CaptureMonitorTextAsync(monitorName, cancellationToken).ConfigureAwait(false);
+        return McpResponseMapper.DeserializeCaptureResponse(json);
+    }
+
+    [McpServerTool(
         Title = "Start recording",
         UseStructuredContent = true),
      Description("Starts direct, no-microphone MP4 recording for a monitor without launching the Pointframe desktop application. Redaction regions are required and use capture-local physical pixels; provide an empty array when none are needed.")]
