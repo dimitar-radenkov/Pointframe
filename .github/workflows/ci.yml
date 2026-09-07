@@ -36,6 +36,29 @@ jobs:
       - name: Build
         run: dotnet build Pointframe.Tests/Pointframe.Tests.csproj --no-restore --configuration Release
 
+      - name: Publish MCP server
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE 'Pointframe.Mcp\bin\publish\win-x64'
+          dotnet publish Pointframe.Mcp/Pointframe.Mcp.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            /p:PublishSingleFile=true `
+            /p:PublishReadyToRun=false `
+            /p:EnableCompressionInSingleFile=true `
+            /p:PublishTrimmed=false `
+            /p:PublishDir="$publishDir\" `
+            --no-restore `
+            --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: MCP stdio smoke test
+        shell: pwsh
+        run: >
+          ./packaging/test-mcp-stdio.ps1
+          -ExecutablePath Pointframe.Mcp/bin/publish/win-x64/Pointframe.Mcp.exe
+
       - name: Format check
         run: dotnet format Pointframe/Pointframe.csproj --verify-no-changes --no-restore
 

@@ -148,6 +148,32 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         DpiAwarenessScope.RunPerMonitorV2(() => overlay.Show());
     }
 
+    private void ShowWholeScreenOverlay(Forms.Screen targetScreen)
+    {
+        var screenCapture = _services.GetRequiredService<IScreenCaptureService>();
+        var monitorScale = MonitorDpiHelper.GetMonitorScale(targetScreen.Bounds.Location);
+        var hostBoundsPixels = new Int32Rect(
+            targetScreen.Bounds.X,
+            targetScreen.Bounds.Y,
+            targetScreen.Bounds.Width,
+            targetScreen.Bounds.Height);
+        var monitorSnapshot = screenCapture.Capture(
+            targetScreen.Bounds.X,
+            targetScreen.Bounds.Y,
+            targetScreen.Bounds.Width,
+            targetScreen.Bounds.Height);
+        var selection = SelectionSession.CreateWholeScreenSelectionResult(
+            targetScreen.DeviceName,
+            monitorSnapshot,
+            MonitorDpiHelper.CalculateWindowBounds(targetScreen.Bounds, monitorScale),
+            hostBoundsPixels,
+            monitorScale,
+            monitorScale);
+        var overlay = _services.GetRequiredService<OverlayWindow>();
+        overlay.InitializeFromSelectionSession(selection);
+        DpiAwarenessScope.RunPerMonitorV2(() => overlay.Show());
+    }
+
     public async void StartWholeScreenRecord()
     {
         _logger.LogDebug("Whole-screen record hotkey triggered");

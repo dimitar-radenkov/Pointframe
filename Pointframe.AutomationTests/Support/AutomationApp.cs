@@ -86,7 +86,7 @@ public sealed class AutomationApp : IDisposable
             });
     }
 
-    private static string ResolveAutomationExecutablePath()
+    internal static string ResolveAutomationExecutablePath()
     {
         var directPath = Path.Combine(AppContext.BaseDirectory, "Pointframe.exe");
         if (File.Exists(directPath))

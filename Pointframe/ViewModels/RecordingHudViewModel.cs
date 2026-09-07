@@ -15,6 +15,7 @@ public partial class RecordingHudViewModel : ObservableObject
     private DateTime _startTime;
     private DateTime _pausedAt;
     private TimeSpan _totalPausedDuration;
+    private RecordingSessionGeometry? _recordingSessionGeometry;
 
     [ObservableProperty]
     private string _elapsedText = "00:00";
@@ -103,6 +104,12 @@ public partial class RecordingHudViewModel : ObservableObject
         _ = RunElapsedTimer(_elapsedCts.Token);
     }
 
+    internal void SetRecordingSessionGeometry(RecordingSessionGeometry geometry)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
+        _recordingSessionGeometry = geometry;
+    }
+
     public void AttachAnnotationSession(RecordingAnnotationViewModel annotationViewModel, Func<bool> toggleAnnotationInput)
     {
         _annotationViewModel = annotationViewModel;
@@ -156,7 +163,13 @@ public partial class RecordingHudViewModel : ObservableObject
         });
 
         CloseRequested?.Invoke();
-        await _eventAggregator.Publish(new RecordingCompletedMessage(OutputPath, ElapsedText, hadMicrophoneAudio)).ConfigureAwait(true);
+        await _eventAggregator.Publish(new RecordingCompletedMessage(
+            OutputPath,
+            ElapsedText,
+            hadMicrophoneAudio,
+            GetElapsedDuration(),
+            _recordingSessionGeometry,
+            _svc.EventTrackSummary)).ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -291,11 +304,22 @@ public partial class RecordingHudViewModel : ObservableObject
 
     private int GetElapsedSeconds()
     {
-        if (TimeSpan.TryParseExact(ElapsedText, @"mm\:ss", null, out var elapsed))
+        return (int)GetElapsedDuration().TotalSeconds;
+    }
+
+    private TimeSpan GetElapsedDuration()
+    {
+        if (_startTime == default)
         {
-            return (int)elapsed.TotalSeconds;
+            return TimeSpan.Zero;
         }
 
-        return 0;
+        var pausedDuration = _totalPausedDuration;
+        if (_svc.IsPaused)
+        {
+            pausedDuration += DateTime.UtcNow - _pausedAt;
+        }
+
+        return DateTime.UtcNow - _startTime - pausedDuration;
     }
 }

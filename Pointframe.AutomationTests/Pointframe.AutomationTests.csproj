@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Pointframe.Cli\Pointframe.Cli.csproj" />
     <ProjectReference Include="..\Pointframe\Pointframe.csproj" />
   </ItemGroup>
 

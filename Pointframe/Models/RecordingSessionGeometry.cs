@@ -82,6 +82,16 @@ public sealed record RecordingSessionGeometry(
         return MapHostDipRectToScreenPixels(hostRect);
     }
 
+    public Int32Rect MapCaptureLocalDipRectToCaptureLocalPixels(Rect captureLocalRect)
+    {
+        var screenRect = MapCaptureLocalDipRectToScreenPixels(captureLocalRect);
+        return new Int32Rect(
+            screenRect.X - CaptureBoundsPixels.X,
+            screenRect.Y - CaptureBoundsPixels.Y,
+            screenRect.Width,
+            screenRect.Height);
+    }
+
     public Rect GetCaptureCanvasRectDips() => CaptureRectDips;
 
     public Rect GetRecordingBorderRectDips(double borderOffset)

@@ -48,6 +48,181 @@ winget install DimitarRadenkov.Pointframe
 
 You can complete your first capture workflow in under a minute.
 
+## Pointframe MCP Server
+
+Pointframe also ships a standalone MCP server for agents that need to inspect the Windows desktop and produce verifiable screenshot or recording artifacts. The MCP server uses `Pointframe.Engine` directly; it does not start the Pointframe tray application, create a WPF overlay, or require the full Pointframe installer.
+
+The standalone host requires an interactive Windows desktop session. It is a local stdio server intended to be launched by VS Code, Copilot, or another MCP client.
+
+### MCP capabilities
+
+The server exposes:
+
+- `list_displays` — return monitor identifiers, physical pixel bounds, and DPI scales.
+- `capture_monitor` — capture a named monitor and return a PNG artifact plus metadata.
+- `start_recording` — start a whole-monitor MP4 recording. Recording requires an explicit `redactionRegionsCaptureLocalPixels` array, even when it is empty.
+- `stop_recording` — stop the active recording and return the finalized MP4 artifact, metadata, and event sidecar references.
+
+The normal workflow is:
+
+1. Call `list_displays` and select a returned `monitorName`.
+2. Call `capture_monitor` with that exact monitor name, or call `start_recording`.
+3. For recording, pass redaction rectangles in capture-local physical pixels. Use `[]` when no redaction is required.
+4. Call `stop_recording` to finalize the MP4 and retrieve its metadata.
+
+Example tool arguments:
+
+```json
+{
+  "monitorName": "\\\\.\\DISPLAY1"
+}
+```
+
+```json
+{
+  "monitorName": "\\\\.\\DISPLAY1",
+  "redactionRegionsCaptureLocalPixels": [
+    { "x": 120, "y": 80, "width": 240, "height": 48 }
+  ],
+  "framesPerSecond": 20
+}
+```
+
+Responses contain structured JSON with `success`, operation identifiers, artifact paths,
+byte lengths, SHA-256 hashes, monitor geometry, DPI information, and sidecar paths.
+Artifact paths are local filesystem paths on the machine running the MCP server.
+
+### MCP use cases
+
+The MCP server is useful when an agent needs a local, verifiable visual artifact
+rather than a text-only description of the Windows desktop:
+
+- **Bug report capture:** call `list_displays`, select the affected monitor, then
+  call `capture_monitor` to produce a PNG and metadata sidecar that can be attached
+  to a report.
+- **Privacy-safe support recording:** call `start_recording` with capture-local
+  rectangles covering credentials, tokens, customer data, or other sensitive areas,
+  then call `stop_recording` when the reproduction is complete. Redaction is applied
+  before frames are passed to ffmpeg.
+- **UI regression evidence:** capture the relevant monitor before and after an
+  interaction and use the returned artifact paths and SHA-256 values to identify
+  exactly which files were produced.
+- **Multi-monitor troubleshooting:** discover displays first and target the exact
+  `monitorName` returned by `list_displays` instead of relying on screen order or
+  desktop coordinates.
+- **Reproducible automation artifacts:** use the structured response metadata to
+  record the operation ID, monitor, DPI, physical bounds, file size, timestamp, and
+  checksum alongside test or support results.
+
+The server is intentionally local: it is not a remote desktop service and does not
+start the Pointframe WPF application. Recording does not include microphone audio.
+Event sidecars contain lifecycle and declared-redaction events, but do not contain
+bitmap data, OCR text, clipboard contents, or prompts.
+
+Artifacts are written beneath `%LOCALAPPDATA%\Pointframe`:
+
+```text
+Screenshots\*.png
+Screenshots\*.png.metadata.json
+Recordings\*.mp4
+Recordings\*.mp4.metadata.json
+Recordings\*.mp4.events.jsonl
+```
+
+Metadata includes the artifact path, byte length, SHA-256, timestamp, monitor, DPI, and physical capture bounds. Recording event sidecars contain lifecycle and declared-redaction events without bitmap data, OCR text, clipboard contents, or prompts.
+
+### Install a published MCP server
+
+The standard release artifact is a versioned `.mcpb` bundle. It contains the
+self-contained `win-x64` server, `ffmpeg.exe`, and an MCPB `manifest.json`.
+Download the matching `Pointframe.Mcp-*-win-x64.mcpb` asset from the
+[latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest)
+and install it in an MCPB-compatible host. Verify the adjacent `.sha256` file
+before installation when the host does not verify the bundle automatically.
+
+For clients that use the MCP Registry, each release also publishes a matching
+`*.server.json` file. It uses the `io.github.dimitar-radenkov/pointframe-mcp`
+server name, pins the MCPB URL, and includes the bundle SHA-256.
+
+To build the same artifacts locally:
+
+```powershell
+dotnet restore Pointframe.Mcp/Pointframe.Mcp.csproj
+./packaging/build-mcp-package.ps1 `
+  -Version "1.0.0" `
+  -FfmpegPath "C:\path\to\ffmpeg.exe"
+```
+
+Use the current release version instead of `1.0.0` when producing a release package.
+
+The script also emits a legacy ZIP, the MCPB bundle, a SHA-256 checksum, and
+release-ready `server.json` metadata under `packaging/output`.
+
+```powershell
+Get-FileHash packaging/output/Pointframe.Mcp-*-win-x64.mcpb -Algorithm SHA256
+```
+
+The legacy ZIP remains useful for manual installation. Extract it to a
+directory such as `C:\Program Files\Pointframe.Mcp`; it contains the standalone
+MCP executable and `ffmpeg.exe`, not the WPF Pointframe application.
+
+### Configure VS Code
+
+For a manually extracted ZIP, point VS Code at the published executable in
+`.vscode/mcp.json` or the user MCP configuration:
+
+```json
+{
+  "servers": {
+    "pointframe": {
+      "type": "stdio",
+      "command": "C:\\Program Files\\Pointframe.Mcp\\Pointframe.Mcp.exe"
+    }
+  }
+}
+```
+
+After changing the command or executable path, reload the VS Code window or restart
+the MCP server from the MCP server controls. For local development, the workspace
+configuration can point at the Debug executable instead. Rebuild `Pointframe.Mcp`
+after code changes before restarting the MCP server.
+
+### Test the MCP server locally
+
+Build the server and run the repository's protocol smoke test:
+
+```powershell
+dotnet build Pointframe.Mcp/Pointframe.Mcp.csproj
+./packaging/test-mcp-stdio.ps1 `
+  -ExecutablePath ".\Pointframe.Mcp\bin\Debug\net10.0-windows10.0.18362.0\Pointframe.Mcp.exe"
+```
+
+The smoke test verifies the MCP initialize handshake and confirms that all four
+tools are advertised. To test an actual capture, configure the executable in VS
+Code, call `list_displays`, then call `capture_monitor` with one of the returned
+monitor names. A successful capture should have a matching `.metadata.json`
+sidecar whose SHA-256 and byte length agree with the image.
+
+Recording currently captures a whole monitor without microphone audio. Redaction regions are capture-local physical pixels and are applied before ffmpeg receives the frame. The process must run in the logged-in interactive Windows session; Windows services running in session 0 cannot capture the user desktop.
+
+### Troubleshooting
+
+- **No displays are returned or capture fails:** run the MCP server in the same
+  logged-in interactive Windows session as the desktop you want to capture.
+  Windows services and session-0 processes cannot capture the user desktop.
+- **`capture_monitor` rejects the monitor:** use the exact `monitorName` returned
+  by `list_displays`; do not substitute a friendly display label.
+- **Recording cannot start:** confirm that no other Pointframe recording is active,
+  the requested monitor still exists, and `framesPerSecond` is between 1 and 60.
+- **Recording finalization fails:** make sure `ffmpeg.exe` is next to
+  `Pointframe.Mcp.exe` in the extracted package, or rebuild the package with
+  `-FfmpegPath` pointing to a valid Windows ffmpeg executable.
+- **The MCP client reports invalid protocol output:** stdout is reserved for
+  MCP JSON-RPC messages. Run the published executable through the configured MCP
+  client rather than wrapping it in a shell that writes additional output.
+- **Artifacts cannot be opened:** artifact paths refer to the MCP server's
+  machine and user profile. The client must have access to that filesystem.
+
 If you find Pointframe useful, a ⭐ on GitHub helps others discover it — thank you!
 
 ## ✨ Key highlights
@@ -229,6 +404,7 @@ Open **Settings** from the tray icon to configure:
 - [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 - ffmpeg — for MP4 recording and GIF export. The installer offers to download it; it can also be placed next to the app or on `PATH`
 - English speech model (~141 MB) — only for recording transcripts. Tick the optional component during setup, or download it later from **Settings ▸ Recording**
+- Standalone MCP recording additionally requires `ffmpeg.exe`; the published MCP package builder places it next to `Pointframe.Mcp.exe`
 
 ## Installation
 
@@ -263,6 +439,9 @@ cd Pointframe
 
 dotnet build Pointframe/Pointframe.csproj
 dotnet run   --project Pointframe/Pointframe.csproj
+
+# Build the standalone MCP host
+dotnet build Pointframe.Mcp/Pointframe.Mcp.csproj
 ```
 
 ## Running tests

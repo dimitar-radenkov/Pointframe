@@ -40,6 +40,17 @@ public sealed class RecordingSessionGeometryTests
     }
 
     [Fact]
+    public void MapCaptureLocalDipRectToCaptureLocalPixels_UsesScreenMappingThenCaptureOffset()
+    {
+        var result = Geometry.MapCaptureLocalDipRectToCaptureLocalPixels(new Rect(10, 20, 30, 40));
+
+        Assert.Equal(15, result.X);
+        Assert.Equal(40, result.Y);
+        Assert.Equal(45, result.Width);
+        Assert.Equal(80, result.Height);
+    }
+
+    [Fact]
     public void MapScreenPixelPointToHostDips_RestoresHostCoordinates()
     {
         var result = Geometry.MapScreenPixelPointToHostDips(new Point(2085, 140));

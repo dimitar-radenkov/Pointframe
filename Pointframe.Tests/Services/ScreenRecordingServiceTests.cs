@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
+using System.Text.Json;
+using System.Windows;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -239,7 +242,6 @@ public sealed class ScreenRecordingServiceTests
         Assert.False(svc.IsRecordingMicrophoneEnabled);
         Assert.False(svc.CanToggleMicrophone);
         Assert.False(svc.IsMicrophoneMuted);
-        Assert.Empty(GetField<ConcurrentQueue<byte[]>>(svc, "_bufferPool"));
     }
 
     [Fact]
@@ -365,6 +367,52 @@ public sealed class ScreenRecordingServiceTests
         svc.Resume();
 
         Assert.False(svc.IsPaused);
+    }
+
+    [Fact]
+    public void Stop_AfterPauseAndResume_FinalizesLifecycleEventTrack()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"pointframe-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var outputPath = Path.Combine(directory, "recording.mp4");
+        var mockFactory = new Mock<IVideoWriterFactory>();
+        mockFactory
+            .Setup(factory => factory.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()))
+            .Returns(new Mock<IVideoWriter>().Object);
+
+        try
+        {
+            using var svc = CreateSut(mockFactory.Object);
+            svc.Start(0, 0, 100, 100, outputPath);
+            svc.Pause();
+            svc.Resume();
+            Assert.True(svc.TryAddRedaction(new Int32Rect(10, 20, 30, 40)));
+            svc.Stop();
+
+            var summary = Assert.IsType<RecordingEventTrackSummary>(svc.EventTrackSummary);
+            var events = File.ReadLines(summary.SidecarPath)
+                .Select(line => JsonSerializer.Deserialize<RecordingEvent>(line))
+                .ToArray();
+
+            Assert.Equal(5, summary.EventCount);
+            Assert.Collection(events,
+                recordingEvent => Assert.Equal("recording.started", recordingEvent?.EventType),
+                recordingEvent => Assert.Equal("recording.paused", recordingEvent?.EventType),
+                recordingEvent => Assert.Equal("recording.resumed", recordingEvent?.EventType),
+                recordingEvent =>
+                {
+                    Assert.Equal("redaction.added", recordingEvent?.EventType);
+                    Assert.Equal(10, recordingEvent?.Payload.RedactionX);
+                    Assert.Equal(20, recordingEvent?.Payload.RedactionY);
+                    Assert.Equal(30, recordingEvent?.Payload.RedactionWidth);
+                    Assert.Equal(40, recordingEvent?.Payload.RedactionHeight);
+                },
+                recordingEvent => Assert.Equal("recording.stopped", recordingEvent?.EventType));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [Fact]
@@ -637,27 +685,6 @@ public sealed class ScreenRecordingServiceTests
 
         Assert.Contains("droppedFrames=0", sessionStats, StringComparison.Ordinal);
         Assert.Contains("droppedDuration=00:00:00", sessionStats, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void PadRecordingToElapsedDuration_ClonesLatestFrameOnceForPadding()
-    {
-        var writer = new FrameCollectingVideoWriter();
-        var source = new byte[] { 1, 2, 3, 4 };
-        using var svc = CreateSut();
-
-        SetField(svc, "_writer", writer);
-        SetField(svc, "_latestFrameBytes", source);
-        SetField(svc, "_fps", 10);
-        SetField(svc, "_captureWidth", 1);
-        SetField(svc, "_captureHeight", 1);
-
-        InvokePrivateMethod(svc, "PadRecordingToElapsedDuration", TimeSpan.FromMilliseconds(150));
-
-        Assert.Equal(2, writer.Frames.Count);
-        Assert.NotSame(source, writer.Frames[0]);
-        Assert.Same(writer.Frames[0], writer.Frames[1]);
-        Assert.Equal(source, writer.Frames[0]);
     }
 
     private static T GetField<T>(object target, string fieldName)

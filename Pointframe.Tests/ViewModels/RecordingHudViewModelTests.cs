@@ -150,6 +150,35 @@ public sealed class RecordingHudViewModelTests
     }
 
     [Fact]
+    public async Task StopCommand_PublishesAuthoritativeRecordingGeometry()
+    {
+        var eventAggregatorMock = new Mock<IEventAggregator>();
+        eventAggregatorMock
+            .Setup(aggregator => aggregator.Publish(It.IsAny<RecordingCompletedMessage>()))
+            .Returns(ValueTask.CompletedTask);
+        var geometry = new RecordingSessionGeometry(
+            new System.Windows.Int32Rect(0, 0, 1920, 1080),
+            new System.Windows.Int32Rect(100, 120, 1280, 720),
+            new System.Windows.Int32Rect(0, 0, 1920, 1040),
+            new System.Windows.Rect(0, 0, 1920, 1080),
+            new System.Windows.Rect(0, 0, 1920, 1040),
+            new System.Windows.Rect(100, 120, 1280, 720),
+            @"\\.\DISPLAY1",
+            1d,
+            1d);
+        var vm = CreateVm(eventAggregator: eventAggregatorMock.Object);
+        vm.SetRecordingSessionGeometry(geometry);
+
+        await vm.StopCommand.ExecuteAsync(null);
+
+        eventAggregatorMock.Verify(
+            aggregator => aggregator.Publish(It.Is<RecordingCompletedMessage>(message =>
+                message.Geometry == geometry
+                && message.ElapsedDuration == TimeSpan.Zero)),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task StopCommand_FiresCloseRequested()
     {
         var vm = CreateVm();
