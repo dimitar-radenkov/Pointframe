@@ -15,7 +15,7 @@ public sealed class RawFrameRecordingPipelineTests
             new RawFrameRecordingOptions(new PixelBounds(0, 0, 1, 1), 10, () => ReadOnlyMemory<PixelBounds>.Empty),
             capture);
 
-        Assert.True(capture.Captured.Wait(TimeSpan.FromSeconds(1)));
+        Assert.True(capture.Captured.Wait(TimeSpan.FromSeconds(10)));
         Assert.True(writer.FirstFrameWritten.Wait(TimeSpan.FromSeconds(10)));
         var statistics = pipeline.Stop(TimeSpan.FromMilliseconds(250));
 

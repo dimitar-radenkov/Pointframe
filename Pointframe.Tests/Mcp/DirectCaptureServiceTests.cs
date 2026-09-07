@@ -20,7 +20,7 @@ public sealed class DirectCaptureServiceTests : IDisposable
             1.5,
             1.25,
             new Pointframe.Engine.PixelBounds(-20, 10, 2, 3));
-        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), _screenshotsDirectory);
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), new Mock<IOcrEngineService>().Object, _screenshotsDirectory);
 
         var json = await sut.CaptureMonitorAsync(display.MonitorName);
         var response = JsonSerializer.Deserialize<DirectCaptureResponse>(json);
@@ -51,7 +51,7 @@ public sealed class DirectCaptureServiceTests : IDisposable
             1d,
             1d,
             new Pointframe.Engine.PixelBounds(0, 0, 100, 200));
-        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), _screenshotsDirectory);
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), new Mock<IOcrEngineService>().Object, _screenshotsDirectory);
 
         var response = JsonSerializer.Deserialize<DirectCaptureResponse>(sut.ListDisplays());
 
@@ -74,7 +74,7 @@ public sealed class DirectCaptureServiceTests : IDisposable
         ocrEngineService
             .Setup(service => service.RecognizeAsync(It.IsAny<Bitmap>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("Hello world");
-        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), _screenshotsDirectory, ocrEngineService: ocrEngineService.Object);
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), ocrEngineService.Object, _screenshotsDirectory);
 
         var json = await sut.CaptureMonitorTextAsync(display.MonitorName);
         var response = JsonSerializer.Deserialize<DirectCaptureResponse>(json);
@@ -99,7 +99,7 @@ public sealed class DirectCaptureServiceTests : IDisposable
         ocrEngineService
             .Setup(service => service.RecognizeAsync(It.IsAny<Bitmap>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
-        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), _screenshotsDirectory, ocrEngineService: ocrEngineService.Object);
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), ocrEngineService.Object, _screenshotsDirectory);
 
         var json = await sut.CaptureMonitorTextAsync(display.MonitorName);
         var response = JsonSerializer.Deserialize<DirectCaptureResponse>(json);
@@ -121,7 +121,7 @@ public sealed class DirectCaptureServiceTests : IDisposable
         ocrEngineService
             .Setup(service => service.RecognizeAsync(It.IsAny<Bitmap>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("unused");
-        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), _screenshotsDirectory, ocrEngineService: ocrEngineService.Object);
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), ocrEngineService.Object, _screenshotsDirectory);
 
         var json = await sut.CaptureMonitorAsync(display.MonitorName);
         var response = JsonSerializer.Deserialize<DirectCaptureResponse>(json);

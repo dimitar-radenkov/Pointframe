@@ -2,7 +2,7 @@ namespace Pointframe.Cli;
 
 internal static class CliCommandParser
 {
-    internal const string Usage = "Usage: pointframe-cli displays | capture --monitor <exact Windows device name> | ocr --monitor <exact Windows device name>";
+    internal const string Usage = "Usage: Pointframe.Cli.exe displays | capture --monitor <exact Windows device name> | ocr --monitor <exact Windows device name>";
 
     internal static bool TryParse(string[] args, out CliCommand command, out string? error)
     {

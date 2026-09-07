@@ -18,17 +18,18 @@ public sealed class DirectCaptureService : IDirectCaptureService
 
     public DirectCaptureService(
         IDisplayCaptureEngine displayCaptureEngine,
+        IOcrEngineService ocrEngineService,
         string? screenshotsDirectory = null,
-        TimeProvider? timeProvider = null,
-        IOcrEngineService? ocrEngineService = null)
+        TimeProvider? timeProvider = null)
     {
+        ArgumentNullException.ThrowIfNull(ocrEngineService);
         _displayCaptureEngine = displayCaptureEngine;
         _screenshotsDirectory = screenshotsDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Pointframe",
             "Screenshots");
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _ocrEngineService = ocrEngineService ?? new WindowsOcrEngineService();
+        _ocrEngineService = ocrEngineService;
     }
 
     public string ListDisplays()
