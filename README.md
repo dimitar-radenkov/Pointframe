@@ -48,6 +48,26 @@ winget install DimitarRadenkov.Pointframe
 
 You can complete your first capture workflow in under a minute.
 
+## Pointframe CLI
+
+Each GitHub Release includes `Pointframe.Cli-<version>-win-x64.zip`, a self-contained
+Windows CLI for monitor discovery and whole-monitor PNG screenshots. Extract the ZIP
+and run `Pointframe.Cli.exe`; the Pointframe desktop app, the .NET runtime, and the
+.NET SDK are not required.
+
+The CLI requires an interactive Windows desktop session. It cannot capture a user's
+desktop from a Windows service (session 0).
+
+```powershell
+.\Pointframe.Cli.exe displays
+.\Pointframe.Cli.exe capture --monitor '\\.\DISPLAY1'
+```
+
+Use the exact `monitorName` emitted by `displays`. A successful command writes JSON
+to standard output and exits with code `0`; invalid arguments exit with code `2`, and
+capture failures exit with code `1`. Screenshots and their metadata sidecars are saved
+under `%LOCALAPPDATA%\Pointframe\Screenshots`.
+
 ## Pointframe MCP Server
 
 Pointframe also ships a standalone MCP server for agents that need to inspect the Windows desktop and produce verifiable screenshot or recording artifacts. The MCP server uses `Pointframe.Engine` directly; it does not start the Pointframe tray application, create a WPF overlay, or require the full Pointframe installer.

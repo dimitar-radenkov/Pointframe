@@ -53,6 +53,23 @@ jobs:
             --nologo
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Publish CLI
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE 'Pointframe.Cli\bin\publish\win-x64'
+          dotnet publish Pointframe.Cli/Pointframe.Cli.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            /p:PublishSingleFile=true `
+            /p:PublishReadyToRun=false `
+            /p:EnableCompressionInSingleFile=true `
+            /p:PublishTrimmed=false `
+            /p:PublishDir="$publishDir\" `
+            --no-restore `
+            --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: MCP stdio smoke test
         shell: pwsh
         run: >
