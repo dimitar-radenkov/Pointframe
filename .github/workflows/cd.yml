@@ -88,6 +88,12 @@ jobs:
             -Version '${{ steps.version.outputs.display }}' `
             -FfmpegPath $env:FFMPEG_PATH
 
+      - name: Build CLI release package
+        shell: pwsh
+        run: |
+          ./packaging/build-cli-package.ps1 `
+            -Version '${{ steps.version.outputs.display }}'
+
       # Sign the published exe if a code-signing certificate is available.
       # Store your PFX as a base64 secret: SIGNING_CERT_B64
       # Store the PFX password as:          SIGNING_CERT_PASSWORD
@@ -156,6 +162,8 @@ jobs:
           tag_name: v${{ steps.version.outputs.display }}
           files: |
             installer/output/Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe
+            packaging/output/Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip
+            packaging/output/Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip.sha256
             packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb
             packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb.sha256
             packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.server.json
@@ -163,5 +171,6 @@ jobs:
             Pointframe ${{ steps.version.outputs.display }}
 
             - Installer refresh and maintenance release.
+            - Includes a standalone Pointframe CLI for whole-monitor screenshots.
             - Includes the Pointframe MCPB stdio server bundle and registry metadata.
             - For the full list of commits, see Compare in this release page.
