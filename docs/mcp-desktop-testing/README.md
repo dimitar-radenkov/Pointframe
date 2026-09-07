@@ -20,6 +20,32 @@ The target is black-boxed. The driver does not inject code, add target-specific
 startup flags, redirect Pointframe storage, seed settings, or read Pointframe
 private data.
 
+## Scope: general desktop automation, not a Pointframe-only test hook
+
+`focus_window`, `click`, `press_keys`, `drag`, `enter_text`, `scroll`, and
+`invoke` do not know or care that a target is Pointframe. Any executable an
+operator adds to the policy file becomes something the driver can launch,
+observe, and physically drive through its real UI, clicking controls, filling
+fields, dragging elements, and invoking UI Automation elements the same way a
+person would with a mouse and keyboard.
+
+This means the driver is not limited to testing Pointframe itself. Once a
+policy lists an application, whether Pointframe, Notepad, Notepad++, or another
+approved Windows executable, an operator-authorized agent can use it to:
+
+- reproduce a bug report by clicking through the same steps a user described;
+- drive a third-party application into a specific state or artifact needed for
+  a task;
+- exercise any approved application's workflow end-to-end while capturing
+  screenshots or recordings as evidence.
+
+The policy allowlist, worker supervision, and physical-input preflight checks
+described below exist precisely because this is real desktop control rather
+than a sandboxed simulation: every executable added to a policy file is an
+executable the driver can genuinely operate. That tradeoff is intentional —
+broad, useful automation capability, gated behind an explicit, narrow,
+operator-approved allowlist rather than left open by default.
+
 ## Safety model
 
 Desktop testing is disabled by default. It is enabled only when the MCP process
