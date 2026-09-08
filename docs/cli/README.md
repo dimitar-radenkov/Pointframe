@@ -39,6 +39,11 @@ The script writes the ZIP and SHA-256 file under
 
 ## Commands
 
+Every long option below also accepts a short alias: `-m` for `--monitor`,
+`-s` for `--seconds`, `-f` for `--fps`, and `-r` for `--redact`. Every long
+option also accepts an inline value, e.g. `--monitor=\\.\DISPLAY1` instead of
+`--monitor \\.\DISPLAY1`.
+
 ### Discover monitors
 
 ```powershell
@@ -97,8 +102,8 @@ Optional flags:
 
 | Flag | Meaning | Default |
 |---|---|---|
-| `--fps <1-60>` | Capture frame rate | `20` |
-| `--redact <x,y,width,height>` | Pixelate a capture-local physical-pixel region; repeatable | none |
+| `--fps <1-60>` (`-f`) | Capture frame rate | `20` |
+| `--redact <x,y,width,height>` (`-r`) | Pixelate a capture-local physical-pixel region; repeatable | none |
 
 Example with a 30 fps capture and two redacted regions:
 
@@ -140,10 +145,28 @@ Pointframe.Cli.exe displays
 Pointframe.Cli.exe capture --monitor <exact Windows device name>
 Pointframe.Cli.exe ocr --monitor <exact Windows device name>
 Pointframe.Cli.exe record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]...
+Pointframe.Cli.exe --help
+Pointframe.Cli.exe --version
 ```
 
 Friendly monitor labels, display indexes, or omitted `--monitor` values are not
 accepted.
+
+## Help and version
+
+```powershell
+.\Pointframe.Cli.exe --help    # or -h
+.\Pointframe.Cli.exe --version # or -v
+```
+
+Both accept the flag form (`--help`/`--version`), the short form (`-h`/`-v`),
+or a bare `help`/`version` command. Unlike every other command, these write
+plain text (not JSON) to standard output and always exit with code `0`.
+
+`--help`/`-h` and `--version`/`-v` take priority over any other arguments on
+the command line, so they can be appended to an otherwise invalid or
+incomplete command to see usage instead of an error, e.g.
+`Pointframe.Cli.exe record --monitor '\\.\DISPLAY1' --help`.
 
 ## Artifact verification
 

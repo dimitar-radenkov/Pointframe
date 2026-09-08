@@ -113,6 +113,11 @@ The server exposes:
 - ⏹️ `stop_recording` — stop the active recording and return the finalized MP4 artifact, metadata, and event sidecar references.
 - ⏱️ `get_recording_status` — report whether a recording is currently active and, if so, its session details and elapsed duration; returns no session when nothing is recording.
 
+The server also exposes MCP resources:
+
+- `pointframe://commands` — the exact list of registered tool identifiers (varies depending on whether desktop testing is enabled).
+- `pointframe://server-info` — server version, whether desktop testing tools are enabled, and whether `ffmpeg` (required for recording) was found, along with where it was found (`EnvironmentVariable`, `Bundled`, or `Path`). Useful for a health check before calling `start_recording`.
+
 The normal workflow is:
 
 1. Call `list_displays` and select a returned `monitorName`.

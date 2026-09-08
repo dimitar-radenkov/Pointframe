@@ -80,3 +80,11 @@ public sealed record McpRecordingStatusResponse(
     bool IsRecording,
     McpRecordingSession? Session = null,
     TimeSpan? Elapsed = null);
+
+public sealed record McpServerInfoResponse(
+    int SchemaVersion,
+    string Version,
+    bool DesktopTestingEnabled,
+    McpFfmpegAvailability Ffmpeg);
+
+public sealed record McpFfmpegAvailability(bool Found, string Path, string Source);

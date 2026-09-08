@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Pointframe.Tests.Engine;
 
+[Collection("DirectFfmpegPathOverride")]
 public sealed class DirectRecordingServiceTests : IDisposable
 {
     private readonly string _outputDirectory = Path.Combine(Path.GetTempPath(), $"Pointframe.Tests.{Guid.NewGuid():N}");

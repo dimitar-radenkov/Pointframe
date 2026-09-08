@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 using Pointframe.Engine;
 
@@ -50,6 +52,18 @@ internal sealed class CliApplication
 
         try
         {
+            if (string.Equals(command.Name, "help", StringComparison.Ordinal))
+            {
+                await _standardOutput.WriteLineAsync(CliCommandParser.HelpText);
+                return 0;
+            }
+
+            if (string.Equals(command.Name, "version", StringComparison.Ordinal))
+            {
+                await _standardOutput.WriteLineAsync(GetVersion());
+                return 0;
+            }
+
             if (string.Equals(command.Name, "record", StringComparison.Ordinal))
             {
                 return await RunRecordAsync(command, cancellationToken);
@@ -108,5 +122,22 @@ internal sealed class CliApplication
             stopResult.Artifact);
         await _standardOutput.WriteLineAsync(JsonSerializer.Serialize(response));
         return stopResult.Success ? 0 : 1;
+    }
+
+    private static string GetVersion()
+    {
+        // Assembly.Location is empty for single-file publishes; use Environment.ProcessPath instead.
+        var location = Environment.ProcessPath ?? Assembly.GetEntryAssembly()?.Location;
+        if (!string.IsNullOrEmpty(location))
+        {
+            var fileVersionInfo = FileVersionInfo.GetVersionInfo(location);
+            if (!string.IsNullOrWhiteSpace(fileVersionInfo.ProductVersion))
+            {
+                return $"Pointframe CLI {fileVersionInfo.ProductVersion}";
+            }
+        }
+
+        var assemblyVersion = Assembly.GetEntryAssembly()?.GetName().Version;
+        return $"Pointframe CLI {assemblyVersion?.ToString() ?? "0.0.0"}";
     }
 }

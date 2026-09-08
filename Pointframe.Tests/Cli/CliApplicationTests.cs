@@ -9,6 +9,93 @@ namespace Pointframe.Tests.Cli;
 
 public sealed class CliApplicationTests
 {
+    [Theory]
+    [InlineData("--help")]
+    [InlineData("-h")]
+    [InlineData("help")]
+    public void TryParse_HelpFlag_UsesHelpCommand(string flag)
+    {
+        var parsed = CliCommandParser.TryParse([flag], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("help", command.Name);
+    }
+
+    [Theory]
+    [InlineData("--version")]
+    [InlineData("-v")]
+    [InlineData("version")]
+    public void TryParse_VersionFlag_UsesVersionCommand(string flag)
+    {
+        var parsed = CliCommandParser.TryParse([flag], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("version", command.Name);
+    }
+
+    [Theory]
+    [InlineData("--help")]
+    [InlineData("-h")]
+    public void TryParse_HelpFlagAmongOtherArguments_TakesPriorityAndUsesHelpCommand(string flag)
+    {
+        var parsed = CliCommandParser.TryParse(["record", "--monitor", @"\\.\DISPLAY1", flag], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("help", command.Name);
+    }
+
+    [Theory]
+    [InlineData("--version")]
+    [InlineData("-v")]
+    public void TryParse_VersionFlagAmongOtherArguments_TakesPriorityAndUsesVersionCommand(string flag)
+    {
+        var parsed = CliCommandParser.TryParse(["capture", flag], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("version", command.Name);
+    }
+
+    [Fact]
+    public async Task RunAsync_Help_WritesHelpTextAndExitsZero()
+    {
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        var exitCode = await application.RunAsync(["--help"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("Pointframe CLI", standardOutput.ToString());
+        Assert.Contains("displays", standardOutput.ToString());
+        Assert.Empty(standardError.ToString());
+        directCaptureService.VerifyNoOtherCalls();
+        directRecordingService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task RunAsync_Version_WritesVersionAndExitsZero()
+    {
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        var exitCode = await application.RunAsync(["--version"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.StartsWith("Pointframe CLI ", standardOutput.ToString());
+        Assert.Empty(standardError.ToString());
+        directCaptureService.VerifyNoOtherCalls();
+        directRecordingService.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public async Task RunAsync_Displays_WritesDisplayDescriptorsJson()
     {
@@ -45,6 +132,17 @@ public sealed class CliApplicationTests
     public void TryParse_Capture_RequiresExactMonitorArgument()
     {
         var parsed = CliCommandParser.TryParse(["capture", "--monitor", @"\\.\DISPLAY1"], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("capture", command.Name);
+        Assert.Equal(@"\\.\DISPLAY1", command.MonitorName);
+    }
+
+    [Fact]
+    public void TryParse_Capture_AcceptsShortMonitorAlias()
+    {
+        var parsed = CliCommandParser.TryParse(["capture", "-m", @"\\.\DISPLAY1"], out var command, out var error);
 
         Assert.True(parsed);
         Assert.Null(error);
@@ -99,6 +197,53 @@ public sealed class CliApplicationTests
         Assert.Equal(2, command.RedactionRegions!.Count);
         Assert.Equal(new PixelBounds(10, 20, 30, 40), command.RedactionRegions[0]);
         Assert.Equal(new PixelBounds(1, 2, 3, 4), command.RedactionRegions[1]);
+    }
+
+    [Fact]
+    public void TryParse_Record_AcceptsShortOptionAliases()
+    {
+        var parsed = CliCommandParser.TryParse(
+            ["record", "-m", @"\\.\DISPLAY1", "-s", "5", "-f", "30", "-r", "10,20,30,40"],
+            out var command,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("record", command.Name);
+        Assert.Equal(@"\\.\DISPLAY1", command.MonitorName);
+        Assert.Equal(5, command.RecordSeconds);
+        Assert.Equal(30, command.FramesPerSecond);
+        Assert.NotNull(command.RedactionRegions);
+        Assert.Equal(new PixelBounds(10, 20, 30, 40), command.RedactionRegions![0]);
+    }
+
+    [Fact]
+    public void TryParse_Record_AcceptsInlineFlagValues()
+    {
+        var parsed = CliCommandParser.TryParse(
+            ["record", @"--monitor=\\.\DISPLAY1", "--seconds=5", "--fps=30", "--redact=10,20,30,40"],
+            out var command,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("record", command.Name);
+        Assert.Equal(@"\\.\DISPLAY1", command.MonitorName);
+        Assert.Equal(5, command.RecordSeconds);
+        Assert.Equal(30, command.FramesPerSecond);
+        Assert.NotNull(command.RedactionRegions);
+        Assert.Equal(new PixelBounds(10, 20, 30, 40), command.RedactionRegions![0]);
+    }
+
+    [Fact]
+    public void TryParse_Capture_AcceptsInlineMonitorValue()
+    {
+        var parsed = CliCommandParser.TryParse(["capture", @"--monitor=\\.\DISPLAY1"], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("capture", command.Name);
+        Assert.Equal(@"\\.\DISPLAY1", command.MonitorName);
     }
 
     [Fact]
