@@ -74,3 +74,9 @@ public sealed record McpRecordingArtifact(
     string EventSidecarPath,
     long EventCount,
     int EventTrackSchemaVersion);
+
+public sealed record McpRecordingStatusResponse(
+    int SchemaVersion,
+    bool IsRecording,
+    McpRecordingSession? Session = null,
+    TimeSpan? Elapsed = null);

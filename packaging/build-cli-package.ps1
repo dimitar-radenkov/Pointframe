@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.0"
+    [string]$Version = "1.0.0",
+    [string]$FfmpegPath
 )
 
 Set-StrictMode -Version Latest
@@ -36,6 +37,20 @@ if (Test-Path $packageDirectory)
 
 New-Item -ItemType Directory -Path $packageDirectory -Force | Out-Null
 Copy-Item (Join-Path $publishDirectory "*") $packageDirectory -Recurse -Force
+
+if ($FfmpegPath)
+{
+    if (-not (Test-Path $FfmpegPath -PathType Leaf))
+    {
+        throw "FfmpegPath '$FfmpegPath' was not found."
+    }
+
+    Copy-Item $FfmpegPath (Join-Path $packageDirectory "ffmpeg.exe") -Force
+}
+else
+{
+    Write-Warning "No -FfmpegPath supplied: the packaged CLI's 'record' command will only work if ffmpeg.exe is on PATH or POINTFRAME_FFMPEG_PATH is set on the target machine."
+}
 
 if (Test-Path $archivePath)
 {

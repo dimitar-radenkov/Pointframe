@@ -5,6 +5,8 @@ public interface IDirectRecordingService : IDisposable
     DirectRecordingResult Start(DirectRecordingRequest request);
 
     Task<DirectRecordingResult> StopAsync(CancellationToken cancellationToken = default);
+
+    DirectRecordingStatus GetStatus();
 }
 
 public interface IDirectVideoWriter : IDisposable

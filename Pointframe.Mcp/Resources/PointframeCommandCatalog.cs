@@ -1,34 +1,14 @@
+using System.Reflection;
+using System.Text.RegularExpressions;
+using ModelContextProtocol.Server;
+
 namespace Pointframe.Mcp;
 
-public static class PointframeCommandCatalog
+public static partial class PointframeCommandCatalog
 {
-    public static readonly IReadOnlyList<string> DirectTools =
-    [
-        "list_displays",
-        "capture_monitor",
-        "read_text_from_monitor",
-        "start_recording",
-        "stop_recording",
-    ];
+    public static readonly IReadOnlyList<string> DirectTools = GetToolNames(typeof(PointframeMcpTools));
 
-    public static readonly IReadOnlyList<string> DesktopTestingTools =
-    [
-        "list_apps",
-        "start_test_session",
-        "restart_app",
-        "observe_app",
-        "focus_window",
-        "click",
-        "press_keys",
-        "drag",
-        "enter_text",
-        "invoke",
-        "check_ui",
-        "get_action_result",
-        "get_test_report",
-        "end_test_session",
-        "scroll",
-    ];
+    public static readonly IReadOnlyList<string> DesktopTestingTools = GetToolNames(typeof(DesktopTestingMcpTools));
 
     public static IReadOnlyList<string> Create(bool desktopTestingEnabled)
     {
@@ -36,4 +16,31 @@ public static class PointframeCommandCatalog
             ? DirectTools.Concat(DesktopTestingTools).ToArray()
             : DirectTools;
     }
+
+    /// <summary>
+    /// Derives MCP tool identifiers directly from a tool type's <see cref="McpServerToolAttribute"/>-decorated
+    /// methods instead of a hand-maintained list, so a new tool method cannot silently drift out of sync with
+    /// the resource that advertises available commands.
+    /// </summary>
+    private static IReadOnlyList<string> GetToolNames(Type toolType)
+    {
+        return toolType
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+            .Select(method => (method, attribute: method.GetCustomAttribute<McpServerToolAttribute>()))
+            .Where(pair => pair.attribute is not null)
+            .OrderBy(pair => pair.method.MetadataToken)
+            .Select(pair => string.IsNullOrWhiteSpace(pair.attribute!.Name) ? ToToolName(pair.method.Name) : pair.attribute.Name)
+            .ToArray();
+    }
+
+    private static string ToToolName(string methodName)
+    {
+        var withoutAsyncSuffix = methodName.EndsWith("Async", StringComparison.Ordinal)
+            ? methodName[..^"Async".Length]
+            : methodName;
+        return PascalCaseBoundaryPattern().Replace(withoutAsyncSuffix, "_").ToLowerInvariant();
+    }
+
+    [GeneratedRegex("(?<!^)(?=[A-Z])")]
+    private static partial Regex PascalCaseBoundaryPattern();
 }

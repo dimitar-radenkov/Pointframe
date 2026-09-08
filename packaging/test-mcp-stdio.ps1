@@ -139,7 +139,7 @@ function Invoke-McpDiscovery {
 }
 
 $resolvedExecutablePath = (Resolve-Path $ExecutablePath).Path
-$expectedTools = @("list_displays", "capture_monitor", "read_text_from_monitor", "start_recording", "stop_recording")
+$expectedTools = @("list_displays", "capture_monitor", "read_text_from_monitor", "start_recording", "stop_recording", "get_recording_status")
 Invoke-McpDiscovery -ResolvedExecutablePath $resolvedExecutablePath -Arguments @() -ExpectedTools $expectedTools -DiscoveryName "disabled"
 
 if (-not $SkipEnabledDiscovery)

@@ -77,6 +77,51 @@ public sealed class DirectRecordingServiceTests : IDisposable
     }
 
     [Fact]
+    public void GetStatus_WhenNoRecordingIsActive_ReturnsNotRecording()
+    {
+        var display = new DisplayDescriptor(@"\\.\DISPLAY1", 1d, 1d, new PixelBounds(0, 0, 16, 2));
+        using var sut = new DirectRecordingService(new FakeDisplayCaptureEngine(display), new FakeVideoWriterFactory());
+
+        var status = sut.GetStatus();
+
+        Assert.False(status.IsRecording);
+        Assert.Null(status.Session);
+        Assert.Null(status.Elapsed);
+    }
+
+    [Fact]
+    public async Task GetStatus_WhileRecordingIsActive_ReturnsSessionAndElapsed()
+    {
+        var display = new DisplayDescriptor(@"\\.\DISPLAY1", 1d, 1d, new PixelBounds(0, 0, 16, 2));
+        using var sut = new DirectRecordingService(new FakeDisplayCaptureEngine(display), new FakeVideoWriterFactory());
+        var start = sut.Start(new DirectRecordingRequest(display.MonitorName, [], OutputDirectory: _outputDirectory));
+        Assert.True(start.Success);
+
+        await Task.Delay(20);
+        var status = sut.GetStatus();
+        await sut.StopAsync();
+
+        Assert.True(status.IsRecording);
+        Assert.Equal(start.Session, status.Session);
+        Assert.NotNull(status.Elapsed);
+        Assert.True(status.Elapsed >= TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task GetStatus_AfterStop_ReturnsNotRecording()
+    {
+        var display = new DisplayDescriptor(@"\\.\DISPLAY1", 1d, 1d, new PixelBounds(0, 0, 16, 2));
+        using var sut = new DirectRecordingService(new FakeDisplayCaptureEngine(display), new FakeVideoWriterFactory());
+        sut.Start(new DirectRecordingRequest(display.MonitorName, [], OutputDirectory: _outputDirectory));
+        await sut.StopAsync();
+
+        var status = sut.GetStatus();
+
+        Assert.False(status.IsRecording);
+        Assert.Null(status.Session);
+    }
+
+    [Fact]
     [Trait("Category", "Integration")]
     public async Task StartAndStopAsync_WithFfmpeg_ProducesMp4AndSidecars()
     {

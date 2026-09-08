@@ -8,6 +8,8 @@ public interface IDirectRecordingMcpService
     string StartRecording(string monitorName, IReadOnlyList<PixelBounds> redactionRegionsCaptureLocalPixels, int framesPerSecond);
 
     Task<string> StopRecordingAsync(CancellationToken cancellationToken = default);
+
+    string GetRecordingStatus();
 }
 
 public sealed class DirectRecordingMcpService : IDirectRecordingMcpService
@@ -33,6 +35,12 @@ public sealed class DirectRecordingMcpService : IDirectRecordingMcpService
     {
         var result = await _directRecordingService.StopAsync(cancellationToken).ConfigureAwait(false);
         return JsonSerializer.Serialize(ToResponse(result));
+    }
+
+    public string GetRecordingStatus()
+    {
+        var status = _directRecordingService.GetStatus();
+        return JsonSerializer.Serialize(status);
     }
 
     private static DirectRecordingResponse ToResponse(DirectRecordingResult result)

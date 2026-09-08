@@ -16,9 +16,10 @@ public sealed class CliApplicationTests
         directCaptureService
             .Setup(service => service.ListDisplays())
             .Returns("[{\"monitorName\":\"\\\\\\\\.\\\\DISPLAY1\"}]");
+        var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
         var standardError = new StringWriter();
-        var application = new CliApplication(directCaptureService.Object, standardOutput, standardError);
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
 
         var exitCode = await application.RunAsync(["displays"]);
 
@@ -81,15 +82,90 @@ public sealed class CliApplicationTests
     }
 
     [Fact]
+    public void TryParse_Record_ParsesMonitorSecondsFpsAndRedactionRegions()
+    {
+        var parsed = CliCommandParser.TryParse(
+            ["record", "--monitor", @"\\.\DISPLAY1", "--seconds", "5", "--fps", "30", "--redact", "10,20,30,40", "--redact", "1,2,3,4"],
+            out var command,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("record", command.Name);
+        Assert.Equal(@"\\.\DISPLAY1", command.MonitorName);
+        Assert.Equal(5, command.RecordSeconds);
+        Assert.Equal(30, command.FramesPerSecond);
+        Assert.NotNull(command.RedactionRegions);
+        Assert.Equal(2, command.RedactionRegions!.Count);
+        Assert.Equal(new PixelBounds(10, 20, 30, 40), command.RedactionRegions[0]);
+        Assert.Equal(new PixelBounds(1, 2, 3, 4), command.RedactionRegions[1]);
+    }
+
+    [Fact]
+    public void TryParse_Record_DefaultsFramesPerSecondAndRedactionRegions()
+    {
+        var parsed = CliCommandParser.TryParse(["record", "--monitor", @"\\.\DISPLAY1", "--seconds", "5"], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal(20, command.FramesPerSecond);
+        Assert.NotNull(command.RedactionRegions);
+        Assert.Empty(command.RedactionRegions!);
+    }
+
+    [Fact]
+    public void TryParse_RecordWithoutMonitor_ReturnsUsageError()
+    {
+        var parsed = CliCommandParser.TryParse(["record", "--seconds", "5"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("The record command requires --monitor followed by an exact Windows device name.", error);
+    }
+
+    [Fact]
+    public void TryParse_RecordWithoutSeconds_ReturnsUsageError()
+    {
+        var parsed = CliCommandParser.TryParse(["record", "--monitor", @"\\.\DISPLAY1"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("The record command requires --seconds followed by a positive integer duration.", error);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("not-a-number")]
+    public void TryParse_RecordWithInvalidSeconds_ReturnsUsageError(string secondsValue)
+    {
+        var parsed = CliCommandParser.TryParse(["record", "--monitor", @"\\.\DISPLAY1", "--seconds", secondsValue], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("The record command requires --seconds to be a positive integer.", error);
+    }
+
+    [Fact]
+    public void TryParse_RecordWithInvalidRedactionRegion_ReturnsUsageError()
+    {
+        var parsed = CliCommandParser.TryParse(
+            ["record", "--monitor", @"\\.\DISPLAY1", "--seconds", "5", "--redact", "10,20,30"],
+            out _,
+            out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("Each --redact value must be four comma-separated integers formatted as x,y,width,height with a positive width and height.", error);
+    }
+
+    [Fact]
     public async Task RunAsync_Capture_WritesDirectArtifactJson()
     {
         var directCaptureService = new Mock<IDirectCaptureService>();
         directCaptureService
             .Setup(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"artifact-1\"}}}");
+        var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
         var standardError = new StringWriter();
-        var application = new CliApplication(directCaptureService.Object, standardOutput, standardError);
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
 
         var exitCode = await application.RunAsync(["capture", "--monitor", @"\\.\DISPLAY1"]);
 
@@ -106,9 +182,10 @@ public sealed class CliApplicationTests
         directCaptureService
             .Setup(service => service.CaptureMonitorTextAsync(@"\\.\DISPLAY1", It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"artifact-1\"}},\"recognizedText\":\"Hello world\"}");
+        var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
         var standardError = new StringWriter();
-        var application = new CliApplication(directCaptureService.Object, standardOutput, standardError);
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
 
         var exitCode = await application.RunAsync(["ocr", "--monitor", @"\\.\DISPLAY1"]);
 
@@ -116,5 +193,86 @@ public sealed class CliApplicationTests
         directCaptureService.Verify(service => service.CaptureMonitorTextAsync(@"\\.\DISPLAY1", It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains("Hello world", standardOutput.ToString(), StringComparison.Ordinal);
         Assert.Empty(standardError.ToString());
+    }
+
+    [Fact]
+    public async Task RunAsync_Record_StartsWaitsAndStopsThenWritesCombinedJson()
+    {
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        var session = new DirectRecordingSession(
+            1,
+            "rec_1",
+            @"C:\recordings\rec_1.mp4",
+            @"\\.\DISPLAY1",
+            20,
+            new PixelBounds(0, 0, 1920, 1080),
+            [],
+            DateTimeOffset.UtcNow);
+        var artifact = new DirectRecordingArtifact(
+            1,
+            "rec_1",
+            "video/mp4",
+            @"C:\recordings\rec_1.mp4",
+            "deadbeef",
+            1024,
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromSeconds(1),
+            false,
+            @"\\.\DISPLAY1",
+            1.0,
+            1.0,
+            new PixelBounds(0, 0, 1920, 1080),
+            new PixelBounds(0, 0, 1920, 1080),
+            new PixelBounds(0, 0, 1920, 1080),
+            @"C:\recordings\rec_1.mp4.events.jsonl",
+            2,
+            1);
+        directRecordingService
+            .Setup(service => service.Start(It.IsAny<DirectRecordingRequest>()))
+            .Returns(new DirectRecordingResult(true, Session: session));
+        directRecordingService
+            .Setup(service => service.StopAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DirectRecordingResult(true, Artifact: artifact));
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        var exitCode = await application.RunAsync(["record", "--monitor", @"\\.\DISPLAY1", "--seconds", "1"]);
+
+        Assert.Equal(0, exitCode);
+        directRecordingService.Verify(
+            service => service.Start(It.Is<DirectRecordingRequest>(request =>
+                request.MonitorName == @"\\.\DISPLAY1" && request.FramesPerSecond == 20 && request.RedactionRegionsCaptureLocalPixels.Count == 0)),
+            Times.Once);
+        directRecordingService.Verify(service => service.StopAsync(It.IsAny<CancellationToken>()), Times.Once);
+        var response = JsonSerializer.Deserialize<DirectRecordingResponse>(standardOutput.ToString());
+        Assert.NotNull(response);
+        Assert.True(response!.Success);
+        Assert.Equal("rec_1", response.Session?.OperationId);
+        Assert.Equal("rec_1", response.Artifact?.ArtifactId);
+        Assert.Empty(standardError.ToString());
+    }
+
+    [Fact]
+    public async Task RunAsync_Record_WhenStartFails_WritesFailureJsonAndDoesNotStop()
+    {
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        directRecordingService
+            .Setup(service => service.Start(It.IsAny<DirectRecordingRequest>()))
+            .Returns(new DirectRecordingResult(false, ErrorCode: "monitor_not_found", ErrorMessage: "The monitor was not found."));
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        var exitCode = await application.RunAsync(["record", "--monitor", @"\\.\DISPLAY1", "--seconds", "1"]);
+
+        Assert.Equal(1, exitCode);
+        directRecordingService.Verify(service => service.StopAsync(It.IsAny<CancellationToken>()), Times.Never);
+        var response = JsonSerializer.Deserialize<DirectRecordingResponse>(standardOutput.ToString());
+        Assert.NotNull(response);
+        Assert.False(response!.Success);
+        Assert.Equal("monitor_not_found", response.Error?.Code);
     }
 }

@@ -15,6 +15,11 @@ internal static class McpResponseMapper
         return MapRecordingResponse(Deserialize<DirectRecordingResponse>(json));
     }
 
+    internal static McpRecordingStatusResponse DeserializeRecordingStatusResponse(string json)
+    {
+        return MapRecordingStatusResponse(Deserialize<DirectRecordingStatus>(json));
+    }
+
     private static T Deserialize<T>(string json)
     {
         return JsonSerializer.Deserialize<T>(json)
@@ -60,17 +65,7 @@ internal static class McpResponseMapper
             response.SchemaVersion,
             response.Success,
             response.Error is null ? null : new McpCaptureError(response.Error.Code, response.Error.Message),
-            response.Session is null
-                ? null
-                : new McpRecordingSession(
-                    response.Session.SchemaVersion,
-                    response.Session.OperationId,
-                    response.Session.ArtifactPath,
-                    response.Session.MonitorName,
-                    response.Session.FramesPerSecond,
-                    ToMcpBounds(response.Session.CaptureBoundsPixels),
-                    response.Session.RedactionRegionsCaptureLocalPixels.Select(ToMcpBounds).ToArray(),
-                    response.Session.StartedUtc),
+            MapRecordingSession(response.Session),
             response.Artifact is null
                 ? null
                 : new McpRecordingArtifact(
@@ -92,6 +87,30 @@ internal static class McpResponseMapper
                     response.Artifact.EventSidecarPath,
                     response.Artifact.EventCount,
                     response.Artifact.EventTrackSchemaVersion));
+    }
+
+    private static McpRecordingStatusResponse MapRecordingStatusResponse(DirectRecordingStatus status)
+    {
+        return new McpRecordingStatusResponse(
+            status.SchemaVersion,
+            status.IsRecording,
+            MapRecordingSession(status.Session),
+            status.Elapsed);
+    }
+
+    private static McpRecordingSession? MapRecordingSession(DirectRecordingSession? session)
+    {
+        return session is null
+            ? null
+            : new McpRecordingSession(
+                session.SchemaVersion,
+                session.OperationId,
+                session.ArtifactPath,
+                session.MonitorName,
+                session.FramesPerSecond,
+                ToMcpBounds(session.CaptureBoundsPixels),
+                session.RedactionRegionsCaptureLocalPixels.Select(ToMcpBounds).ToArray(),
+                session.StartedUtc);
     }
 
     private static McpPixelBounds ToMcpBounds(PixelBounds bounds)
