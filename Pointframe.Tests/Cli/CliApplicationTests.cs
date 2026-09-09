@@ -300,6 +300,58 @@ public sealed class CliApplicationTests
         Assert.Equal("Each --redact value must be four comma-separated integers formatted as x,y,width,height with a positive width and height.", error);
     }
 
+    [Theory]
+    [InlineData("0")]
+    [InlineData("61")]
+    [InlineData("-1")]
+    [InlineData("not-a-number")]
+    public void TryParse_RecordWithInvalidFps_ReturnsUsageError(string fpsValue)
+    {
+        var parsed = CliCommandParser.TryParse(
+            ["record", "--monitor", @"\\.\DISPLAY1", "--seconds", "5", "--fps", fpsValue],
+            out _,
+            out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("The record command requires --fps to be an integer between 1 and 60.", error);
+    }
+
+    [Fact]
+    public void TryParse_RecordWithTrailingMonitorFlagAndNoValue_ReturnsMonitorUsageErrorNotUnrecognizedOption()
+    {
+        var parsed = CliCommandParser.TryParse(["record", "--seconds", "5", "--monitor"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("The record command requires --monitor followed by an exact Windows device name.", error);
+    }
+
+    [Fact]
+    public void TryParse_RecordWithTrailingSecondsFlagAndNoValue_ReturnsSecondsUsageErrorNotUnrecognizedOption()
+    {
+        var parsed = CliCommandParser.TryParse(["record", "--monitor", @"\\.\DISPLAY1", "--seconds"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("The record command requires --seconds to be a positive integer.", error);
+    }
+
+    [Fact]
+    public void TryParse_RecordWithTrailingFpsFlagAndNoValue_ReturnsFpsUsageErrorNotUnrecognizedOption()
+    {
+        var parsed = CliCommandParser.TryParse(["record", "--monitor", @"\\.\DISPLAY1", "--seconds", "5", "--fps"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("The record command requires --fps to be an integer between 1 and 60.", error);
+    }
+
+    [Fact]
+    public void TryParse_RecordWithTrailingRedactFlagAndNoValue_ReturnsRedactUsageErrorNotUnrecognizedOption()
+    {
+        var parsed = CliCommandParser.TryParse(["record", "--monitor", @"\\.\DISPLAY1", "--seconds", "5", "--redact"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("Each --redact value must be four comma-separated integers formatted as x,y,width,height with a positive width and height.", error);
+    }
+
     [Fact]
     public async Task RunAsync_Capture_WritesDirectArtifactJson()
     {
@@ -419,5 +471,37 @@ public sealed class CliApplicationTests
         Assert.NotNull(response);
         Assert.False(response!.Success);
         Assert.Equal("monitor_not_found", response.Error?.Code);
+    }
+
+    [Theory]
+    [InlineData("--help")]
+    [InlineData("--version")]
+    public async Task StaticRunAsync_HelpOrVersion_SucceedsWithoutConstructingCaptureOrRecordingServices(string flag)
+    {
+        // Regression test for a PR review comment: the static entry point used to construct
+        // DirectCaptureService/WindowsOcrEngineService/DirectRecordingService before parsing args,
+        // so --help/--version could fail (or do unnecessary work) even though they never need those
+        // services. Parsing now happens first, and help/version short-circuit before any service
+        // is constructed; this exercises that path end-to-end through the real static entry point.
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+
+        var exitCode = await CliApplication.RunAsync([flag], standardOutput, standardError);
+
+        Assert.Equal(0, exitCode);
+        Assert.Empty(standardError.ToString());
+        Assert.NotEmpty(standardOutput.ToString());
+    }
+
+    [Fact]
+    public async Task StaticRunAsync_UsageError_ReturnsExitCodeTwoWithoutConstructingServices()
+    {
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+
+        var exitCode = await CliApplication.RunAsync(["capture"], standardOutput, standardError);
+
+        Assert.Equal(2, exitCode);
+        Assert.Contains("requires --monitor", standardError.ToString());
     }
 }

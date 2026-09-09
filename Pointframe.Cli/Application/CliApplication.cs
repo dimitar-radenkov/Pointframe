@@ -30,9 +30,30 @@ internal sealed class CliApplication
     {
         try
         {
+            // Parse before constructing any capture/recording/OCR service so --help/--version
+            // (and usage errors) never depend on those services being constructible.
+            if (!CliCommandParser.TryParse(args, out var command, out var parseError))
+            {
+                await standardError.WriteLineAsync(parseError);
+                await standardError.WriteLineAsync(CliCommandParser.Usage);
+                return 2;
+            }
+
+            if (string.Equals(command.Name, "help", StringComparison.Ordinal))
+            {
+                await standardOutput.WriteLineAsync(CliCommandParser.HelpText);
+                return 0;
+            }
+
+            if (string.Equals(command.Name, "version", StringComparison.Ordinal))
+            {
+                await standardOutput.WriteLineAsync(GetVersion());
+                return 0;
+            }
+
             var directCaptureService = new DirectCaptureService(new DisplayCaptureEngine(), ocrEngineService: new WindowsOcrEngineService());
             using var directRecordingService = new DirectRecordingService(new DisplayCaptureEngine(), new FfmpegDirectVideoWriterFactory());
-            return await new CliApplication(directCaptureService, directRecordingService, standardOutput, standardError).RunAsync(args, cancellationToken);
+            return await new CliApplication(directCaptureService, directRecordingService, standardOutput, standardError).RunCommandAsync(command, cancellationToken);
         }
         catch (Exception exception)
         {
@@ -50,6 +71,11 @@ internal sealed class CliApplication
             return 2;
         }
 
+        return await RunCommandAsync(command, cancellationToken);
+    }
+
+    internal async Task<int> RunCommandAsync(CliCommand command, CancellationToken cancellationToken = default)
+    {
         try
         {
             if (string.Equals(command.Name, "help", StringComparison.Ordinal))

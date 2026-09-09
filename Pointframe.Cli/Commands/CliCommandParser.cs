@@ -125,17 +125,25 @@ internal static class CliCommandParser
         while (index < args.Length)
         {
             var flag = args[index];
+            var hasValue = index + 1 < args.Length;
 
-            if (IsMonitorFlag(flag) && index + 1 < args.Length)
+            if (IsMonitorFlag(flag))
             {
+                if (!hasValue)
+                {
+                    command = default!;
+                    error = "The record command requires --monitor followed by an exact Windows device name.";
+                    return false;
+                }
+
                 monitorName = args[index + 1];
                 index += 2;
                 continue;
             }
 
-            if (IsSecondsFlag(flag) && index + 1 < args.Length)
+            if (IsSecondsFlag(flag))
             {
-                if (!int.TryParse(args[index + 1], out var parsedSeconds) || parsedSeconds <= 0)
+                if (!hasValue || !int.TryParse(args[index + 1], out var parsedSeconds) || parsedSeconds <= 0)
                 {
                     command = default!;
                     error = "The record command requires --seconds to be a positive integer.";
@@ -147,12 +155,12 @@ internal static class CliCommandParser
                 continue;
             }
 
-            if (IsFpsFlag(flag) && index + 1 < args.Length)
+            if (IsFpsFlag(flag))
             {
-                if (!int.TryParse(args[index + 1], out framesPerSecond))
+                if (!hasValue || !int.TryParse(args[index + 1], out framesPerSecond) || framesPerSecond is < 1 or > 60)
                 {
                     command = default!;
-                    error = "The record command requires --fps to be an integer.";
+                    error = "The record command requires --fps to be an integer between 1 and 60.";
                     return false;
                 }
 
@@ -160,9 +168,9 @@ internal static class CliCommandParser
                 continue;
             }
 
-            if (IsRedactFlag(flag) && index + 1 < args.Length)
+            if (IsRedactFlag(flag))
             {
-                if (!TryParseRedactionRegion(args[index + 1], out var region))
+                if (!hasValue || !TryParseRedactionRegion(args[index + 1], out var region))
                 {
                     command = default!;
                     error = "Each --redact value must be four comma-separated integers formatted as x,y,width,height with a positive width and height.";
