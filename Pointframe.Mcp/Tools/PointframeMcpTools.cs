@@ -21,6 +21,45 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
     }
 
     [McpServerTool(
+        Title = "List windows",
+        ReadOnly = true,
+        Destructive = false,
+        Idempotent = true,
+        UseStructuredContent = true),
+     Description("Lists visible top-level windows that are reasonable capture candidates. Returns window handles (Hwnd), titles, process names, bounds in physical screen pixels, and the containing monitor name. Window handles are session-local and temporary; always call list_windows to get current handles before capture_window or read_text_from_window.")]
+    public Task<McpCaptureResponse> ListWindowsAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(McpResponseMapper.DeserializeCaptureResponse(directCaptureService.ListWindows()));
+    }
+
+    [McpServerTool(
+        Title = "Capture window",
+        Destructive = false,
+        UseStructuredContent = true),
+     Description("Captures the visible screen rectangle of a window by its handle (Hwnd from list_windows). This is a screen-rectangle capture: if the window is partially covered by another window, the occluding content will appear in the capture. Minimized, zero-size, off-screen, and multi-monitor-spanning windows are rejected.")]
+    public async Task<McpCaptureResponse> CaptureWindowAsync(
+        [Description("The window handle (Hwnd) returned by list_windows. Must be a positive integer.")] long windowId,
+        CancellationToken cancellationToken = default)
+    {
+        var json = await directCaptureService.CaptureWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
+        return McpResponseMapper.DeserializeCaptureResponse(json);
+    }
+
+    [McpServerTool(
+        Title = "Read text from window",
+        Destructive = false,
+        UseStructuredContent = true),
+     Description("Captures the visible screen rectangle of a window by its handle (Hwnd from list_windows) and recognizes on-screen text using Windows OCR. Returns both the saved PNG artifact and the recognized text; RecognizedText is null when no text was found or no OCR language pack is installed. Same screen-rectangle capture semantics and rejection rules as capture_window.")]
+    public async Task<McpCaptureResponse> ReadTextFromWindowAsync(
+        [Description("The window handle (Hwnd) returned by list_windows. Must be a positive integer.")] long windowId,
+        CancellationToken cancellationToken = default)
+    {
+        var json = await directCaptureService.CaptureWindowTextAsync(windowId, cancellationToken).ConfigureAwait(false);
+        return McpResponseMapper.DeserializeCaptureResponse(json);
+    }
+
+    [McpServerTool(
         Title = "Capture monitor",
         Destructive = false,
         UseStructuredContent = true),

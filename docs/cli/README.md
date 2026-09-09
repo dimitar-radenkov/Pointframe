@@ -40,9 +40,9 @@ The script writes the ZIP and SHA-256 file under
 ## Commands
 
 Every long option below also accepts a short alias: `-m` for `--monitor`,
-`-g` for `--region`, `-s` for `--seconds`, `-f` for `--fps`, and `-r` for
-`--redact`. Every long option also accepts an inline value, e.g.
-`--monitor=\\.\DISPLAY1` instead of `--monitor \\.\DISPLAY1`.
+`-w` for `--window-id`, `-g` for `--region`, `-s` for `--seconds`, `-f` for
+`--fps`, and `-r` for `--redact`. Every long option also accepts an inline
+value, e.g. `--monitor=\\.\DISPLAY1` instead of `--monitor \\.\DISPLAY1`.
 
 ### Discover monitors
 
@@ -54,6 +54,46 @@ Use the exact `monitorName` returned by this command. A typical name is
 `\\.\DISPLAY1`, but the available names depend on the current Windows session.
 The response is JSON containing monitor identifiers, physical pixel bounds, and
 DPI scale information.
+
+### List windows
+
+```powershell
+.\Pointframe.Cli.exe windows
+```
+
+Lists visible top-level windows as JSON. Each entry includes `Hwnd` (the
+window handle), `Title`, `ProcessName`, `ProcessId`, `BoundsPixels` in
+absolute physical screen pixels, `MonitorName` (the containing monitor's
+device name, if the window fits on one monitor), and `IsMinimized`. Pointframe's
+own process windows are excluded.
+
+Window handles are session-local and temporary. Always call `windows` to get
+current handles before calling `capture-window` or `ocr-window`.
+
+### Capture a window
+
+```powershell
+.\Pointframe.Cli.exe capture-window --window-id 12345678
+```
+
+Captures the visible screen rectangle of the specified window and saves it as a
+PNG. The `--window-id` (`-w`) value is the `Hwnd` returned by the `windows`
+command and must be a positive integer.
+
+This is a screen-rectangle capture: if the target window is partially covered
+by another window, the occluding content will appear in the capture. Minimized,
+zero-size, off-screen, and multi-monitor-spanning windows are rejected with a
+runtime error (exit code `1`).
+
+### Capture a window and run OCR
+
+```powershell
+.\Pointframe.Cli.exe ocr-window --window-id 12345678
+```
+
+Same as `capture-window`, but also runs Windows OCR against the captured image.
+The JSON response includes `RecognizedText` (`null` when no text is found or no
+OCR language pack is installed).
 
 ### Capture a monitor
 
@@ -159,15 +199,18 @@ The parser accepts only these forms:
 
 ```text
 Pointframe.Cli.exe displays
+Pointframe.Cli.exe windows
 Pointframe.Cli.exe capture --monitor <exact Windows device name> [--region <x,y,width,height>]
 Pointframe.Cli.exe ocr --monitor <exact Windows device name> [--region <x,y,width,height>]
+Pointframe.Cli.exe capture-window --window-id <window handle>
+Pointframe.Cli.exe ocr-window --window-id <window handle>
 Pointframe.Cli.exe record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]...
 Pointframe.Cli.exe --help
 Pointframe.Cli.exe --version
 ```
 
-Friendly monitor labels, display indexes, or omitted `--monitor` values are not
-accepted.
+Friendly monitor labels, display indexes, or omitted `--monitor`/`--window-id`
+values are not accepted.
 
 ## Help and version
 

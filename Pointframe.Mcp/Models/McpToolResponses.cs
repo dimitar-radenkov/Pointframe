@@ -8,11 +8,21 @@ public sealed record McpPixelBounds(int X, int Y, int Width, int Height);
 /// </summary>
 public sealed record McpCaptureRegion(int X, int Y, int Width, int Height);
 
+public sealed record McpWindowDescriptor(
+    long Hwnd,
+    string Title,
+    string ProcessName,
+    int ProcessId,
+    McpPixelBounds BoundsPixels,
+    string? MonitorName,
+    bool IsMinimized);
+
 public sealed record McpCaptureResponse(
     int SchemaVersion,
     bool Success,
     McpCaptureError? Error = null,
     IReadOnlyList<McpDisplayDescriptor>? Displays = null,
+    IReadOnlyList<McpWindowDescriptor>? Windows = null,
     McpArtifactDescriptor? Artifact = null,
     string? RecognizedText = null);
 
