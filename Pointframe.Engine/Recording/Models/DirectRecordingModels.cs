@@ -42,3 +42,16 @@ public sealed record DirectRecordingResult(
     DirectRecordingArtifact? Artifact = null,
     string? ErrorCode = null,
     string? ErrorMessage = null);
+
+public sealed record DirectRecordingResponse(
+    int SchemaVersion,
+    bool Success,
+    DirectCaptureError? Error = null,
+    DirectRecordingSession? Session = null,
+    DirectRecordingArtifact? Artifact = null);
+
+public sealed record DirectRecordingStatus(
+    int SchemaVersion,
+    bool IsRecording,
+    DirectRecordingSession? Session = null,
+    TimeSpan? Elapsed = null);

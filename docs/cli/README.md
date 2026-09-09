@@ -1,15 +1,18 @@
 # Pointframe CLI
 
 `Pointframe.Cli.exe` is a self-contained Windows command-line tool for
-discovering monitors, capturing a whole monitor as PNG, and running Windows OCR
-against a monitor capture. It uses `Pointframe.Engine` directly and does not
-start the Pointframe tray application or any WPF window.
+discovering monitors, capturing a whole monitor as PNG, running Windows OCR
+against a monitor capture, and recording a whole monitor to MP4. It uses
+`Pointframe.Engine` directly and does not start the Pointframe tray
+application or any WPF window.
 
 ## Requirements
 
 - Windows x64
 - An interactive, unlocked Windows desktop session
 - No .NET runtime or .NET SDK when using the published ZIP
+- `ffmpeg.exe` on `PATH`, set via `POINTFRAME_FFMPEG_PATH`, or bundled next to
+  `Pointframe.Cli.exe` — required only for the `record` command
 
 The CLI cannot capture a user's desktop from a Windows service or session 0.
 Run it as the same interactive user who owns the desktop being inspected.
@@ -24,13 +27,22 @@ single-file executable and its native dependencies.
 For source builds, use:
 
 ```powershell
-pwsh .\packaging\build-cli-package.ps1 -Version 1.0.0
+pwsh .\packaging\build-cli-package.ps1 -Version 1.0.0 -FfmpegPath 'C:\path\to\ffmpeg.exe'
 ```
+
+`-FfmpegPath` is optional; omit it to build a package without a bundled
+`ffmpeg.exe` (the `record` command then relies on `PATH` or
+`POINTFRAME_FFMPEG_PATH` on the target machine).
 
 The script writes the ZIP and SHA-256 file under
 `packaging\output\Pointframe.Cli-<version>-win-x64`.
 
 ## Commands
+
+Every long option below also accepts a short alias: `-m` for `--monitor`,
+`-s` for `--seconds`, `-f` for `--fps`, and `-r` for `--redact`. Every long
+option also accepts an inline value, e.g. `--monitor=\\.\DISPLAY1` instead of
+`--monitor \\.\DISPLAY1`.
 
 ### Discover monitors
 
@@ -70,17 +82,61 @@ current user's installed language profiles. The PNG and metadata sidecar are
 still produced. The JSON adds `recognizedText`; it is `null` when no text is
 recognized or no suitable OCR language pack is installed.
 
+### Record a monitor
+
+```powershell
+.\Pointframe.Cli.exe record --monitor '\\.\DISPLAY1' --seconds 10
+```
+
+`record` starts a direct MP4 recording of the whole monitor, waits for the
+requested duration (or an earlier Ctrl+C, which stops the recording gracefully
+instead of killing the process), stops the recording, and writes a single
+combined JSON response containing both the started `session` and the
+finished `artifact`. The MP4 and its `.events.jsonl` sidecar are saved beneath:
+
+```text
+%LOCALAPPDATA%\Pointframe\Recordings
+```
+
+Optional flags:
+
+| Flag | Meaning | Default |
+|---|---|---|
+| `--fps <1-60>` (`-f`) | Capture frame rate | `20` |
+| `--redact <x,y,width,height>` (`-r`) | Pixelate a capture-local physical-pixel region; repeatable | none |
+
+Example with a 30 fps capture and two redacted regions:
+
+```powershell
+.\Pointframe.Cli.exe record --monitor '\\.\DISPLAY1' --seconds 30 --fps 30 --redact 100,100,200,80 --redact 400,300,150,150
+```
+
+`record` is a single blocking command: there is no separate `stop-recording`
+command because each CLI invocation is a standalone process with no session
+state that could persist across two separate invocations. If a script needs
+to start recording and stop it later from a different process, use the MCP
+server's `start_recording`/`stop_recording` tools instead — see the
+[MCP server README](../mcp-desktop-testing/README.md).
+
+If the recording cannot be started (for example, an unknown monitor name or a
+missing `ffmpeg.exe`), the command writes a JSON response with
+`"success": false` and an `error` object to standard output and exits with
+code `1`.
+
 ## Exit codes and errors
 
 | Exit code | Meaning |
 |---:|---|
 | `0` | Command completed successfully |
-| `1` | Runtime or capture/OCR failure |
+| `1` | Runtime or capture/OCR/recording failure |
 | `2` | Invalid or incomplete command-line arguments |
 
 Invalid commands print the error and usage to standard error. Runtime failures
 print `Pointframe CLI failed: ...` to standard error; successful JSON is written
-to standard output.
+to standard output. `record` failures that the engine reports as a structured
+error (rather than an exception) print a `"success": false` JSON response to
+standard output instead, so scripts can parse the failure the same way as a
+success.
 
 The parser accepts only these forms:
 
@@ -88,10 +144,29 @@ The parser accepts only these forms:
 Pointframe.Cli.exe displays
 Pointframe.Cli.exe capture --monitor <exact Windows device name>
 Pointframe.Cli.exe ocr --monitor <exact Windows device name>
+Pointframe.Cli.exe record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]...
+Pointframe.Cli.exe --help
+Pointframe.Cli.exe --version
 ```
 
 Friendly monitor labels, display indexes, or omitted `--monitor` values are not
 accepted.
+
+## Help and version
+
+```powershell
+.\Pointframe.Cli.exe --help    # or -h
+.\Pointframe.Cli.exe --version # or -v
+```
+
+Both accept the flag form (`--help`/`--version`), the short form (`-h`/`-v`),
+or a bare `help`/`version` command. Unlike every other command, these write
+plain text (not JSON) to standard output and always exit with code `0`.
+
+`--help`/`-h` and `--version`/`-v` take priority over any other arguments on
+the command line, so they can be appended to an otherwise invalid or
+incomplete command to see usage instead of an error, e.g.
+`Pointframe.Cli.exe record --monitor '\\.\DISPLAY1' --help`.
 
 ## Artifact verification
 
@@ -102,8 +177,17 @@ For every successful capture or OCR operation:
 3. Compare the file length and SHA-256 in the sidecar with the actual PNG.
 4. Preserve both files together when attaching evidence to a report.
 
-The CLI writes through the shared direct capture services, so the metadata is
-produced alongside the artifact rather than inferred by the caller.
+For every successful `record` operation:
+
+1. Read the JSON response from standard output.
+2. Locate the MP4 at `artifact.path` and the `.events.jsonl` sidecar at
+   `artifact.eventSidecarPath`.
+3. Compare the file length and SHA-256 in `artifact` with the actual MP4.
+4. Preserve both files together when attaching evidence to a report.
+
+The CLI writes through the shared direct capture and recording services, so
+the metadata is produced alongside the artifact rather than inferred by the
+caller.
 
 ## Development and testing
 
@@ -127,9 +211,10 @@ dotnet test Pointframe.Tests\Pointframe.Tests.csproj `
 ```
 
 The CLI tests cover command parsing, output and error streams, exit codes, and
-the direct-capture service contract. A successful unit test does not prove that
-the current machine has an unlocked interactive desktop; use a real `displays`
-or `capture` invocation for that check.
+the direct-capture and direct-recording service contracts. A successful unit
+test does not prove that the current machine has an unlocked interactive
+desktop or a working `ffmpeg.exe`; use a real `displays`, `capture`, or
+`record` invocation for that check.
 
 ## Troubleshooting
 
@@ -149,6 +234,12 @@ friendly name or an assumed display number.
 The capture may contain no readable text, or Windows may not have an OCR
 language pack matching the current user's language profile. The PNG remains
 valid and can be inspected independently.
+
+### `record` fails immediately
+
+`record` needs `ffmpeg.exe`. Set `POINTFRAME_FFMPEG_PATH` to its full path,
+place `ffmpeg.exe` next to `Pointframe.Cli.exe`, or add it to `PATH`. Rebuild
+the package with `-FfmpegPath` to bundle it automatically.
 
 ### ZIP or checksum problems
 

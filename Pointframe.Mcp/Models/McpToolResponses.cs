@@ -74,3 +74,17 @@ public sealed record McpRecordingArtifact(
     string EventSidecarPath,
     long EventCount,
     int EventTrackSchemaVersion);
+
+public sealed record McpRecordingStatusResponse(
+    int SchemaVersion,
+    bool IsRecording,
+    McpRecordingSession? Session = null,
+    TimeSpan? Elapsed = null);
+
+public sealed record McpServerInfoResponse(
+    int SchemaVersion,
+    string Version,
+    bool DesktopTestingEnabled,
+    McpFfmpegAvailability Ffmpeg);
+
+public sealed record McpFfmpegAvailability(bool Found, string Path, string Source);

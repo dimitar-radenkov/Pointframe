@@ -176,6 +176,17 @@ public sealed class DirectRecordingService : IDirectRecordingService
         }
     }
 
+    public DirectRecordingStatus GetStatus()
+    {
+        lock (_sessionLock)
+        {
+            var session = _activeSession;
+            return session is null
+                ? new DirectRecordingStatus(SchemaVersion, false)
+                : new DirectRecordingStatus(SchemaVersion, true, session.Session, session.Stopwatch.Elapsed);
+        }
+    }
+
     public void Dispose()
     {
         StopAsync().GetAwaiter().GetResult();

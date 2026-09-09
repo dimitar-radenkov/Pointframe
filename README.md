@@ -70,9 +70,9 @@ exit codes, and troubleshooting, see the dedicated
 ## Pointframe CLI
 
 Each GitHub Release includes `Pointframe.Cli-<version>-win-x64.zip`, a self-contained
-Windows CLI for monitor discovery and whole-monitor PNG screenshots. Extract the ZIP
-and run `Pointframe.Cli.exe`; the Pointframe desktop app, the .NET runtime, and the
-.NET SDK are not required.
+Windows CLI for monitor discovery, whole-monitor PNG screenshots, and whole-monitor
+MP4 recordings. Extract the ZIP and run `Pointframe.Cli.exe`; the Pointframe desktop
+app, the .NET runtime, and the .NET SDK are not required.
 
 The CLI requires an interactive Windows desktop session. It cannot capture a user's
 desktop from a Windows service (session 0).
@@ -81,15 +81,20 @@ desktop from a Windows service (session 0).
 .\Pointframe.Cli.exe displays
 .\Pointframe.Cli.exe capture --monitor '\\.\DISPLAY1'
 .\Pointframe.Cli.exe ocr --monitor '\\.\DISPLAY1'
+.\Pointframe.Cli.exe record --monitor '\\.\DISPLAY1' --seconds 10
 ```
 
 Use the exact `monitorName` emitted by `displays`. A successful command writes JSON
 to standard output and exits with code `0`; invalid arguments exit with code `2`, and
-capture failures exit with code `1`. Screenshots and their metadata sidecars are saved
-under `%LOCALAPPDATA%\Pointframe\Screenshots`. `ocr` captures the monitor the same way
-`capture` does, then runs Windows OCR against the captured image and adds a
-`recognizedText` field to the JSON output (`null` when no text is found or no OCR
-language pack is installed).
+capture/OCR/recording failures exit with code `1`. Screenshots and their metadata
+sidecars are saved under `%LOCALAPPDATA%\Pointframe\Screenshots`. `ocr` captures the
+monitor the same way `capture` does, then runs Windows OCR against the captured image
+and adds a `recognizedText` field to the JSON output (`null` when no text is found or
+no OCR language pack is installed). `record` starts a direct MP4 recording, waits for
+the requested `--seconds` (or an earlier Ctrl+C for a graceful early stop), then
+writes the combined session/artifact JSON; recordings are saved under
+`%LOCALAPPDATA%\Pointframe\Recordings` and require `ffmpeg.exe` on `PATH`, via
+`POINTFRAME_FFMPEG_PATH`, or bundled next to the executable.
 
 ## Pointframe MCP Server
 
@@ -106,13 +111,20 @@ The server exposes:
 - 🔤 `read_text_from_monitor` — capture a named monitor and run OCR against it, returning the PNG artifact plus recognized text (`null` when no text is found or no OCR language pack is installed).
 - 🎥 `start_recording` — start a whole-monitor MP4 recording. Recording requires an explicit `redactionRegionsCaptureLocalPixels` array, even when it is empty.
 - ⏹️ `stop_recording` — stop the active recording and return the finalized MP4 artifact, metadata, and event sidecar references.
+- ⏱️ `get_recording_status` — report whether a recording is currently active and, if so, its session details and elapsed duration; returns no session when nothing is recording.
+
+The server also exposes MCP resources:
+
+- `pointframe://commands` — the exact list of registered tool identifiers (varies depending on whether desktop testing is enabled).
+- `pointframe://server-info` — server version, whether desktop testing tools are enabled, and whether `ffmpeg` (required for recording) was found, along with where it was found (`EnvironmentVariable`, `Bundled`, or `Path`). Useful for a health check before calling `start_recording`.
 
 The normal workflow is:
 
 1. Call `list_displays` and select a returned `monitorName`.
 2. Call `capture_monitor` with that exact monitor name, call `read_text_from_monitor` to also extract on-screen text, or call `start_recording`.
 3. For recording, pass redaction rectangles in capture-local physical pixels. Use `[]` when no redaction is required.
-4. Call `stop_recording` to finalize the MP4 and retrieve its metadata.
+4. Call `get_recording_status` at any time to check whether a recording is active before calling `stop_recording`.
+5. Call `stop_recording` to finalize the MP4 and retrieve its metadata.
 
 Example tool arguments:
 

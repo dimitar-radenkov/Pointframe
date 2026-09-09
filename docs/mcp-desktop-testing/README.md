@@ -133,6 +133,7 @@ capture_monitor
 read_text_from_monitor
 start_recording
 stop_recording
+get_recording_status
 ```
 
 ## Local validation

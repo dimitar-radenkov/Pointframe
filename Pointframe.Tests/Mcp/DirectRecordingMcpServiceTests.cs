@@ -43,11 +43,50 @@ public sealed class DirectRecordingMcpServiceTests
         Assert.Equal(artifact, response.Artifact);
     }
 
+    [Fact]
+    public void GetRecordingStatus_WhenNoRecordingIsActive_ReturnsNotRecordingWithoutSession()
+    {
+        var sut = new DirectRecordingMcpService(new FakeDirectRecordingService
+        {
+            StatusResult = new DirectRecordingStatus(1, false),
+        });
+
+        var json = sut.GetRecordingStatus();
+        var status = JsonSerializer.Deserialize<DirectRecordingStatus>(json);
+
+        Assert.NotNull(status);
+        Assert.False(status.IsRecording);
+        Assert.Null(status.Session);
+        Assert.Null(status.Elapsed);
+    }
+
+    [Fact]
+    public void GetRecordingStatus_WhenRecordingIsActive_ReturnsSessionAndElapsed()
+    {
+        var session = new DirectRecordingSession(1, "rec_1", "C:\\recording.mp4", @"\\.\DISPLAY1", 20, new Pointframe.Engine.PixelBounds(0, 0, 2, 2), [], DateTimeOffset.UtcNow);
+        var sut = new DirectRecordingMcpService(new FakeDirectRecordingService
+        {
+            StatusResult = new DirectRecordingStatus(1, true, session, TimeSpan.FromSeconds(5)),
+        });
+
+        var json = sut.GetRecordingStatus();
+        var status = JsonSerializer.Deserialize<DirectRecordingStatus>(json);
+
+        Assert.NotNull(status);
+        Assert.True(status.IsRecording);
+        Assert.Equal(session.OperationId, status.Session?.OperationId);
+        Assert.Equal(session.MonitorName, status.Session?.MonitorName);
+        Assert.Equal(session.ArtifactPath, status.Session?.ArtifactPath);
+        Assert.Equal(session.StartedUtc, status.Session?.StartedUtc);
+        Assert.Equal(TimeSpan.FromSeconds(5), status.Elapsed);
+    }
+
     private sealed class FakeDirectRecordingService : IDirectRecordingService
     {
         public DirectRecordingRequest? Request { get; private set; }
         public DirectRecordingResult StartResult { get; set; } = new(true);
         public DirectRecordingResult StopResult { get; set; } = new(true);
+        public DirectRecordingStatus StatusResult { get; set; } = new(1, false);
 
         public DirectRecordingResult Start(DirectRecordingRequest request)
         {
@@ -58,6 +97,11 @@ public sealed class DirectRecordingMcpServiceTests
         public Task<DirectRecordingResult> StopAsync(CancellationToken cancellationToken = default)
         {
             return Task.FromResult(StopResult);
+        }
+
+        public DirectRecordingStatus GetStatus()
+        {
+            return StatusResult;
         }
 
         public void Dispose()

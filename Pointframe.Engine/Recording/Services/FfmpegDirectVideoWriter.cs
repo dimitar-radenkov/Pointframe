@@ -3,11 +3,44 @@ using System.Diagnostics;
 
 namespace Pointframe.Engine;
 
+/// <summary>
+/// Reports where ffmpeg was found (or would be looked for) without starting a process, so health/version
+/// checks can answer whether recording is likely to work before a caller attempts to start one.
+/// </summary>
+public sealed record FfmpegAvailability(bool Found, string Path, string Source);
+
 public sealed class FfmpegDirectVideoWriterFactory : IDirectVideoWriterFactory
 {
     public IDirectVideoWriter Create(int width, int height, int framesPerSecond, string outputPath)
     {
         return new FfmpegDirectVideoWriter(width, height, framesPerSecond, outputPath);
+    }
+
+    public static FfmpegAvailability GetAvailability()
+    {
+        var configuredPath = Environment.GetEnvironmentVariable("POINTFRAME_FFMPEG_PATH");
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return new FfmpegAvailability(File.Exists(configuredPath), configuredPath, "EnvironmentVariable");
+        }
+
+        var bundledPath = Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
+        if (File.Exists(bundledPath))
+        {
+            return new FfmpegAvailability(true, bundledPath, "Bundled");
+        }
+
+        var pathVariable = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        foreach (var directory in pathVariable.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var candidate = Path.Combine(directory.Trim(), "ffmpeg.exe");
+            if (File.Exists(candidate))
+            {
+                return new FfmpegAvailability(true, candidate, "Path");
+            }
+        }
+
+        return new FfmpegAvailability(false, "ffmpeg.exe", "NotFound");
     }
 }
 

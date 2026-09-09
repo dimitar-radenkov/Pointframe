@@ -73,4 +73,17 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
         var json = await directRecordingMcpService.StopRecordingAsync(cancellationToken).ConfigureAwait(false);
         return McpResponseMapper.DeserializeRecordingResponse(json);
     }
+
+    [McpServerTool(
+        Title = "Get recording status",
+        ReadOnly = true,
+        Destructive = false,
+        Idempotent = true,
+        UseStructuredContent = true),
+     Description("Reports whether a direct recording session is currently active. When active, includes the session started by start_recording and the elapsed duration since it started; when not, session and elapsed are omitted.")]
+    public Task<McpRecordingStatusResponse> GetRecordingStatusAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(McpResponseMapper.DeserializeRecordingStatusResponse(directRecordingMcpService.GetRecordingStatus()));
+    }
 }
