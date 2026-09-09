@@ -40,9 +40,9 @@ The script writes the ZIP and SHA-256 file under
 ## Commands
 
 Every long option below also accepts a short alias: `-m` for `--monitor`,
-`-s` for `--seconds`, `-f` for `--fps`, and `-r` for `--redact`. Every long
-option also accepts an inline value, e.g. `--monitor=\\.\DISPLAY1` instead of
-`--monitor \\.\DISPLAY1`.
+`-g` for `--region`, `-s` for `--seconds`, `-f` for `--fps`, and `-r` for
+`--redact`. Every long option also accepts an inline value, e.g.
+`--monitor=\\.\DISPLAY1` instead of `--monitor \\.\DISPLAY1`.
 
 ### Discover monitors
 
@@ -71,6 +71,21 @@ metadata sidecar beneath:
 The metadata identifies the artifact path, byte length, SHA-256, timestamp,
 monitor, DPI, and physical capture bounds.
 
+Add `--region <x,y,width,height>` (`-g`) to capture only a sub-rectangle of
+the monitor instead of the whole thing. The coordinates are physical pixels
+relative to the monitor's own top-left corner (not the virtual desktop), and
+width/height must be positive integers:
+
+```powershell
+.\Pointframe.Cli.exe capture --monitor '\\.\DISPLAY1' --region 100,100,800,600
+```
+
+A region that falls outside the monitor's bounds is rejected with a runtime
+error (exit code `1`) rather than being clipped. The response metadata reports
+both `monitorBoundsPixels` (the full monitor) and `captureBoundsPixels` (what
+was actually captured), so a region capture is distinguishable from a
+whole-monitor one.
+
 ### Capture and run OCR
 
 ```powershell
@@ -80,7 +95,9 @@ monitor, DPI, and physical capture bounds.
 OCR uses the same monitor capture as `capture`, then calls Windows OCR for the
 current user's installed language profiles. The PNG and metadata sidecar are
 still produced. The JSON adds `recognizedText`; it is `null` when no text is
-recognized or no suitable OCR language pack is installed.
+recognized or no suitable OCR language pack is installed. `ocr` accepts the
+same optional `--region <x,y,width,height>` (`-g`) flag as `capture`, so OCR
+can be scoped to a sub-region of the monitor.
 
 ### Record a monitor
 
@@ -142,8 +159,8 @@ The parser accepts only these forms:
 
 ```text
 Pointframe.Cli.exe displays
-Pointframe.Cli.exe capture --monitor <exact Windows device name>
-Pointframe.Cli.exe ocr --monitor <exact Windows device name>
+Pointframe.Cli.exe capture --monitor <exact Windows device name> [--region <x,y,width,height>]
+Pointframe.Cli.exe ocr --monitor <exact Windows device name> [--region <x,y,width,height>]
 Pointframe.Cli.exe record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]...
 Pointframe.Cli.exe --help
 Pointframe.Cli.exe --version

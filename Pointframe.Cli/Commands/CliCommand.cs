@@ -7,4 +7,5 @@ internal sealed record CliCommand(
     string? MonitorName = null,
     int? RecordSeconds = null,
     int FramesPerSecond = 20,
-    IReadOnlyList<PixelBounds>? RedactionRegions = null);
+    IReadOnlyList<PixelBounds>? RedactionRegions = null,
+    CaptureRegion? Region = null);

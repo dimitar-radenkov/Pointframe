@@ -94,6 +94,29 @@ jobs:
           ./packaging/build-cli-package.ps1 `
             -Version '${{ steps.version.outputs.display }}'
 
+      - name: Create stable CLI and MCP package aliases
+        shell: pwsh
+        run: |
+          $outputDirectory = 'packaging/output'
+          $version = '${{ steps.version.outputs.display }}'
+          $packages = @(
+            @{
+              Source = Join-Path $outputDirectory "Pointframe.Cli-$version-win-x64.zip"
+              Destination = Join-Path $outputDirectory 'Pointframe.Cli-win-x64.zip'
+            },
+            @{
+              Source = Join-Path $outputDirectory "Pointframe.Mcp-$version-win-x64.mcpb"
+              Destination = Join-Path $outputDirectory 'Pointframe.Mcp-win-x64.mcpb'
+            }
+          )
+
+          foreach ($package in $packages)
+          {
+            Copy-Item $package.Source $package.Destination -Force
+            $sha256 = (Get-FileHash $package.Destination -Algorithm SHA256).Hash.ToLowerInvariant()
+            Set-Content "$($package.Destination).sha256" "$sha256  $(Split-Path $package.Destination -Leaf)" -Encoding utf8NoBOM
+          }
+
       # Sign the published exe if a code-signing certificate is available.
       # Store your PFX as a base64 secret: SIGNING_CERT_B64
       # Store the PFX password as:          SIGNING_CERT_PASSWORD
@@ -164,9 +187,13 @@ jobs:
             installer/output/Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe
             packaging/output/Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip
             packaging/output/Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip.sha256
+            packaging/output/Pointframe.Cli-win-x64.zip
+            packaging/output/Pointframe.Cli-win-x64.zip.sha256
             packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb
             packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb.sha256
             packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.server.json
+            packaging/output/Pointframe.Mcp-win-x64.mcpb
+            packaging/output/Pointframe.Mcp-win-x64.mcpb.sha256
           body: |
             Pointframe ${{ steps.version.outputs.display }}
 

@@ -2,6 +2,12 @@ namespace Pointframe.Mcp;
 
 public sealed record McpPixelBounds(int X, int Y, int Width, int Height);
 
+/// <summary>
+/// A capture sub-region in monitor-local physical pixels, relative to the target monitor's own
+/// top-left corner rather than the virtual desktop or another monitor's origin.
+/// </summary>
+public sealed record McpCaptureRegion(int X, int Y, int Width, int Height);
+
 public sealed record McpCaptureResponse(
     int SchemaVersion,
     bool Success,
@@ -36,7 +42,8 @@ public sealed record McpImageArtifactMetadata(
     string MonitorName,
     double DpiScaleX,
     double DpiScaleY,
-    McpPixelBounds CaptureBoundsPixels);
+    McpPixelBounds CaptureBoundsPixels,
+    McpPixelBounds MonitorBoundsPixels);
 
 public sealed record McpRecordingResponse(
     int SchemaVersion,

@@ -4,27 +4,28 @@ namespace Pointframe.Cli;
 
 internal static class CliCommandParser
 {
-    internal const string Usage = "Usage: Pointframe.Cli.exe displays | capture --monitor <exact Windows device name> | ocr --monitor <exact Windows device name> | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... | --help | --version";
+    internal const string Usage = "Usage: Pointframe.Cli.exe displays | capture --monitor <exact Windows device name> [--region <x,y,width,height>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... | --help | --version";
 
     internal const string HelpText = """
         Pointframe CLI - standalone screen capture, OCR, and recording automation.
 
         Usage:
           Pointframe.Cli.exe displays
-          Pointframe.Cli.exe capture --monitor <exact Windows device name>
-          Pointframe.Cli.exe ocr --monitor <exact Windows device name>
+          Pointframe.Cli.exe capture --monitor <exact Windows device name> [--region <x,y,width,height>]
+          Pointframe.Cli.exe ocr --monitor <exact Windows device name> [--region <x,y,width,height>]
           Pointframe.Cli.exe record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]...
           Pointframe.Cli.exe --help
           Pointframe.Cli.exe --version
 
         Commands:
           displays   List every connected monitor as JSON.
-          capture    Capture one monitor as a PNG (base64) JSON response.
-          ocr        Capture one monitor and extract on-screen text via OCR as JSON.
+          capture    Capture one monitor, or a region of it, as a PNG (base64) JSON response.
+          ocr        Capture one monitor, or a region of it, and extract on-screen text via OCR as JSON.
           record     Record one monitor to an MP4 for a fixed duration, then exit with a JSON summary.
 
         Options:
           -m, --monitor <name>              Exact Windows device name (see 'displays' for exact values), e.g. \\.\DISPLAY1
+          -g, --region <x,y,width,height>   capture/ocr: monitor-local physical-pixel sub-region; captures the whole monitor when omitted
           -s, --seconds <n>                 record: capture duration in whole seconds (positive integer)
           -f, --fps <1-60>                  record: capture frame rate (default 20)
           -r, --redact <x,y,width,height>   record: pixelate a capture-local physical-pixel region; repeatable
@@ -80,24 +81,14 @@ internal static class CliCommandParser
             return true;
         }
 
-        if (args.Length == 3
-            && string.Equals(args[0], "capture", StringComparison.OrdinalIgnoreCase)
-            && IsMonitorFlag(args[1])
-            && !string.IsNullOrWhiteSpace(args[2]))
+        if (args.Length > 0 && string.Equals(args[0], "capture", StringComparison.OrdinalIgnoreCase))
         {
-            command = new CliCommand("capture", args[2]);
-            error = null;
-            return true;
+            return TryParseCaptureLikeCommand("capture", args, out command, out error);
         }
 
-        if (args.Length == 3
-            && string.Equals(args[0], "ocr", StringComparison.OrdinalIgnoreCase)
-            && IsMonitorFlag(args[1])
-            && !string.IsNullOrWhiteSpace(args[2]))
+        if (args.Length > 0 && string.Equals(args[0], "ocr", StringComparison.OrdinalIgnoreCase))
         {
-            command = new CliCommand("ocr", args[2]);
-            error = null;
-            return true;
+            return TryParseCaptureLikeCommand("ocr", args, out command, out error);
         }
 
         if (args.Length > 0 && string.Equals(args[0], "record", StringComparison.OrdinalIgnoreCase))
@@ -106,12 +97,64 @@ internal static class CliCommandParser
         }
 
         command = default!;
-        error = args.FirstOrDefault()?.Equals("capture", StringComparison.OrdinalIgnoreCase) == true
-            ? "The capture command requires --monitor followed by an exact Windows device name."
-            : args.FirstOrDefault()?.Equals("ocr", StringComparison.OrdinalIgnoreCase) == true
-                ? "The ocr command requires --monitor followed by an exact Windows device name."
-                : "Unknown or incomplete command.";
+        error = "Unknown or incomplete command.";
         return false;
+    }
+
+    private static bool TryParseCaptureLikeCommand(string commandName, string[] args, out CliCommand command, out string? error)
+    {
+        string? monitorName = null;
+        CaptureRegion? region = null;
+
+        var index = 1;
+        while (index < args.Length)
+        {
+            var flag = args[index];
+            var hasValue = index + 1 < args.Length;
+
+            if (IsMonitorFlag(flag))
+            {
+                if (!hasValue || string.IsNullOrWhiteSpace(args[index + 1]))
+                {
+                    command = default!;
+                    error = $"The {commandName} command requires --monitor followed by an exact Windows device name.";
+                    return false;
+                }
+
+                monitorName = args[index + 1];
+                index += 2;
+                continue;
+            }
+
+            if (IsRegionFlag(flag))
+            {
+                if (!hasValue || !TryParseCaptureRegion(args[index + 1], out var parsedRegion))
+                {
+                    command = default!;
+                    error = "Each --region value must be four comma-separated integers formatted as x,y,width,height with a positive width and height.";
+                    return false;
+                }
+
+                region = parsedRegion;
+                index += 2;
+                continue;
+            }
+
+            command = default!;
+            error = $"Unrecognized {commandName} option '{flag}'.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(monitorName))
+        {
+            command = default!;
+            error = $"The {commandName} command requires --monitor followed by an exact Windows device name.";
+            return false;
+        }
+
+        command = new CliCommand(commandName, monitorName, Region: region);
+        error = null;
+        return true;
     }
 
     private static bool TryParseRecord(string[] args, out CliCommand command, out string? error)
@@ -208,20 +251,43 @@ internal static class CliCommandParser
 
     private static bool TryParseRedactionRegion(string value, out PixelBounds region)
     {
-        var parts = value.Split(',');
-        if (parts.Length == 4
-            && int.TryParse(parts[0], out var x)
-            && int.TryParse(parts[1], out var y)
-            && int.TryParse(parts[2], out var width)
-            && int.TryParse(parts[3], out var height)
-            && width > 0
-            && height > 0)
+        if (TryParseFourPositiveIntegers(value, out var x, out var y, out var width, out var height))
         {
             region = new PixelBounds(x, y, width, height);
             return true;
         }
 
         region = default;
+        return false;
+    }
+
+    private static bool TryParseCaptureRegion(string value, out CaptureRegion region)
+    {
+        if (TryParseFourPositiveIntegers(value, out var x, out var y, out var width, out var height))
+        {
+            region = new CaptureRegion(x, y, width, height);
+            return true;
+        }
+
+        region = default;
+        return false;
+    }
+
+    private static bool TryParseFourPositiveIntegers(string value, out int x, out int y, out int width, out int height)
+    {
+        var parts = value.Split(',');
+        if (parts.Length == 4
+            && int.TryParse(parts[0], out x)
+            && int.TryParse(parts[1], out y)
+            && int.TryParse(parts[2], out width)
+            && int.TryParse(parts[3], out height)
+            && width > 0
+            && height > 0)
+        {
+            return true;
+        }
+
+        x = y = width = height = default;
         return false;
     }
 
@@ -277,6 +343,10 @@ internal static class CliCommandParser
     private static bool IsMonitorFlag(string value) =>
         string.Equals(value, "--monitor", StringComparison.OrdinalIgnoreCase)
         || string.Equals(value, "-m", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsRegionFlag(string value) =>
+        string.Equals(value, "--region", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, "-g", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSecondsFlag(string value) =>
         string.Equals(value, "--seconds", StringComparison.OrdinalIgnoreCase)

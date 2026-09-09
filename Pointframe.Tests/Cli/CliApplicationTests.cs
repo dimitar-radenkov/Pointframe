@@ -160,6 +160,76 @@ public sealed class CliApplicationTests
     }
 
     [Fact]
+    public void TryParse_CaptureWithRegion_ParsesRegionRelativeToMonitor()
+    {
+        var parsed = CliCommandParser.TryParse(
+            ["capture", "--monitor", @"\\.\DISPLAY1", "--region", "10,20,300,400"],
+            out var command,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("capture", command.Name);
+        Assert.Equal(@"\\.\DISPLAY1", command.MonitorName);
+        Assert.Equal(new CaptureRegion(10, 20, 300, 400), command.Region);
+    }
+
+    [Fact]
+    public void TryParse_CaptureWithRegion_AcceptsShortAliasAndFlagOrderIndependence()
+    {
+        var parsed = CliCommandParser.TryParse(
+            ["capture", "-g", "10,20,300,400", "-m", @"\\.\DISPLAY1"],
+            out var command,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal(@"\\.\DISPLAY1", command.MonitorName);
+        Assert.Equal(new CaptureRegion(10, 20, 300, 400), command.Region);
+    }
+
+    [Fact]
+    public void TryParse_CaptureWithoutRegion_LeavesRegionNull()
+    {
+        var parsed = CliCommandParser.TryParse(["capture", "--monitor", @"\\.\DISPLAY1"], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Null(command.Region);
+    }
+
+    [Theory]
+    [InlineData("10,20,300")]
+    [InlineData("10,20,300,0")]
+    [InlineData("10,20,0,400")]
+    [InlineData("not,a,region,value")]
+    public void TryParse_CaptureWithInvalidRegion_ReturnsUsageError(string regionValue)
+    {
+        var parsed = CliCommandParser.TryParse(
+            ["capture", "--monitor", @"\\.\DISPLAY1", "--region", regionValue],
+            out _,
+            out var error);
+
+        Assert.False(parsed);
+        Assert.Equal(
+            "Each --region value must be four comma-separated integers formatted as x,y,width,height with a positive width and height.",
+            error);
+    }
+
+    [Fact]
+    public void TryParse_OcrWithRegion_ParsesRegion()
+    {
+        var parsed = CliCommandParser.TryParse(
+            ["ocr", "--monitor", @"\\.\DISPLAY1", "--region", "1,2,3,4"],
+            out var command,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal(new CaptureRegion(1, 2, 3, 4), command.Region);
+    }
+
+    [Fact]
     public void TryParse_Ocr_RequiresExactMonitorArgument()
     {
         var parsed = CliCommandParser.TryParse(["ocr", "--monitor", @"\\.\DISPLAY1"], out var command, out var error);
@@ -357,7 +427,7 @@ public sealed class CliApplicationTests
     {
         var directCaptureService = new Mock<IDirectCaptureService>();
         directCaptureService
-            .Setup(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", It.IsAny<CancellationToken>()))
+            .Setup(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"artifact-1\"}}}");
         var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
@@ -367,8 +437,29 @@ public sealed class CliApplicationTests
         var exitCode = await application.RunAsync(["capture", "--monitor", @"\\.\DISPLAY1"]);
 
         Assert.Equal(0, exitCode);
-        directCaptureService.Verify(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", It.IsAny<CancellationToken>()), Times.Once);
+        directCaptureService.Verify(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains("artifact-1", standardOutput.ToString(), StringComparison.Ordinal);
+        Assert.Empty(standardError.ToString());
+    }
+
+    [Fact]
+    public async Task RunAsync_CaptureWithRegion_PassesParsedRegionToDirectCaptureService()
+    {
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        directCaptureService
+            .Setup(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", new CaptureRegion(10, 20, 300, 400), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"artifact-1\"}}}");
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        var exitCode = await application.RunAsync(["capture", "--monitor", @"\\.\DISPLAY1", "--region", "10,20,300,400"]);
+
+        Assert.Equal(0, exitCode);
+        directCaptureService.Verify(
+            service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", new CaptureRegion(10, 20, 300, 400), It.IsAny<CancellationToken>()),
+            Times.Once);
         Assert.Empty(standardError.ToString());
     }
 
@@ -377,7 +468,7 @@ public sealed class CliApplicationTests
     {
         var directCaptureService = new Mock<IDirectCaptureService>();
         directCaptureService
-            .Setup(service => service.CaptureMonitorTextAsync(@"\\.\DISPLAY1", It.IsAny<CancellationToken>()))
+            .Setup(service => service.CaptureMonitorTextAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"artifact-1\"}},\"recognizedText\":\"Hello world\"}");
         var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
@@ -387,7 +478,7 @@ public sealed class CliApplicationTests
         var exitCode = await application.RunAsync(["ocr", "--monitor", @"\\.\DISPLAY1"]);
 
         Assert.Equal(0, exitCode);
-        directCaptureService.Verify(service => service.CaptureMonitorTextAsync(@"\\.\DISPLAY1", It.IsAny<CancellationToken>()), Times.Once);
+        directCaptureService.Verify(service => service.CaptureMonitorTextAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains("Hello world", standardOutput.ToString(), StringComparison.Ordinal);
         Assert.Empty(standardError.ToString());
     }

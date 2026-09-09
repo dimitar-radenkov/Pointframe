@@ -24,4 +24,5 @@ public sealed record ImageArtifactMetadata(
     string MonitorName,
     double DpiScaleX,
     double DpiScaleY,
-    PixelBounds CaptureBoundsPixels);
+    PixelBounds CaptureBoundsPixels,
+    PixelBounds MonitorBoundsPixels);

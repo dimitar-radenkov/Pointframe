@@ -55,7 +55,8 @@ internal static class McpResponseMapper
                         response.Artifact.Metadata.MonitorName,
                         response.Artifact.Metadata.DpiScaleX,
                         response.Artifact.Metadata.DpiScaleY,
-                        ToMcpBounds(response.Artifact.Metadata.CaptureBoundsPixels))),
+                        ToMcpBounds(response.Artifact.Metadata.CaptureBoundsPixels),
+                        ToMcpBounds(response.Artifact.Metadata.MonitorBoundsPixels))),
             response.RecognizedText);
     }
 
