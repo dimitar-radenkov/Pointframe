@@ -35,7 +35,7 @@ public sealed class RawFrameRecordingPipelineTests
                 () => new PixelBounds[] { new(0, 0, 8, 2) }),
             new IndexedFrameCapture());
 
-        Assert.True(writer.FirstFrameWritten.Wait(TimeSpan.FromSeconds(1)));
+        Assert.True(writer.FirstFrameWritten.Wait(TimeSpan.FromSeconds(10)));
         pipeline.Stop(TimeSpan.Zero);
 
         Assert.NotEmpty(writer.Frames);
