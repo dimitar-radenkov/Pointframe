@@ -141,6 +141,13 @@ stop_recording
 get_recording_status
 ```
 
+`capture_monitor`, `capture_window`, `read_text_from_monitor`, and
+`read_text_from_window` return the captured image inline as an image content
+block (downscaled to at most 1600 px on its longest edge) in addition to the
+structured artifact metadata, so a client that cannot read the server's
+filesystem can still see the screenshot. Pass `includeImage: false` for
+metadata only; the full-resolution PNG is saved to disk either way.
+
 ## Local validation
 
 Build and publish the MCP executable:

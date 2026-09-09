@@ -119,10 +119,10 @@ The server exposes:
 
 - 🖥️ `list_displays` — return monitor identifiers, physical pixel bounds, and DPI scales.
 - 🪟 `list_windows` — return visible top-level windows with handles, titles, process names, bounds, and containing monitor names. Window handles are session-local and temporary.
-- 📸 `capture_monitor` — capture a named monitor, or an optional monitor-local sub-region of it, and return a PNG artifact plus metadata.
-- 📸 `capture_window` — capture the visible screen rectangle of a window by its handle from `list_windows`. Occluding windows may appear; minimized, off-screen, and multi-monitor-spanning windows are rejected.
-- 🔤 `read_text_from_monitor` — capture a named monitor (optionally a sub-region) and run OCR against it, returning the PNG artifact plus recognized text (`null` when no text is found or no OCR language pack is installed).
-- 🔤 `read_text_from_window` — capture a window by handle and run OCR against it. Same screen-rectangle capture semantics as `capture_window`.
+- 📸 `capture_monitor` — capture a named monitor, or an optional monitor-local sub-region of it, and return a PNG artifact plus metadata. The captured image is also returned inline as an image block (downscaled to at most 1600 px on its longest edge) so the calling model can see it directly; pass `includeImage: false` to get metadata only.
+- 📸 `capture_window` — capture the visible screen rectangle of a window by its handle from `list_windows`. Occluding windows may appear; minimized, off-screen, and multi-monitor-spanning windows are rejected. Returns the image inline like `capture_monitor` unless `includeImage: false`.
+- 🔤 `read_text_from_monitor` — capture a named monitor (optionally a sub-region) and run OCR against it, returning the PNG artifact plus recognized text (`null` when no text is found or no OCR language pack is installed). The captured image is also returned inline unless `includeImage: false`.
+- 🔤 `read_text_from_window` — capture a window by handle and run OCR against it. Same screen-rectangle capture semantics as `capture_window`, and the same inline-image behavior.
 - 🎥 `start_recording` — start a whole-monitor MP4 recording. `redactionRegionsCaptureLocalPixels` is optional; omit it to record without redaction.
 - ⏹️ `stop_recording` — stop the active recording and return the finalized MP4 artifact, metadata, and event sidecar references.
 - ⏱️ `get_recording_status` — report whether a recording is currently active and, if so, its session details and elapsed duration; returns no session when nothing is recording.
@@ -160,7 +160,11 @@ Example tool arguments:
 
 Responses contain structured JSON with `Success`, operation identifiers, artifact paths,
 byte lengths, SHA-256 hashes, monitor geometry, DPI information, and sidecar paths.
-Artifact paths are local filesystem paths on the machine running the MCP server.
+Artifact paths are local filesystem paths on the machine running the MCP server. The
+four capture and OCR tools additionally return the captured image itself as an inline
+image content block — downscaled to at most 1600 px on its longest edge, while the
+full-resolution PNG is always saved to disk — so a client that cannot reach the server's
+filesystem can still see the screenshot. Pass `includeImage: false` to suppress it.
 
 ### MCP use cases
 

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Pointframe.Engine;
 
@@ -35,56 +36,56 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
 
     [McpServerTool(
         Title = "Capture window",
-        Destructive = false,
-        UseStructuredContent = true),
-     Description("Captures the visible screen rectangle of a window by its handle (Hwnd from list_windows). This is a screen-rectangle capture: if the window is partially covered by another window, the occluding content will appear in the capture. Minimized, zero-size, off-screen, and multi-monitor-spanning windows are rejected.")]
-    public async Task<McpCaptureResponse> CaptureWindowAsync(
+        Destructive = false),
+     Description("Captures the visible screen rectangle of a window by its handle (Hwnd from list_windows). This is a screen-rectangle capture: if the window is partially covered by another window, the occluding content will appear in the capture. Minimized, zero-size, off-screen, and multi-monitor-spanning windows are rejected. Returns the saved PNG artifact metadata as structured content plus, unless includeImage is false, the captured image itself (downscaled to at most 1600 px on its longest edge) as an inline image block.")]
+    public async Task<CallToolResult> CaptureWindowAsync(
         [Description("The window handle (Hwnd) returned by list_windows. Must be a positive integer.")] long windowId,
+        [Description("Whether to also return the captured image inline as an image block, downscaled to at most 1600 px on its longest edge. The full-resolution PNG is always saved to disk regardless. Defaults to true.")] bool includeImage = true,
         CancellationToken cancellationToken = default)
     {
         var json = await directCaptureService.CaptureWindowAsync(windowId, cancellationToken: cancellationToken).ConfigureAwait(false);
-        return McpResponseMapper.DeserializeCaptureResponse(json);
+        return McpCaptureResultBuilder.Build(McpResponseMapper.DeserializeCaptureResponse(json), includeImage);
     }
 
     [McpServerTool(
         Title = "Read text from window",
-        Destructive = false,
-        UseStructuredContent = true),
-     Description("Captures the visible screen rectangle of a window by its handle (Hwnd from list_windows) and recognizes on-screen text using Windows OCR. Returns both the saved PNG artifact and the recognized text; RecognizedText is null when no text was found or no OCR language pack is installed. Same screen-rectangle capture semantics and rejection rules as capture_window.")]
-    public async Task<McpCaptureResponse> ReadTextFromWindowAsync(
+        Destructive = false),
+     Description("Captures the visible screen rectangle of a window by its handle (Hwnd from list_windows) and recognizes on-screen text using Windows OCR. Returns the saved PNG artifact and the recognized text as structured content plus, unless includeImage is false, the captured image itself (downscaled to at most 1600 px on its longest edge) as an inline image block. RecognizedText is null when no text was found or no OCR language pack is installed. Same screen-rectangle capture semantics and rejection rules as capture_window.")]
+    public async Task<CallToolResult> ReadTextFromWindowAsync(
         [Description("The window handle (Hwnd) returned by list_windows. Must be a positive integer.")] long windowId,
+        [Description("Whether to also return the captured image inline as an image block, downscaled to at most 1600 px on its longest edge. The full-resolution PNG is always saved to disk regardless. Defaults to true.")] bool includeImage = true,
         CancellationToken cancellationToken = default)
     {
         var json = await directCaptureService.CaptureWindowTextAsync(windowId, cancellationToken: cancellationToken).ConfigureAwait(false);
-        return McpResponseMapper.DeserializeCaptureResponse(json);
+        return McpCaptureResultBuilder.Build(McpResponseMapper.DeserializeCaptureResponse(json), includeImage);
     }
 
     [McpServerTool(
         Title = "Capture monitor",
-        Destructive = false,
-        UseStructuredContent = true),
-     Description("Starts a Pointframe monitor capture for the named display, optionally limited to a sub-region.")]
-    public async Task<McpCaptureResponse> CaptureMonitorAsync(
+        Destructive = false),
+     Description("Starts a Pointframe monitor capture for the named display, optionally limited to a sub-region. Returns the saved PNG artifact metadata as structured content plus, unless includeImage is false, the captured image itself (downscaled to at most 1600 px on its longest edge) as an inline image block.")]
+    public async Task<CallToolResult> CaptureMonitorAsync(
         [Description("The exact Windows display device name, such as \\.\\DISPLAY1.")] string monitorName,
         [Description("Optional sub-region to capture, in monitor-local physical pixels relative to the monitor's own top-left corner. Captures the whole monitor when omitted. Width and height must be positive; a region outside the monitor bounds is rejected.")] McpCaptureRegion? region = null,
+        [Description("Whether to also return the captured image inline as an image block, downscaled to at most 1600 px on its longest edge. The full-resolution PNG is always saved to disk regardless. Defaults to true.")] bool includeImage = true,
         CancellationToken cancellationToken = default)
     {
         var json = await directCaptureService.CaptureMonitorAsync(monitorName, ToEngineRegion(region), cancellationToken: cancellationToken).ConfigureAwait(false);
-        return McpResponseMapper.DeserializeCaptureResponse(json);
+        return McpCaptureResultBuilder.Build(McpResponseMapper.DeserializeCaptureResponse(json), includeImage);
     }
 
     [McpServerTool(
         Title = "Read text from monitor",
-        Destructive = false,
-        UseStructuredContent = true),
-     Description("Captures a Pointframe monitor screenshot, optionally limited to a sub-region, and recognizes on-screen text using Windows OCR. Returns both the saved PNG artifact and the recognized text; RecognizedText is null when no text was found or no OCR language pack is installed.")]
-    public async Task<McpCaptureResponse> ReadTextFromMonitorAsync(
+        Destructive = false),
+     Description("Captures a Pointframe monitor screenshot, optionally limited to a sub-region, and recognizes on-screen text using Windows OCR. Returns the saved PNG artifact and the recognized text as structured content plus, unless includeImage is false, the captured image itself (downscaled to at most 1600 px on its longest edge) as an inline image block. RecognizedText is null when no text was found or no OCR language pack is installed.")]
+    public async Task<CallToolResult> ReadTextFromMonitorAsync(
         [Description("The exact Windows display device name, such as \\.\\DISPLAY1.")] string monitorName,
         [Description("Optional sub-region to capture and run OCR on, in monitor-local physical pixels relative to the monitor's own top-left corner. Captures the whole monitor when omitted. Width and height must be positive; a region outside the monitor bounds is rejected.")] McpCaptureRegion? region = null,
+        [Description("Whether to also return the captured image inline as an image block, downscaled to at most 1600 px on its longest edge. The full-resolution PNG is always saved to disk regardless. Defaults to true.")] bool includeImage = true,
         CancellationToken cancellationToken = default)
     {
         var json = await directCaptureService.CaptureMonitorTextAsync(monitorName, ToEngineRegion(region), cancellationToken: cancellationToken).ConfigureAwait(false);
-        return McpResponseMapper.DeserializeCaptureResponse(json);
+        return McpCaptureResultBuilder.Build(McpResponseMapper.DeserializeCaptureResponse(json), includeImage);
     }
 
     [McpServerTool(
