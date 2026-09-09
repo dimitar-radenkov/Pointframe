@@ -4,33 +4,44 @@ namespace Pointframe.Cli;
 
 internal static class CliCommandParser
 {
-    internal const string Usage = "Usage: Pointframe.Cli.exe displays | capture --monitor <exact Windows device name> [--region <x,y,width,height>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... | --help | --version";
+    internal const string Usage = "Usage: Pointframe.Cli.exe displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] | capture-window --window-id <id> | ocr-window --window-id <id> | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... | --help | --version";
 
     internal const string HelpText = """
         Pointframe CLI - standalone screen capture, OCR, and recording automation.
 
         Usage:
           Pointframe.Cli.exe displays
+          Pointframe.Cli.exe windows
           Pointframe.Cli.exe capture --monitor <exact Windows device name> [--region <x,y,width,height>]
           Pointframe.Cli.exe ocr --monitor <exact Windows device name> [--region <x,y,width,height>]
+          Pointframe.Cli.exe capture-window --window-id <id>
+          Pointframe.Cli.exe ocr-window --window-id <id>
           Pointframe.Cli.exe record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]...
           Pointframe.Cli.exe --help
           Pointframe.Cli.exe --version
 
         Commands:
-          displays   List every connected monitor as JSON.
-          capture    Capture one monitor, or a region of it, as a PNG (base64) JSON response.
-          ocr        Capture one monitor, or a region of it, and extract on-screen text via OCR as JSON.
-          record     Record one monitor to an MP4 for a fixed duration, then exit with a JSON summary.
+          displays        List every connected monitor as JSON.
+          windows         List visible top-level windows as JSON (handle, title, process, bounds).
+          capture         Capture one monitor, or a region of it, as a PNG (base64) JSON response.
+          ocr             Capture one monitor, or a region of it, and extract on-screen text via OCR as JSON.
+          capture-window  Capture the visible screen rectangle of a window by its handle.
+          ocr-window      Capture a window and extract on-screen text via OCR.
+          record          Record one monitor to an MP4 for a fixed duration, then exit with a JSON summary.
 
         Options:
           -m, --monitor <name>              Exact Windows device name (see 'displays' for exact values), e.g. \\.\DISPLAY1
+          -w, --window-id <id>              Window handle returned by 'windows', e.g. 12345678
           -g, --region <x,y,width,height>   capture/ocr: monitor-local physical-pixel sub-region; captures the whole monitor when omitted
           -s, --seconds <n>                 record: capture duration in whole seconds (positive integer)
           -f, --fps <1-60>                  record: capture frame rate (default 20)
           -r, --redact <x,y,width,height>   record: pixelate a capture-local physical-pixel region; repeatable
           -h, --help                        Show this help text and exit
           -v, --version                     Show the CLI version and exit
+
+        Window capture uses visible screen-rectangle semantics: it captures whatever is on screen
+        at the window's bounds, which means occluding windows may appear in the capture. Minimized,
+        zero-size, off-screen, and multi-monitor-spanning windows are rejected.
 
         Every long option above also accepts an inline value, e.g. --monitor=\\.\DISPLAY1.
         --help/--version take priority over any other arguments, so they can be appended to
@@ -79,6 +90,23 @@ internal static class CliCommandParser
             command = new CliCommand("displays");
             error = null;
             return true;
+        }
+
+        if (args.Length == 1 && string.Equals(args[0], "windows", StringComparison.OrdinalIgnoreCase))
+        {
+            command = new CliCommand("windows");
+            error = null;
+            return true;
+        }
+
+        if (args.Length > 0 && string.Equals(args[0], "capture-window", StringComparison.OrdinalIgnoreCase))
+        {
+            return TryParseWindowCaptureLikeCommand("capture-window", args, out command, out error);
+        }
+
+        if (args.Length > 0 && string.Equals(args[0], "ocr-window", StringComparison.OrdinalIgnoreCase))
+        {
+            return TryParseWindowCaptureLikeCommand("ocr-window", args, out command, out error);
         }
 
         if (args.Length > 0 && string.Equals(args[0], "capture", StringComparison.OrdinalIgnoreCase))
@@ -153,6 +181,47 @@ internal static class CliCommandParser
         }
 
         command = new CliCommand(commandName, monitorName, Region: region);
+        error = null;
+        return true;
+    }
+
+    private static bool TryParseWindowCaptureLikeCommand(string commandName, string[] args, out CliCommand command, out string? error)
+    {
+        long? windowId = null;
+
+        var index = 1;
+        while (index < args.Length)
+        {
+            var flag = args[index];
+            var hasValue = index + 1 < args.Length;
+
+            if (IsWindowIdFlag(flag))
+            {
+                if (!hasValue || !long.TryParse(args[index + 1], out var parsedId) || parsedId <= 0)
+                {
+                    command = default!;
+                    error = $"The {commandName} command requires --window-id followed by a positive integer window handle (see 'windows' for available handles).";
+                    return false;
+                }
+
+                windowId = parsedId;
+                index += 2;
+                continue;
+            }
+
+            command = default!;
+            error = $"Unrecognized {commandName} option '{flag}'.";
+            return false;
+        }
+
+        if (windowId is null)
+        {
+            command = default!;
+            error = $"The {commandName} command requires --window-id followed by a window handle from the 'windows' command.";
+            return false;
+        }
+
+        command = new CliCommand(commandName, WindowId: windowId);
         error = null;
         return true;
     }
@@ -244,7 +313,7 @@ internal static class CliCommandParser
             return false;
         }
 
-        command = new CliCommand("record", monitorName, seconds, framesPerSecond, redactionRegions);
+        command = new CliCommand("record", monitorName, RecordSeconds: seconds, FramesPerSecond: framesPerSecond, RedactionRegions: redactionRegions);
         error = null;
         return true;
     }
@@ -359,4 +428,8 @@ internal static class CliCommandParser
     private static bool IsRedactFlag(string value) =>
         string.Equals(value, "--redact", StringComparison.OrdinalIgnoreCase)
         || string.Equals(value, "-r", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsWindowIdFlag(string value) =>
+        string.Equals(value, "--window-id", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, "-w", StringComparison.OrdinalIgnoreCase);
 }

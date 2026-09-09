@@ -595,4 +595,146 @@ public sealed class CliApplicationTests
         Assert.Equal(2, exitCode);
         Assert.Contains("requires --monitor", standardError.ToString());
     }
+
+    [Fact]
+    public void TryParse_Windows_UsesWindowsListCommand()
+    {
+        var parsed = CliCommandParser.TryParse(["windows"], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("windows", command.Name);
+    }
+
+    [Fact]
+    public void TryParse_CaptureWindow_RequiresWindowId()
+    {
+        var parsed = CliCommandParser.TryParse(["capture-window", "--window-id", "12345"], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("capture-window", command.Name);
+        Assert.Equal(12345L, command.WindowId);
+    }
+
+    [Fact]
+    public void TryParse_CaptureWindow_AcceptsShortAlias()
+    {
+        var parsed = CliCommandParser.TryParse(["capture-window", "-w", "12345"], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("capture-window", command.Name);
+        Assert.Equal(12345L, command.WindowId);
+    }
+
+    [Fact]
+    public void TryParse_CaptureWindow_AcceptsInlineFlagValue()
+    {
+        var parsed = CliCommandParser.TryParse(["capture-window", "--window-id=12345"], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("capture-window", command.Name);
+        Assert.Equal(12345L, command.WindowId);
+    }
+
+    [Fact]
+    public void TryParse_OcrWindow_RequiresWindowId()
+    {
+        var parsed = CliCommandParser.TryParse(["ocr-window", "--window-id", "12345"], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("ocr-window", command.Name);
+        Assert.Equal(12345L, command.WindowId);
+    }
+
+    [Fact]
+    public void TryParse_CaptureWindowWithoutWindowId_ReturnsUsageError()
+    {
+        var parsed = CliCommandParser.TryParse(["capture-window"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Contains("--window-id", error);
+    }
+
+    [Fact]
+    public void TryParse_OcrWindowWithoutWindowId_ReturnsUsageError()
+    {
+        var parsed = CliCommandParser.TryParse(["ocr-window"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Contains("--window-id", error);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("not-a-number")]
+    public void TryParse_CaptureWindowWithInvalidWindowId_ReturnsUsageError(string windowIdValue)
+    {
+        var parsed = CliCommandParser.TryParse(["capture-window", "--window-id", windowIdValue], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Contains("--window-id", error);
+    }
+
+    [Fact]
+    public async Task RunAsync_Windows_WritesWindowDescriptorsJson()
+    {
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        directCaptureService
+            .Setup(service => service.ListWindows())
+            .Returns("[{\"hwnd\":12345}]");
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        var exitCode = await application.RunAsync(["windows"]);
+
+        Assert.Equal(0, exitCode);
+        directCaptureService.Verify(service => service.ListWindows(), Times.Once);
+        Assert.Contains("12345", standardOutput.ToString());
+        Assert.Empty(standardError.ToString());
+    }
+
+    [Fact]
+    public async Task RunAsync_CaptureWindow_DelegatesToCaptureWindowAsync()
+    {
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        directCaptureService
+            .Setup(service => service.CaptureWindowAsync(12345L, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"window-artifact\"}}}");
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        var exitCode = await application.RunAsync(["capture-window", "--window-id", "12345"]);
+
+        Assert.Equal(0, exitCode);
+        directCaptureService.Verify(service => service.CaptureWindowAsync(12345L, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains("window-artifact", standardOutput.ToString());
+    }
+
+    [Fact]
+    public async Task RunAsync_OcrWindow_DelegatesToCaptureWindowTextAsync()
+    {
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        directCaptureService
+            .Setup(service => service.CaptureWindowTextAsync(12345L, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("{\"recognizedText\":\"Hello\"}");
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        var exitCode = await application.RunAsync(["ocr-window", "--window-id", "12345"]);
+
+        Assert.Equal(0, exitCode);
+        directCaptureService.Verify(service => service.CaptureWindowTextAsync(12345L, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains("Hello", standardOutput.ToString());
+    }
 }

@@ -21,6 +21,9 @@ public sealed class DesktopTestingToolContractTests
         string[] expected =
         [
             "list_displays",
+            "list_windows",
+            "capture_window",
+            "read_text_from_window",
             "capture_monitor",
             "read_text_from_monitor",
             "start_recording",

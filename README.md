@@ -100,8 +100,11 @@ The standalone host requires an interactive Windows desktop session. It is a loc
 The server exposes:
 
 - 🖥️ `list_displays` — return monitor identifiers, physical pixel bounds, and DPI scales.
+- 🪟 `list_windows` — return visible top-level windows with handles, titles, process names, bounds, and containing monitor names. Window handles are session-local and temporary.
 - 📸 `capture_monitor` — capture a named monitor, or an optional monitor-local sub-region of it, and return a PNG artifact plus metadata.
+- 📸 `capture_window` — capture the visible screen rectangle of a window by its handle from `list_windows`. Occluding windows may appear; minimized, off-screen, and multi-monitor-spanning windows are rejected.
 - 🔤 `read_text_from_monitor` — capture a named monitor (optionally a sub-region) and run OCR against it, returning the PNG artifact plus recognized text (`null` when no text is found or no OCR language pack is installed).
+- 🔤 `read_text_from_window` — capture a window by handle and run OCR against it. Same screen-rectangle capture semantics as `capture_window`.
 - 🎥 `start_recording` — start a whole-monitor MP4 recording. Recording requires an explicit `redactionRegionsCaptureLocalPixels` array, even when it is empty.
 - ⏹️ `stop_recording` — stop the active recording and return the finalized MP4 artifact, metadata, and event sidecar references.
 - ⏱️ `get_recording_status` — report whether a recording is currently active and, if so, its session details and elapsed duration; returns no session when nothing is recording.

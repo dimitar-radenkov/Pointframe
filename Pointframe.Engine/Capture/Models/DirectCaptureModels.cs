@@ -5,6 +5,7 @@ public sealed record DirectCaptureResponse(
     bool Success,
     DirectCaptureError? Error = null,
     IReadOnlyList<DisplayDescriptor>? Displays = null,
+    IReadOnlyList<WindowDescriptor>? Windows = null,
     ArtifactDescriptor? Artifact = null,
     string? RecognizedText = null);
 

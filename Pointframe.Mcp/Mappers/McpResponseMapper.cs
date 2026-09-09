@@ -38,6 +38,14 @@ internal static class McpResponseMapper
                 display.DpiScaleY,
                 ToMcpBounds(display.BoundsPixels),
                 ToMcpBounds(display.WorkAreaBoundsPixels))).ToArray(),
+            response.Windows?.Select(window => new McpWindowDescriptor(
+                window.Hwnd,
+                window.Title,
+                window.ProcessName,
+                window.ProcessId,
+                ToMcpBounds(window.BoundsPixels),
+                window.MonitorName,
+                window.IsMinimized)).ToArray(),
             response.Artifact is null
                 ? null
                 : new McpArtifactDescriptor(

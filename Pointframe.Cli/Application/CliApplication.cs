@@ -98,8 +98,11 @@ internal sealed class CliApplication
             var payload = command.Name switch
             {
                 "displays" => _directCaptureService.ListDisplays(),
+                "windows" => _directCaptureService.ListWindows(),
                 "capture" => await _directCaptureService.CaptureMonitorAsync(command.MonitorName!, command.Region, cancellationToken),
                 "ocr" => await _directCaptureService.CaptureMonitorTextAsync(command.MonitorName!, command.Region, cancellationToken),
+                "capture-window" => await _directCaptureService.CaptureWindowAsync(command.WindowId!.Value, cancellationToken),
+                "ocr-window" => await _directCaptureService.CaptureWindowTextAsync(command.WindowId!.Value, cancellationToken),
                 _ => throw new InvalidOperationException($"Unsupported CLI command '{command.Name}'."),
             };
 
