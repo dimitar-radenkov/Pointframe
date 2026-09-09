@@ -38,20 +38,21 @@ public sealed class DirectCaptureService : IDirectCaptureService
         return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Displays: displays));
     }
 
-    public async Task<string> CaptureMonitorAsync(string monitorName, CancellationToken cancellationToken = default)
+    public async Task<string> CaptureMonitorAsync(string monitorName, CaptureRegion? region = null, CancellationToken cancellationToken = default)
     {
-        var (artifact, _) = await CaptureMonitorInternalAsync(monitorName, recognizeText: false, cancellationToken).ConfigureAwait(false);
+        var (artifact, _) = await CaptureMonitorInternalAsync(monitorName, region, recognizeText: false, cancellationToken).ConfigureAwait(false);
         return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Artifact: artifact));
     }
 
-    public async Task<string> CaptureMonitorTextAsync(string monitorName, CancellationToken cancellationToken = default)
+    public async Task<string> CaptureMonitorTextAsync(string monitorName, CaptureRegion? region = null, CancellationToken cancellationToken = default)
     {
-        var (artifact, recognizedText) = await CaptureMonitorInternalAsync(monitorName, recognizeText: true, cancellationToken).ConfigureAwait(false);
+        var (artifact, recognizedText) = await CaptureMonitorInternalAsync(monitorName, region, recognizeText: true, cancellationToken).ConfigureAwait(false);
         return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Artifact: artifact, RecognizedText: recognizedText));
     }
 
     private async Task<(ArtifactDescriptor Artifact, string? RecognizedText)> CaptureMonitorInternalAsync(
         string monitorName,
+        CaptureRegion? region,
         bool recognizeText,
         CancellationToken cancellationToken)
     {
@@ -59,7 +60,7 @@ public sealed class DirectCaptureService : IDirectCaptureService
         cancellationToken.ThrowIfCancellationRequested();
 
         Directory.CreateDirectory(_screenshotsDirectory);
-        using var capturedMonitor = _displayCaptureEngine.CaptureMonitor(monitorName);
+        using var capturedMonitor = ResolveCapturedMonitor(monitorName, region, out var captureBoundsPixels);
         var createdUtc = _timeProvider.GetUtcNow();
         var artifactId = Guid.NewGuid().ToString("N");
         var path = Path.Combine(_screenshotsDirectory, $"{createdUtc:yyyyMMdd-HHmmss}-{artifactId}.png");
@@ -89,10 +90,36 @@ public sealed class DirectCaptureService : IDirectCaptureService
             capturedMonitor.Display.MonitorName,
             capturedMonitor.Display.DpiScaleX,
             capturedMonitor.Display.DpiScaleY,
+            captureBoundsPixels,
             capturedMonitor.Display.BoundsPixels);
         await WriteMetadataSidecarAsync(metadata, cancellationToken);
         var artifact = new ArtifactDescriptor(SchemaVersion, artifactId, metadata);
         return (artifact, recognizedText);
+    }
+
+    /// <summary>
+    /// Resolves the monitor and captures either the whole monitor (<paramref name="region"/> is
+    /// <see langword="null"/>) or a validated sub-region of it, reporting the actual physical-pixel
+    /// bounds that were captured via <paramref name="captureBoundsPixels"/>.
+    /// </summary>
+    private CapturedMonitor ResolveCapturedMonitor(string monitorName, CaptureRegion? region, out PixelBounds captureBoundsPixels)
+    {
+        if (region is null)
+        {
+            var capturedMonitor = _displayCaptureEngine.CaptureMonitor(monitorName);
+            captureBoundsPixels = capturedMonitor.Display.BoundsPixels;
+            return capturedMonitor;
+        }
+
+        var display = _displayCaptureEngine.GetDisplays().SingleOrDefault(candidate =>
+            string.Equals(candidate.MonitorName, monitorName, StringComparison.OrdinalIgnoreCase));
+        if (display is null)
+        {
+            throw new ArgumentException($"The monitor '{monitorName}' was not found.", nameof(monitorName));
+        }
+
+        captureBoundsPixels = region.Value.ResolveWithin(display.BoundsPixels);
+        return new CapturedMonitor(display, _displayCaptureEngine.Capture(captureBoundsPixels));
     }
 
     private static async Task WriteMetadataSidecarAsync(ImageArtifactMetadata metadata, CancellationToken cancellationToken)

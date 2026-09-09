@@ -24,16 +24,9 @@
   <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest"><img src="https://img.shields.io/github/v/release/dimitar-radenkov/Pointframe?color=success" alt="Latest release"></a>
   <a href="https://github.com/microsoft/winget-pkgs/tree/master/manifests/d/DimitarRadenkov/Pointframe"><img src="https://img.shields.io/winget/v/DimitarRadenkov.Pointframe?label=winget&color=blue" alt="winget"></a>
   <a href="https://github.com/dimitar-radenkov/Pointframe/releases"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/total?label=downloads&color=purple" alt="Downloads"></a>
-  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/latest/Pointframe.Cli-6.7.4-win-x64.zip?label=cli%20downloads&color=orange" alt="CLI downloads"></a>
-  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/latest/Pointframe.Mcp-6.7.4-win-x64.mcpb?label=mcp%20downloads&color=orange" alt="MCP downloads"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Cli-win-x64.zip"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/latest/Pointframe.Cli-win-x64.zip?label=cli%20downloads&color=orange" alt="CLI downloads"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/latest/Pointframe.Mcp-win-x64.mcpb?label=mcp%20downloads&color=orange" alt="MCP downloads"></a>
 </p>
-
-<!--
-  NOTE: The CLI/MCP download badges above pin the exact versioned asset filename
-  from the latest release (shields.io has no wildcard/version-agnostic form for
-  GitHub release assets). Bump "6.7.4" in both URLs to match the current release
-  version whenever a new release ships, or the badges will show "asset not found".
--->
 
 <p align="center">
   <b>☕ If Pointframe saves you time, consider <a href="https://paypal.me/DimitarRadenkov">buying me a beer</a>:</b><br>
@@ -89,7 +82,7 @@ to standard output and exits with code `0`; invalid arguments exit with code `2`
 capture/OCR/recording failures exit with code `1`. Screenshots and their metadata
 sidecars are saved under `%LOCALAPPDATA%\Pointframe\Screenshots`. `ocr` captures the
 monitor the same way `capture` does, then runs Windows OCR against the captured image
-and adds a `recognizedText` field to the JSON output (`null` when no text is found or
+and adds a `RecognizedText` field to the JSON output (`null` when no text is found or
 no OCR language pack is installed). `record` starts a direct MP4 recording, waits for
 the requested `--seconds` (or an earlier Ctrl+C for a graceful early stop), then
 writes the combined session/artifact JSON; recordings are saved under
@@ -107,8 +100,8 @@ The standalone host requires an interactive Windows desktop session. It is a loc
 The server exposes:
 
 - 🖥️ `list_displays` — return monitor identifiers, physical pixel bounds, and DPI scales.
-- 📸 `capture_monitor` — capture a named monitor and return a PNG artifact plus metadata.
-- 🔤 `read_text_from_monitor` — capture a named monitor and run OCR against it, returning the PNG artifact plus recognized text (`null` when no text is found or no OCR language pack is installed).
+- 📸 `capture_monitor` — capture a named monitor, or an optional monitor-local sub-region of it, and return a PNG artifact plus metadata.
+- 🔤 `read_text_from_monitor` — capture a named monitor (optionally a sub-region) and run OCR against it, returning the PNG artifact plus recognized text (`null` when no text is found or no OCR language pack is installed).
 - 🎥 `start_recording` — start a whole-monitor MP4 recording. Recording requires an explicit `redactionRegionsCaptureLocalPixels` array, even when it is empty.
 - ⏹️ `stop_recording` — stop the active recording and return the finalized MP4 artifact, metadata, and event sidecar references.
 - ⏱️ `get_recording_status` — report whether a recording is currently active and, if so, its session details and elapsed duration; returns no session when nothing is recording.
@@ -121,7 +114,7 @@ The server also exposes MCP resources:
 The normal workflow is:
 
 1. Call `list_displays` and select a returned `monitorName`.
-2. Call `capture_monitor` with that exact monitor name, call `read_text_from_monitor` to also extract on-screen text, or call `start_recording`.
+2. Call `capture_monitor` with that exact monitor name, call `read_text_from_monitor` to also extract on-screen text, or call `start_recording`. Pass an optional `region` (`{x, y, width, height}` in monitor-local physical pixels) to `capture_monitor`/`read_text_from_monitor` to limit the capture to a sub-rectangle instead of the whole monitor; a region outside the monitor's bounds is rejected rather than clipped.
 3. For recording, pass redaction rectangles in capture-local physical pixels. Use `[]` when no redaction is required.
 4. Call `get_recording_status` at any time to check whether a recording is active before calling `stop_recording`.
 5. Call `stop_recording` to finalize the MP4 and retrieve its metadata.
@@ -144,7 +137,7 @@ Example tool arguments:
 }
 ```
 
-Responses contain structured JSON with `success`, operation identifiers, artifact paths,
+Responses contain structured JSON with `Success`, operation identifiers, artifact paths,
 byte lengths, SHA-256 hashes, monitor geometry, DPI information, and sidecar paths.
 Artifact paths are local filesystem paths on the machine running the MCP server.
 

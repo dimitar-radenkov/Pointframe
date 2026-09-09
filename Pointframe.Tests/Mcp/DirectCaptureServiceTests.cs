@@ -41,6 +41,7 @@ public sealed class DirectCaptureServiceTests : IDisposable
         Assert.Equal(display.DpiScaleX, metadata.DpiScaleX);
         Assert.Equal(display.DpiScaleY, metadata.DpiScaleY);
         Assert.Equal(new Pointframe.Engine.PixelBounds(-20, 10, 2, 3), metadata.CaptureBoundsPixels);
+        Assert.Equal(new Pointframe.Engine.PixelBounds(-20, 10, 2, 3), metadata.MonitorBoundsPixels);
     }
 
     [Fact]
@@ -129,6 +130,57 @@ public sealed class DirectCaptureServiceTests : IDisposable
         Assert.NotNull(response);
         Assert.Null(response.RecognizedText);
         ocrEngineService.Verify(service => service.RecognizeAsync(It.IsAny<Bitmap>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CaptureMonitorAsync_WithRegion_CapturesResolvedSubRegionAndReportsActualBounds()
+    {
+        var display = new Pointframe.Engine.DisplayDescriptor(
+            @"\\.\DISPLAY1",
+            1d,
+            1d,
+            new Pointframe.Engine.PixelBounds(100, 200, 800, 600));
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), new Mock<IOcrEngineService>().Object, _screenshotsDirectory);
+
+        var json = await sut.CaptureMonitorAsync(display.MonitorName, new CaptureRegion(10, 20, 30, 40));
+        var response = JsonSerializer.Deserialize<DirectCaptureResponse>(json);
+
+        Assert.NotNull(response);
+        Assert.True(response.Success);
+        var metadata = Assert.IsType<ArtifactDescriptor>(response.Artifact).Metadata;
+        Assert.Equal(new Pointframe.Engine.PixelBounds(110, 220, 30, 40), metadata.CaptureBoundsPixels);
+        Assert.Equal(display.BoundsPixels, metadata.MonitorBoundsPixels);
+        using var savedBitmap = new Bitmap(metadata.Path);
+        Assert.Equal(30, savedBitmap.Width);
+        Assert.Equal(40, savedBitmap.Height);
+    }
+
+    [Fact]
+    public async Task CaptureMonitorAsync_WithRegionOutsideMonitorBounds_Throws()
+    {
+        var display = new Pointframe.Engine.DisplayDescriptor(
+            @"\\.\DISPLAY1",
+            1d,
+            1d,
+            new Pointframe.Engine.PixelBounds(0, 0, 100, 200));
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), new Mock<IOcrEngineService>().Object, _screenshotsDirectory);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => sut.CaptureMonitorAsync(display.MonitorName, new CaptureRegion(90, 0, 50, 50)));
+    }
+
+    [Fact]
+    public async Task CaptureMonitorAsync_WithRegionForUnknownMonitor_Throws()
+    {
+        var display = new Pointframe.Engine.DisplayDescriptor(
+            @"\\.\DISPLAY1",
+            1d,
+            1d,
+            new Pointframe.Engine.PixelBounds(0, 0, 100, 200));
+        var sut = new DirectCaptureService(CreateDisplayCaptureEngine(display), new Mock<IOcrEngineService>().Object, _screenshotsDirectory);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => sut.CaptureMonitorAsync(@"\\.\DISPLAY9", new CaptureRegion(0, 0, 10, 10)));
     }
 
     public void Dispose()
