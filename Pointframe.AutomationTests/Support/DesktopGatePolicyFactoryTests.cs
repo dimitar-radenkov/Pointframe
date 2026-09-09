@@ -58,9 +58,9 @@ public sealed class DesktopGatePolicyFactoryTests
                 .Select(tool => tool.GetProperty("name").GetString())
                 .ToArray();
 
-            Assert.Contains("start_test_session", names);
-            Assert.Contains("observe_app", names);
-            Assert.Contains("end_test_session", names);
+            Assert.Contains("desktop_start_test_session", names);
+            Assert.Contains("desktop_observe_app", names);
+            Assert.Contains("desktop_end_test_session", names);
         }
         finally
         {

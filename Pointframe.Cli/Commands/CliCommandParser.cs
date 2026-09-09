@@ -4,7 +4,7 @@ namespace Pointframe.Cli;
 
 internal static class CliCommandParser
 {
-    internal const string Usage = "Usage: Pointframe.Cli.exe displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] | capture-window --window-id <id> | ocr-window --window-id <id> | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... | --help | --version";
+    internal const string Usage = "Usage: Pointframe.Cli.exe displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | --help | --version";
 
     internal const string HelpText = """
         Pointframe CLI - standalone screen capture, OCR, and recording automation.
@@ -12,18 +12,18 @@ internal static class CliCommandParser
         Usage:
           Pointframe.Cli.exe displays
           Pointframe.Cli.exe windows
-          Pointframe.Cli.exe capture --monitor <exact Windows device name> [--region <x,y,width,height>]
-          Pointframe.Cli.exe ocr --monitor <exact Windows device name> [--region <x,y,width,height>]
-          Pointframe.Cli.exe capture-window --window-id <id>
-          Pointframe.Cli.exe ocr-window --window-id <id>
-          Pointframe.Cli.exe record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]...
+          Pointframe.Cli.exe capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>]
+          Pointframe.Cli.exe ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>]
+          Pointframe.Cli.exe capture-window --window-id <id> [--output <file>]
+          Pointframe.Cli.exe ocr-window --window-id <id> [--output <file>]
+          Pointframe.Cli.exe record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>]
           Pointframe.Cli.exe --help
           Pointframe.Cli.exe --version
 
         Commands:
           displays        List every connected monitor as JSON.
           windows         List visible top-level windows as JSON (handle, title, process, bounds).
-          capture         Capture one monitor, or a region of it, as a PNG (base64) JSON response.
+          capture         Capture one monitor, or a region of it, to a PNG file and report it as JSON.
           ocr             Capture one monitor, or a region of it, and extract on-screen text via OCR as JSON.
           capture-window  Capture the visible screen rectangle of a window by its handle.
           ocr-window      Capture a window and extract on-screen text via OCR.
@@ -36,8 +36,14 @@ internal static class CliCommandParser
           -s, --seconds <n>                 record: capture duration in whole seconds (positive integer)
           -f, --fps <1-60>                  record: capture frame rate (default 20)
           -r, --redact <x,y,width,height>   record: pixelate a capture-local physical-pixel region; repeatable
+          -o, --output <file>               Exact output file to write (.png for capture/ocr, .mp4 for record);
+                                            parent directories are created. Defaults to a timestamped name
+                                            under %LOCALAPPDATA%\Pointframe when omitted.
           -h, --help                        Show this help text and exit
           -v, --version                     Show the CLI version and exit
+
+        Pressing Ctrl+C during 'record' stops the recording early and gracefully: the MP4 is finalized
+        and its artifact is still written and reported in the JSON summary, not discarded.
 
         Window capture uses visible screen-rectangle semantics: it captures whatever is on screen
         at the window's bounds, which means occluding windows may appear in the capture. Minimized,
@@ -49,6 +55,11 @@ internal static class CliCommandParser
 
         Every command other than --help/--version writes a single-line JSON response to standard output and
         uses the process exit code to signal success (0), a runtime error (1), or a usage error (2).
+        A runtime error writes a JSON response with "Success": false and an "Error" object carrying a stable
+        machine-readable "Code" (target_not_found, target_not_capturable, invalid_region,
+        invalid_output_path, canceled, or capture_failed) alongside the human-readable message, which is
+        also repeated on standard error.
+        A usage error (exit code 2) writes this usage text to standard error instead of JSON.
         """;
 
     internal static bool TryParse(string[] args, out CliCommand command, out string? error)
@@ -133,6 +144,7 @@ internal static class CliCommandParser
     {
         string? monitorName = null;
         CaptureRegion? region = null;
+        string? outputPath = null;
 
         var index = 1;
         while (index < args.Length)
@@ -168,6 +180,20 @@ internal static class CliCommandParser
                 continue;
             }
 
+            if (IsOutputFlag(flag))
+            {
+                if (!hasValue || string.IsNullOrWhiteSpace(args[index + 1]))
+                {
+                    command = default!;
+                    error = $"The {commandName} command requires --output followed by a file path.";
+                    return false;
+                }
+
+                outputPath = args[index + 1];
+                index += 2;
+                continue;
+            }
+
             command = default!;
             error = $"Unrecognized {commandName} option '{flag}'.";
             return false;
@@ -180,7 +206,7 @@ internal static class CliCommandParser
             return false;
         }
 
-        command = new CliCommand(commandName, monitorName, Region: region);
+        command = new CliCommand(commandName, monitorName, Region: region, OutputPath: outputPath);
         error = null;
         return true;
     }
@@ -188,6 +214,7 @@ internal static class CliCommandParser
     private static bool TryParseWindowCaptureLikeCommand(string commandName, string[] args, out CliCommand command, out string? error)
     {
         long? windowId = null;
+        string? outputPath = null;
 
         var index = 1;
         while (index < args.Length)
@@ -209,6 +236,20 @@ internal static class CliCommandParser
                 continue;
             }
 
+            if (IsOutputFlag(flag))
+            {
+                if (!hasValue || string.IsNullOrWhiteSpace(args[index + 1]))
+                {
+                    command = default!;
+                    error = $"The {commandName} command requires --output followed by a file path.";
+                    return false;
+                }
+
+                outputPath = args[index + 1];
+                index += 2;
+                continue;
+            }
+
             command = default!;
             error = $"Unrecognized {commandName} option '{flag}'.";
             return false;
@@ -221,7 +262,7 @@ internal static class CliCommandParser
             return false;
         }
 
-        command = new CliCommand(commandName, WindowId: windowId);
+        command = new CliCommand(commandName, WindowId: windowId, OutputPath: outputPath);
         error = null;
         return true;
     }
@@ -232,6 +273,7 @@ internal static class CliCommandParser
         int? seconds = null;
         var framesPerSecond = 20;
         var redactionRegions = new List<PixelBounds>();
+        string? outputPath = null;
 
         var index = 1;
         while (index < args.Length)
@@ -294,6 +336,20 @@ internal static class CliCommandParser
                 continue;
             }
 
+            if (IsOutputFlag(flag))
+            {
+                if (!hasValue || string.IsNullOrWhiteSpace(args[index + 1]))
+                {
+                    command = default!;
+                    error = "The record command requires --output followed by a file path.";
+                    return false;
+                }
+
+                outputPath = args[index + 1];
+                index += 2;
+                continue;
+            }
+
             command = default!;
             error = $"Unrecognized record option '{flag}'.";
             return false;
@@ -313,7 +369,7 @@ internal static class CliCommandParser
             return false;
         }
 
-        command = new CliCommand("record", monitorName, RecordSeconds: seconds, FramesPerSecond: framesPerSecond, RedactionRegions: redactionRegions);
+        command = new CliCommand("record", monitorName, RecordSeconds: seconds, FramesPerSecond: framesPerSecond, RedactionRegions: redactionRegions, OutputPath: outputPath);
         error = null;
         return true;
     }
@@ -428,6 +484,10 @@ internal static class CliCommandParser
     private static bool IsRedactFlag(string value) =>
         string.Equals(value, "--redact", StringComparison.OrdinalIgnoreCase)
         || string.Equals(value, "-r", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsOutputFlag(string value) =>
+        string.Equals(value, "--output", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, "-o", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsWindowIdFlag(string value) =>
         string.Equals(value, "--window-id", StringComparison.OrdinalIgnoreCase)

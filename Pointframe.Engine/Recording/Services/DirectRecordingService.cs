@@ -76,19 +76,42 @@ public sealed class DirectRecordingService : IDirectRecordingService
                 return Failure("invalid_redaction_region", "Each redaction region must have positive width and height in capture-local physical pixels.");
             }
 
-            var outputDirectory = request.OutputDirectory ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Pointframe",
-                "Recordings");
-            if (string.IsNullOrWhiteSpace(outputDirectory))
-            {
-                return Failure("invalid_output_directory", "OutputDirectory must not be empty when supplied.");
-            }
-
-            Directory.CreateDirectory(outputDirectory);
             var startedUtc = _timeProvider.GetUtcNow();
             var artifactId = $"rec_{Guid.NewGuid():N}";
-            var outputPath = Path.Combine(outputDirectory, $"{startedUtc:yyyyMMdd-HHmmss}-{artifactId}.mp4");
+            string outputPath;
+            if (string.IsNullOrWhiteSpace(request.OutputPath))
+            {
+                var outputDirectory = request.OutputDirectory ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Pointframe",
+                    "Recordings");
+                if (string.IsNullOrWhiteSpace(outputDirectory))
+                {
+                    return Failure("invalid_output_directory", "OutputDirectory must not be empty when supplied.");
+                }
+
+                Directory.CreateDirectory(outputDirectory);
+                outputPath = Path.Combine(outputDirectory, $"{startedUtc:yyyyMMdd-HHmmss}-{artifactId}.mp4");
+            }
+            else
+            {
+                // An explicit output path wins over the directory: the caller named the exact file.
+                outputPath = Path.GetFullPath(request.OutputPath);
+
+                // Reject an existing directory and a directory-shaped path that does not exist yet
+                // (trailing separator or bare root); otherwise the writer fails later with a much less
+                // actionable error than the documented "error on directory targets" contract.
+                if (Directory.Exists(outputPath) || string.IsNullOrEmpty(Path.GetFileName(outputPath)))
+                {
+                    return Failure("invalid_output_path", "OutputPath is a directory; supply a file path.");
+                }
+
+                var explicitDirectory = Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrEmpty(explicitDirectory))
+                {
+                    Directory.CreateDirectory(explicitDirectory);
+                }
+            }
             var stopwatch = Stopwatch.StartNew();
             var eventTrack = new DirectRecordingEventTrack(outputPath, stopwatch);
 

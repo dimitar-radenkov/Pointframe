@@ -42,7 +42,7 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
         [Description("The window handle (Hwnd) returned by list_windows. Must be a positive integer.")] long windowId,
         CancellationToken cancellationToken = default)
     {
-        var json = await directCaptureService.CaptureWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
+        var json = await directCaptureService.CaptureWindowAsync(windowId, cancellationToken: cancellationToken).ConfigureAwait(false);
         return McpResponseMapper.DeserializeCaptureResponse(json);
     }
 
@@ -55,7 +55,7 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
         [Description("The window handle (Hwnd) returned by list_windows. Must be a positive integer.")] long windowId,
         CancellationToken cancellationToken = default)
     {
-        var json = await directCaptureService.CaptureWindowTextAsync(windowId, cancellationToken).ConfigureAwait(false);
+        var json = await directCaptureService.CaptureWindowTextAsync(windowId, cancellationToken: cancellationToken).ConfigureAwait(false);
         return McpResponseMapper.DeserializeCaptureResponse(json);
     }
 
@@ -69,7 +69,7 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
         [Description("Optional sub-region to capture, in monitor-local physical pixels relative to the monitor's own top-left corner. Captures the whole monitor when omitted. Width and height must be positive; a region outside the monitor bounds is rejected.")] McpCaptureRegion? region = null,
         CancellationToken cancellationToken = default)
     {
-        var json = await directCaptureService.CaptureMonitorAsync(monitorName, ToEngineRegion(region), cancellationToken).ConfigureAwait(false);
+        var json = await directCaptureService.CaptureMonitorAsync(monitorName, ToEngineRegion(region), cancellationToken: cancellationToken).ConfigureAwait(false);
         return McpResponseMapper.DeserializeCaptureResponse(json);
     }
 
@@ -83,22 +83,22 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
         [Description("Optional sub-region to capture and run OCR on, in monitor-local physical pixels relative to the monitor's own top-left corner. Captures the whole monitor when omitted. Width and height must be positive; a region outside the monitor bounds is rejected.")] McpCaptureRegion? region = null,
         CancellationToken cancellationToken = default)
     {
-        var json = await directCaptureService.CaptureMonitorTextAsync(monitorName, ToEngineRegion(region), cancellationToken).ConfigureAwait(false);
+        var json = await directCaptureService.CaptureMonitorTextAsync(monitorName, ToEngineRegion(region), cancellationToken: cancellationToken).ConfigureAwait(false);
         return McpResponseMapper.DeserializeCaptureResponse(json);
     }
 
     [McpServerTool(
         Title = "Start recording",
         UseStructuredContent = true),
-     Description("Starts direct, no-microphone MP4 recording for a monitor without launching the Pointframe desktop application. Redaction regions are required and use capture-local physical pixels; provide an empty array when none are needed.")]
+     Description("Starts direct, no-microphone MP4 recording for a monitor without launching the Pointframe desktop application. Only one recording can be active at a time; call stop_recording to finalize it and obtain the MP4 artifact.")]
     public Task<McpRecordingResponse> StartRecordingAsync(
         [Description("The exact Windows display device name, such as \\.\\DISPLAY1.")] string monitorName,
-        [Description("Declared pixelation rectangles in capture-local physical pixels. Supply an empty array for no redaction.")] IReadOnlyList<McpPixelBounds> redactionRegionsCaptureLocalPixels,
+        [Description("Optional pixelation rectangles in capture-local physical pixels, applied to every frame before it is encoded. Omit for no redaction.")] IReadOnlyList<McpPixelBounds>? redactionRegionsCaptureLocalPixels = null,
         [Description("Frames per second, from 1 through 60. Defaults to 20.")] int framesPerSecond = 20,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var engineRegions = redactionRegionsCaptureLocalPixels
+        var engineRegions = (redactionRegionsCaptureLocalPixels ?? [])
             .Select(region => new PixelBounds(region.X, region.Y, region.Width, region.Height))
             .ToArray();
         return Task.FromResult(McpResponseMapper.DeserializeRecordingResponse(

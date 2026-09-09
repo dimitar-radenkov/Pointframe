@@ -9,4 +9,5 @@ internal sealed record CliCommand(
     int? RecordSeconds = null,
     int FramesPerSecond = 20,
     IReadOnlyList<PixelBounds>? RedactionRegions = null,
-    CaptureRegion? Region = null);
+    CaptureRegion? Region = null,
+    string? OutputPath = null);

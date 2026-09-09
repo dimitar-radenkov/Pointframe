@@ -40,9 +40,11 @@ public sealed class DesktopTestingToolContractTests
         // Mirrors the exact tool set asserted against the live server by packaging/test-mcp-stdio.ps1.
         var expected = new HashSet<string>(StringComparer.Ordinal)
         {
-            "list_apps", "start_test_session", "restart_app", "observe_app", "focus_window",
-            "click", "press_keys", "drag", "enter_text", "invoke", "check_ui", "scroll",
-            "get_action_result", "get_test_report", "end_test_session",
+            "desktop_list_apps", "desktop_start_test_session", "desktop_restart_app",
+            "desktop_observe_app", "desktop_focus_window", "desktop_click", "desktop_press_keys",
+            "desktop_drag", "desktop_enter_text", "desktop_invoke", "desktop_check_ui",
+            "desktop_scroll", "desktop_get_action_result", "desktop_get_test_report",
+            "desktop_end_test_session",
         };
 
         Assert.Equal(expected, PointframeCommandCatalog.DesktopTestingTools.ToHashSet(StringComparer.Ordinal));

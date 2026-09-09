@@ -4,7 +4,8 @@ public sealed record DirectRecordingRequest(
     string MonitorName,
     IReadOnlyList<PixelBounds> RedactionRegionsCaptureLocalPixels,
     int FramesPerSecond = 20,
-    string? OutputDirectory = null);
+    string? OutputDirectory = null,
+    string? OutputPath = null);
 
 public sealed record DirectRecordingArtifact(
     int SchemaVersion,

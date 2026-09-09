@@ -22,8 +22,8 @@ private data.
 
 ## Scope: general desktop automation, not a Pointframe-only test hook
 
-`focus_window`, `click`, `press_keys`, `drag`, `enter_text`, `scroll`, and
-`invoke` do not know or care that a target is Pointframe. Any executable an
+`desktop_focus_window`, `desktop_click`, `desktop_press_keys`, `desktop_drag`, `desktop_enter_text`, `desktop_scroll`, and
+`desktop_invoke` do not know or care that a target is Pointframe. Any executable an
 operator adds to the policy file becomes something the driver can launch,
 observe, and physically drive through its real UI, clicking controls, filling
 fields, dragging elements, and invoking UI Automation elements the same way a
@@ -106,23 +106,28 @@ arguments match and produce a conflict when reused with different arguments.
 
 When the policy-enabled server is running, the additional desktop tools are:
 
+Every tool in this set carries a `desktop_` prefix. The actions they perform —
+clicking, dragging, scrolling, typing — have generic names that would otherwise
+collide with tools from other MCP servers connected to the same client, leaving
+the caller with two indistinguishable `click` tools.
+
 | Tool | Purpose |
 |---|---|
-| `list_apps` | List policy-eligible application candidates |
-| `start_test_session` | Launch one approved executable |
-| `restart_app` | Restart only after the previous target exited normally |
-| `observe_app` | Capture bounded images and optional UIA data |
-| `focus_window` | Focus a verified target window |
-| `click` | Send a bounded physical click from an observation point |
-| `press_keys` | Send bounded physical keys or an approved global hotkey |
-| `drag` | Send a bounded drag |
-| `enter_text` | Send physical Unicode text or verified ValuePattern text |
-| `invoke` | Invoke a verified UI Automation element |
-| `check_ui` | Evaluate bounded UI conditions |
-| `scroll` | Send bounded mouse-wheel input |
-| `get_action_result` | Read an action result |
-| `get_test_report` | Finalize the session report |
-| `end_test_session` | Release the driver session without force-killing targets |
+| `desktop_list_apps` | Acknowledge a candidate-listing request; this host never returns candidates |
+| `desktop_start_test_session` | Launch one approved executable |
+| `desktop_restart_app` | Restart only after the previous target exited normally |
+| `desktop_observe_app` | Capture bounded images and optional UIA data |
+| `desktop_focus_window` | Focus a verified target window |
+| `desktop_click` | Send a bounded physical click from an observation point |
+| `desktop_press_keys` | Send bounded physical keys or an approved global hotkey |
+| `desktop_drag` | Send a bounded drag |
+| `desktop_enter_text` | Send physical Unicode text or verified ValuePattern text |
+| `desktop_invoke` | Invoke a verified UI Automation element |
+| `desktop_check_ui` | Evaluate bounded UI conditions |
+| `desktop_scroll` | Send bounded mouse-wheel input |
+| `desktop_get_action_result` | Read an action result |
+| `desktop_get_test_report` | Finalize the session report |
+| `desktop_end_test_session` | Release the driver session without force-killing targets |
 
 The normal, disabled server continues to expose only the delivered capture and
 recording tools:

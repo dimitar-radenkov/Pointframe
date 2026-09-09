@@ -11,7 +11,8 @@
 
 <p align="center">
   <b>A free Windows screenshot and recording tool built for fast bug reports, walkthroughs, and support replies.</b><br>
-  Capture, annotate, blur, record to MP4/GIF, and extract text with OCR in one lightweight tray app.
+  Capture a region, a window, or a whole monitor — annotate, blur, record to MP4/GIF, and extract text with OCR.<br>
+  Drive it from the tray app, the standalone CLI, or an AI agent over MCP.
 </p>
 
 <p align="center">
@@ -63,7 +64,8 @@ exit codes, and troubleshooting, see the dedicated
 ## Pointframe CLI
 
 Each GitHub Release includes `Pointframe.Cli-<version>-win-x64.zip`, a self-contained
-Windows CLI for monitor discovery, whole-monitor PNG screenshots, and whole-monitor
+Windows CLI for monitor and window discovery, PNG screenshots of a monitor, a
+sub-region, or a single window, on-screen text extraction via OCR, and whole-monitor
 MP4 recordings. Extract the ZIP and run `Pointframe.Cli.exe`; the Pointframe desktop
 app, the .NET runtime, and the .NET SDK are not required.
 
@@ -72,22 +74,38 @@ desktop from a Windows service (session 0).
 
 ```powershell
 .\Pointframe.Cli.exe displays
-.\Pointframe.Cli.exe capture --monitor '\\.\DISPLAY1'
+.\Pointframe.Cli.exe windows
+.\Pointframe.Cli.exe capture --monitor '\\.\DISPLAY1' --output .\shot.png
+.\Pointframe.Cli.exe capture --monitor '\\.\DISPLAY1' --region 100,100,800,600
+.\Pointframe.Cli.exe capture-window --window-id 12345678
 .\Pointframe.Cli.exe ocr --monitor '\\.\DISPLAY1'
-.\Pointframe.Cli.exe record --monitor '\\.\DISPLAY1' --seconds 10
+.\Pointframe.Cli.exe ocr-window --window-id 12345678
+.\Pointframe.Cli.exe record --monitor '\\.\DISPLAY1' --seconds 10 --output .\take1.mp4
 ```
 
-Use the exact `monitorName` emitted by `displays`. A successful command writes JSON
-to standard output and exits with code `0`; invalid arguments exit with code `2`, and
-capture/OCR/recording failures exit with code `1`. Screenshots and their metadata
-sidecars are saved under `%LOCALAPPDATA%\Pointframe\Screenshots`. `ocr` captures the
-monitor the same way `capture` does, then runs Windows OCR against the captured image
-and adds a `RecognizedText` field to the JSON output (`null` when no text is found or
-no OCR language pack is installed). `record` starts a direct MP4 recording, waits for
-the requested `--seconds` (or an earlier Ctrl+C for a graceful early stop), then
-writes the combined session/artifact JSON; recordings are saved under
-`%LOCALAPPDATA%\Pointframe\Recordings` and require `ffmpeg.exe` on `PATH`, via
-`POINTFRAME_FFMPEG_PATH`, or bundled next to the executable.
+Use the exact `monitorName` emitted by `displays`, or a window handle emitted by
+`windows`. Every command other than `--help`/`--version` writes a single-line JSON
+response to standard output on both the success and the failure path, so a script can
+parse it the same way either way: success exits `0`, a runtime failure exits `1` and
+carries an `Error.Code` (`target_not_found`, `target_not_capturable`, `invalid_region`,
+`invalid_output_path`, `canceled`, or `capture_failed`), and invalid arguments exit `2`
+with usage text on standard error.
+
+Pass `--output <file>` (`-o`) to any command that produces a file to choose the exact
+path to write; parent directories are created for you. Without it, screenshots and their
+metadata sidecars are saved under `%LOCALAPPDATA%\Pointframe\Screenshots` and recordings
+under `%LOCALAPPDATA%\Pointframe\Recordings`, each with a generated timestamped name.
+
+`ocr` captures the monitor the same way `capture` does, then runs Windows OCR against
+the captured image and adds a `RecognizedText` field to the JSON output (`null` when no
+text is found or no OCR language pack is installed). `capture-window` and `ocr-window` do
+the same for a single window by handle, using visible screen-rectangle semantics: an
+occluding window may appear in the capture, and minimized, zero-size, off-screen, and
+multi-monitor-spanning windows are rejected. `record` starts a direct MP4 recording, waits
+for the requested `--seconds` (or an earlier Ctrl+C for a graceful early stop that still
+finalizes and reports the artifact), then writes the combined session/artifact JSON;
+recordings require `ffmpeg.exe` on `PATH`, via `POINTFRAME_FFMPEG_PATH`, or bundled next
+to the executable.
 
 ## Pointframe MCP Server
 
@@ -105,7 +123,7 @@ The server exposes:
 - 📸 `capture_window` — capture the visible screen rectangle of a window by its handle from `list_windows`. Occluding windows may appear; minimized, off-screen, and multi-monitor-spanning windows are rejected.
 - 🔤 `read_text_from_monitor` — capture a named monitor (optionally a sub-region) and run OCR against it, returning the PNG artifact plus recognized text (`null` when no text is found or no OCR language pack is installed).
 - 🔤 `read_text_from_window` — capture a window by handle and run OCR against it. Same screen-rectangle capture semantics as `capture_window`.
-- 🎥 `start_recording` — start a whole-monitor MP4 recording. Recording requires an explicit `redactionRegionsCaptureLocalPixels` array, even when it is empty.
+- 🎥 `start_recording` — start a whole-monitor MP4 recording. `redactionRegionsCaptureLocalPixels` is optional; omit it to record without redaction.
 - ⏹️ `stop_recording` — stop the active recording and return the finalized MP4 artifact, metadata, and event sidecar references.
 - ⏱️ `get_recording_status` — report whether a recording is currently active and, if so, its session details and elapsed duration; returns no session when nothing is recording.
 
@@ -118,7 +136,7 @@ The normal workflow is:
 
 1. Call `list_displays` and select a returned `monitorName`.
 2. Call `capture_monitor` with that exact monitor name, call `read_text_from_monitor` to also extract on-screen text, or call `start_recording`. Pass an optional `region` (`{x, y, width, height}` in monitor-local physical pixels) to `capture_monitor`/`read_text_from_monitor` to limit the capture to a sub-rectangle instead of the whole monitor; a region outside the monitor's bounds is rejected rather than clipped.
-3. For recording, pass redaction rectangles in capture-local physical pixels. Use `[]` when no redaction is required.
+3. For recording, pass redaction rectangles in capture-local physical pixels. Omit the argument entirely when no redaction is required.
 4. Call `get_recording_status` at any time to check whether a recording is active before calling `stop_recording`.
 5. Call `stop_recording` to finalize the MP4 and retrieve its metadata.
 

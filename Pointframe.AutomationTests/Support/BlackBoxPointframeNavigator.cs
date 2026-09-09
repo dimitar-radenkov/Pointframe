@@ -5,17 +5,17 @@ namespace Pointframe.AutomationTests.Support;
 
 public sealed class BlackBoxPointframeNavigator
 {
-    public const string ListAppsTool = "list_apps";
-    public const string StartSessionTool = "start_test_session";
-    public const string RestartAppTool = "restart_app";
-    public const string ObserveAppTool = "observe_app";
-    public const string FocusWindowTool = "focus_window";
-    public const string ClickTool = "click";
-    public const string PressKeysTool = "press_keys";
-    public const string CheckUiTool = "check_ui";
-    public const string GetActionResultTool = "get_action_result";
-    public const string GetReportTool = "get_test_report";
-    public const string EndSessionTool = "end_test_session";
+    public const string ListAppsTool = "desktop_list_apps";
+    public const string StartSessionTool = "desktop_start_test_session";
+    public const string RestartAppTool = "desktop_restart_app";
+    public const string ObserveAppTool = "desktop_observe_app";
+    public const string FocusWindowTool = "desktop_focus_window";
+    public const string ClickTool = "desktop_click";
+    public const string PressKeysTool = "desktop_press_keys";
+    public const string CheckUiTool = "desktop_check_ui";
+    public const string GetActionResultTool = "desktop_get_action_result";
+    public const string GetReportTool = "desktop_get_test_report";
+    public const string EndSessionTool = "desktop_end_test_session";
 
     private readonly McpDesktopTestClient _client;
     private readonly BlackBoxAppProfile _profile;

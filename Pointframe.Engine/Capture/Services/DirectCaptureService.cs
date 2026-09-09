@@ -58,27 +58,27 @@ public sealed class DirectCaptureService : IDirectCaptureService
         return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Windows: windows));
     }
 
-    public async Task<string> CaptureWindowAsync(long windowId, CancellationToken cancellationToken = default)
+    public async Task<string> CaptureWindowAsync(long windowId, string? outputPath = null, CancellationToken cancellationToken = default)
     {
-        var (artifact, _) = await CaptureWindowInternalAsync(windowId, recognizeText: false, cancellationToken).ConfigureAwait(false);
+        var (artifact, _) = await CaptureWindowInternalAsync(windowId, recognizeText: false, outputPath, cancellationToken).ConfigureAwait(false);
         return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Artifact: artifact));
     }
 
-    public async Task<string> CaptureWindowTextAsync(long windowId, CancellationToken cancellationToken = default)
+    public async Task<string> CaptureWindowTextAsync(long windowId, string? outputPath = null, CancellationToken cancellationToken = default)
     {
-        var (artifact, recognizedText) = await CaptureWindowInternalAsync(windowId, recognizeText: true, cancellationToken).ConfigureAwait(false);
+        var (artifact, recognizedText) = await CaptureWindowInternalAsync(windowId, recognizeText: true, outputPath, cancellationToken).ConfigureAwait(false);
         return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Artifact: artifact, RecognizedText: recognizedText));
     }
 
-    public async Task<string> CaptureMonitorAsync(string monitorName, CaptureRegion? region = null, CancellationToken cancellationToken = default)
+    public async Task<string> CaptureMonitorAsync(string monitorName, CaptureRegion? region = null, string? outputPath = null, CancellationToken cancellationToken = default)
     {
-        var (artifact, _) = await CaptureMonitorInternalAsync(monitorName, region, recognizeText: false, cancellationToken).ConfigureAwait(false);
+        var (artifact, _) = await CaptureMonitorInternalAsync(monitorName, region, recognizeText: false, outputPath, cancellationToken).ConfigureAwait(false);
         return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Artifact: artifact));
     }
 
-    public async Task<string> CaptureMonitorTextAsync(string monitorName, CaptureRegion? region = null, CancellationToken cancellationToken = default)
+    public async Task<string> CaptureMonitorTextAsync(string monitorName, CaptureRegion? region = null, string? outputPath = null, CancellationToken cancellationToken = default)
     {
-        var (artifact, recognizedText) = await CaptureMonitorInternalAsync(monitorName, region, recognizeText: true, cancellationToken).ConfigureAwait(false);
+        var (artifact, recognizedText) = await CaptureMonitorInternalAsync(monitorName, region, recognizeText: true, outputPath, cancellationToken).ConfigureAwait(false);
         return JsonSerializer.Serialize(new DirectCaptureResponse(SchemaVersion, true, Artifact: artifact, RecognizedText: recognizedText));
     }
 
@@ -86,16 +86,16 @@ public sealed class DirectCaptureService : IDirectCaptureService
         string monitorName,
         CaptureRegion? region,
         bool recognizeText,
+        string? outputPath,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(monitorName);
         cancellationToken.ThrowIfCancellationRequested();
 
-        Directory.CreateDirectory(_screenshotsDirectory);
         using var capturedMonitor = ResolveCapturedMonitor(monitorName, region, out var captureBoundsPixels);
         var createdUtc = _timeProvider.GetUtcNow();
         var artifactId = Guid.NewGuid().ToString("N");
-        var path = Path.Combine(_screenshotsDirectory, $"{createdUtc:yyyyMMdd-HHmmss}-{artifactId}.png");
+        var path = ResolveArtifactPath(outputPath, createdUtc, artifactId);
         capturedMonitor.Bitmap.Save(path, ImageFormat.Png);
 
         var recognizedText = recognizeText
@@ -157,6 +157,7 @@ public sealed class DirectCaptureService : IDirectCaptureService
     private async Task<(ArtifactDescriptor Artifact, string? RecognizedText)> CaptureWindowInternalAsync(
         long windowId,
         bool recognizeText,
+        string? outputPath,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -185,11 +186,10 @@ public sealed class DirectCaptureService : IDirectCaptureService
                 "is off-screen or spans multiple monitors and cannot be captured in this version.");
         }
 
-        Directory.CreateDirectory(_screenshotsDirectory);
         using var bitmap = _displayCaptureEngine.Capture(bounds);
         var createdUtc = _timeProvider.GetUtcNow();
         var artifactId = Guid.NewGuid().ToString("N");
-        var path = Path.Combine(_screenshotsDirectory, $"{createdUtc:yyyyMMdd-HHmmss}-{artifactId}.png");
+        var path = ResolveArtifactPath(outputPath, createdUtc, artifactId);
         bitmap.Save(path, ImageFormat.Png);
 
         var recognizedText = recognizeText
@@ -244,6 +244,37 @@ public sealed class DirectCaptureService : IDirectCaptureService
         }
 
         return null;
+    }
+
+    // Resolves where a capture is written: an explicit caller-supplied file path when one is given,
+    // otherwise a generated, timestamped name inside the configured screenshots directory. Either way
+    // the containing directory is created first, and the metadata sidecar lands next to the image.
+    private string ResolveArtifactPath(string? outputPath, DateTimeOffset createdUtc, string artifactId)
+    {
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            Directory.CreateDirectory(_screenshotsDirectory);
+            return Path.Combine(_screenshotsDirectory, $"{createdUtc:yyyyMMdd-HHmmss}-{artifactId}.png");
+        }
+
+        var fullPath = Path.GetFullPath(outputPath);
+
+        // Reject directory targets both ways round: an existing directory, and a directory-shaped path
+        // that does not exist yet (a trailing separator, or a bare root). Without the second check a
+        // value like "C:\shots\" would be treated as a file and fail later inside Bitmap.Save with a
+        // far less actionable exception than the contract the CLI help promises.
+        if (Directory.Exists(fullPath) || string.IsNullOrEmpty(Path.GetFileName(fullPath)))
+        {
+            throw new ArgumentException($"The output path '{outputPath}' is a directory; supply a file path.", nameof(outputPath));
+        }
+
+        var directory = Path.GetDirectoryName(fullPath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        return fullPath;
     }
 
     private static async Task WriteMetadataSidecarAsync(ImageArtifactMetadata metadata, CancellationToken cancellationToken)

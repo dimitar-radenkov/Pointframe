@@ -194,6 +194,45 @@ public sealed class DirectCaptureServiceWindowTests : IDisposable
         }
     }
 
+    [Theory]
+    // An existing directory, and directory-shaped paths that do not exist yet. Only the first was
+    // rejected before; the others fell through and failed later inside Bitmap.Save with an error that
+    // said nothing about the output path, despite the documented "error on directory targets" contract.
+    [InlineData(true, "")]
+    [InlineData(false, "sub" + "\\")]
+    [InlineData(false, "sub/")]
+    public async Task CaptureMonitorAsync_WithDirectoryShapedOutputPath_ThrowsArgumentExceptionNamingOutputPath(
+        bool createDirectory,
+        string relativePath)
+    {
+        var display = new DisplayDescriptor(@"\.\DISPLAY1", 1.0, 1.0, new PixelBounds(0, 0, 100, 100), new PixelBounds(0, 0, 100, 100));
+        var sut = CreateService(display: display);
+        var outputPath = Path.Combine(_screenshotsDirectory, relativePath);
+        if (createDirectory)
+        {
+            Directory.CreateDirectory(outputPath);
+        }
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(
+            () => sut.CaptureMonitorAsync(@"\.\DISPLAY1", region: null, outputPath: outputPath));
+
+        Assert.Equal("outputPath", exception.ParamName);
+    }
+
+    [Fact]
+    public async Task CaptureMonitorAsync_WithExplicitFilePath_WritesThereAndCreatesParentDirectory()
+    {
+        var display = new DisplayDescriptor(@"\.\DISPLAY1", 1.0, 1.0, new PixelBounds(0, 0, 100, 100), new PixelBounds(0, 0, 100, 100));
+        var sut = CreateService(display: display);
+        var outputPath = Path.Combine(_screenshotsDirectory, "nested", "shot.png");
+
+        var json = await sut.CaptureMonitorAsync(@"\.\DISPLAY1", region: null, outputPath: outputPath);
+        var response = JsonSerializer.Deserialize<DirectCaptureResponse>(json);
+
+        Assert.True(File.Exists(outputPath));
+        Assert.Equal(outputPath, response?.Artifact?.Metadata.Path);
+    }
+
     private DirectCaptureService CreateService(
         WindowDescriptor? window = null,
         DisplayDescriptor? display = null,
