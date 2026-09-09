@@ -41,8 +41,25 @@ The script writes the ZIP and SHA-256 file under
 
 Every long option below also accepts a short alias: `-m` for `--monitor`,
 `-w` for `--window-id`, `-g` for `--region`, `-s` for `--seconds`, `-f` for
-`--fps`, and `-r` for `--redact`. Every long option also accepts an inline
+`--fps`, `-r` for `--redact`, and `-o` for `--output`. Every long option also accepts an inline
 value, e.g. `--monitor=\\.\DISPLAY1` instead of `--monitor \\.\DISPLAY1`.
+
+### Choosing where the artifact is written
+
+Every command that produces a file — `capture`, `ocr`, `capture-window`,
+`ocr-window`, and `record` — accepts `--output <file>` (`-o`) to name the exact
+file to write, instead of letting Pointframe generate a timestamped name:
+
+```powershell
+.\Pointframe.Cli.exe capture --monitor '\\.\DISPLAY1' --output .\shot.png
+.\Pointframe.Cli.exe record --monitor '\\.\DISPLAY1' --seconds 5 -o .\clips\take1.mp4
+```
+
+The value is a file path, not a directory: missing parent directories are
+created, an existing file is overwritten, and passing the path of an existing
+directory is rejected as a runtime error. The metadata sidecar is written next
+to the file. When `--output` is omitted, artifacts keep their previous behavior
+and land under `%LOCALAPPDATA%\Pointframe` with a generated name.
 
 ### Discover monitors
 
@@ -188,12 +205,26 @@ code `1`.
 | `1` | Runtime or capture/OCR/recording failure |
 | `2` | Invalid or incomplete command-line arguments |
 
-Invalid commands print the error and usage to standard error. Runtime failures
-print `Pointframe CLI failed: ...` to standard error; successful JSON is written
-to standard output. `record` failures that the engine reports as a structured
-error (rather than an exception) print a `"Success": false` JSON response to
-standard output instead, so scripts can parse the failure the same way as a
-success.
+Every command other than `--help`/`--version` writes a single-line JSON response
+to standard output, on both the success and the failure path, so a script can
+parse standard output the same way regardless of outcome. A runtime failure
+writes a `"Success": false` response whose `Error` object carries a stable,
+machine-readable `Code` alongside the human-readable `Message`:
+
+| `Error.Code` | Raised when |
+|---|---|
+| `target_not_found` | The named monitor or window handle does not exist |
+| `target_not_capturable` | The window is minimized, zero-size, off-screen, or spans monitors |
+| `invalid_region` | A `--region`/`--redact` rectangle is non-positive or outside the monitor |
+| `canceled` | The operation was canceled before it completed |
+| `capture_failed` | Any other unexpected runtime failure |
+
+`record` failures the engine reports as a structured error use the recording
+response's own codes (such as `monitor_not_found`) in the same `Error` shape.
+
+The human-readable `Pointframe CLI failed: ...` line is still written to standard
+error as well, so interactive use is unchanged; only invalid command-line
+arguments (exit code `2`) write usage text to standard error *instead of* JSON.
 
 The parser accepts only these forms:
 

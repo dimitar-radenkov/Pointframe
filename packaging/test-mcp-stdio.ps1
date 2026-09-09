@@ -145,9 +145,11 @@ Invoke-McpDiscovery -ResolvedExecutablePath $resolvedExecutablePath -Arguments @
 if (-not $SkipEnabledDiscovery)
 {
     $enabledExpectedTools = $expectedTools + @(
-        "list_apps", "start_test_session", "restart_app", "observe_app", "focus_window",
-        "click", "press_keys", "drag", "enter_text", "invoke", "check_ui", "scroll",
-        "get_action_result", "get_test_report", "end_test_session"
+        "desktop_list_apps", "desktop_start_test_session", "desktop_restart_app",
+        "desktop_observe_app", "desktop_focus_window", "desktop_click", "desktop_press_keys",
+        "desktop_drag", "desktop_enter_text", "desktop_invoke", "desktop_check_ui",
+        "desktop_scroll", "desktop_get_action_result", "desktop_get_test_report",
+        "desktop_end_test_session"
     )
     $policyPath = Join-Path (Split-Path $resolvedExecutablePath -Parent) "desktop-testing-policy.test.json"
     $policy = @{

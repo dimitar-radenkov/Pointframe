@@ -57,8 +57,7 @@ internal sealed class CliApplication
         }
         catch (Exception exception)
         {
-            await standardError.WriteLineAsync($"Pointframe CLI failed: {exception.Message}");
-            return 1;
+            return await WriteFailureResponseAsync(standardOutput, standardError, exception);
         }
     }
 
@@ -99,10 +98,10 @@ internal sealed class CliApplication
             {
                 "displays" => _directCaptureService.ListDisplays(),
                 "windows" => _directCaptureService.ListWindows(),
-                "capture" => await _directCaptureService.CaptureMonitorAsync(command.MonitorName!, command.Region, cancellationToken),
-                "ocr" => await _directCaptureService.CaptureMonitorTextAsync(command.MonitorName!, command.Region, cancellationToken),
-                "capture-window" => await _directCaptureService.CaptureWindowAsync(command.WindowId!.Value, cancellationToken),
-                "ocr-window" => await _directCaptureService.CaptureWindowTextAsync(command.WindowId!.Value, cancellationToken),
+                "capture" => await _directCaptureService.CaptureMonitorAsync(command.MonitorName!, command.Region, command.OutputPath, cancellationToken),
+                "ocr" => await _directCaptureService.CaptureMonitorTextAsync(command.MonitorName!, command.Region, command.OutputPath, cancellationToken),
+                "capture-window" => await _directCaptureService.CaptureWindowAsync(command.WindowId!.Value, command.OutputPath, cancellationToken),
+                "ocr-window" => await _directCaptureService.CaptureWindowTextAsync(command.WindowId!.Value, command.OutputPath, cancellationToken),
                 _ => throw new InvalidOperationException($"Unsupported CLI command '{command.Name}'."),
             };
 
@@ -111,9 +110,37 @@ internal sealed class CliApplication
         }
         catch (Exception exception)
         {
-            await _standardError.WriteLineAsync($"Pointframe CLI failed: {exception.Message}");
-            return 1;
+            return await WriteFailureResponseAsync(_standardOutput, _standardError, exception);
         }
+    }
+
+    /// <summary>
+    /// Writes a runtime failure as the same single-line JSON <see cref="DirectCaptureResponse"/> shape the
+    /// success path uses, so a caller parsing standard output never has to fall back to scraping the
+    /// human-readable stderr line to discover that (and why) a command failed.
+    /// </summary>
+    private static async Task<int> WriteFailureResponseAsync(TextWriter standardOutput, TextWriter standardError, Exception exception)
+    {
+        await standardError.WriteLineAsync($"Pointframe CLI failed: {exception.Message}");
+        var response = new DirectCaptureResponse(
+            SchemaVersion,
+            false,
+            new DirectCaptureError(ToErrorCode(exception), exception.Message));
+        await standardOutput.WriteLineAsync(JsonSerializer.Serialize(response));
+        return 1;
+    }
+
+    private static string ToErrorCode(Exception exception)
+    {
+        // ArgumentOutOfRangeException derives from ArgumentException, so it must be matched first.
+        return exception switch
+        {
+            ArgumentOutOfRangeException => "invalid_region",
+            ArgumentException => "target_not_found",
+            InvalidOperationException => "target_not_capturable",
+            OperationCanceledException => "canceled",
+            _ => "capture_failed",
+        };
     }
 
     private async Task<int> RunRecordAsync(CliCommand command, CancellationToken cancellationToken)
@@ -121,7 +148,8 @@ internal sealed class CliApplication
         var startResult = _directRecordingService.Start(new DirectRecordingRequest(
             command.MonitorName!,
             command.RedactionRegions ?? Array.Empty<PixelBounds>(),
-            command.FramesPerSecond));
+            command.FramesPerSecond,
+            OutputPath: command.OutputPath));
 
         if (!startResult.Success)
         {

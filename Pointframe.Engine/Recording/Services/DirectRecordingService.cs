@@ -76,19 +76,38 @@ public sealed class DirectRecordingService : IDirectRecordingService
                 return Failure("invalid_redaction_region", "Each redaction region must have positive width and height in capture-local physical pixels.");
             }
 
-            var outputDirectory = request.OutputDirectory ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Pointframe",
-                "Recordings");
-            if (string.IsNullOrWhiteSpace(outputDirectory))
-            {
-                return Failure("invalid_output_directory", "OutputDirectory must not be empty when supplied.");
-            }
-
-            Directory.CreateDirectory(outputDirectory);
             var startedUtc = _timeProvider.GetUtcNow();
             var artifactId = $"rec_{Guid.NewGuid():N}";
-            var outputPath = Path.Combine(outputDirectory, $"{startedUtc:yyyyMMdd-HHmmss}-{artifactId}.mp4");
+            string outputPath;
+            if (string.IsNullOrWhiteSpace(request.OutputPath))
+            {
+                var outputDirectory = request.OutputDirectory ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Pointframe",
+                    "Recordings");
+                if (string.IsNullOrWhiteSpace(outputDirectory))
+                {
+                    return Failure("invalid_output_directory", "OutputDirectory must not be empty when supplied.");
+                }
+
+                Directory.CreateDirectory(outputDirectory);
+                outputPath = Path.Combine(outputDirectory, $"{startedUtc:yyyyMMdd-HHmmss}-{artifactId}.mp4");
+            }
+            else
+            {
+                // An explicit output path wins over the directory: the caller named the exact file.
+                outputPath = Path.GetFullPath(request.OutputPath);
+                if (Directory.Exists(outputPath))
+                {
+                    return Failure("invalid_output_path", "OutputPath is an existing directory; supply a file path.");
+                }
+
+                var explicitDirectory = Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrEmpty(explicitDirectory))
+                {
+                    Directory.CreateDirectory(explicitDirectory);
+                }
+            }
             var stopwatch = Stopwatch.StartNew();
             var eventTrack = new DirectRecordingEventTrack(outputPath, stopwatch);
 

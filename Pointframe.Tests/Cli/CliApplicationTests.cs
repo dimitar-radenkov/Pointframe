@@ -427,7 +427,7 @@ public sealed class CliApplicationTests
     {
         var directCaptureService = new Mock<IDirectCaptureService>();
         directCaptureService
-            .Setup(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<CancellationToken>()))
+            .Setup(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"artifact-1\"}}}");
         var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
@@ -437,7 +437,7 @@ public sealed class CliApplicationTests
         var exitCode = await application.RunAsync(["capture", "--monitor", @"\\.\DISPLAY1"]);
 
         Assert.Equal(0, exitCode);
-        directCaptureService.Verify(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<CancellationToken>()), Times.Once);
+        directCaptureService.Verify(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains("artifact-1", standardOutput.ToString(), StringComparison.Ordinal);
         Assert.Empty(standardError.ToString());
     }
@@ -447,7 +447,7 @@ public sealed class CliApplicationTests
     {
         var directCaptureService = new Mock<IDirectCaptureService>();
         directCaptureService
-            .Setup(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", new CaptureRegion(10, 20, 300, 400), It.IsAny<CancellationToken>()))
+            .Setup(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", new CaptureRegion(10, 20, 300, 400), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"artifact-1\"}}}");
         var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
@@ -458,7 +458,7 @@ public sealed class CliApplicationTests
 
         Assert.Equal(0, exitCode);
         directCaptureService.Verify(
-            service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", new CaptureRegion(10, 20, 300, 400), It.IsAny<CancellationToken>()),
+            service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", new CaptureRegion(10, 20, 300, 400), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Once);
         Assert.Empty(standardError.ToString());
     }
@@ -468,7 +468,7 @@ public sealed class CliApplicationTests
     {
         var directCaptureService = new Mock<IDirectCaptureService>();
         directCaptureService
-            .Setup(service => service.CaptureMonitorTextAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<CancellationToken>()))
+            .Setup(service => service.CaptureMonitorTextAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"Artifact\":{\"Metadata\":{\"ArtifactId\":\"artifact-1\"}},\"RecognizedText\":\"Hello world\"}");
         var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
@@ -478,7 +478,7 @@ public sealed class CliApplicationTests
         var exitCode = await application.RunAsync(["ocr", "--monitor", @"\\.\DISPLAY1"]);
 
         Assert.Equal(0, exitCode);
-        directCaptureService.Verify(service => service.CaptureMonitorTextAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<CancellationToken>()), Times.Once);
+        directCaptureService.Verify(service => service.CaptureMonitorTextAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains("Hello world", standardOutput.ToString(), StringComparison.Ordinal);
         Assert.Empty(standardError.ToString());
     }
@@ -562,6 +562,158 @@ public sealed class CliApplicationTests
         Assert.NotNull(response);
         Assert.False(response!.Success);
         Assert.Equal("monitor_not_found", response.Error?.Code);
+    }
+
+    [Theory]
+    [InlineData(typeof(ArgumentException), "target_not_found")]
+    [InlineData(typeof(InvalidOperationException), "target_not_capturable")]
+    [InlineData(typeof(ArgumentOutOfRangeException), "invalid_region")]
+    [InlineData(typeof(IOException), "capture_failed")]
+    public async Task RunAsync_CaptureFailure_WritesFailureJsonWithMachineReadableCode(Type exceptionType, string expectedCode)
+    {
+        // The help text promises a single-line JSON response on standard output for every command
+        // other than --help/--version. Before this, only 'record' honored that on failure: the capture
+        // path wrote a bare "Pointframe CLI failed: ..." line to standard error and left stdout empty,
+        // so a script parsing stdout had to scrape prose from stderr to learn why a command failed.
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        directCaptureService
+            .Setup(service => service.CaptureMonitorAsync(It.IsAny<string>(), It.IsAny<CaptureRegion?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync((Exception)Activator.CreateInstance(exceptionType, "Capture went wrong.")!);
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        var exitCode = await application.RunAsync(["capture", "--monitor", @"\\.\DISPLAY1"]);
+
+        Assert.Equal(1, exitCode);
+        var response = JsonSerializer.Deserialize<DirectCaptureResponse>(standardOutput.ToString());
+        Assert.NotNull(response);
+        Assert.False(response!.Success);
+        Assert.Equal(expectedCode, response.Error?.Code);
+        Assert.Contains("Capture went wrong.", response.Error?.Message);
+
+        // The human-readable line stays on standard error so interactive use is unchanged.
+        Assert.Contains("Pointframe CLI failed:", standardError.ToString());
+    }
+
+    [Fact]
+    public async Task StaticRunAsync_RuntimeFailure_WritesFailureJsonToStandardOutput()
+    {
+        // The static entry point constructs the real services, so a construction or execution failure
+        // there must produce the same JSON contract as the instance path rather than stderr-only prose.
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+
+        // A window id that cannot resolve is rejected by the engine as a runtime (not usage) error.
+        var exitCode = await CliApplication.RunAsync(["capture-window", "--window-id", "1"], standardOutput, standardError);
+
+        Assert.Equal(1, exitCode);
+        var response = JsonSerializer.Deserialize<DirectCaptureResponse>(standardOutput.ToString());
+        Assert.NotNull(response);
+        Assert.False(response!.Success);
+        Assert.False(string.IsNullOrWhiteSpace(response.Error?.Code));
+    }
+
+    [Theory]
+    [InlineData("capture")]
+    [InlineData("ocr")]
+    public void TryParse_CaptureLikeWithOutput_ParsesExplicitFilePath(string commandName)
+    {
+        var parsed = CliCommandParser.TryParse(
+            [commandName, "--monitor", @"\.\DISPLAY1", "--output", @"C:\shots\shot.png"],
+            out var command,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal(@"C:\shots\shot.png", command.OutputPath);
+    }
+
+    [Theory]
+    [InlineData("capture-window")]
+    [InlineData("ocr-window")]
+    public void TryParse_WindowCaptureWithOutput_ParsesShortAlias(string commandName)
+    {
+        var parsed = CliCommandParser.TryParse(
+            [commandName, "--window-id", "12345", "-o", "shot.png"],
+            out var command,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("shot.png", command.OutputPath);
+    }
+
+    [Fact]
+    public void TryParse_RecordWithOutput_ParsesInlineValue()
+    {
+        var parsed = CliCommandParser.TryParse(
+            ["record", "--monitor", @"\.\DISPLAY1", "--seconds", "5", @"--output=C:\clips	ake1.mp4"],
+            out var command,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal(@"C:\clips	ake1.mp4", command.OutputPath);
+    }
+
+    [Fact]
+    public void TryParse_OutputWithoutValue_ReturnsUsageError()
+    {
+        var parsed = CliCommandParser.TryParse(["capture", "--monitor", @"\.\DISPLAY1", "--output"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Equal("The capture command requires --output followed by a file path.", error);
+    }
+
+    [Fact]
+    public void TryParse_WithoutOutput_LeavesOutputPathNull()
+    {
+        var parsed = CliCommandParser.TryParse(["capture", "--monitor", @"\.\DISPLAY1"], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Null(command.OutputPath);
+    }
+
+    [Fact]
+    public async Task RunAsync_CaptureWithOutput_PassesFilePathToCaptureService()
+    {
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        directCaptureService
+            .Setup(service => service.CaptureMonitorAsync(@"\.\DISPLAY1", It.IsAny<CaptureRegion?>(), @"C:\shots\shot.png", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"artifact-1\"}}}");
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        var exitCode = await application.RunAsync(["capture", "--monitor", @"\.\DISPLAY1", "--output", @"C:\shots\shot.png"]);
+
+        Assert.Equal(0, exitCode);
+        directCaptureService.Verify(
+            service => service.CaptureMonitorAsync(@"\.\DISPLAY1", It.IsAny<CaptureRegion?>(), @"C:\shots\shot.png", It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task RunAsync_RecordWithOutput_PassesFilePathToRecordingRequest()
+    {
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        DirectRecordingRequest? capturedRequest = null;
+        directRecordingService
+            .Setup(service => service.Start(It.IsAny<DirectRecordingRequest>()))
+            .Callback<DirectRecordingRequest>(request => capturedRequest = request)
+            .Returns(new DirectRecordingResult(false, ErrorCode: "stop_here", ErrorMessage: "Stop before recording."));
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        await application.RunAsync(["record", "--monitor", @"\.\DISPLAY1", "--seconds", "1", "-o", @"C:\clips	ake1.mp4"]);
+
+        Assert.Equal(@"C:\clips	ake1.mp4", capturedRequest?.OutputPath);
     }
 
     [Theory]
@@ -705,7 +857,7 @@ public sealed class CliApplicationTests
     {
         var directCaptureService = new Mock<IDirectCaptureService>();
         directCaptureService
-            .Setup(service => service.CaptureWindowAsync(12345L, It.IsAny<CancellationToken>()))
+            .Setup(service => service.CaptureWindowAsync(12345L, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"window-artifact\"}}}");
         var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
@@ -715,7 +867,7 @@ public sealed class CliApplicationTests
         var exitCode = await application.RunAsync(["capture-window", "--window-id", "12345"]);
 
         Assert.Equal(0, exitCode);
-        directCaptureService.Verify(service => service.CaptureWindowAsync(12345L, It.IsAny<CancellationToken>()), Times.Once);
+        directCaptureService.Verify(service => service.CaptureWindowAsync(12345L, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains("window-artifact", standardOutput.ToString());
     }
 
@@ -724,7 +876,7 @@ public sealed class CliApplicationTests
     {
         var directCaptureService = new Mock<IDirectCaptureService>();
         directCaptureService
-            .Setup(service => service.CaptureWindowTextAsync(12345L, It.IsAny<CancellationToken>()))
+            .Setup(service => service.CaptureWindowTextAsync(12345L, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"recognizedText\":\"Hello\"}");
         var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
@@ -734,7 +886,7 @@ public sealed class CliApplicationTests
         var exitCode = await application.RunAsync(["ocr-window", "--window-id", "12345"]);
 
         Assert.Equal(0, exitCode);
-        directCaptureService.Verify(service => service.CaptureWindowTextAsync(12345L, It.IsAny<CancellationToken>()), Times.Once);
+        directCaptureService.Verify(service => service.CaptureWindowTextAsync(12345L, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains("Hello", standardOutput.ToString());
     }
 }
