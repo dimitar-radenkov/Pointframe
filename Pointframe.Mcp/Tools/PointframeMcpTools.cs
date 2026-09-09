@@ -38,7 +38,7 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
         Title = "Read text from monitor",
         Destructive = false,
         UseStructuredContent = true),
-     Description("Captures a Pointframe monitor screenshot, optionally limited to a sub-region, and recognizes on-screen text using Windows OCR. Returns both the saved PNG artifact and the recognized text; recognizedText is null when no text was found or no OCR language pack is installed.")]
+     Description("Captures a Pointframe monitor screenshot, optionally limited to a sub-region, and recognizes on-screen text using Windows OCR. Returns both the saved PNG artifact and the recognized text; RecognizedText is null when no text was found or no OCR language pack is installed.")]
     public async Task<McpCaptureResponse> ReadTextFromMonitorAsync(
         [Description("The exact Windows display device name, such as \\.\\DISPLAY1.")] string monitorName,
         [Description("Optional sub-region to capture and run OCR on, in monitor-local physical pixels relative to the monitor's own top-left corner. Captures the whole monitor when omitted. Width and height must be positive; a region outside the monitor bounds is rejected.")] McpCaptureRegion? region = null,

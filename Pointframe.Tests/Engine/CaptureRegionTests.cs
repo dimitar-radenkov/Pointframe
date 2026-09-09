@@ -50,4 +50,12 @@ public sealed class CaptureRegionTests
 
         Assert.Throws<ArgumentOutOfRangeException>(() => region.ResolveWithin(MonitorBounds));
     }
+
+    [Fact]
+    public void ResolveWithin_ExtremeRegionValues_DoNotOverflowBoundaryValidation()
+    {
+        var region = new CaptureRegion(int.MaxValue, 0, int.MaxValue, 1);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => region.ResolveWithin(MonitorBounds));
+    }
 }

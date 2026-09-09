@@ -469,7 +469,7 @@ public sealed class CliApplicationTests
         var directCaptureService = new Mock<IDirectCaptureService>();
         directCaptureService
             .Setup(service => service.CaptureMonitorTextAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"artifact-1\"}},\"recognizedText\":\"Hello world\"}");
+            .ReturnsAsync("{\"Artifact\":{\"Metadata\":{\"ArtifactId\":\"artifact-1\"}},\"RecognizedText\":\"Hello world\"}");
         var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
         var standardError = new StringWriter();

@@ -22,7 +22,10 @@ public readonly record struct CaptureRegion(int X, int Y, int Width, int Height)
             throw new ArgumentOutOfRangeException(nameof(Height), Height, "The capture region height must be positive.");
         }
 
-        if (X < 0 || Y < 0 || X + Width > monitorBoundsPixels.Width || Y + Height > monitorBoundsPixels.Height)
+        var right = (long)X + Width;
+        var bottom = (long)Y + Height;
+
+        if (X < 0 || Y < 0 || right > monitorBoundsPixels.Width || bottom > monitorBoundsPixels.Height)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(monitorBoundsPixels),
@@ -30,6 +33,10 @@ public readonly record struct CaptureRegion(int X, int Y, int Width, int Height)
                 $"The capture region must be within the monitor bounds ({monitorBoundsPixels.Width}x{monitorBoundsPixels.Height}).");
         }
 
-        return new PixelBounds(monitorBoundsPixels.X + X, monitorBoundsPixels.Y + Y, Width, Height);
+        return new PixelBounds(
+            checked(monitorBoundsPixels.X + X),
+            checked(monitorBoundsPixels.Y + Y),
+            Width,
+            Height);
     }
 }
