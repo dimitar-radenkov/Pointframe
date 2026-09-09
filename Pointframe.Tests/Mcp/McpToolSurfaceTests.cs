@@ -12,11 +12,9 @@ using Xunit;
 
 namespace Pointframe.Tests.Mcp;
 
-/// <summary>
-/// Covers the MCP tool surface as an MCP client sees it: the descriptions a model selects tools from,
-/// and the two behaviors that used to make tools awkward or ambiguous to call — a required redaction
-/// array on start_recording, and observe_app reporting an unknown session as a bare null.
-/// </summary>
+// Covers the MCP tool surface as an MCP client sees it: the descriptions a model selects tools from,
+// and the two behaviors that used to make tools awkward or ambiguous to call — a required redaction
+// array on start_recording, and observe_app reporting an unknown session as a bare null.
 public sealed class McpToolSurfaceTests
 {
     [Theory]

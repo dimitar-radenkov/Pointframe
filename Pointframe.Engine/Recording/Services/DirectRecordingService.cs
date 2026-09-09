@@ -97,9 +97,13 @@ public sealed class DirectRecordingService : IDirectRecordingService
             {
                 // An explicit output path wins over the directory: the caller named the exact file.
                 outputPath = Path.GetFullPath(request.OutputPath);
-                if (Directory.Exists(outputPath))
+
+                // Reject an existing directory and a directory-shaped path that does not exist yet
+                // (trailing separator or bare root); otherwise the writer fails later with a much less
+                // actionable error than the documented "error on directory targets" contract.
+                if (Directory.Exists(outputPath) || string.IsNullOrEmpty(Path.GetFileName(outputPath)))
                 {
-                    return Failure("invalid_output_path", "OutputPath is an existing directory; supply a file path.");
+                    return Failure("invalid_output_path", "OutputPath is a directory; supply a file path.");
                 }
 
                 var explicitDirectory = Path.GetDirectoryName(outputPath);

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pointframe - Fast Screenshot and Screen Recording for Windows</title>
     <meta name="google-site-verification" content="JCIyqMnw-rGhSTm6JTGdaDzOQDnhKaqcuhP44x2W6Cc">
-    <meta name="description" content="Pointframe is a free Windows screenshot and screen recording tool for fast bug reports and walkthroughs, with live annotations, blur redaction, OCR, and pinned screenshots.">
+    <meta name="description" content="Pointframe is a free Windows screenshot and screen recording tool for fast bug reports and walkthroughs, with live annotations, blur redaction, OCR, window capture, and pinned screenshots — plus a standalone CLI and MCP server for scripts and AI agents.">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://dimitar-radenkov.github.io/Pointframe/">
     <link rel="icon" href="./favicon.ico" sizes="any">
@@ -97,7 +97,7 @@
                 Screenshot, annotate, and share on Windows in <span class="capture-frame"><span class="gradient-text">under 60 seconds</span></span>
             </h1>
             <p class="hero-copy">
-                Pointframe is the fast Windows capture workflow for engineers, support, and product teams. Screenshot or record, add arrows and blur, then copy or send without jumping between tools.
+                Pointframe is the fast Windows capture workflow for engineers, support, and product teams. Screenshot or record, add arrows and blur, then copy or send without jumping between tools — from the tray app, a scriptable CLI, or an AI agent over MCP.
             </p>
 
             <div class="proof-badges" aria-label="Product proof points">
@@ -291,7 +291,7 @@
         <div class="container">
             <div class="section-header">
                 <h2 class="section-title">Automate captures with the Pointframe MCP server and CLI</h2>
-                <p class="section-copy">Give AI agents and scripts direct access to monitor discovery, screenshots, and recordings on Windows — no tray app, overlay window, or manual capture required.</p>
+                <p class="section-copy">Give AI agents and scripts direct access to monitor and window discovery, screenshots, on-screen text, and recordings on Windows — no tray app, overlay window, or manual capture required.</p>
             </div>
 
             <div class="mcp-cli-grid">
@@ -307,11 +307,15 @@
                         <h3 class="feature-title">Pointframe MCP Server</h3>
                         <span class="chip-new">New</span>
                     </div>
-                    <p class="feature-copy">A standalone Model Context Protocol server for AI agents that need a real, verifiable screenshot or recording instead of a text-only description. List displays, capture a monitor to a PNG artifact, or start and stop a redaction-aware MP4 recording — all as local MCP tools.</p>
-                    <pre class="code-sample"><code>list_displays
-capture_monitor   → PNG + metadata
-start_recording   → MP4 (redaction-aware)
-stop_recording    → finalized artifact</code></pre>
+                    <p class="feature-copy">A standalone Model Context Protocol server for AI agents that need a real, verifiable screenshot or recording instead of a text-only description. List displays and windows, capture a monitor, a sub-region, or a single window to a PNG artifact, read on-screen text with OCR, or start and stop a redaction-aware MP4 recording — all as local MCP tools.</p>
+                    <pre class="code-sample"><code>list_displays / list_windows
+capture_monitor       → PNG + metadata
+capture_window        → PNG of one window
+read_text_from_monitor → PNG + OCR text
+read_text_from_window  → PNG + OCR text
+start_recording       → MP4 (redaction-aware)
+get_recording_status  → is a recording active?
+stop_recording        → finalized artifact</code></pre>
                     <p class="comparison-links"><a href="https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server" target="_blank" rel="noopener noreferrer" class="workflow-link">Read the MCP server docs &rarr;</a></p>
                 </article>
 
@@ -326,9 +330,13 @@ stop_recording    → finalized artifact</code></pre>
                         <h3 class="feature-title">Standalone CLI</h3>
                         <span class="chip-new">New</span>
                     </div>
-                    <p class="feature-copy">A self-contained Windows executable for scripts and terminals. Download the release ZIP, extract it, and run it directly — no installer, no .NET runtime, and no Pointframe app process required.</p>
+                    <p class="feature-copy">A self-contained Windows executable for scripts and terminals. Download the release ZIP, extract it, and run it directly — no installer, no .NET runtime, and no Pointframe app process required. Every command returns single-line JSON on both success and failure, with stable error codes for scripting.</p>
                     <pre class="code-sample"><code>.\Pointframe.Cli.exe displays
-.\Pointframe.Cli.exe capture --monitor \\.\DISPLAY1</code></pre>
+.\Pointframe.Cli.exe windows
+.\Pointframe.Cli.exe capture --monitor \\.\DISPLAY1 -o shot.png
+.\Pointframe.Cli.exe capture-window --window-id 12345678
+.\Pointframe.Cli.exe ocr --monitor \\.\DISPLAY1
+.\Pointframe.Cli.exe record --monitor \\.\DISPLAY1 --seconds 10</code></pre>
                     <p class="comparison-links"><a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" target="_blank" rel="noopener noreferrer" class="workflow-link">Download the CLI &rarr;</a></p>
                 </article>
             </div>
@@ -350,6 +358,15 @@ stop_recording    → finalized artifact</code></pre>
             <div class="updates-grid">
                 <article class="update-card">
                     <p class="update-date">Sep 2026</p>
+                    <h3 class="update-title">Window capture and OCR for automation</h3>
+                    <ul>
+                        <li>List windows and capture a single window by handle, from the CLI and MCP</li>
+                        <li>Read on-screen text with OCR over MCP, not just in the app</li>
+                        <li>Choose the exact output file with <code>--output</code> instead of a generated name</li>
+                    </ul>
+                </article>
+                <article class="update-card">
+                    <p class="update-date">Sep 2026</p>
                     <h3 class="update-title">Built for AI agents and automation</h3>
                     <ul>
                         <li>New standalone MCP server exposing display, capture, and recording tools</li>
@@ -364,15 +381,6 @@ stop_recording    → finalized artifact</code></pre>
                         <li>Tray menu refresh with clearer grouping and icons</li>
                         <li>Capture Library OCR search hardening for large libraries</li>
                         <li>Performance optimizations in capture and recording hot paths</li>
-                    </ul>
-                </article>
-                <article class="update-card">
-                    <p class="update-date">Jun 2026</p>
-                    <h3 class="update-title">Cleaner captures, smarter video</h3>
-                    <ul>
-                        <li>Clean Window Snip via tray and dedicated hotkey</li>
-                        <li>In-app video trimming from Recent Recordings</li>
-                        <li>Configurable watermark for MP4 recordings</li>
                     </ul>
                 </article>
             </div>

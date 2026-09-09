@@ -216,6 +216,7 @@ machine-readable `Code` alongside the human-readable `Message`:
 | `target_not_found` | The named monitor or window handle does not exist |
 | `target_not_capturable` | The window is minimized, zero-size, off-screen, or spans monitors |
 | `invalid_region` | A `--region`/`--redact` rectangle is non-positive or outside the monitor |
+| `invalid_output_path` | The `--output` value names a directory rather than a file |
 | `canceled` | The operation was canceled before it completed |
 | `capture_failed` | Any other unexpected runtime failure |
 

@@ -56,8 +56,9 @@ internal static class CliCommandParser
         Every command other than --help/--version writes a single-line JSON response to standard output and
         uses the process exit code to signal success (0), a runtime error (1), or a usage error (2).
         A runtime error writes a JSON response with "Success": false and an "Error" object carrying a stable
-        machine-readable "Code" (target_not_found, target_not_capturable, invalid_region, canceled, or
-        capture_failed) alongside the human-readable message, which is also repeated on standard error.
+        machine-readable "Code" (target_not_found, target_not_capturable, invalid_region,
+        invalid_output_path, canceled, or capture_failed) alongside the human-readable message, which is
+        also repeated on standard error.
         A usage error (exit code 2) writes this usage text to standard error instead of JSON.
         """;
 

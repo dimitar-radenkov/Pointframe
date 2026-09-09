@@ -114,11 +114,9 @@ internal sealed class CliApplication
         }
     }
 
-    /// <summary>
-    /// Writes a runtime failure as the same single-line JSON <see cref="DirectCaptureResponse"/> shape the
-    /// success path uses, so a caller parsing standard output never has to fall back to scraping the
-    /// human-readable stderr line to discover that (and why) a command failed.
-    /// </summary>
+    // Writes a runtime failure as the same single-line JSON DirectCaptureResponse shape the success path
+    // uses, so a caller parsing standard output never has to fall back to scraping the human-readable
+    // stderr line to discover that (and why) a command failed.
     private static async Task<int> WriteFailureResponseAsync(TextWriter standardOutput, TextWriter standardError, Exception exception)
     {
         await standardError.WriteLineAsync($"Pointframe CLI failed: {exception.Message}");
@@ -132,9 +130,13 @@ internal sealed class CliApplication
 
     private static string ToErrorCode(Exception exception)
     {
-        // ArgumentOutOfRangeException derives from ArgumentException, so it must be matched first.
+        // Order matters. A rejected --output value arrives as an ArgumentException just like a missing
+        // monitor or window does, so it has to be separated by parameter name first or scripts would be
+        // told the target was not found. ArgumentOutOfRangeException then has to precede ArgumentException
+        // because it derives from it.
         return exception switch
         {
+            ArgumentException argument when string.Equals(argument.ParamName, "outputPath", StringComparison.Ordinal) => "invalid_output_path",
             ArgumentOutOfRangeException => "invalid_region",
             ArgumentException => "target_not_found",
             InvalidOperationException => "target_not_capturable",

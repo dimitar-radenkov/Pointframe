@@ -50,6 +50,43 @@ public sealed class DirectRecordingServiceTests : IDisposable
         Assert.Contains("recording.stopped", events[2], StringComparison.Ordinal);
     }
 
+    [Theory]
+    // Mirrors the capture-side guard: an existing directory plus directory-shaped paths that do not
+    // exist yet. Only the first was rejected before, so the rest failed later inside the video writer
+    // with an error that never mentioned the output path.
+    [InlineData(true, "")]
+    [InlineData(false, "sub" + "\\")]
+    [InlineData(false, "sub/")]
+    public void Start_WithDirectoryShapedOutputPath_ReturnsInvalidOutputPath(bool createDirectory, string relativePath)
+    {
+        var display = new DisplayDescriptor(@"\.\DISPLAY1", 1d, 1d, new PixelBounds(0, 0, 16, 2));
+        using var sut = new DirectRecordingService(new FakeDisplayCaptureEngine(display), new FakeVideoWriterFactory());
+        var outputPath = Path.Combine(_outputDirectory, relativePath);
+        if (createDirectory)
+        {
+            Directory.CreateDirectory(outputPath);
+        }
+
+        var result = sut.Start(new DirectRecordingRequest(display.MonitorName, [], OutputPath: outputPath));
+
+        Assert.False(result.Success);
+        Assert.Equal("invalid_output_path", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Start_WithExplicitOutputPath_WritesToThatFile()
+    {
+        var display = new DisplayDescriptor(@"\.\DISPLAY1", 1d, 1d, new PixelBounds(0, 0, 16, 2));
+        using var sut = new DirectRecordingService(new FakeDisplayCaptureEngine(display), new FakeVideoWriterFactory());
+        var outputPath = Path.Combine(_outputDirectory, "nested", "take1.mp4");
+
+        var start = sut.Start(new DirectRecordingRequest(display.MonitorName, [], OutputPath: outputPath));
+        await sut.StopAsync();
+
+        Assert.True(start.Success);
+        Assert.Equal(outputPath, start.Session?.ArtifactPath);
+    }
+
     [Fact]
     public void Start_WithoutAnActiveRedaction_ReturnsAStateError()
     {

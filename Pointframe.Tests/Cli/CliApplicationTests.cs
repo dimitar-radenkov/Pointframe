@@ -621,7 +621,7 @@ public sealed class CliApplicationTests
     public void TryParse_CaptureLikeWithOutput_ParsesExplicitFilePath(string commandName)
     {
         var parsed = CliCommandParser.TryParse(
-            [commandName, "--monitor", @"\.\DISPLAY1", "--output", @"C:\shots\shot.png"],
+            [commandName, "--monitor", @"\\.\DISPLAY1", "--output", @"C:\shots\shot.png"],
             out var command,
             out var error);
 
@@ -649,19 +649,19 @@ public sealed class CliApplicationTests
     public void TryParse_RecordWithOutput_ParsesInlineValue()
     {
         var parsed = CliCommandParser.TryParse(
-            ["record", "--monitor", @"\.\DISPLAY1", "--seconds", "5", @"--output=C:\clips	ake1.mp4"],
+            ["record", "--monitor", @"\\.\DISPLAY1", "--seconds", "5", @"--output=C:\clips\take1.mp4"],
             out var command,
             out var error);
 
         Assert.True(parsed);
         Assert.Null(error);
-        Assert.Equal(@"C:\clips	ake1.mp4", command.OutputPath);
+        Assert.Equal(@"C:\clips\take1.mp4", command.OutputPath);
     }
 
     [Fact]
     public void TryParse_OutputWithoutValue_ReturnsUsageError()
     {
-        var parsed = CliCommandParser.TryParse(["capture", "--monitor", @"\.\DISPLAY1", "--output"], out _, out var error);
+        var parsed = CliCommandParser.TryParse(["capture", "--monitor", @"\\.\DISPLAY1", "--output"], out _, out var error);
 
         Assert.False(parsed);
         Assert.Equal("The capture command requires --output followed by a file path.", error);
@@ -670,7 +670,7 @@ public sealed class CliApplicationTests
     [Fact]
     public void TryParse_WithoutOutput_LeavesOutputPathNull()
     {
-        var parsed = CliCommandParser.TryParse(["capture", "--monitor", @"\.\DISPLAY1"], out var command, out var error);
+        var parsed = CliCommandParser.TryParse(["capture", "--monitor", @"\\.\DISPLAY1"], out var command, out var error);
 
         Assert.True(parsed);
         Assert.Null(error);
@@ -682,18 +682,18 @@ public sealed class CliApplicationTests
     {
         var directCaptureService = new Mock<IDirectCaptureService>();
         directCaptureService
-            .Setup(service => service.CaptureMonitorAsync(@"\.\DISPLAY1", It.IsAny<CaptureRegion?>(), @"C:\shots\shot.png", It.IsAny<CancellationToken>()))
+            .Setup(service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), @"C:\shots\shot.png", It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"artifact\":{\"metadata\":{\"artifactId\":\"artifact-1\"}}}");
         var directRecordingService = new Mock<IDirectRecordingService>();
         var standardOutput = new StringWriter();
         var standardError = new StringWriter();
         var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
 
-        var exitCode = await application.RunAsync(["capture", "--monitor", @"\.\DISPLAY1", "--output", @"C:\shots\shot.png"]);
+        var exitCode = await application.RunAsync(["capture", "--monitor", @"\\.\DISPLAY1", "--output", @"C:\shots\shot.png"]);
 
         Assert.Equal(0, exitCode);
         directCaptureService.Verify(
-            service => service.CaptureMonitorAsync(@"\.\DISPLAY1", It.IsAny<CaptureRegion?>(), @"C:\shots\shot.png", It.IsAny<CancellationToken>()),
+            service => service.CaptureMonitorAsync(@"\\.\DISPLAY1", It.IsAny<CaptureRegion?>(), @"C:\shots\shot.png", It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -711,9 +711,51 @@ public sealed class CliApplicationTests
         var standardError = new StringWriter();
         var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
 
-        await application.RunAsync(["record", "--monitor", @"\.\DISPLAY1", "--seconds", "1", "-o", @"C:\clips	ake1.mp4"]);
+        await application.RunAsync(["record", "--monitor", @"\\.\DISPLAY1", "--seconds", "1", "-o", @"C:\clips\take1.mp4"]);
 
-        Assert.Equal(@"C:\clips	ake1.mp4", capturedRequest?.OutputPath);
+        Assert.Equal(@"C:\clips\take1.mp4", capturedRequest?.OutputPath);
+    }
+
+    [Fact]
+    public async Task RunAsync_CaptureWithDirectoryOutput_ReportsInvalidOutputPathNotTargetNotFound()
+    {
+        // A rejected --output value reaches the CLI as an ArgumentException, exactly like a missing
+        // monitor does. Without separating them by parameter name a script would be told the capture
+        // target could not be found, when the real problem is the path it asked to write to.
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        directCaptureService
+            .Setup(service => service.CaptureMonitorAsync(It.IsAny<string>(), It.IsAny<CaptureRegion?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("The output path is a directory; supply a file path.", "outputPath"));
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        var exitCode = await application.RunAsync(["capture", "--monitor", @"\.\DISPLAY1", "--output", @"C:\shots\"]);
+
+        Assert.Equal(1, exitCode);
+        var response = JsonSerializer.Deserialize<DirectCaptureResponse>(standardOutput.ToString());
+        Assert.Equal("invalid_output_path", response?.Error?.Code);
+    }
+
+    [Fact]
+    public async Task RunAsync_CaptureWithMissingMonitor_StillReportsTargetNotFound()
+    {
+        // Guards the other half of the split above: an ArgumentException that is not about outputPath
+        // must keep its original target_not_found classification.
+        var directCaptureService = new Mock<IDirectCaptureService>();
+        directCaptureService
+            .Setup(service => service.CaptureMonitorAsync(It.IsAny<string>(), It.IsAny<CaptureRegion?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("The monitor was not found.", "monitorName"));
+        var directRecordingService = new Mock<IDirectRecordingService>();
+        var standardOutput = new StringWriter();
+        var standardError = new StringWriter();
+        var application = new CliApplication(directCaptureService.Object, directRecordingService.Object, standardOutput, standardError);
+
+        await application.RunAsync(["capture", "--monitor", @"\.\NOPE"]);
+
+        var response = JsonSerializer.Deserialize<DirectCaptureResponse>(standardOutput.ToString());
+        Assert.Equal("target_not_found", response?.Error?.Code);
     }
 
     [Theory]

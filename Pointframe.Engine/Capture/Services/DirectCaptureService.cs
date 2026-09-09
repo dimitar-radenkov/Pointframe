@@ -246,11 +246,9 @@ public sealed class DirectCaptureService : IDirectCaptureService
         return null;
     }
 
-    /// <summary>
-    /// Resolves where a capture is written: an explicit caller-supplied file path when one is given,
-    /// otherwise a generated, timestamped name inside the configured screenshots directory. Either way
-    /// the containing directory is created first, and the metadata sidecar lands next to the image.
-    /// </summary>
+    // Resolves where a capture is written: an explicit caller-supplied file path when one is given,
+    // otherwise a generated, timestamped name inside the configured screenshots directory. Either way
+    // the containing directory is created first, and the metadata sidecar lands next to the image.
     private string ResolveArtifactPath(string? outputPath, DateTimeOffset createdUtc, string artifactId)
     {
         if (string.IsNullOrWhiteSpace(outputPath))
@@ -260,9 +258,14 @@ public sealed class DirectCaptureService : IDirectCaptureService
         }
 
         var fullPath = Path.GetFullPath(outputPath);
-        if (Directory.Exists(fullPath))
+
+        // Reject directory targets both ways round: an existing directory, and a directory-shaped path
+        // that does not exist yet (a trailing separator, or a bare root). Without the second check a
+        // value like "C:\shots\" would be treated as a file and fail later inside Bitmap.Save with a
+        // far less actionable exception than the contract the CLI help promises.
+        if (Directory.Exists(fullPath) || string.IsNullOrEmpty(Path.GetFileName(fullPath)))
         {
-            throw new ArgumentException($"The output path '{outputPath}' is an existing directory; supply a file path.", nameof(outputPath));
+            throw new ArgumentException($"The output path '{outputPath}' is a directory; supply a file path.", nameof(outputPath));
         }
 
         var directory = Path.GetDirectoryName(fullPath);
