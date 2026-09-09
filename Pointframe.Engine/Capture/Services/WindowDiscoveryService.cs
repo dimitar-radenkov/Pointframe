@@ -5,7 +5,7 @@ namespace Pointframe.Engine;
 
 public sealed class WindowDiscoveryService : IWindowDiscoveryService
 {
-    private const uint MonitorDefaultToNearest = 2;
+    private const uint MonitorDefaultToNull = 0;
 
     private delegate bool EnumWindowsProc(nint hwnd, nint lParam);
 
@@ -112,8 +112,13 @@ public sealed class WindowDiscoveryService : IWindowDiscoveryService
         }
 
         var buffer = new char[titleLength + 1];
-        GetWindowText(hwnd, buffer, buffer.Length);
-        var title = new string(buffer, 0, titleLength);
+        var actualLength = GetWindowText(hwnd, buffer, buffer.Length);
+        if (actualLength <= 0)
+        {
+            return false;
+        }
+
+        var title = new string(buffer, 0, actualLength);
 
         if (!GetWindowRect(hwnd, out var rect))
         {
@@ -141,9 +146,8 @@ public sealed class WindowDiscoveryService : IWindowDiscoveryService
             using var process = Process.GetProcessById((int)processId);
             processName = process.ProcessName;
         }
-        catch (ArgumentException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
-            // Process exited between enumeration and lookup.
             return false;
         }
 
@@ -163,7 +167,7 @@ public sealed class WindowDiscoveryService : IWindowDiscoveryService
 
     private static string? ResolveMonitorName(ref RECT rect)
     {
-        var monitor = MonitorFromRect(ref rect, MonitorDefaultToNearest);
+        var monitor = MonitorFromRect(ref rect, MonitorDefaultToNull);
         if (monitor == nint.Zero)
         {
             return null;

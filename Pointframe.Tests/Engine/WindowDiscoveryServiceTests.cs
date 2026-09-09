@@ -6,6 +6,7 @@ namespace Pointframe.Tests.Engine;
 public sealed class WindowDiscoveryServiceTests
 {
     [Fact]
+    [Trait("Category", "Integration")]
     public void GetWindows_ReturnsOnlyVisibleTopLevelWindowsWithNonEmptyTitles()
     {
         // WindowDiscoveryService calls real Win32 APIs, so this is a live-system smoke test.
@@ -28,6 +29,7 @@ public sealed class WindowDiscoveryServiceTests
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public void GetWindows_ExcludesCurrentProcessWindows()
     {
         var sut = new WindowDiscoveryService();
@@ -39,6 +41,7 @@ public sealed class WindowDiscoveryServiceTests
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public void GetWindow_WithInvalidHandle_ReturnsNull()
     {
         var sut = new WindowDiscoveryService();
@@ -49,6 +52,7 @@ public sealed class WindowDiscoveryServiceTests
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public void GetWindow_WithZeroHandle_ReturnsNull()
     {
         var sut = new WindowDiscoveryService();

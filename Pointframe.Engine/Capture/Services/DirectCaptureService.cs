@@ -33,6 +33,7 @@ public sealed class DirectCaptureService : IDirectCaptureService
         string? screenshotsDirectory = null,
         TimeProvider? timeProvider = null)
     {
+        ArgumentNullException.ThrowIfNull(displayCaptureEngine);
         ArgumentNullException.ThrowIfNull(ocrEngineService);
         ArgumentNullException.ThrowIfNull(windowDiscoveryService);
         _displayCaptureEngine = displayCaptureEngine;
