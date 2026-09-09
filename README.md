@@ -82,7 +82,7 @@ to standard output and exits with code `0`; invalid arguments exit with code `2`
 capture/OCR/recording failures exit with code `1`. Screenshots and their metadata
 sidecars are saved under `%LOCALAPPDATA%\Pointframe\Screenshots`. `ocr` captures the
 monitor the same way `capture` does, then runs Windows OCR against the captured image
-and adds a `recognizedText` field to the JSON output (`null` when no text is found or
+and adds a `RecognizedText` field to the JSON output (`null` when no text is found or
 no OCR language pack is installed). `record` starts a direct MP4 recording, waits for
 the requested `--seconds` (or an earlier Ctrl+C for a graceful early stop), then
 writes the combined session/artifact JSON; recordings are saved under
@@ -137,7 +137,7 @@ Example tool arguments:
 }
 ```
 
-Responses contain structured JSON with `success`, operation identifiers, artifact paths,
+Responses contain structured JSON with `Success`, operation identifiers, artifact paths,
 byte lengths, SHA-256 hashes, monitor geometry, DPI information, and sidecar paths.
 Artifact paths are local filesystem paths on the machine running the MCP server.
 

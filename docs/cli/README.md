@@ -82,7 +82,7 @@ width/height must be positive integers:
 
 A region that falls outside the monitor's bounds is rejected with a runtime
 error (exit code `1`) rather than being clipped. The response metadata reports
-both `monitorBoundsPixels` (the full monitor) and `captureBoundsPixels` (what
+both `MonitorBoundsPixels` (the full monitor) and `CaptureBoundsPixels` (what
 was actually captured), so a region capture is distinguishable from a
 whole-monitor one.
 
@@ -94,7 +94,7 @@ whole-monitor one.
 
 OCR uses the same monitor capture as `capture`, then calls Windows OCR for the
 current user's installed language profiles. The PNG and metadata sidecar are
-still produced. The JSON adds `recognizedText`; it is `null` when no text is
+still produced. The JSON adds `RecognizedText`; it is `null` when no text is
 recognized or no suitable OCR language pack is installed. `ocr` accepts the
 same optional `--region <x,y,width,height>` (`-g`) flag as `capture`, so OCR
 can be scoped to a sub-region of the monitor.
@@ -108,8 +108,8 @@ can be scoped to a sub-region of the monitor.
 `record` starts a direct MP4 recording of the whole monitor, waits for the
 requested duration (or an earlier Ctrl+C, which stops the recording gracefully
 instead of killing the process), stops the recording, and writes a single
-combined JSON response containing both the started `session` and the
-finished `artifact`. The MP4 and its `.events.jsonl` sidecar are saved beneath:
+combined JSON response containing both the started `Session` and the
+finished `Artifact`. The MP4 and its `.events.jsonl` sidecar are saved beneath:
 
 ```text
 %LOCALAPPDATA%\Pointframe\Recordings
@@ -137,7 +137,7 @@ server's `start_recording`/`stop_recording` tools instead — see the
 
 If the recording cannot be started (for example, an unknown monitor name or a
 missing `ffmpeg.exe`), the command writes a JSON response with
-`"success": false` and an `error` object to standard output and exits with
+`"Success": false` and an `Error` object to standard output and exits with
 code `1`.
 
 ## Exit codes and errors
@@ -151,7 +151,7 @@ code `1`.
 Invalid commands print the error and usage to standard error. Runtime failures
 print `Pointframe CLI failed: ...` to standard error; successful JSON is written
 to standard output. `record` failures that the engine reports as a structured
-error (rather than an exception) print a `"success": false` JSON response to
+error (rather than an exception) print a `"Success": false` JSON response to
 standard output instead, so scripts can parse the failure the same way as a
 success.
 
@@ -199,7 +199,7 @@ For every successful `record` operation:
 1. Read the JSON response from standard output.
 2. Locate the MP4 at `artifact.path` and the `.events.jsonl` sidecar at
    `artifact.eventSidecarPath`.
-3. Compare the file length and SHA-256 in `artifact` with the actual MP4.
+3. Compare the file length and SHA-256 in `Artifact` with the actual MP4.
 4. Preserve both files together when attaching evidence to a report.
 
 The CLI writes through the shared direct capture and recording services, so
@@ -269,4 +269,3 @@ file come from the same build, and verify the SHA-256 before distribution.
 - [MCP server README](../mcp-desktop-testing/README.md)
 - [CLI implementation](../../Pointframe.Cli/)
 - [CLI packaging script](../../packaging/build-cli-package.ps1)
-
