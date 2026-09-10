@@ -6,8 +6,48 @@ using Pointframe.Engine;
 namespace Pointframe.Mcp;
 
 [McpServerToolType]
-internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureService, IDirectRecordingMcpService directRecordingMcpService)
+internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureService, IDirectRecordingMcpService directRecordingMcpService, ICaptureCatalogService captureCatalogService)
 {
+    [McpServerTool(Title = "Search saved captures", ReadOnly = true, Destructive = false, Idempotent = true, UseStructuredContent = true),
+     Description("Searches Pointframe's locally indexed saved screenshots by literal filename or OCR text. Results can be incomplete while background indexing is pending.")]
+    public async Task<McpCaptureSearchResponse> SearchCapturesAsync(
+        [Description("Optional literal filename or OCR-text query, limited to 256 characters. Omit for recent captures.")] string? query = null,
+        [Description("Optional inclusive ISO-8601 lower capture-time bound.")] DateTimeOffset? from = null,
+        [Description("Optional exclusive ISO-8601 upper capture-time bound.")] DateTimeOffset? to = null,
+        [Description("Maximum results from 1 through 100. Defaults to 20.")] int limit = 20,
+        CancellationToken cancellationToken = default)
+    {
+        if (query?.Length > 256 || limit is < 1 or > 100 || from > to)
+        {
+            return new McpCaptureSearchResponse(1, false, Error: "invalid_query");
+        }
+
+        try
+        {
+            var result = await captureCatalogService.SearchAsync(new CaptureCatalogSearchRequest(query, from, to, limit), cancellationToken).ConfigureAwait(false);
+            return new McpCaptureSearchResponse(1, true, result.Items);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new McpCaptureSearchResponse(1, false, Error: "catalog_unavailable");
+        }
+    }
+
+    [McpServerTool(Title = "Get saved capture", ReadOnly = true, Destructive = false, Idempotent = true),
+     Description("Retrieves metadata for one catalog artifact ID and, optionally, a downscaled inline PNG preview. This accepts catalog IDs only, never arbitrary file paths.")]
+    public async Task<CallToolResult> GetCaptureAsync(
+        [Description("The opaque artifact ID returned by search_captures.")] string artifactId,
+        [Description("Whether to include a downscaled PNG preview. Defaults to true.")] bool includeImage = true,
+        CancellationToken cancellationToken = default)
+    {
+        var artifact = await captureCatalogService.GetAsync(artifactId, cancellationToken).ConfigureAwait(false);
+        if (artifact is null) return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "artifact_not_found" }] };
+        if (!string.Equals(artifact.Availability, "Available", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(artifact.LocalPath) || !File.Exists(artifact.LocalPath))
+            return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "artifact_missing" }] };
+        var blocks = new List<ContentBlock> { new TextContentBlock { Text = System.Text.Json.JsonSerializer.Serialize(artifact) } };
+        if (includeImage) blocks.Add(ImageContentBlock.FromBytes(CapturePreviewImage.CreateDownscaledPng(artifact.LocalPath), "image/png"));
+        return new CallToolResult { Content = blocks, StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(artifact) };
+    }
     [McpServerTool(
         Title = "List displays",
         ReadOnly = true,

@@ -133,6 +133,36 @@ public sealed class DirectCaptureServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CaptureMonitorAsync_RegistersFinalizedArtifactWhenCatalogIsAvailable()
+    {
+        var display = new Pointframe.Engine.DisplayDescriptor(
+            @"\\.\DISPLAY1",
+            1d,
+            1d,
+            new Pointframe.Engine.PixelBounds(0, 0, 20, 20));
+        var catalog = new Mock<ICaptureCatalogService>();
+        catalog
+            .Setup(service => service.RegisterAsync(It.IsAny<CaptureRegistrationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CaptureRegistrationResult("registered", false));
+        var sut = new DirectCaptureService(
+            CreateDisplayCaptureEngine(display),
+            new Mock<IOcrEngineService>().Object,
+            _screenshotsDirectory,
+            captureCatalogService: catalog.Object);
+
+        var json = await sut.CaptureMonitorAsync(display.MonitorName);
+        var response = JsonSerializer.Deserialize<DirectCaptureResponse>(json);
+
+        var metadata = Assert.IsType<ArtifactDescriptor>(response?.Artifact).Metadata;
+        catalog.Verify(service => service.RegisterAsync(
+            It.Is<CaptureRegistrationRequest>(request =>
+                request.Path == metadata.Path &&
+                request.ArtifactId == metadata.ArtifactId &&
+                request.Source == "direct_monitor"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task CaptureMonitorAsync_WithRegion_CapturesResolvedSubRegionAndReportsActualBounds()
     {
         var display = new Pointframe.Engine.DisplayDescriptor(

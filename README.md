@@ -117,6 +117,8 @@ The standalone host requires an interactive Windows desktop session. It is a loc
 
 The server exposes:
 
+- 🔎 `search_captures` — search the local catalog of saved screenshots by filename or indexed OCR text. Results may be incomplete while newly discovered images are indexed.
+- 🗂️ `get_capture` — retrieve a catalog artifact by its opaque ID, including metadata and an optional downscaled inline preview. It never accepts arbitrary local paths.
 - 🖥️ `list_displays` — return monitor identifiers, physical pixel bounds, and DPI scales.
 - 🪟 `list_windows` — return visible top-level windows with handles, titles, process names, bounds, and containing monitor names. Window handles are session-local and temporary.
 - 📸 `capture_monitor` — capture a named monitor, or an optional monitor-local sub-region of it, and return a PNG artifact plus metadata. The captured image is also returned inline as an image block (downscaled to at most 1600 px on its longest edge) so the calling model can see it directly; pass `includeImage: false` to get metadata only.

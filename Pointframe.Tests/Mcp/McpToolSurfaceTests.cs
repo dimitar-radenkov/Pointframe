@@ -60,7 +60,7 @@ public sealed class McpToolSurfaceTests
         recordingService
             .Setup(service => service.StartRecording(It.IsAny<string>(), It.IsAny<IReadOnlyList<PixelBounds>>(), It.IsAny<int>()))
             .Returns("{\"SchemaVersion\":1,\"Success\":true}");
-        var tools = new PointframeMcpTools(new Mock<IDirectCaptureService>().Object, recordingService.Object);
+        var tools = new PointframeMcpTools(new Mock<IDirectCaptureService>().Object, recordingService.Object, new Mock<ICaptureCatalogService>().Object);
 
         var response = await tools.StartRecordingAsync(@"\\.\DISPLAY1");
 

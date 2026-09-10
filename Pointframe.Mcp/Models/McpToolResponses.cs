@@ -1,3 +1,5 @@
+using Pointframe.Engine;
+
 namespace Pointframe.Mcp;
 
 public sealed record McpPixelBounds(int X, int Y, int Width, int Height);
@@ -105,3 +107,5 @@ public sealed record McpServerInfoResponse(
     McpFfmpegAvailability Ffmpeg);
 
 public sealed record McpFfmpegAvailability(bool Found, string Path, string Source);
+
+public sealed record McpCaptureSearchResponse(int SchemaVersion, bool Success, IReadOnlyList<CaptureCatalogSearchItem>? Items = null, string? Error = null);
