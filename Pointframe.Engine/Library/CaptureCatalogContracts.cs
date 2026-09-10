@@ -20,9 +20,18 @@ public interface ICaptureImportService
     Task RequestReconciliationAsync(CancellationToken cancellationToken = default);
 }
 
+public interface ICaptureRegistrationService
+{
+    Task RegisterOrQueueAsync(CaptureRegistrationRequest request, CancellationToken cancellationToken = default);
+
+    Task ReplayPendingAsync(CancellationToken cancellationToken = default);
+}
+
 public interface ICaptureIndexWorker
 {
     Task RunOnceAsync(CancellationToken cancellationToken = default);
+
+    Task RunUntilCancelledAsync(CancellationToken cancellationToken = default);
 }
 
 public interface ICaptureArtifactReader
@@ -92,6 +101,7 @@ public sealed record CaptureCatalogArtifact(
     DateTimeOffset CapturedAtUtc,
     string Availability,
     string OcrStatus,
+    string? OcrText,
     string? ProvenanceJson,
     string? LocalPath);
 

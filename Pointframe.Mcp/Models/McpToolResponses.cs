@@ -108,4 +108,32 @@ public sealed record McpServerInfoResponse(
 
 public sealed record McpFfmpegAvailability(bool Found, string Path, string Source);
 
-public sealed record McpCaptureSearchResponse(int SchemaVersion, bool Success, IReadOnlyList<CaptureCatalogSearchItem>? Items = null, string? Error = null);
+public sealed record McpCaptureSearchResponse(
+    int SchemaVersion,
+    bool Success,
+    IReadOnlyList<CaptureCatalogSearchItem>? Items = null,
+    string? NextCursor = null,
+    CaptureCatalogIndexState? IndexState = null,
+    string? Error = null);
+
+public sealed record McpCaptureGetResponse(
+    int SchemaVersion,
+    McpCatalogArtifact Artifact,
+    string? OcrText,
+    int TotalTextLength,
+    int? NextTextOffset,
+    bool TextTruncated);
+
+public sealed record McpCatalogArtifact(
+    string ArtifactId,
+    string FileName,
+    string Sha256,
+    string MimeType,
+    long ByteLength,
+    int PixelWidth,
+    int PixelHeight,
+    DateTimeOffset CapturedAtUtc,
+    string Availability,
+    string OcrStatus,
+    string? ProvenanceJson,
+    string? LocalPath);

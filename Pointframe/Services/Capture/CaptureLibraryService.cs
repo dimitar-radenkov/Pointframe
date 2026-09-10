@@ -1,3 +1,5 @@
+using Pointframe.Engine;
+
 namespace Pointframe.Services;
 
 internal sealed class CaptureLibraryService : ICaptureLibraryService
@@ -7,11 +9,21 @@ internal sealed class CaptureLibraryService : ICaptureLibraryService
 
     private readonly IUserSettingsService _settings;
     private readonly ICaptureTextLookupService _textIndex;
+    private readonly ICaptureCatalogService? _catalog;
 
     public CaptureLibraryService(IUserSettingsService settings, ICaptureTextLookupService textIndex)
+        : this(settings, textIndex, null)
+    {
+    }
+
+    public CaptureLibraryService(
+        IUserSettingsService settings,
+        ICaptureTextLookupService textIndex,
+        ICaptureCatalogService? catalog)
     {
         _settings = settings;
         _textIndex = textIndex;
+        _catalog = catalog;
     }
 
     public IReadOnlyList<CaptureItem> GetCaptures()
@@ -31,6 +43,11 @@ internal sealed class CaptureLibraryService : ICaptureLibraryService
         IProgress<CaptureSearchProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        if (_catalog is not null)
+        {
+            return await SearchCatalogAsync(query, fromUtc, toUtc, cancellationToken).ConfigureAwait(false);
+        }
+
         var normalizedQuery = query?.Trim();
         var candidates = CollectCaptures(
             fromUtc,
@@ -89,6 +106,40 @@ internal sealed class CaptureLibraryService : ICaptureLibraryService
 
         matches.Sort((left, right) => right.CapturedAtUtc.CompareTo(left.CapturedAtUtc));
         return matches;
+    }
+
+    private async Task<IReadOnlyList<CaptureItem>> SearchCatalogAsync(
+        string? query,
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        CancellationToken cancellationToken)
+    {
+        var items = new List<CaptureItem>();
+        string? cursor = null;
+        do
+        {
+            var page = await _catalog!.SearchAsync(
+                new CaptureCatalogSearchRequest(
+                    query,
+                    fromUtc is null ? null : new DateTimeOffset(DateTime.SpecifyKind(fromUtc.Value, DateTimeKind.Utc)),
+                    toUtc is null ? null : new DateTimeOffset(DateTime.SpecifyKind(toUtc.Value, DateTimeKind.Utc)),
+                    100,
+                    cursor),
+                cancellationToken).ConfigureAwait(false);
+            foreach (var result in page.Items)
+            {
+                var artifact = await _catalog.GetAsync(result.ArtifactId, cancellationToken).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(artifact?.LocalPath) && File.Exists(artifact.LocalPath))
+                {
+                    items.Add(new CaptureItem(artifact.LocalPath, artifact.FileName, artifact.CapturedAtUtc.UtcDateTime));
+                }
+            }
+
+            cursor = page.NextCursor;
+        }
+        while (cursor is not null);
+
+        return items;
     }
 
     private static bool InDateRange(CaptureItem item, DateTime? fromUtc, DateTime? toUtc)

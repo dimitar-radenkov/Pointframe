@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pointframe.Data.Abstractions;
@@ -105,24 +106,47 @@ public sealed class CaptureCatalogService : ICaptureCatalogService
         var context = scope.ServiceProvider.GetRequiredService<PointframeDataContext>();
         var query = request.Query?.Trim() ?? string.Empty;
         var pattern = $"%{EscapeLike(query)}%";
-        var candidates = await context.CaptureArtifacts
+        var cursor = DecodeCursor(request.Cursor);
+        var candidatesQuery = context.CaptureArtifacts
             .Where(artifact => artifact.Availability == CaptureArtifactAvailability.Available)
             .Where(artifact => request.FromUtc == null || artifact.CapturedAtUtc >= request.FromUtc.Value.UtcDateTime)
             .Where(artifact => request.ToUtc == null || artifact.CapturedAtUtc < request.ToUtc.Value.UtcDateTime)
             .Where(artifact => string.IsNullOrEmpty(query) ||
                 EF.Functions.Like(artifact.FileName, pattern, "\\") ||
-                (artifact.OcrText != null && EF.Functions.Like(artifact.OcrText, pattern, "\\")))
+                (artifact.OcrText != null && EF.Functions.Like(artifact.OcrText, pattern, "\\")));
+        if (cursor is not null)
+        {
+            candidatesQuery = candidatesQuery.Where(artifact =>
+                artifact.CapturedAtUtc < cursor.CapturedAtUtc ||
+                (artifact.CapturedAtUtc == cursor.CapturedAtUtc && artifact.ArtifactId.CompareTo(cursor.ArtifactId) < 0));
+        }
+
+        var candidates = await candidatesQuery
             .OrderByDescending(artifact => artifact.CapturedAtUtc).ThenByDescending(artifact => artifact.ArtifactId)
-            .Take(request.Limit)
+            .Take(request.Limit + 1)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        var items = candidates
+        var page = candidates.Take(request.Limit).ToArray();
+        var items = page
             .Select(artifact => new CaptureCatalogSearchItem(
                 artifact.ArtifactId, artifact.FileName, new DateTimeOffset(artifact.CapturedAtUtc),
                 artifact.TimestampSource.ToString(), artifact.Source.ToString(), artifact.MimeType,
                 artifact.PixelWidth, artifact.PixelHeight, artifact.Sha256, artifact.OcrStatus.ToString(),
                 GetMatchedFields(artifact, query), CreateSnippet(artifact.OcrText, query)))
             .ToArray();
-        return new CaptureCatalogSearchResult(items, null, new CaptureCatalogIndexState(false, 0, 0, 0, null));
+        var nextCursor = candidates.Count > request.Limit
+            ? EncodeCursor(page[^1].CapturedAtUtc, page[^1].ArtifactId)
+            : null;
+        var pendingCount = await context.CaptureArtifacts.CountAsync(
+            artifact => artifact.Availability == CaptureArtifactAvailability.Available &&
+                (artifact.OcrStatus == CaptureOcrStatus.Pending || artifact.OcrStatus == CaptureOcrStatus.Processing),
+            cancellationToken).ConfigureAwait(false);
+        var failedCount = await context.CaptureArtifacts.CountAsync(
+            artifact => artifact.Availability == CaptureArtifactAvailability.Available && artifact.OcrStatus == CaptureOcrStatus.Failed,
+            cancellationToken).ConfigureAwait(false);
+        var unavailableCount = await context.CaptureArtifacts.CountAsync(
+            artifact => artifact.Availability == CaptureArtifactAvailability.Available && artifact.OcrStatus == CaptureOcrStatus.Unavailable,
+            cancellationToken).ConfigureAwait(false);
+        return new CaptureCatalogSearchResult(items, nextCursor, new CaptureCatalogIndexState(false, pendingCount, failedCount, unavailableCount, null));
     }
 
     public async Task<CaptureCatalogArtifact?> GetAsync(string artifactId, CancellationToken cancellationToken = default)
@@ -139,7 +163,7 @@ public sealed class CaptureCatalogService : ICaptureCatalogService
         var path = artifact.Locations.FirstOrDefault(location => location.CurrentArtifactId == artifact.ArtifactId)?.OriginalPath;
         return new CaptureCatalogArtifact(artifact.ArtifactId, artifact.FileName, artifact.Sha256, artifact.MimeType,
             artifact.ByteLength, artifact.PixelWidth, artifact.PixelHeight, new DateTimeOffset(artifact.CapturedAtUtc),
-            artifact.Availability.ToString(), artifact.OcrStatus.ToString(), artifact.ProvenanceJson, path);
+            artifact.Availability.ToString(), artifact.OcrStatus.ToString(), artifact.OcrText, artifact.ProvenanceJson, path);
     }
 
     private static IReadOnlyList<string> GetMatchedFields(CaptureArtifactEntry artifact, string query) =>
@@ -161,6 +185,29 @@ public sealed class CaptureCatalogService : ICaptureCatalogService
         .Replace("\\", "\\\\", StringComparison.Ordinal)
         .Replace("%", "\\%", StringComparison.Ordinal)
         .Replace("_", "\\_", StringComparison.Ordinal);
+
+    private static string? EncodeCursor(DateTime capturedAtUtc, string artifactId) =>
+        Convert.ToBase64String(Encoding.UTF8.GetBytes($"{capturedAtUtc.Ticks}:{artifactId}"));
+
+    private static SearchCursor? DecodeCursor(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        try
+        {
+            var parts = Encoding.UTF8.GetString(Convert.FromBase64String(value)).Split(':', 2);
+            return parts.Length == 2 && long.TryParse(parts[0], out var ticks) && !string.IsNullOrWhiteSpace(parts[1])
+                ? new SearchCursor(new DateTime(ticks, DateTimeKind.Utc), parts[1])
+                : throw new ArgumentException("The capture search cursor is invalid.", nameof(value));
+        }
+        catch (FormatException)
+        {
+            throw new ArgumentException("The capture search cursor is invalid.", nameof(value));
+        }
+    }
 
     internal static string NormalizePath(string path)
     {
@@ -270,4 +317,6 @@ public sealed class CaptureCatalogService : ICaptureCatalogService
         int PixelHeight,
         string MimeType,
         DateTime LastWriteAtUtc);
+
+    private sealed record SearchCursor(DateTime CapturedAtUtc, string ArtifactId);
 }

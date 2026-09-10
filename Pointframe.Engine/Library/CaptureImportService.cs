@@ -73,12 +73,12 @@ public sealed class CaptureImportService : ICaptureImportService
                 }
                 catch (IOException)
                 {
-                    // A per-file sharing race must not turn a complete enumeration into a deletion signal.
-                    observedPaths.Remove(CaptureCatalogService.NormalizePath(fullPath));
+                    // The file was observed during a complete enumeration. A sharing race means its
+                    // existing generation remains observed and will be retried next reconciliation.
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    observedPaths.Remove(CaptureCatalogService.NormalizePath(fullPath));
+                    // See the IOException case above.
                 }
             }
         }

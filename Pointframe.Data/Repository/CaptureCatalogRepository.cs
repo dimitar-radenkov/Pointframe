@@ -135,10 +135,16 @@ public sealed class CaptureCatalogRepository : ICaptureCatalogRepository
         var rootPrefix = normalizedRoot.EndsWith(Path.DirectorySeparatorChar)
             ? normalizedRoot
             : $"{normalizedRoot}{Path.DirectorySeparatorChar}";
-        return await _context.CaptureLocations
+        var descendants = await _context.CaptureLocations
             .Include(location => location.CurrentArtifact)
             .Where(location => location.NormalizedPath.StartsWith(rootPrefix))
             .ToListAsync(cancellationToken);
+        return descendants
+            .Where(location => string.Equals(
+                Path.GetDirectoryName(location.NormalizedPath),
+                normalizedRoot,
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray();
     }
 
     public async Task MarkLocationsMissing(

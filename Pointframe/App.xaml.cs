@@ -32,6 +32,7 @@ public partial class App : Application
     private IArtifactMetadataService _artifactMetadataService = null!;
     private ICaptureCatalogService _captureCatalogService = null!;
     private ICaptureImportService _captureImportService = null!;
+    private ICaptureRegistrationService _captureRegistrationService = null!;
     private ICaptureIndexWorker _captureIndexWorker = null!;
     private readonly List<IEventSubscription> _eventSubscriptions = [];
     private ITelemetryService _telemetry = null!;
@@ -96,6 +97,7 @@ public partial class App : Application
         _artifactMetadataService = _host.Services.GetRequiredService<IArtifactMetadataService>();
         _captureCatalogService = _host.Services.GetRequiredService<ICaptureCatalogService>();
         _captureImportService = _host.Services.GetRequiredService<ICaptureImportService>();
+        _captureRegistrationService = _host.Services.GetRequiredService<ICaptureRegistrationService>();
         _captureIndexWorker = _host.Services.GetRequiredService<ICaptureIndexWorker>();
         _transcriptionQueue = _host.Services.GetRequiredService<ITranscriptionQueue>();
         _transcriptionQueue.Completed += HandleTranscriptionCompleted;
@@ -611,7 +613,7 @@ public partial class App : Application
 
         try
         {
-            await _captureCatalogService.RegisterAsync(new CaptureRegistrationRequest(
+            await _captureRegistrationService.RegisterOrQueueAsync(new CaptureRegistrationRequest(
                 outputPath,
                 ArtifactId: null,
                 catalogSource,
@@ -630,14 +632,30 @@ public partial class App : Application
         {
             try
             {
-                await _captureImportService.RequestReconciliationAsync();
-                await _captureIndexWorker.RunOnceAsync();
+                var stopping = _host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping;
+                var reconcile = ReconcileUntilStoppedAsync(stopping);
+                var index = _captureIndexWorker.RunUntilCancelledAsync(stopping);
+                await Task.WhenAll(reconcile, index).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Application shutdown cancels maintenance work.
             }
             catch (Exception exception)
             {
                 _logger?.LogWarning(exception, "Capture library reconciliation could not start");
             }
         });
+    }
+
+    private async Task ReconcileUntilStoppedAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await _captureRegistrationService.ReplayPendingAsync(cancellationToken).ConfigureAwait(false);
+            await _captureImportService.RequestReconciliationAsync(cancellationToken).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private void EnsureInstallId()

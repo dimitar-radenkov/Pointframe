@@ -58,11 +58,13 @@ internal sealed class CliApplication
                 .AddPointframeDataServices($"Data Source={PointframePaths.PointframeDatabasePath}")
                 .AddSingleton(TimeProvider.System)
                 .AddSingleton<ICaptureCatalogService, CaptureCatalogService>()
+                .AddSingleton<ICaptureRegistrationService, CaptureRegistrationService>()
                 .BuildServiceProvider();
             var directCaptureService = new DirectCaptureService(
                 new DisplayCaptureEngine(),
                 ocrEngineService: new WindowsOcrEngineService(),
-                captureCatalogService: serviceProvider.GetRequiredService<ICaptureCatalogService>());
+                captureCatalogService: serviceProvider.GetRequiredService<ICaptureCatalogService>(),
+                captureRegistrationService: serviceProvider.GetRequiredService<ICaptureRegistrationService>());
             using var directRecordingService = new DirectRecordingService(new DisplayCaptureEngine(), new FfmpegDirectVideoWriterFactory());
             return await new CliApplication(directCaptureService, directRecordingService, standardOutput, standardError).RunCommandAsync(command, cancellationToken);
         }

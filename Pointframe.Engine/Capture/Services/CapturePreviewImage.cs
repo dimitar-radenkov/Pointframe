@@ -25,9 +25,13 @@ public static class CapturePreviewImage
     public static byte[] CreateDownscaledPng(string pngPath, int maxLongestEdgePixels = DefaultMaxLongestEdgePixels)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pngPath);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLongestEdgePixels);
+        return CreateDownscaledPng(File.ReadAllBytes(pngPath), maxLongestEdgePixels);
+    }
 
-        var originalBytes = File.ReadAllBytes(pngPath);
+    public static byte[] CreateDownscaledPng(byte[] originalBytes, int maxLongestEdgePixels = DefaultMaxLongestEdgePixels)
+    {
+        ArgumentNullException.ThrowIfNull(originalBytes);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLongestEdgePixels);
 
         // GDI+ keeps the stream open for the lifetime of the Bitmap, so it must outlive every use.
         using var sourceStream = new MemoryStream(originalBytes, writable: false);
