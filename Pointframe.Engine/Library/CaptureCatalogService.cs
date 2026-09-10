@@ -104,17 +104,18 @@ public sealed class CaptureCatalogService : ICaptureCatalogService
         using var scope = _scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<PointframeDataContext>();
         var query = request.Query?.Trim() ?? string.Empty;
+        var pattern = $"%{EscapeLike(query)}%";
         var candidates = await context.CaptureArtifacts
-            .Include(artifact => artifact.Locations)
             .Where(artifact => artifact.Availability == CaptureArtifactAvailability.Available)
             .Where(artifact => request.FromUtc == null || artifact.CapturedAtUtc >= request.FromUtc.Value.UtcDateTime)
             .Where(artifact => request.ToUtc == null || artifact.CapturedAtUtc < request.ToUtc.Value.UtcDateTime)
+            .Where(artifact => string.IsNullOrEmpty(query) ||
+                EF.Functions.Like(artifact.FileName, pattern, "\\") ||
+                (artifact.OcrText != null && EF.Functions.Like(artifact.OcrText, pattern, "\\")))
             .OrderByDescending(artifact => artifact.CapturedAtUtc).ThenByDescending(artifact => artifact.ArtifactId)
-            .ToListAsync(cancellationToken).ConfigureAwait(false);
-        var items = candidates.Where(artifact => string.IsNullOrEmpty(query) ||
-                artifact.FileName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                artifact.OcrText?.Contains(query, StringComparison.OrdinalIgnoreCase) == true)
             .Take(request.Limit)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var items = candidates
             .Select(artifact => new CaptureCatalogSearchItem(
                 artifact.ArtifactId, artifact.FileName, new DateTimeOffset(artifact.CapturedAtUtc),
                 artifact.TimestampSource.ToString(), artifact.Source.ToString(), artifact.MimeType,
@@ -146,11 +147,20 @@ public sealed class CaptureCatalogService : ICaptureCatalogService
 
     private static string? CreateSnippet(string? text, string query)
     {
-        if (string.IsNullOrEmpty(text)) return null;
+        if (string.IsNullOrEmpty(text))
+        {
+            return null;
+        }
+
         var index = string.IsNullOrEmpty(query) ? 0 : text.IndexOf(query, StringComparison.OrdinalIgnoreCase);
         index = Math.Max(0, index);
         return text.Substring(index, Math.Min(240, text.Length - index));
     }
+
+    private static string EscapeLike(string value) => value
+        .Replace("\\", "\\\\", StringComparison.Ordinal)
+        .Replace("%", "\\%", StringComparison.Ordinal)
+        .Replace("_", "\\_", StringComparison.Ordinal);
 
     internal static string NormalizePath(string path)
     {

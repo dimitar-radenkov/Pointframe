@@ -40,13 +40,31 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
         [Description("Whether to include a downscaled PNG preview. Defaults to true.")] bool includeImage = true,
         CancellationToken cancellationToken = default)
     {
-        var artifact = await captureCatalogService.GetAsync(artifactId, cancellationToken).ConfigureAwait(false);
-        if (artifact is null) return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "artifact_not_found" }] };
-        if (!string.Equals(artifact.Availability, "Available", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(artifact.LocalPath) || !File.Exists(artifact.LocalPath))
-            return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "artifact_missing" }] };
-        var blocks = new List<ContentBlock> { new TextContentBlock { Text = System.Text.Json.JsonSerializer.Serialize(artifact) } };
-        if (includeImage) blocks.Add(ImageContentBlock.FromBytes(CapturePreviewImage.CreateDownscaledPng(artifact.LocalPath), "image/png"));
-        return new CallToolResult { Content = blocks, StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(artifact) };
+        try
+        {
+            var artifact = await captureCatalogService.GetAsync(artifactId, cancellationToken).ConfigureAwait(false);
+            if (artifact is null)
+            {
+                return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "artifact_not_found" }] };
+            }
+
+            if (!string.Equals(artifact.Availability, "Available", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(artifact.LocalPath) || !File.Exists(artifact.LocalPath))
+            {
+                return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "artifact_missing" }] };
+            }
+
+            var blocks = new List<ContentBlock> { new TextContentBlock { Text = System.Text.Json.JsonSerializer.Serialize(artifact) } };
+            if (includeImage)
+            {
+                blocks.Add(ImageContentBlock.FromBytes(CapturePreviewImage.CreateDownscaledPng(artifact.LocalPath), "image/png"));
+            }
+
+            return new CallToolResult { Content = blocks, StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(artifact) };
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "catalog_unavailable" }] };
+        }
     }
     [McpServerTool(
         Title = "List displays",

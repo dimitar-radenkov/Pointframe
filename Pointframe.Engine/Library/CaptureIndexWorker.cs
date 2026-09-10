@@ -21,47 +21,64 @@ public sealed class CaptureIndexWorker : ICaptureIndexWorker
 
     public async Task RunOnceAsync(CancellationToken cancellationToken = default)
     {
-        string[] artifactIds;
+        WorkItem[] workItems;
         using (var scope = _scopeFactory.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<PointframeDataContext>();
             var candidates = await context.CaptureArtifacts
                 .Where(artifact => artifact.Availability == CaptureArtifactAvailability.Available && artifact.OcrStatus == CaptureOcrStatus.Pending)
                 .OrderBy(artifact => artifact.CapturedAtUtc).Take(20).ToListAsync(cancellationToken).ConfigureAwait(false);
-            foreach (var candidate in candidates) candidate.OcrStatus = CaptureOcrStatus.Processing;
+            foreach (var candidate in candidates)
+            {
+                candidate.OcrStatus = CaptureOcrStatus.Processing;
+            }
+
             await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            artifactIds = candidates.Select(candidate => candidate.ArtifactId).ToArray();
+            workItems = candidates.Select(candidate => new WorkItem(candidate.ArtifactId, candidate.Sha256)).ToArray();
         }
 
-        foreach (var artifactId in artifactIds)
+        foreach (var workItem in workItems)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await IndexAsync(artifactId, cancellationToken).ConfigureAwait(false);
+            await IndexAsync(workItem, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private async Task IndexAsync(string artifactId, CancellationToken cancellationToken)
+    private async Task IndexAsync(WorkItem workItem, CancellationToken cancellationToken)
     {
         string? path;
         using (var scope = _scopeFactory.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<PointframeDataContext>();
-            path = await context.CaptureLocations.Where(location => location.CurrentArtifactId == artifactId)
+            path = await context.CaptureLocations.Where(location => location.CurrentArtifactId == workItem.ArtifactId)
                 .Select(location => location.OriginalPath).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
         }
 
         OcrRecognitionResult result;
         try
         {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) result = new(null, OcrRecognitionStatus.Failed);
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                result = new(null, OcrRecognitionStatus.Failed);
+            }
             else { using var bitmap = new Bitmap(path); result = await _ocrEngine.RecognizeDetailedAsync(bitmap, cancellationToken).ConfigureAwait(false); }
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested) { result = new(null, OcrRecognitionStatus.Failed); }
 
         using var completionScope = _scopeFactory.CreateScope();
         var completionContext = completionScope.ServiceProvider.GetRequiredService<PointframeDataContext>();
-        var artifact = await completionContext.CaptureArtifacts.SingleOrDefaultAsync(item => item.ArtifactId == artifactId, cancellationToken).ConfigureAwait(false);
-        if (artifact is null || artifact.OcrStatus != CaptureOcrStatus.Processing) return;
+        var artifact = await completionContext.CaptureArtifacts.SingleOrDefaultAsync(item => item.ArtifactId == workItem.ArtifactId, cancellationToken).ConfigureAwait(false);
+        var remainsCurrent = await completionContext.CaptureLocations.AnyAsync(
+            location => location.CurrentArtifactId == workItem.ArtifactId,
+            cancellationToken).ConfigureAwait(false);
+        if (artifact is null ||
+            artifact.OcrStatus != CaptureOcrStatus.Processing ||
+            artifact.Availability != CaptureArtifactAvailability.Available ||
+            !remainsCurrent ||
+            !string.Equals(artifact.Sha256, workItem.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
         artifact.OcrStatus = result.Status switch
         {
             OcrRecognitionStatus.Recognized => CaptureOcrStatus.Ready,
@@ -77,4 +94,6 @@ public sealed class CaptureIndexWorker : ICaptureIndexWorker
         artifact.UpdatedAtUtc = _timeProvider.GetUtcNow().UtcDateTime;
         await completionContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    private sealed record WorkItem(string ArtifactId, string Sha256);
 }
