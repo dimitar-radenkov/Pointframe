@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Security.Cryptography;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Pointframe.Engine;
@@ -6,8 +7,91 @@ using Pointframe.Engine;
 namespace Pointframe.Mcp;
 
 [McpServerToolType]
-internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureService, IDirectRecordingMcpService directRecordingMcpService)
+internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureService, IDirectRecordingMcpService directRecordingMcpService, ICaptureCatalogService captureCatalogService)
 {
+    [McpServerTool(Title = "Search saved captures", ReadOnly = true, Destructive = false, Idempotent = true, UseStructuredContent = true),
+     Description("Searches Pointframe's locally indexed saved screenshots by literal filename or OCR text. Results can be incomplete while background indexing is pending.")]
+    public async Task<McpCaptureSearchResponse> SearchCapturesAsync(
+        [Description("Optional literal filename or OCR-text query, limited to 256 characters. Omit for recent captures.")] string? query = null,
+        [Description("Optional inclusive ISO-8601 lower capture-time bound.")] DateTimeOffset? from = null,
+        [Description("Optional exclusive ISO-8601 upper capture-time bound.")] DateTimeOffset? to = null,
+        [Description("Maximum results from 1 through 100. Defaults to 20.")] int limit = 20,
+        [Description("Optional opaque cursor returned by an earlier search_captures page.")] string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (query?.Length > 256 || limit is < 1 or > 100 || from > to)
+        {
+            return new McpCaptureSearchResponse(1, false, Error: "invalid_query");
+        }
+
+        try
+        {
+            var result = await captureCatalogService.SearchAsync(new CaptureCatalogSearchRequest(query, from, to, limit, cursor), cancellationToken).ConfigureAwait(false);
+            return new McpCaptureSearchResponse(1, true, result.Items, result.NextCursor, result.IndexState);
+        }
+        catch (ArgumentException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new McpCaptureSearchResponse(1, false, Error: "invalid_cursor");
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new McpCaptureSearchResponse(1, false, Error: "catalog_unavailable");
+        }
+    }
+
+    [McpServerTool(Title = "Get saved capture", ReadOnly = true, Destructive = false, Idempotent = true),
+     Description("Retrieves metadata for one catalog artifact ID and, optionally, a downscaled inline PNG preview. This accepts catalog IDs only, never arbitrary file paths.")]
+    public async Task<CallToolResult> GetCaptureAsync(
+        [Description("The opaque artifact ID returned by search_captures.")] string artifactId,
+        [Description("Whether to include a downscaled PNG preview. Defaults to true.")] bool includeImage = true,
+        [Description("UTF-16 offset at which to start the paged OCR text. Defaults to zero.")] int textOffset = 0,
+        [Description("Maximum UTF-16 code units of OCR text to return, from 1 through 32000. Defaults to 16000.")] int textLimit = 16000,
+        CancellationToken cancellationToken = default)
+    {
+        if (textOffset < 0 || textLimit is < 1 or > 32000)
+        {
+            return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "invalid_text_range" }] };
+        }
+
+        try
+        {
+            var artifact = await captureCatalogService.GetAsync(artifactId, cancellationToken).ConfigureAwait(false);
+            if (artifact is null)
+            {
+                return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "artifact_not_found" }] };
+            }
+
+            if (!string.Equals(artifact.Availability, "Available", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(artifact.LocalPath) || !File.Exists(artifact.LocalPath))
+            {
+                return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "artifact_missing" }] };
+            }
+
+            var snapshot = ReadVerifiedSnapshot(artifact.LocalPath, artifact.Sha256);
+            if (snapshot.Status != ArtifactSnapshotStatus.Available)
+            {
+                return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = SnapshotError(snapshot.Status) }] };
+            }
+
+            var page = GetTextPage(artifact.OcrText, textOffset, textLimit);
+            if (page is null)
+            {
+                return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "invalid_text_range" }] };
+            }
+
+            var response = new McpCaptureGetResponse(1, ToMcpArtifact(artifact), page.Text, page.TotalLength, page.NextOffset, page.NextOffset is not null);
+            var blocks = new List<ContentBlock> { new TextContentBlock { Text = System.Text.Json.JsonSerializer.Serialize(response) } };
+            if (includeImage)
+            {
+                blocks.Add(ImageContentBlock.FromBytes(CapturePreviewImage.CreateDownscaledPng(snapshot.Bytes!), "image/png"));
+            }
+
+            return new CallToolResult { Content = blocks, StructuredContent = System.Text.Json.JsonSerializer.SerializeToElement(response) };
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "catalog_unavailable" }] };
+        }
+    }
     [McpServerTool(
         Title = "List displays",
         ReadOnly = true,
@@ -133,4 +217,98 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
     {
         return region is null ? null : new CaptureRegion(region.X, region.Y, region.Width, region.Height);
     }
+
+    private static ArtifactSnapshot ReadVerifiedSnapshot(string path, string expectedSha256)
+    {
+        try
+        {
+            var file = new FileInfo(path);
+            if (!file.Exists)
+            {
+                return new ArtifactSnapshot(ArtifactSnapshotStatus.Missing, null);
+            }
+
+            if (file.Length > 100 * 1024 * 1024)
+            {
+                return new ArtifactSnapshot(ArtifactSnapshotStatus.TooLarge, null);
+            }
+
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var snapshot = new MemoryStream();
+            stream.CopyTo(snapshot);
+            var bytes = snapshot.ToArray();
+            var sha256 = Convert.ToHexStringLower(SHA256.HashData(bytes));
+            return string.Equals(sha256, expectedSha256, StringComparison.OrdinalIgnoreCase)
+                ? new ArtifactSnapshot(ArtifactSnapshotStatus.Available, bytes)
+                : new ArtifactSnapshot(ArtifactSnapshotStatus.Changed, null);
+        }
+        catch (FileNotFoundException)
+        {
+            return new ArtifactSnapshot(ArtifactSnapshotStatus.Missing, null);
+        }
+        catch (IOException)
+        {
+            return new ArtifactSnapshot(ArtifactSnapshotStatus.Unreadable, null);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new ArtifactSnapshot(ArtifactSnapshotStatus.Unreadable, null);
+        }
+    }
+
+    private static string SnapshotError(ArtifactSnapshotStatus status) => status switch
+    {
+        ArtifactSnapshotStatus.Missing => "artifact_missing",
+        ArtifactSnapshotStatus.Changed => "artifact_changed",
+        ArtifactSnapshotStatus.Unreadable => "artifact_unreadable",
+        ArtifactSnapshotStatus.TooLarge => "artifact_too_large",
+        _ => "catalog_unavailable",
+    };
+
+    private static McpCatalogArtifact ToMcpArtifact(CaptureCatalogArtifact artifact) => new(
+        artifact.ArtifactId,
+        artifact.FileName,
+        artifact.Sha256,
+        artifact.MimeType,
+        artifact.ByteLength,
+        artifact.PixelWidth,
+        artifact.PixelHeight,
+        artifact.CapturedAtUtc,
+        artifact.Availability,
+        artifact.OcrStatus,
+        artifact.ProvenanceJson,
+        artifact.LocalPath);
+
+    private static TextPage? GetTextPage(string? text, int offset, int limit)
+    {
+        if (text is null)
+        {
+            return offset == 0 ? new TextPage(null, 0, null) : null;
+        }
+
+        if (offset > text.Length)
+        {
+            return null;
+        }
+
+        var start = offset;
+        if (start > 0 && start < text.Length && char.IsHighSurrogate(text[start - 1]) && char.IsLowSurrogate(text[start]))
+        {
+            start++;
+        }
+
+        var end = Math.Min(text.Length, start + limit);
+        if (end < text.Length && end > start && char.IsHighSurrogate(text[end - 1]) && char.IsLowSurrogate(text[end]))
+        {
+            end++;
+        }
+
+        return new TextPage(text[start..end], text.Length, end < text.Length ? end : null);
+    }
+
+    private sealed record ArtifactSnapshot(ArtifactSnapshotStatus Status, byte[]? Bytes);
+
+    private sealed record TextPage(string? Text, int TotalLength, int? NextOffset);
+
+    private enum ArtifactSnapshotStatus { Available, Missing, Changed, Unreadable, TooLarge }
 }

@@ -16,13 +16,17 @@ public sealed class DirectCaptureService : IDirectCaptureService
     private readonly IOcrEngineService _ocrEngineService;
     private readonly string _screenshotsDirectory;
     private readonly TimeProvider _timeProvider;
+    private readonly ICaptureCatalogService? _captureCatalogService;
+    private readonly ICaptureRegistrationService? _captureRegistrationService;
 
     public DirectCaptureService(
         IDisplayCaptureEngine displayCaptureEngine,
         IOcrEngineService ocrEngineService,
         string? screenshotsDirectory = null,
-        TimeProvider? timeProvider = null)
-        : this(displayCaptureEngine, new WindowDiscoveryService(), ocrEngineService, screenshotsDirectory, timeProvider)
+        TimeProvider? timeProvider = null,
+        ICaptureCatalogService? captureCatalogService = null,
+        ICaptureRegistrationService? captureRegistrationService = null)
+        : this(displayCaptureEngine, new WindowDiscoveryService(), ocrEngineService, screenshotsDirectory, timeProvider, captureCatalogService, captureRegistrationService)
     {
     }
 
@@ -31,19 +35,20 @@ public sealed class DirectCaptureService : IDirectCaptureService
         IWindowDiscoveryService windowDiscoveryService,
         IOcrEngineService ocrEngineService,
         string? screenshotsDirectory = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ICaptureCatalogService? captureCatalogService = null,
+        ICaptureRegistrationService? captureRegistrationService = null)
     {
         ArgumentNullException.ThrowIfNull(displayCaptureEngine);
         ArgumentNullException.ThrowIfNull(ocrEngineService);
         ArgumentNullException.ThrowIfNull(windowDiscoveryService);
         _displayCaptureEngine = displayCaptureEngine;
         _windowDiscoveryService = windowDiscoveryService;
-        _screenshotsDirectory = screenshotsDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Pointframe",
-            "Screenshots");
+        _screenshotsDirectory = screenshotsDirectory ?? PointframePaths.DefaultStandaloneScreenshotDirectory;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _ocrEngineService = ocrEngineService;
+        _captureCatalogService = captureCatalogService;
+        _captureRegistrationService = captureRegistrationService;
     }
 
     public string ListDisplays()
@@ -125,6 +130,7 @@ public sealed class DirectCaptureService : IDirectCaptureService
             captureBoundsPixels,
             capturedMonitor.Display.BoundsPixels);
         await WriteMetadataSidecarAsync(metadata, cancellationToken);
+        await TryRegisterAsync(metadata, "direct_monitor");
         var artifact = new ArtifactDescriptor(SchemaVersion, artifactId, metadata);
         return (artifact, recognizedText);
     }
@@ -219,6 +225,7 @@ public sealed class DirectCaptureService : IDirectCaptureService
             bounds,
             containingDisplay.BoundsPixels);
         await WriteMetadataSidecarAsync(metadata, cancellationToken);
+        await TryRegisterAsync(metadata, "direct_window");
         var artifact = new ArtifactDescriptor(SchemaVersion, artifactId, metadata);
         return (artifact, recognizedText);
     }
@@ -296,6 +303,36 @@ public sealed class DirectCaptureService : IDirectCaptureService
             {
                 File.Delete(temporaryPath);
             }
+        }
+    }
+
+    private async Task TryRegisterAsync(ImageArtifactMetadata metadata, string source)
+    {
+        if (_captureRegistrationService is null && _captureCatalogService is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var request = new CaptureRegistrationRequest(
+                metadata.Path,
+                metadata.ArtifactId,
+                source,
+                metadata.CreatedUtc,
+                "capture");
+            if (_captureRegistrationService is not null)
+            {
+                await _captureRegistrationService.RegisterOrQueueAsync(request).ConfigureAwait(false);
+            }
+            else
+            {
+                await _captureCatalogService!.RegisterAsync(request).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // The saved artifact is still successful when the local catalog is unavailable.
         }
     }
 }

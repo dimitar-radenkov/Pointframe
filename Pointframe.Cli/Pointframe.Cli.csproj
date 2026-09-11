@@ -10,6 +10,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Pointframe.Engine\Pointframe.Engine.csproj" />
+    <ProjectReference Include="..\Pointframe.Data\Pointframe.Data.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
 </Project>

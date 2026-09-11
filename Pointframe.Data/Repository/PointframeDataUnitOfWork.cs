@@ -7,6 +7,7 @@ internal sealed class PointframeDataUnitOfWork : UnitOfWork, IPointframeDataUnit
 {
     private readonly PointframeDataContext _context;
     private ICaptureTextCacheRepository? _captureTextCache;
+    private ICaptureCatalogRepository? _captureCatalog;
 
     public PointframeDataUnitOfWork(PointframeDataContext context)
         : base(context)
@@ -16,4 +17,7 @@ internal sealed class PointframeDataUnitOfWork : UnitOfWork, IPointframeDataUnit
 
     public ICaptureTextCacheRepository CaptureTextCache =>
         _captureTextCache ??= new CaptureTextCacheRepository(_context);
+
+    public ICaptureCatalogRepository CaptureCatalog =>
+        _captureCatalog ??= new CaptureCatalogRepository(_context);
 }

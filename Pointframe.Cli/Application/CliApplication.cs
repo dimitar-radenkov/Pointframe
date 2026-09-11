@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Pointframe.Data;
 using Pointframe.Engine;
 
 namespace Pointframe.Cli;
@@ -51,7 +53,18 @@ internal sealed class CliApplication
                 return 0;
             }
 
-            var directCaptureService = new DirectCaptureService(new DisplayCaptureEngine(), ocrEngineService: new WindowsOcrEngineService());
+            Directory.CreateDirectory(PointframePaths.LocalAppDataDirectory);
+            using var serviceProvider = new ServiceCollection()
+                .AddPointframeDataServices($"Data Source={PointframePaths.PointframeDatabasePath}")
+                .AddSingleton(TimeProvider.System)
+                .AddSingleton<ICaptureCatalogService, CaptureCatalogService>()
+                .AddSingleton<ICaptureRegistrationService, CaptureRegistrationService>()
+                .BuildServiceProvider();
+            var directCaptureService = new DirectCaptureService(
+                new DisplayCaptureEngine(),
+                ocrEngineService: new WindowsOcrEngineService(),
+                captureCatalogService: serviceProvider.GetRequiredService<ICaptureCatalogService>(),
+                captureRegistrationService: serviceProvider.GetRequiredService<ICaptureRegistrationService>());
             using var directRecordingService = new DirectRecordingService(new DisplayCaptureEngine(), new FfmpegDirectVideoWriterFactory());
             return await new CliApplication(directCaptureService, directRecordingService, standardOutput, standardError).RunCommandAsync(command, cancellationToken);
         }

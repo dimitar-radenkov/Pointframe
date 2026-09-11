@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Pointframe.Automation;
 using Pointframe.Data.Abstractions;
+using Pointframe.Engine;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 using Pointframe.ViewModels;
@@ -29,6 +30,10 @@ public partial class App : Application
     private ICaptureLaunchService _captureLaunch = null!;
     private IActivationTelemetryService _activationTelemetry = null!;
     private IArtifactMetadataService _artifactMetadataService = null!;
+    private ICaptureCatalogService _captureCatalogService = null!;
+    private ICaptureImportService _captureImportService = null!;
+    private ICaptureRegistrationService _captureRegistrationService = null!;
+    private ICaptureIndexWorker _captureIndexWorker = null!;
     private readonly List<IEventSubscription> _eventSubscriptions = [];
     private ITelemetryService _telemetry = null!;
     private ITranscriptionQueue _transcriptionQueue = null!;
@@ -90,6 +95,10 @@ public partial class App : Application
         _telemetry = _host.Services.GetRequiredService<ITelemetryService>();
         _activationTelemetry = _host.Services.GetRequiredService<IActivationTelemetryService>();
         _artifactMetadataService = _host.Services.GetRequiredService<IArtifactMetadataService>();
+        _captureCatalogService = _host.Services.GetRequiredService<ICaptureCatalogService>();
+        _captureImportService = _host.Services.GetRequiredService<ICaptureImportService>();
+        _captureRegistrationService = _host.Services.GetRequiredService<ICaptureRegistrationService>();
+        _captureIndexWorker = _host.Services.GetRequiredService<ICaptureIndexWorker>();
         _transcriptionQueue = _host.Services.GetRequiredService<ITranscriptionQueue>();
         _transcriptionQueue.Completed += HandleTranscriptionCompleted;
         _transcriptionQueue.ActivityChanged += HandleTranscriptionActivityChanged;
@@ -115,6 +124,7 @@ public partial class App : Application
             _eventSubscriptions.Add(eventAggregator.Subscribe<UpdateAvailableMessage>(HandleUpdateAvailable));
             _eventSubscriptions.Add(eventAggregator.Subscribe<RecordingCompletedMessage>(HandleRecordingCompleted));
             _eventSubscriptions.Add(eventAggregator.Subscribe<CaptureCompletedMessage>(HandleCaptureCompleted));
+            _eventSubscriptions.Add(eventAggregator.Subscribe<SavedImageMessage>(HandleSavedImage));
             _eventSubscriptions.Add(eventAggregator.Subscribe<OpenImageRequestedMessage>(HandleOpenImageRequested));
             _eventSubscriptions.Add(eventAggregator.Subscribe<TrimRecordingRequestedMessage>(HandleTrimRecordingRequested));
             _eventSubscriptions.Add(eventAggregator.Subscribe<ShowSettingsWindowRequestedMessage>(HandleShowSettingsWindowRequested));
@@ -123,6 +133,7 @@ public partial class App : Application
         }
 
         _logger.LogInformation("Pointframe starting up");
+        StartCaptureReconciliation();
 
         EnsureInstallId();
 
@@ -575,6 +586,76 @@ public partial class App : Application
         }
 
         _activationTelemetry.TrackCaptureCompleted(message.CaptureAction);
+
+        if (!string.IsNullOrWhiteSpace(message.OutputPath))
+        {
+            await RegisterSavedImageAsync(message.OutputPath, message.CaptureAction);
+        }
+    }
+
+    private ValueTask HandleSavedImage(SavedImageMessage message) =>
+        RegisterSavedImageAsync(message.OutputPath, message.Source);
+
+    private async ValueTask RegisterSavedImageAsync(string outputPath, string source)
+    {
+        var catalogSource = source switch
+        {
+            "save" => "wpf_save",
+            "save_as" => "wpf_save_as",
+            "auto_save" => "wpf_auto_save",
+            "beautifier" => "wpf_beautifier",
+            _ => null,
+        };
+        if (catalogSource is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _captureRegistrationService.RegisterOrQueueAsync(new CaptureRegistrationRequest(
+                outputPath,
+                ArtifactId: null,
+                catalogSource,
+                TimeProvider.System.GetUtcNow(),
+                "capture"));
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Saved screenshot could not be registered in the capture catalog");
+        }
+    }
+
+    private void StartCaptureReconciliation()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var stopping = _host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping;
+                var reconcile = ReconcileUntilStoppedAsync(stopping);
+                var index = _captureIndexWorker.RunUntilCancelledAsync(stopping);
+                await Task.WhenAll(reconcile, index).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Application shutdown cancels maintenance work.
+            }
+            catch (Exception exception)
+            {
+                _logger?.LogWarning(exception, "Capture library reconciliation could not start");
+            }
+        });
+    }
+
+    private async Task ReconcileUntilStoppedAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await _captureRegistrationService.ReplayPendingAsync(cancellationToken).ConfigureAwait(false);
+            await _captureImportService.RequestReconciliationAsync(cancellationToken).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private void EnsureInstallId()

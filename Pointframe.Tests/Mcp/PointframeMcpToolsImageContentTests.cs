@@ -91,7 +91,7 @@ public sealed class PointframeMcpToolsImageContentTests : IDisposable
             new Mock<IOcrEngineService>().Object,
             _screenshotsDirectory);
 
-        return new PointframeMcpTools(captureService, new Mock<IDirectRecordingMcpService>().Object);
+        return new PointframeMcpTools(captureService, new Mock<IDirectRecordingMcpService>().Object, new Mock<ICaptureCatalogService>().Object);
     }
 
     public void Dispose()

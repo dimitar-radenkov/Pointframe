@@ -20,6 +20,7 @@ public static class DependencyInjection
 
         services.AddScoped<IPointframeDataUnitOfWork, PointframeDataUnitOfWork>();
         services.AddScoped<ICaptureTextCacheRepository, CaptureTextCacheRepository>();
+        services.AddScoped<ICaptureCatalogRepository, CaptureCatalogRepository>();
         services.AddScoped<IMigrationService, MigrationService>();
         return services;
     }

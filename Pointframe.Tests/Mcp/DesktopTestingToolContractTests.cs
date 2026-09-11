@@ -20,6 +20,8 @@ public sealed class DesktopTestingToolContractTests
         // Mirrors the exact tool set asserted against the live server by packaging/test-mcp-stdio.ps1.
         string[] expected =
         [
+            "search_captures",
+            "get_capture",
             "list_displays",
             "list_windows",
             "capture_window",

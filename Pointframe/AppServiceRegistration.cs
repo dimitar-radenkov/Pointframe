@@ -25,6 +25,12 @@ internal static class AppServiceRegistration
 
         services.AddSingleton(automationLaunchOptions ?? AutomationLaunchOptions.Parse([]));
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<ICaptureCatalogService, CaptureCatalogService>();
+        services.AddSingleton<ICaptureLibrarySources, WpfCaptureLibrarySources>();
+        services.AddSingleton<ICaptureImportService, CaptureImportService>();
+        services.AddSingleton<ICaptureRegistrationService, CaptureRegistrationService>();
+        services.AddSingleton<ICaptureIndexWorker, CaptureIndexWorker>();
+        services.AddSingleton<IOcrEngineService, WindowsOcrEngineService>();
         services.AddSingleton<IArtifactMetadataService, ArtifactMetadataService>();
         services.AddSingleton<ITelemetryService, TelemetryService>();
         services.AddSingleton<IActivationTelemetryService, ActivationTelemetryService>();

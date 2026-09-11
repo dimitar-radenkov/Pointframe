@@ -1,5 +1,6 @@
 using System.Windows;
 using Pointframe.Services;
+using Pointframe.Services.Messaging;
 
 namespace Pointframe.ViewModels;
 
@@ -11,6 +12,7 @@ public partial class BeautifierViewModel : ObservableObject
     private readonly ITelemetryService _telemetry;
     private readonly BeautifierRenderService _renderService;
     private readonly ILogger<BeautifierViewModel> _logger;
+    private readonly IEventAggregator _eventAggregator;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(BackgroundBrush))]
@@ -58,6 +60,7 @@ public partial class BeautifierViewModel : ObservableObject
         IUserSettingsService settings,
         ITelemetryService telemetry,
         BeautifierRenderService renderService,
+        IEventAggregator eventAggregator,
         ILogger<BeautifierViewModel> logger)
     {
         _clipboardService = clipboardService;
@@ -65,6 +68,7 @@ public partial class BeautifierViewModel : ObservableObject
         _settings = settings;
         _telemetry = telemetry;
         _renderService = renderService;
+        _eventAggregator = eventAggregator;
         _logger = logger;
     }
 
@@ -87,10 +91,14 @@ public partial class BeautifierViewModel : ObservableObject
         var saveDirectory = _settings.Current.ScreenshotSavePath;
         _fileSystemService.CreateDirectory(saveDirectory);
         var savePath = _fileSystemService.CombinePath(saveDirectory, $"Beautified_{DateTime.Now:yyyyMMdd_HHmmss}.png");
-        using var outputStream = _fileSystemService.OpenWrite(savePath);
-        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        encoder.Save(outputStream);
+        using (var outputStream = _fileSystemService.OpenWrite(savePath))
+        {
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            encoder.Save(outputStream);
+        }
+
+        _ = _eventAggregator.Publish(new SavedImageMessage(savePath, "beautifier"));
 
         _telemetry.TrackEvent(TelemetryEvents.ScreenshotBeautified);
         _logger.LogInformation("Beautified screenshot saved: {Path}", savePath);

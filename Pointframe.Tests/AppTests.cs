@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Pointframe.Engine;
 using Pointframe.Services;
 using Pointframe.Services.Messaging;
 using Pointframe.Tests.Services.Handlers;
@@ -29,6 +30,7 @@ public sealed class AppTests
         Assert.IsType<MessageBoxService>(provider.GetRequiredService<IMessageBoxService>());
         Assert.IsType<TrayIconManager>(provider.GetRequiredService<ITrayIconManager>());
         Assert.NotNull(provider.GetRequiredService<Func<IScreenRecordingService, string, RecordingHudViewModel>>());
+        Assert.IsType<CaptureIndexWorker>(provider.GetRequiredService<ICaptureIndexWorker>());
     }
 
     [Fact]
