@@ -113,7 +113,7 @@ jobs:
 
       - name: Upload consented desktop evidence
         if: ${{ always() && vars.POINTFRAME_UPLOAD_DESKTOP_EVIDENCE == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointframe-desktop-evidence
           path: ${{ inputs.output_directory }}
