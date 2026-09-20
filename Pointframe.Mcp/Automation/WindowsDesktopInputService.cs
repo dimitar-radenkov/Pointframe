@@ -70,6 +70,11 @@ public interface IDesktopInputNativeAdapter
 
     bool IsWindowVisible(nint handle);
 
+    bool IsWindowOwnedByProcess(nint handle, int processId)
+    {
+        return true;
+    }
+
     bool IsPointVisible(PixelBounds bounds, int x, int y);
 
     bool SendClick(int x, int y, bool rightButton, int count);
@@ -386,6 +391,15 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
                 return DesktopInputPreflightResult.Invalid("WindowUnavailable", "The target window is unavailable or hidden.");
             }
 
+            // The window ref's process segment is minted from the session's own process and never read
+            // back off the handle, so a caller can keep a valid processRef while substituting any other
+            // live HWND's hex suffix. Cross-check the handle's actual owning process id -- not just the
+            // caller-supplied ref -- before anything is allowed to act on it.
+            if (!_native.IsWindowOwnedByProcess(target.Window.NativeHandle, expectedProcess.ProcessId))
+            {
+                return DesktopInputPreflightResult.Invalid("WindowOwnerMismatch", "The target window handle does not belong to the approved process.");
+            }
+
             if (requireForeground && _native.GetForegroundWindow() != target.Window.NativeHandle)
             {
                 return DesktopInputPreflightResult.Invalid("FocusRequired", "The target window is not foreground.");
@@ -438,6 +452,12 @@ internal sealed class WindowsDesktopInputNativeAdapter : IDesktopInputNativeAdap
     public bool IsWindowValid(nint handle) => handle != 0 && WindowsDesktopNativeMethods.IsWindow(handle);
 
     public bool IsWindowVisible(nint handle) => WindowsDesktopNativeMethods.IsWindowVisible(handle);
+
+    public bool IsWindowOwnedByProcess(nint handle, int processId)
+    {
+        return WindowsDesktopNativeMethods.GetWindowThreadProcessId(handle, out var owningProcessId) != 0
+            && owningProcessId == (uint)processId;
+    }
 
     public bool IsPointVisible(PixelBounds bounds, int x, int y)
     {

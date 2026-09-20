@@ -14,44 +14,70 @@ public sealed class WindowsOcrEngineService : IOcrEngineService
     // hanging every caller behind it.
     public static readonly TimeSpan RecognitionTimeout = TimeSpan.FromSeconds(30);
 
+    // Task.Run cannot terminate a wedged Windows OCR call, so a stuck recognition keeps running (and
+    // keeps its SoftwareBitmap alive) after RecognitionTimeout gives up waiting on it. Gating entry
+    // here means at most one recognition -- wedged or not -- is ever in flight: a stuck call blocks
+    // new work behind this semaphore instead of letting abandoned tasks and native bitmaps pile up
+    // without bound.
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
     public async Task<OcrRecognitionResult> RecognizeDetailedAsync(Bitmap bitmap, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(bitmap);
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (!await _gate.WaitAsync(RecognitionTimeout, cancellationToken).ConfigureAwait(false))
+        {
+            // A previous call is still wedged holding the gate; report failure without starting
+            // another Task.Run on top of it.
+            return new OcrRecognitionResult(null, OcrRecognitionStatus.Failed);
+        }
+
         // Converted on the calling thread, because the caller's bitmap must not be touched after this
         // method returns. The recognition task then owns the copy and disposes it, which matters on
         // the timeout path: this method returns while that task is still running, so the outer scope
         // must not dispose anything the task is still reading.
-        var softwareBitmap = ConvertToSoftwareBitmap(bitmap);
-        var recognition = Task.Run(
-            async () =>
-            {
-                try
-                {
-                    var engine = OcrEngine.TryCreateFromUserProfileLanguages();
-                    if (engine is null)
-                    {
-                        return OcrRecognitionResult.Unavailable;
-                    }
+        SoftwareBitmap softwareBitmap;
+        try
+        {
+            softwareBitmap = ConvertToSoftwareBitmap(bitmap);
+        }
+        catch
+        {
+            _gate.Release();
+            throw;
+        }
 
-                    var result = await engine.RecognizeAsync(softwareBitmap).AsTask(cancellationToken).ConfigureAwait(false);
-                    return result.Lines.Count == 0
-                        ? OcrRecognitionResult.NoText
-                        : OcrRecognitionResult.Recognized(string.Join(Environment.NewLine, result.Lines.Select(line => line.Text)));
-                }
-                finally
+        // Not given cancellationToken: this task must always run to completion so its finally block
+        // -- which disposes the bitmap and releases the gate -- always executes, even if the caller's
+        // token is already cancelled by the time Task.Run is scheduled.
+        var recognition = Task.Run(async () =>
+        {
+            try
+            {
+                var engine = OcrEngine.TryCreateFromUserProfileLanguages();
+                if (engine is null)
                 {
-                    softwareBitmap.Dispose();
+                    return OcrRecognitionResult.Unavailable;
                 }
-            },
-            cancellationToken);
+
+                var result = await engine.RecognizeAsync(softwareBitmap).AsTask(cancellationToken).ConfigureAwait(false);
+                return result.Lines.Count == 0
+                    ? OcrRecognitionResult.NoText
+                    : OcrRecognitionResult.Recognized(string.Join(Environment.NewLine, result.Lines.Select(line => line.Text)));
+            }
+            finally
+            {
+                softwareBitmap.Dispose();
+                _gate.Release();
+            }
+        });
 
         var completed = await Task.WhenAny(recognition, Task.Delay(RecognitionTimeout, cancellationToken)).ConfigureAwait(false);
         if (!ReferenceEquals(completed, recognition))
         {
-            // The task owns and disposes the software bitmap, so abandoning it here leaks nothing.
-            // What matters is that the caller is released rather than blocked forever.
+            // The abandoned task still owns the gate and releases it whenever it eventually finishes
+            // (or never does, if truly wedged) -- not here.
             return new OcrRecognitionResult(null, OcrRecognitionStatus.Failed);
         }
 

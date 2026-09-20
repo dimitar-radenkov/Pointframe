@@ -115,7 +115,7 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
         // so a caller can hand it straight back for focusing.
         try
         {
-            var handle = window.Properties.NativeWindowHandle.ValueOrDefault;
+            var handle = new IntPtr(window.Properties.NativeWindowHandle.ValueOrDefault);
             if (handle != nint.Zero)
             {
                 return $"window-{processRef}-{handle.ToInt64():X}";

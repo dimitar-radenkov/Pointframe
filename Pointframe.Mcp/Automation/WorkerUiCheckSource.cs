@@ -32,10 +32,18 @@ public sealed class WorkerUiCheckSource(
         if (condition is DesktopUiCheckCondition.ProcessExited exited)
         {
             var state = await processes.GetStateAsync(process, cancellationToken).ConfigureAwait(false);
-            var hasExited = state is DesktopTargetState.Exited or DesktopTargetState.Unavailable;
+
+            // Unavailable means the retained process identity could not be verified (for example its
+            // path or hash no longer matches) -- it is not proof the process actually exited, so it
+            // must read as inconclusive rather than as a passing "exited" result.
+            if (state == DesktopTargetState.Unavailable)
+            {
+                return new DesktopUiCheckEvaluation(StateAvailable: false, Matches: false, MatchCount: 0, "ProcessStateUnavailable");
+            }
+
             return new DesktopUiCheckEvaluation(
                 StateAvailable: true,
-                Matches: hasExited && string.Equals(exited.ProcessRef, process.ProcessRef, StringComparison.Ordinal),
+                Matches: state == DesktopTargetState.Exited && string.Equals(exited.ProcessRef, process.ProcessRef, StringComparison.Ordinal),
                 MatchCount: 1);
         }
 

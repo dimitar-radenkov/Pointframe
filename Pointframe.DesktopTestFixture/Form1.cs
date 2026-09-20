@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 
 namespace Pointframe.DesktopTestFixture;
 
@@ -251,7 +252,7 @@ public partial class Form1 : Form
         var textBoxScreen = _textBox.RectangleToScreen(_textBox.ClientRectangle);
         var builder = new StringBuilder();
         builder.Append("{\n");
-        Append(builder, "lastEvent", $"\"{_lastEvent}\"");
+        Append(builder, "lastEvent", SerializeString(_lastEvent));
         Append(builder, "clickCount", _clickCount);
         Append(builder, "lastClickPoint", Serialize(_lastClickPoint));
         Append(builder, "clickTargetSize", Serialize(new Point(_clickTarget.Width, _clickTarget.Height)));
@@ -275,7 +276,7 @@ public partial class Form1 : Form
         // Reported so text entry can be verified from the application's own state rather than by
         // reading pixels back with OCR.
         Append(builder, "textBoxScreen", Serialize(textBoxScreen));
-        Append(builder, "textBoxText", $"\"{_textBox.Text.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"");
+        Append(builder, "textBoxText", SerializeString(_textBox.Text));
         Append(builder, "windowScreen", Serialize(Bounds));
         Append(builder, "windowHandle", Serialize(Handle));
         Append(builder, "cursorScreen", Serialize(Cursor.Position), last: true);
@@ -308,6 +309,8 @@ public partial class Form1 : Form
         builder.Append("  \"").Append(name).Append("\": ").Append(value);
         builder.Append(last ? "\n" : ",\n");
     }
+
+    private static string SerializeString(string value) => JsonSerializer.Serialize(value);
 
     private static string Serialize(Point point) =>
         string.Create(CultureInfo.InvariantCulture, $"\"{point.X},{point.Y}\"");

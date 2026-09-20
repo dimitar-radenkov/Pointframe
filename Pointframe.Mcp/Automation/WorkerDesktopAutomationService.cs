@@ -135,13 +135,41 @@ public sealed class WorkerDesktopAutomationService :
         CancellationToken cancellationToken)
     {
         await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
-        return await _host.DispatchAsync(
-            new DesktopAutomationWorkerRequest(
-                DesktopAutomationWorkerProtocol.Version,
-                Guid.NewGuid().ToString("N"),
-                operation,
-                DesktopAutomationWorkerProtocol.SerializePayload(payload)),
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await _host.DispatchAsync(
+                new DesktopAutomationWorkerRequest(
+                    DesktopAutomationWorkerProtocol.Version,
+                    Guid.NewGuid().ToString("N"),
+                    operation,
+                    DesktopAutomationWorkerProtocol.SerializePayload(payload)),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or InvalidDataException or IOException)
+        {
+            // The request may already have reached the worker, which keeps processing it after this
+            // side gives up waiting (a timeout only cancels the parent-side pipe read, it does not
+            // reach the worker), or the pipe just returned something other than this request's own
+            // response. Either way the connection can no longer be trusted to stay aligned with future
+            // request/response pairs, so abandon it outright rather than reuse a pipe that may still be
+            // desynchronized; the next call starts a fresh worker and pipe.
+            await AbandonWorkerAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private async Task AbandonWorkerAsync()
+    {
+        await _startGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await _host.AbandonAsync().ConfigureAwait(false);
+            _started = false;
+        }
+        finally
+        {
+            _startGate.Release();
+        }
     }
 
     private async Task EnsureStartedAsync(CancellationToken cancellationToken)

@@ -273,7 +273,7 @@ internal sealed class DesktopTestingMcpTools(
         try
         {
             condition = BuildCondition(
-                new McpUiCheckRequest(kind, automationId, role, name, windowRef, expected));
+                new McpUiCheckRequest(kind, automationId, role, name, windowRef, expected, session.Target.Process.ProcessRef));
         }
         catch (ArgumentException exception)
         {
@@ -326,6 +326,13 @@ internal sealed class DesktopTestingMcpTools(
         string Expected() => request.Expected
             ?? throw new ArgumentException($"The '{request.Kind}' condition requires an expected value.", nameof(request));
 
+        bool ExpectedBoolean() => request.Expected switch
+        {
+            null => true,
+            _ when bool.TryParse(request.Expected, out var value) => value,
+            _ => throw new ArgumentException($"The '{request.Kind}' condition requires expected to be 'true' or 'false'.", nameof(request)),
+        };
+
         string Window() => string.IsNullOrWhiteSpace(request.WindowRef)
             ? throw new ArgumentException($"The '{request.Kind}' condition requires a window reference.", nameof(request))
             : request.WindowRef;
@@ -334,15 +341,13 @@ internal sealed class DesktopTestingMcpTools(
         {
             "exists" => new DesktopUiCheckCondition.Exists(Locator()),
             "absent" => new DesktopUiCheckCondition.Absent(Locator()),
-            "enabled" => new DesktopUiCheckCondition.Enabled(
-                Locator(),
-                !string.Equals(request.Expected, "false", StringComparison.OrdinalIgnoreCase)),
+            "enabled" => new DesktopUiCheckCondition.Enabled(Locator(), ExpectedBoolean()),
             "toggleequals" => new DesktopUiCheckCondition.ToggleEquals(Locator(), Expected()),
             "selectionequals" => new DesktopUiCheckCondition.SelectionEquals(Locator(), Expected()),
             "textequals" => new DesktopUiCheckCondition.TextEquals(Locator(), Expected()),
             "windowexists" => new DesktopUiCheckCondition.WindowExists(Window()),
             "windowabsent" => new DesktopUiCheckCondition.WindowAbsent(Window()),
-            "processexited" => new DesktopUiCheckCondition.ProcessExited(request.WindowRef ?? string.Empty),
+            "processexited" => new DesktopUiCheckCondition.ProcessExited(request.ProcessRef ?? string.Empty),
             _ => throw new ArgumentException($"Unknown condition kind '{request.Kind}'.", nameof(request)),
         };
     }

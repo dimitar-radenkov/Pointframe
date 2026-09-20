@@ -70,4 +70,5 @@ public sealed record McpUiCheckRequest(
     string? Role = null,
     string? Name = null,
     string? WindowRef = null,
-    string? Expected = null);
+    string? Expected = null,
+    string? ProcessRef = null);

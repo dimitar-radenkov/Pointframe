@@ -918,7 +918,7 @@ reboot did not help: a `Pointframe.Mcp.exe` was already running seconds after lo
 ### Root cause
 
 `.vscode/mcp.json` registers `pointframe` as an MCP server pointing at
-`Pointframe.Mcpin\Debug\...\Pointframe.Mcp.exe`, so VS Code launches and keeps that server alive
+`Pointframe.Mcp\bin\Debug\...\Pointframe.Mcp.exe`, so VS Code launches and keeps that server alive
 for the editor session. It holds the Debug build output open, and a second live MCP server instance
 interferes with the desktop driver the tests are exercising. Nothing in the test harness creates or
 owns that process, so the usual "kill leftover processes" cleanup never touches it.
