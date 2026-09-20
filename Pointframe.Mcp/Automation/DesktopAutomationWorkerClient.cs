@@ -70,7 +70,9 @@ public sealed class DesktopAutomationWorkerClient : IAsyncDisposable
             timeoutSource.CancelAfter(timeout.Value);
         }
 
+        Pointframe.Engine.Automation.DesktopTrace.Write($"client gate wait op={operation} req={requestId}");
         await _gate.WaitAsync(timeoutSource.Token).ConfigureAwait(false);
+        Pointframe.Engine.Automation.DesktopTrace.Write($"client gate acquired op={operation} req={requestId}");
         try
         {
             await WriteAsync(new DesktopAutomationWorkerRequest(
@@ -81,7 +83,9 @@ public sealed class DesktopAutomationWorkerClient : IAsyncDisposable
 
             while (true)
             {
+                Pointframe.Engine.Automation.DesktopTrace.Write($"client read begin op={operation} req={requestId}");
                 var response = await ReadAsync<DesktopAutomationWorkerResponse>(timeoutSource.Token).ConfigureAwait(false);
+                Pointframe.Engine.Automation.DesktopTrace.Write($"client read end op={operation} got={response.RequestId}");
                 if (response.ProtocolVersion != DesktopAutomationWorkerProtocol.Version
                     || !string.Equals(response.RequestId, requestId, StringComparison.Ordinal))
                 {
@@ -99,6 +103,7 @@ public sealed class DesktopAutomationWorkerClient : IAsyncDisposable
         finally
         {
             _gate.Release();
+            Pointframe.Engine.Automation.DesktopTrace.Write($"client gate released op={operation} req={requestId}");
         }
     }
 

@@ -62,7 +62,7 @@ public sealed class DesktopGestureTests
         public bool SendKeys(IReadOnlyList<ushort> virtualKeys) => true;
         public bool SendDrag(IReadOnlyList<PixelBounds> points, int durationMilliseconds) => true;
         public bool SendUnicodeText(string text) => true;
-        public bool SendScroll(int detents) => true;
+        public bool SendScroll(int? x, int? y, int detents) => true;
         public void ReleaseOwnedInput() { }
     }
 }

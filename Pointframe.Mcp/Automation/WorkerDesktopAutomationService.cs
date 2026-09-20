@@ -106,6 +106,23 @@ public sealed class WorkerDesktopAutomationService :
             : DesktopInputPreflightResult.Invalid(response.Code, response.Code);
     }
 
+    public string? InspectUi(Pointframe.Engine.Automation.Models.DesktopObservationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // Inspection walks a live UI tree, so it needs a longer budget than a single input event; the
+        // worker itself caps the walk, and this only stops a wedged worker from blocking the caller.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var response = DispatchAsync(
+                DesktopAutomationWorkerProtocol.Operations.Inspect,
+                request,
+                timeout.Token)
+            .GetAwaiter()
+            .GetResult();
+        Pointframe.Engine.Automation.DesktopTrace.Write($"InspectUi succeeded={response.Succeeded} code={response.Code}");
+        return response.Succeeded ? response.Payload : null;
+    }
+
     private bool DispatchUi(string operation, object payload)
     {
         var response = DispatchAsync(operation, payload, CancellationToken.None).GetAwaiter().GetResult();

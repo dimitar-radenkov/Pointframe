@@ -3,7 +3,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Pointframe.Data;
 using Pointframe.Engine;
-using Pointframe.Engine.Automation.Models;
 using Pointframe.Engine.Automation.Services;
 using Pointframe.Mcp;
 using Pointframe.Mcp.Automation;
@@ -43,8 +42,15 @@ if (hostOptions.Enabled)
 {
     builder.Services.AddSingleton<IDesktopObservationStore, DesktopObservationStore>();
     builder.Services.AddSingleton<IDesktopObservationService, DesktopObservationService>();
+    // Checks read the session target's live element tree through the worker. This used to be wired to
+    // a stub that reported every check inconclusive, which left every action tool's success
+    // unverifiable.
+    builder.Services.AddSingleton<IDesktopUiCheckSource>(serviceProvider =>
+        new WorkerUiCheckSource(
+            serviceProvider.GetRequiredService<IDesktopUiObservationProvider>(),
+            serviceProvider.GetRequiredService<IDesktopProcessController>()));
     builder.Services.AddSingleton<IDesktopUiCheckService>(serviceProvider =>
-        new DesktopUiCheckService(new UnavailableDesktopUiCheckSource()));
+        new DesktopUiCheckService(serviceProvider.GetRequiredService<IDesktopUiCheckSource>()));
     builder.Services.AddSingleton<IDesktopActionLedger, DesktopActionLedger>();
     builder.Services.AddSingleton<IDesktopTestReportService, DesktopTestReportService>();
     builder.Services.AddSingleton<IDesktopActionCoordinator, DesktopActionCoordinator>();
@@ -96,14 +102,5 @@ static async Task ReconcileUntilStoppedAsync(
         await registration.ReplayPendingAsync(cancellationToken);
         await importer.RequestReconciliationAsync(cancellationToken);
         await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
-    }
-}
-
-internal sealed class UnavailableDesktopUiCheckSource : IDesktopUiCheckSource
-{
-    public Task<DesktopUiCheckEvaluation> EvaluateAsync(DesktopUiCheckCondition condition, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(new DesktopUiCheckEvaluation(false, false, 0, "ProviderUnavailable"));
     }
 }

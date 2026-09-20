@@ -4,9 +4,13 @@ namespace Pointframe.AutomationTests.Support;
 
 internal static class DesktopGatePolicyFactory
 {
-    public static string Create(string pointframeExecutablePath, string outputDirectory)
+    public static string Create(string pointframeExecutablePath, string outputDirectory) =>
+        Create(pointframeExecutablePath, outputDirectory, "pointframe");
+
+    public static string Create(string pointframeExecutablePath, string outputDirectory, string profileId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pointframeExecutablePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
 
         var executablePath = Path.GetFullPath(pointframeExecutablePath);
@@ -25,7 +29,7 @@ internal static class DesktopGatePolicyFactory
             {
                 new
                 {
-                    id = "pointframe",
+                    id = profileId,
                     executablePath,
                     arguments = Array.Empty<string>(),
                     workingDirectory = Path.GetDirectoryName(executablePath)!,

@@ -16,6 +16,7 @@ public static class DesktopAutomationWorkerProtocol
         public const string EnterText = "input.enter_text";
         public const string Scroll = "input.scroll";
         public const string Release = "input.release";
+        public const string Inspect = "uia.inspect";
         public const string Invoke = "uia.invoke";
         public const string SetValue = "uia.set_value";
     }

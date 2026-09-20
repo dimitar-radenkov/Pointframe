@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Pointframe.Engine;
 using Pointframe.Engine.Automation.Models;
@@ -92,19 +93,22 @@ internal sealed class DesktopTestingMcpTools(
 
     [McpServerTool(Name = "desktop_observe_app", Title = "Observe desktop application", ReadOnly = true, UseStructuredContent = true)]
     [Description("Captures the current state of the application under test: one image block per requested rectangle, plus the UI Automation element tree when requested. This is the only way to obtain the observation_ref and image_ref that desktop_click, desktop_drag, desktop_enter_text, and desktop_scroll require, so call it before every interaction — refs expire 30 seconds after capture, and are also invalidated if the monitor topology changes, after which any action using them is rejected as StaleObservation.")]
-    public async Task<DesktopTestingObservationResponse> ObserveAppAsync(
+    public async Task<CallToolResult> ObserveAppAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
         [Description("Screen rectangles to capture, in absolute desktop physical pixels: at least 1 and at most 16. Each becomes one image block with its own image_ref.")] IReadOnlyList<McpPixelBounds> captureBoundsPixels,
         [Description("Whether to include the UI Automation element tree alongside the pixels. Elements carry the element_ref that desktop_invoke requires. Defaults to true.")] bool includeUiAutomation = true,
-        [Description("Optional image_ref from this same observation to additionally run OCR over. Omit to skip OCR.")] string? ocrImageRef = null,
+        [Description("Whether to also run OCR over the captured pixels and return the recognized text. Defaults to false.")] bool includeOcr = false,
+        [Description("Which captured rectangle to run OCR over, as a zero-based index into captureBoundsPixels. Defaults to the first. Ignored unless includeOcr is true.")] int ocrImageIndex = 0,
+        [Description("Whether to return the captured pixels as inline image blocks, in the same order as the images array. Defaults to true; pass false for metadata and elements only.")] bool includeImages = true,
         CancellationToken cancellationToken = default)
     {
+        using var trace = Pointframe.Engine.Automation.DesktopTrace.Scope("tool desktop_observe_app");
         var session = await sessions.GetAsync(sessionId, cancellationToken).ConfigureAwait(false);
         if (session?.Target is null)
         {
             // Every sibling tool reports an unknown session as a typed error. Returning null here left the
             // caller unable to distinguish "session gone" from "observed nothing".
-            return SessionNotFoundObservation();
+            return DesktopObservationResultBuilder.Build(SessionNotFoundObservation(), observation: null, includeImages: false);
         }
 
         var result = await observations.ObserveAsync(
@@ -114,14 +118,22 @@ internal sealed class DesktopTestingMcpTools(
                 includeUiAutomation),
             cancellationToken).ConfigureAwait(false);
         var response = DesktopTestingResponseMapper.MapObservation(result);
-        if (string.IsNullOrWhiteSpace(ocrImageRef))
+        if (includeOcr)
         {
-            return response;
+            // The caller cannot name an image_ref here: the observation this call creates is what
+            // mints them, so the previous string parameter could only ever resolve to ImageNotFound.
+            // Select by index into the rectangles the caller did supply instead.
+            var images = result.Observation.Images;
+            response = ocrImageIndex >= 0 && ocrImageIndex < images.Count
+                ? DesktopTestingResponseMapper.WithOcr(
+                    response,
+                    await ocr.RecognizeAsync(result, images[ocrImageIndex].ImageRef, cancellationToken).ConfigureAwait(false))
+                : DesktopTestingResponseMapper.WithOcr(
+                    response,
+                    new DesktopOcrObservation("unavailable", null, default, "ImageIndexOutOfRange"));
         }
 
-        return DesktopTestingResponseMapper.WithOcr(
-            response,
-            await ocr.RecognizeAsync(result, ocrImageRef, cancellationToken).ConfigureAwait(false));
+        return DesktopObservationResultBuilder.Build(response, result.Observation, includeImages);
     }
 
     [McpServerTool(Name = "desktop_focus_window", Title = "Focus desktop window", UseStructuredContent = true)]
@@ -232,13 +244,76 @@ internal sealed class DesktopTestingMcpTools(
     [Description("Waits until a condition holds over the application's UI Automation state, or until the timeout elapses. Use this to synchronize with the UI after an action instead of guessing at delays. Returns verification 'passed', 'failed', or 'inconclusive' when the state could not be read at all.")]
     public async Task<DesktopTestingCheckResponse> CheckUiAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
-        [Description("The condition to wait for.")] DesktopUiCheckCondition condition,
+        [Description("What to check: one of exists, absent, enabled, toggleEquals, selectionEquals, textEquals, windowExists, windowAbsent, processExited.")] string kind,
+        [Description("The AutomationId of the element to check. Supply this or both role and name.")] string? automationId = null,
+        [Description("The control type of the element to check, such as Button or Edit. Use with name.")] string? role = null,
+        [Description("The accessible name of the element to check. Use with role.")] string? name = null,
+        [Description("Optional window_ref from desktop_observe_app, to scope the check to one window. Required for windowExists and windowAbsent.")] string? windowRef = null,
+        [Description("The expected value, for enabled (true/false), toggleEquals, selectionEquals and textEquals.")] string? expected = null,
         [Description("How long to wait for the condition before giving up, in seconds. At most 30.")] int timeoutSeconds = DesktopTestingLimits.DefaultUiCheckTimeoutSeconds,
         CancellationToken cancellationToken = default)
     {
-        _ = sessionId;
-        var evaluation = await checks.CheckAsync(condition, TimeSpan.FromSeconds(timeoutSeconds), cancellationToken).ConfigureAwait(false);
+        var session = await sessions.GetAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        if (session?.Target is null)
+        {
+            return DesktopTestingResponseMapper.MapCheck(
+                new DesktopUiCheckEvaluation(false, false, 0, "SessionNotFound"));
+        }
+
+        DesktopUiCheckCondition condition;
+        try
+        {
+            condition = BuildCondition(
+                new McpUiCheckRequest(kind, automationId, role, name, windowRef, expected));
+        }
+        catch (ArgumentException exception)
+        {
+            return DesktopTestingResponseMapper.MapCheck(
+                new DesktopUiCheckEvaluation(false, false, 0, "InvalidCondition", exception.Message));
+        }
+
+        var evaluation = await checks.CheckAsync(
+            session.Target.Process,
+            condition,
+            TimeSpan.FromSeconds(timeoutSeconds),
+            cancellationToken).ConfigureAwait(false);
         return DesktopTestingResponseMapper.MapCheck(evaluation);
+    }
+
+    internal static DesktopUiCheckCondition BuildCondition(McpUiCheckRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        DesktopLocator Locator()
+        {
+            var locator = string.IsNullOrWhiteSpace(request.AutomationId)
+                ? new DesktopLocator(DesktopLocatorKind.RoleAndName, Role: request.Role, Name: request.Name, WindowRef: request.WindowRef)
+                : new DesktopLocator(DesktopLocatorKind.AutomationId, AutomationId: request.AutomationId, WindowRef: request.WindowRef);
+            locator.Validate();
+            return locator;
+        }
+
+        string Expected() => request.Expected
+            ?? throw new ArgumentException($"The '{request.Kind}' condition requires an expected value.", nameof(request));
+
+        string Window() => string.IsNullOrWhiteSpace(request.WindowRef)
+            ? throw new ArgumentException($"The '{request.Kind}' condition requires a window reference.", nameof(request))
+            : request.WindowRef;
+
+        return request.Kind?.ToLowerInvariant() switch
+        {
+            "exists" => new DesktopUiCheckCondition.Exists(Locator()),
+            "absent" => new DesktopUiCheckCondition.Absent(Locator()),
+            "enabled" => new DesktopUiCheckCondition.Enabled(
+                Locator(),
+                !string.Equals(request.Expected, "false", StringComparison.OrdinalIgnoreCase)),
+            "toggleequals" => new DesktopUiCheckCondition.ToggleEquals(Locator(), Expected()),
+            "selectionequals" => new DesktopUiCheckCondition.SelectionEquals(Locator(), Expected()),
+            "textequals" => new DesktopUiCheckCondition.TextEquals(Locator(), Expected()),
+            "windowexists" => new DesktopUiCheckCondition.WindowExists(Window()),
+            "windowabsent" => new DesktopUiCheckCondition.WindowAbsent(Window()),
+            "processexited" => new DesktopUiCheckCondition.ProcessExited(request.WindowRef ?? string.Empty),
+            _ => throw new ArgumentException($"Unknown condition kind '{request.Kind}'.", nameof(request)),
+        };
     }
 
     [McpServerTool(Name = "desktop_scroll", Title = "Scroll desktop target", UseStructuredContent = true)]

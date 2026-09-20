@@ -4,12 +4,21 @@ namespace Pointframe.Engine.Automation.Services;
 
 public interface IDesktopUiCheckSource
 {
-    Task<DesktopUiCheckEvaluation> EvaluateAsync(DesktopUiCheckCondition condition, CancellationToken cancellationToken);
+    // The process is required: a check has to read the state of the session's own target, and the
+    // tool layer previously discarded the session id, so nothing identified what to inspect.
+    Task<DesktopUiCheckEvaluation> EvaluateAsync(
+        DesktopProcessIdentity process,
+        DesktopUiCheckCondition condition,
+        CancellationToken cancellationToken);
 }
 
 public interface IDesktopUiCheckService
 {
-    Task<DesktopUiCheckEvaluation> CheckAsync(DesktopUiCheckCondition condition, TimeSpan timeout, CancellationToken cancellationToken = default);
+    Task<DesktopUiCheckEvaluation> CheckAsync(
+        DesktopProcessIdentity process,
+        DesktopUiCheckCondition condition,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class DesktopUiCheckService(IDesktopUiCheckSource source, TimeProvider? timeProvider = null) : IDesktopUiCheckService
@@ -18,10 +27,12 @@ public sealed class DesktopUiCheckService(IDesktopUiCheckSource source, TimeProv
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     public async Task<DesktopUiCheckEvaluation> CheckAsync(
+        DesktopProcessIdentity process,
         DesktopUiCheckCondition condition,
         TimeSpan timeout,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(condition);
         if (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromSeconds(DesktopTestingLimits.MaxUiCheckTimeoutSeconds))
         {
@@ -33,7 +44,7 @@ public sealed class DesktopUiCheckService(IDesktopUiCheckSource source, TimeProv
         while (_timeProvider.GetUtcNow() <= deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            last = await _source.EvaluateAsync(condition, cancellationToken).ConfigureAwait(false);
+            last = await _source.EvaluateAsync(process, condition, cancellationToken).ConfigureAwait(false);
             if (!last.StateAvailable)
             {
                 return last with { Matches = false, ErrorCode = last.ErrorCode ?? "ProviderUnavailable" };

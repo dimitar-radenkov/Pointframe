@@ -7,6 +7,9 @@ internal static class WindowsDesktopNativeMethods
     internal const uint InputMouse = 0;
     internal const uint InputKeyboard = 1;
     internal const uint MouseEventAbsolute = 0x8000;
+    // Without VIRTUALDESK, Windows maps normalized absolute coordinates onto the primary monitor
+    // only, so every click aimed at a secondary monitor lands on the primary one instead.
+    internal const uint MouseEventVirtualDesk = 0x4000;
     internal const uint MouseEventMove = 0x0001;
     internal const uint MouseEventLeftDown = 0x0002;
     internal const uint MouseEventLeftUp = 0x0004;
@@ -15,6 +18,8 @@ internal static class WindowsDesktopNativeMethods
     internal const uint MouseEventWheel = 0x0800;
     internal const uint MouseEventXDown = 0x0080;
     internal const uint MouseEventXUp = 0x0100;
+    internal const uint KeyEventScanCode = 0x0008;
+    internal const uint KeyEventExtendedKey = 0x0001;
     internal const uint KeyEventUnicode = 0x0004;
     internal const uint KeyEventKeyUp = 0x0002;
     internal const ushort VirtualKeyPause = 0x13;
@@ -50,7 +55,29 @@ internal static class WindowsDesktopNativeMethods
     internal static extern int GetSystemMetrics(int index);
 
     [DllImport("user32.dll")]
+    internal static extern uint MapVirtualKey(uint code, uint mapType);
+
+    [DllImport("user32.dll")]
     internal static extern uint GetWindowThreadProcessId(nint hWnd, out uint processId);
+
+    internal const int ShowRestore = 9;
+
+    internal delegate bool EnumWindowsProc(nint hWnd, nint lParam);
+
+    [DllImport("user32.dll")]
+    internal static extern bool EnumWindows(EnumWindowsProc callback, nint lParam);
+
+    [DllImport("user32.dll")]
+    internal static extern bool IsIconic(nint hWnd);
+
+    [DllImport("user32.dll")]
+    internal static extern bool ShowWindow(nint hWnd, int command);
+
+    [DllImport("user32.dll")]
+    internal static extern bool AttachThreadInput(uint attachTo, uint attachFrom, bool attach);
+
+    [DllImport("kernel32.dll")]
+    internal static extern uint GetCurrentThreadId();
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct INPUT

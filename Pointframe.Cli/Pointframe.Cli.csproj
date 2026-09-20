@@ -6,6 +6,11 @@
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Without this the CLI is DPI-unaware, so on a scaled display it reports virtualized
+         sizes (a 2560x1440 monitor at 150% comes back as 1707x960 with DpiScale 1) while
+         Pointframe.Mcp, which already sets the manifest, reports true physical pixels. Both
+         hosts document the same monitor-local physical pixel contract, so they must agree. -->
+    <ApplicationManifest>..\Pointframe\app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>

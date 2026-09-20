@@ -29,6 +29,8 @@ public sealed class DesktopScrollTests
     private sealed class Adapter : IDesktopInputNativeAdapter
     {
         public int Detents { get; private set; }
+        public int? ScrollX { get; private set; }
+        public int? ScrollY { get; private set; }
         public nint GetForegroundWindow() => new nint(1);
         public bool SetForeground(nint handle) => true;
         public bool IsWindowValid(nint handle) => true;
@@ -38,9 +40,11 @@ public sealed class DesktopScrollTests
         public bool SendKeys(IReadOnlyList<ushort> virtualKeys) => true;
         public bool SendDrag(IReadOnlyList<PixelBounds> points, int durationMilliseconds) => true;
         public bool SendUnicodeText(string text) => true;
-        public bool SendScroll(int detents)
+        public bool SendScroll(int? x, int? y, int detents)
         {
             Detents = detents;
+            ScrollX = x;
+            ScrollY = y;
             return true;
         }
         public void ReleaseOwnedInput() { }
