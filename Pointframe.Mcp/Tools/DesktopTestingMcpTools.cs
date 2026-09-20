@@ -150,8 +150,17 @@ internal sealed class DesktopTestingMcpTools(
             return Error(actionId, "SessionNotFound", "The desktop test session was not found.");
         }
 
+        // The handle used to be hard-coded to zero, so focusing could never succeed. The window ref
+        // now carries it, and requiring the ref to name this session's own process means a ref
+        // belonging to another target cannot be used to focus an unrelated window.
+        var handle = ResolveWindowHandle(windowRef, session.Target.Process.ProcessRef);
+        if (handle == nint.Zero)
+        {
+            return Error(actionId, "WindowUnavailable", "The window reference does not name a window of this session's target.");
+        }
+
         var target = new DesktopInputTarget(
-            new DesktopWindowIdentity(windowRef, session.Target.Process.ProcessRef, nint.Zero));
+            new DesktopWindowIdentity(windowRef, session.Target.Process.ProcessRef, handle));
         return await ExecuteInputAsync(
             sessionId,
             actionId,
@@ -278,6 +287,28 @@ internal sealed class DesktopTestingMcpTools(
             TimeSpan.FromSeconds(timeoutSeconds),
             cancellationToken).ConfigureAwait(false);
         return DesktopTestingResponseMapper.MapCheck(evaluation);
+    }
+
+    internal static nint ResolveWindowHandle(string windowRef, string processRef)
+    {
+        if (string.IsNullOrWhiteSpace(windowRef) || string.IsNullOrWhiteSpace(processRef))
+        {
+            return nint.Zero;
+        }
+
+        var prefix = $"window-{processRef}-";
+        if (!windowRef.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return nint.Zero;
+        }
+
+        return long.TryParse(
+            windowRef[prefix.Length..],
+            System.Globalization.NumberStyles.HexNumber,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var value) && value != 0
+            ? new nint(value)
+            : nint.Zero;
     }
 
     internal static DesktopUiCheckCondition BuildCondition(McpUiCheckRequest request)

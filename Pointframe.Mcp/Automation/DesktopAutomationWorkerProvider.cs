@@ -97,7 +97,8 @@ public sealed class DesktopAutomationWorkerProvider : IDesktopAutomationWorkerPr
         CancellationToken cancellationToken)
     {
         var input = Deserialize<DesktopAutomationWorkerInputRequest>(request.Payload);
-        var typedRequest = Deserialize<TRequest>(JsonSerializer.Serialize(input.Request));
+        var typedRequest = DesktopAutomationWorkerProtocol.DeserializePayload<TRequest>(
+            DesktopAutomationWorkerProtocol.SerializePayload(input.Request));
         var result = await dispatch(typedRequest, input.ExpectedProcess).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         return new DesktopAutomationWorkerResponse(
@@ -168,8 +169,7 @@ public sealed class DesktopAutomationWorkerProvider : IDesktopAutomationWorkerPr
     {
         return payload is null
             ? throw new JsonException("A payload is required.")
-            : JsonSerializer.Deserialize<T>(payload)
-                ?? throw new JsonException("The payload was empty.");
+            : DesktopAutomationWorkerProtocol.DeserializePayload<T>(payload);
     }
 
     private static DesktopAutomationWorkerResponse Failure(

@@ -19,6 +19,64 @@ public class McpWpfInputComparisonTests(ITestOutputHelper output)
     private const string TypedText = "hello from agent";
 
     [SkippableFact]
+    [Trait("Category", "DesktopAutomation")]
+    public async Task UiAutomationWindowReferencesCanFocusTheWpfTarget()
+    {
+        DesktopGateTestSupport.RequireInteractiveGate();
+        var appPath = Environment.GetEnvironmentVariable("POINTFRAME_EXECUTABLE")!;
+        var mcpPath = Environment.GetEnvironmentVariable("POINTFRAME_MCP_EXECUTABLE")!;
+        Skip.IfNot(File.Exists(appPath), $"Pointframe was not found at '{appPath}'.");
+
+        var artifactDirectory = Path.Combine(Path.GetTempPath(), $"pointframe-wpf-window-ref-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(artifactDirectory);
+        var policyPath = CreatePolicy(appPath, artifactDirectory, ["--automation-open-library"]);
+
+        DesktopFixtureHarness.EnsurePerMonitorDpiAwareness();
+        var before = Process.GetProcessesByName("Pointframe").Select(process => process.Id).ToHashSet();
+        await using var client = await McpDesktopTestClient.LaunchAsync(
+            mcpPath,
+            ["--desktop-testing", "--desktop-policy", policyPath]);
+
+        var startedProcessId = 0;
+        try
+        {
+            var start = await client.CallToolAsync(
+                "desktop_start_test_session",
+                new { actionId = Guid.NewGuid().ToString(), profileId = ProfileId },
+                TimeSpan.FromSeconds(60));
+            var sessionId = start.GetProperty("structuredContent").GetProperty("sessionRef").GetString()!;
+
+            startedProcessId = await WaitForProcessAsync(before);
+            var window = await WaitForWindowAsync(client, startedProcessId);
+            var elements = await ObserveElementsAsync(client, sessionId, window);
+            var windowRefs = elements.WindowRefs.Distinct(StringComparer.Ordinal).ToArray();
+
+            output.WriteLine($"[uia] status={elements.Status} count={elements.Count} windowRefs={string.Join(", ", windowRefs)}");
+            Assert.Equal("Available", elements.Status);
+            Assert.NotEmpty(windowRefs);
+
+            var focus = await client.CallToolAsync(
+                "desktop_focus_window",
+                new
+                {
+                    sessionId,
+                    actionId = Guid.NewGuid().ToString(),
+                    windowRef = windowRefs[0],
+                },
+                TimeSpan.FromSeconds(30));
+            var dispatch = focus.GetProperty("structuredContent").GetProperty("dispatch").GetString();
+            output.WriteLine($"[focus] windowRef={windowRefs[0]} dispatch={dispatch}");
+            Assert.Equal("Complete", dispatch);
+        }
+        finally
+        {
+            KillProcess(startedProcessId, before);
+            DesktopGatePolicyFactory.Delete(policyPath);
+            TryDeleteDirectory(artifactDirectory);
+        }
+    }
+
+    [SkippableFact]
     public async Task DriverInputReachesAWpfWindow()
     {
         DesktopGateTestSupport.RequireInteractiveGate();
@@ -213,6 +271,9 @@ public class McpWpfInputComparisonTests(ITestOutputHelper output)
             structured.TryGetProperty("uiaStatus", out var status) ? status.GetString() ?? "?" : "?",
             elements.Length,
             elements.Select(element => Field(element, "elementRef")).ToArray(),
+            elements.Select(element => Field(element, "windowRef"))
+                .Where(reference => !string.IsNullOrWhiteSpace(reference))
+                .ToArray(),
             elements.Select(element =>
                 $"{Field(element, "elementRef")} {Field(element, "role")} " +
                 $"name='{Field(element, "name")}' id='{Field(element, "automationId")}' " +
@@ -227,6 +288,7 @@ public class McpWpfInputComparisonTests(ITestOutputHelper output)
         string Status,
         int Count,
         IReadOnlyList<string> Refs,
+        IReadOnlyList<string> WindowRefs,
         IReadOnlyList<string> Described,
         string? ErrorCode);
 

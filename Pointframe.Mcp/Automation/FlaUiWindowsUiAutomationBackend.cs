@@ -61,10 +61,15 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
         // interactive ones a caller actually addresses, rather than the first deep branch walked.
         var budget = System.Diagnostics.Stopwatch.StartNew();
         var snapshots = new List<DesktopUiElementSnapshot>();
-        var queue = new Queue<(AutomationElement Element, int Depth)>();
+
+        // Each root is one top-level window, and every element inherits the ref of the window it was
+        // reached through. Elements previously all carried the *process* ref, which made
+        // windowExists/windowAbsent meaningless, left locator window-scoping unable to distinguish
+        // two windows of the same app, and gave desktop_focus_window nothing it could resolve.
+        var queue = new Queue<(AutomationElement Element, int Depth, string WindowRef)>();
         foreach (var root in roots)
         {
-            queue.Enqueue((root, 0));
+            queue.Enqueue((root, 0, WindowRefFor(root, processRef)));
         }
 
         var truncated = false;
@@ -77,10 +82,10 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
                 break;
             }
 
-            var (element, depth) = queue.Dequeue();
+            var (element, depth, windowRef) = queue.Dequeue();
             try
             {
-                snapshots.Add(AddElement(element, processRef, $"el-{generation}-{snapshots.Count}"));
+                snapshots.Add(AddElement(element, windowRef, $"el-{generation}-{snapshots.Count}"));
                 if (depth >= DesktopTestingLimits.MaxUiAutomationDepth)
                 {
                     truncated = true;
@@ -89,7 +94,7 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
 
                 foreach (var child in element.FindAllChildren())
                 {
-                    queue.Enqueue((child, depth + 1));
+                    queue.Enqueue((child, depth + 1, windowRef));
                 }
             }
             catch (Exception exception) when (exception is FlaUI.Core.Exceptions.ElementNotAvailableException
@@ -103,6 +108,27 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
     }
 
     private static readonly TimeSpan InspectionBudget = TimeSpan.FromSeconds(2);
+
+    private static string WindowRefFor(AutomationElement window, string processRef)
+    {
+        // Keyed by the native handle so the ref identifies one window rather than one inspection, and
+        // so a caller can hand it straight back for focusing.
+        try
+        {
+            var handle = window.Properties.NativeWindowHandle.ValueOrDefault;
+            if (handle != nint.Zero)
+            {
+                return $"window-{processRef}-{handle.ToInt64():X}";
+            }
+        }
+        catch (Exception exception) when (exception is FlaUI.Core.Exceptions.PropertyNotSupportedException
+            or FlaUI.Core.Exceptions.ElementNotAvailableException)
+        {
+            // Fall through to the process-scoped ref below.
+        }
+
+        return $"window-{processRef}";
+    }
 
     public DesktopUiElementSnapshot? ResolveLocator(DesktopLocator locator) =>
         ResolveLocatorCandidates(locator).SingleOrDefault();

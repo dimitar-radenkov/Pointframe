@@ -1,9 +1,18 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Pointframe.Mcp.Automation;
 
 public static class DesktopAutomationWorkerProtocol
 {
+    private static readonly JsonSerializerOptions PayloadSerializerOptions = new()
+    {
+        Converters =
+        {
+            new NativeHandleJsonConverter(),
+        },
+    };
+
     public const int Version = 1;
     public const int MaxMessageBytes = 64 * 1024;
 
@@ -42,6 +51,29 @@ public static class DesktopAutomationWorkerProtocol
 
         return JsonSerializer.Deserialize<T>(json)
             ?? throw new InvalidDataException("The worker message was invalid.");
+    }
+
+    public static string SerializePayload<T>(T payload) =>
+        JsonSerializer.Serialize(payload, PayloadSerializerOptions);
+
+    public static T DeserializePayload<T>(string json) =>
+        JsonSerializer.Deserialize<T>(json, PayloadSerializerOptions)
+        ?? throw new JsonException("The worker payload was invalid.");
+
+    private sealed class NativeHandleJsonConverter : JsonConverter<nint>
+    {
+        public override nint Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.Number || !reader.TryGetInt64(out var value))
+            {
+                throw new JsonException("A native window handle must be an integer.");
+            }
+
+            return new nint(value);
+        }
+
+        public override void Write(Utf8JsonWriter writer, nint value, JsonSerializerOptions options) =>
+            writer.WriteNumberValue(value.ToInt64());
     }
 }
 

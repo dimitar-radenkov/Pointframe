@@ -12,6 +12,7 @@ public partial class Form1 : Form
     private readonly string? _statePath = Environment.GetEnvironmentVariable(StatePathVariable);
     private readonly object _stateGate = new();
     private readonly System.Windows.Forms.Timer _foregroundTimer = new();
+    private readonly WheelMessageFilter _wheelMessageFilter;
 
     private int _clickCount;
     private Point _lastClickPoint = Point.Empty;
@@ -24,12 +25,20 @@ public partial class Form1 : Form
     private int _wheelCount;
     private int _wheelDeltaTotal;
     private Point _lastWheelPoint = Point.Empty;
+    private int _wheelMessageCount;
+    private Point _lastWheelMessageCursor = Point.Empty;
+    private nint _lastWheelMessageForegroundWindow;
+    private nint _lastWheelMessageWindow;
+    private bool _lastWheelMessageWasOverScrollSurface;
+    private int _formWheelMessageCount;
     private string _lastEvent = "none";
 
     public Form1()
     {
         InitializeComponent();
         StartPosition = FormStartPosition.Manual;
+        _wheelMessageFilter = new WheelMessageFilter(RecordWheelMessage);
+        Application.AddMessageFilter(_wheelMessageFilter);
 
         _clickTarget.MouseClick += OnClickTargetClicked;
         _dragSurface.MouseDown += OnDragSurfaceMouseDown;
@@ -46,23 +55,13 @@ public partial class Form1 : Form
 
     protected override void WndProc(ref Message m)
     {
-        // Windows delivers WM_MOUSEWHEEL to the focused control, not the one under the pointer, and a
-        // Panel cannot take focus. Subscribing to _scrollSurface.MouseWheel therefore only fired when
-        // focus happened to sit somewhere convenient, which read as an intermittent "the wheel never
-        // arrived" failure in the driver's tests. Catch the message on the form and attribute it by
-        // cursor position instead, which is what the wheel's routing actually means.
+        // Record form delivery separately from the application message filter. A wheel sent to a
+        // child control does not necessarily bubble through this WndProc, while no filter record
+        // means Windows delivered it outside the fixture altogether.
         if (m.Msg == WmMouseWheel)
         {
-            var delta = (short)((ulong)m.WParam >> 16);
-            var cursor = Cursor.Position;
-            if (_scrollSurface.RectangleToScreen(_scrollSurface.ClientRectangle).Contains(cursor))
-            {
-                _wheelCount++;
-                _wheelDeltaTotal += delta;
-                _lastWheelPoint = _scrollSurface.PointToClient(cursor);
-                _lastEvent = "wheel";
-                WriteState();
-            }
+            _formWheelMessageCount++;
+            WriteState();
         }
 
         base.WndProc(ref m);
@@ -88,6 +87,7 @@ public partial class Form1 : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        Application.RemoveMessageFilter(_wheelMessageFilter);
         _foregroundTimer.Stop();
         _foregroundTimer.Dispose();
         base.OnFormClosed(e);
@@ -218,6 +218,31 @@ public partial class Form1 : Form
         WriteState();
     }
 
+    private void RecordWheelMessage(Message message)
+    {
+        var delta = (short)((ulong)message.WParam >> 16);
+        var cursor = Cursor.Position;
+        var overScrollSurface = _scrollSurface.RectangleToScreen(_scrollSurface.ClientRectangle).Contains(cursor);
+        _wheelMessageCount++;
+        _lastWheelMessageCursor = cursor;
+        _lastWheelMessageForegroundWindow = NativeMethods.GetForegroundWindow();
+        _lastWheelMessageWindow = message.HWnd;
+        _lastWheelMessageWasOverScrollSurface = overScrollSurface;
+        if (overScrollSurface)
+        {
+            _wheelCount++;
+            _wheelDeltaTotal += delta;
+            _lastWheelPoint = _scrollSurface.PointToClient(cursor);
+            _lastEvent = "wheel";
+        }
+        else
+        {
+            _lastEvent = "wheel_elsewhere";
+        }
+
+        WriteState();
+    }
+
     private void WriteState()
     {
         var clickScreen = _clickTarget.RectangleToScreen(_clickTarget.ClientRectangle);
@@ -240,12 +265,19 @@ public partial class Form1 : Form
         Append(builder, "wheelCount", _wheelCount);
         Append(builder, "wheelDeltaTotal", _wheelDeltaTotal);
         Append(builder, "lastWheelPoint", Serialize(_lastWheelPoint));
+        Append(builder, "wheelMessageCount", _wheelMessageCount);
+        Append(builder, "formWheelMessageCount", _formWheelMessageCount);
+        Append(builder, "lastWheelMessageCursor", Serialize(_lastWheelMessageCursor));
+        Append(builder, "lastWheelMessageForegroundWindow", Serialize(_lastWheelMessageForegroundWindow));
+        Append(builder, "lastWheelMessageWindow", Serialize(_lastWheelMessageWindow));
+        Append(builder, "lastWheelMessageWasOverScrollSurface", _lastWheelMessageWasOverScrollSurface.ToString().ToLowerInvariant());
         Append(builder, "scrollSurfaceScreen", Serialize(scrollScreen));
         // Reported so text entry can be verified from the application's own state rather than by
         // reading pixels back with OCR.
         Append(builder, "textBoxScreen", Serialize(textBoxScreen));
         Append(builder, "textBoxText", $"\"{_textBox.Text.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"");
         Append(builder, "windowScreen", Serialize(Bounds));
+        Append(builder, "windowHandle", Serialize(Handle));
         Append(builder, "cursorScreen", Serialize(Cursor.Position), last: true);
         builder.Append("}\n");
 
@@ -285,6 +317,9 @@ public partial class Form1 : Form
             CultureInfo.InvariantCulture,
             $"\"{rectangle.X},{rectangle.Y},{rectangle.Width},{rectangle.Height}\"");
 
+    private static string Serialize(nint value) =>
+        string.Create(CultureInfo.InvariantCulture, $"\"0x{value.ToInt64():X}\"");
+
     private static class NativeMethods
     {
         internal const uint SwpNoSize = 0x0001;
@@ -312,5 +347,18 @@ public partial class Form1 : Form
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool AttachThreadInput(uint attachTo, uint attachFrom, bool attach);
+    }
+
+    private sealed class WheelMessageFilter(Action<Message> onWheelMessage) : IMessageFilter
+    {
+        public bool PreFilterMessage(ref Message m)
+        {
+            if (m.Msg == WmMouseWheel)
+            {
+                onWheelMessage(m);
+            }
+
+            return false;
+        }
     }
 }

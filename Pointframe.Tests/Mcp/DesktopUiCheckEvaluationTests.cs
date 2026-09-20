@@ -156,4 +156,33 @@ public class DesktopUiCheckEvaluationTests
             Selection: null,
             Text: text,
             IsSensitive: isSensitive);
+
+    [Fact]
+    public void WindowHandleRoundTripsFromTheWindowRef()
+    {
+        var handle = DesktopTestingMcpTools.ResolveWindowHandle("window-process-1-1A2B3C", "process-1");
+
+        Assert.Equal(new nint(0x1A2B3C), handle);
+    }
+
+    [Fact]
+    public void WindowHandleIsRejectedWhenTheRefNamesAnotherProcess()
+    {
+        // The ref carries the process it belongs to, so a ref captured against one target cannot be
+        // replayed to focus a window of a different one.
+        var handle = DesktopTestingMcpTools.ResolveWindowHandle("window-process-2-1A2B3C", "process-1");
+
+        Assert.Equal(nint.Zero, handle);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("window-process-1")]
+    [InlineData("window-process-1-")]
+    [InlineData("window-process-1-nothex")]
+    [InlineData("window-process-1-0")]
+    public void WindowHandleIsRejectedWhenTheRefIsNotUsable(string windowRef)
+    {
+        Assert.Equal(nint.Zero, DesktopTestingMcpTools.ResolveWindowHandle(windowRef, "process-1"));
+    }
 }

@@ -140,7 +140,7 @@ public sealed class WorkerDesktopAutomationService :
                 DesktopAutomationWorkerProtocol.Version,
                 Guid.NewGuid().ToString("N"),
                 operation,
-                JsonSerializer.Serialize(payload)),
+                DesktopAutomationWorkerProtocol.SerializePayload(payload)),
             cancellationToken).ConfigureAwait(false);
     }
 
