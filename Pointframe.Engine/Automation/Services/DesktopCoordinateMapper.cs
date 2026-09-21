@@ -24,12 +24,14 @@ public sealed class DesktopCoordinateMapper(TimeProvider? timeProvider = null)
             throw new DesktopOperationException("StaleObservation", "The observation has expired.");
         }
 
-        if (imageX < 0 || imageX >= image.Width || imageY < 0 || imageY >= image.Height)
-        {
-            throw new ArgumentOutOfRangeException(nameof(imageX), "The image coordinate is outside the captured image.");
-        }
-
-        return new PixelBounds(image.DesktopBoundsPixels.X + imageX, image.DesktopBoundsPixels.Y + imageY, 1, 1);
+        // Delegate rather than adding the offsets directly: images handed to the model are downscaled,
+        // so treating an image coordinate as a desktop offset lands the pointer short of the target by
+        // the scale factor. One implementation keeps the two paths from disagreeing again.
+        return ToDesktopPixels(
+            image.CreateTransform(expectedTopologyGeneration),
+            imageX,
+            imageY,
+            actualTopologyGeneration);
     }
 
     public PixelBounds ToDesktopPixels(

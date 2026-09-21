@@ -106,6 +106,23 @@ public sealed class WorkerDesktopAutomationService :
             : DesktopInputPreflightResult.Invalid(response.Code, response.Code);
     }
 
+    public string? InspectUi(Pointframe.Engine.Automation.Models.DesktopObservationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // Inspection walks a live UI tree, so it needs a longer budget than a single input event; the
+        // worker itself caps the walk, and this only stops a wedged worker from blocking the caller.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var response = DispatchAsync(
+                DesktopAutomationWorkerProtocol.Operations.Inspect,
+                request,
+                timeout.Token)
+            .GetAwaiter()
+            .GetResult();
+        Pointframe.Engine.Automation.DesktopTrace.Write($"InspectUi succeeded={response.Succeeded} code={response.Code}");
+        return response.Succeeded ? response.Payload : null;
+    }
+
     private bool DispatchUi(string operation, object payload)
     {
         var response = DispatchAsync(operation, payload, CancellationToken.None).GetAwaiter().GetResult();
@@ -118,13 +135,41 @@ public sealed class WorkerDesktopAutomationService :
         CancellationToken cancellationToken)
     {
         await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
-        return await _host.DispatchAsync(
-            new DesktopAutomationWorkerRequest(
-                DesktopAutomationWorkerProtocol.Version,
-                Guid.NewGuid().ToString("N"),
-                operation,
-                JsonSerializer.Serialize(payload)),
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await _host.DispatchAsync(
+                new DesktopAutomationWorkerRequest(
+                    DesktopAutomationWorkerProtocol.Version,
+                    Guid.NewGuid().ToString("N"),
+                    operation,
+                    DesktopAutomationWorkerProtocol.SerializePayload(payload)),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or InvalidDataException or IOException)
+        {
+            // The request may already have reached the worker, which keeps processing it after this
+            // side gives up waiting (a timeout only cancels the parent-side pipe read, it does not
+            // reach the worker), or the pipe just returned something other than this request's own
+            // response. Either way the connection can no longer be trusted to stay aligned with future
+            // request/response pairs, so abandon it outright rather than reuse a pipe that may still be
+            // desynchronized; the next call starts a fresh worker and pipe.
+            await AbandonWorkerAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private async Task AbandonWorkerAsync()
+    {
+        await _startGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await _host.AbandonAsync().ConfigureAwait(false);
+            _started = false;
+        }
+        finally
+        {
+            _startGate.Release();
+        }
     }
 
     private async Task EnsureStartedAsync(CancellationToken cancellationToken)

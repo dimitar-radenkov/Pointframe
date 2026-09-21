@@ -1,4 +1,3 @@
-using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 
@@ -26,6 +25,43 @@ public static class CapturePreviewImage
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pngPath);
         return CreateDownscaledPng(File.ReadAllBytes(pngPath), maxLongestEdgePixels);
+    }
+
+    /// <summary>
+    /// Encodes a live bitmap to PNG, downscaling so its longest edge is at most
+    /// <paramref name="maxLongestEdgePixels"/>, and reports the dimensions of the encoded image.
+    /// Callers that already hold the bitmap use this to avoid encoding at full size first, and need
+    /// the returned dimensions to map coordinates back to the desktop.
+    /// </summary>
+    public static (byte[] Png, int Width, int Height) CreateDownscaledPng(Bitmap source, int maxLongestEdgePixels = DefaultMaxLongestEdgePixels)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLongestEdgePixels);
+
+        var longestEdge = Math.Max(source.Width, source.Height);
+        if (longestEdge <= maxLongestEdgePixels)
+        {
+            using var direct = new MemoryStream();
+            source.Save(direct, ImageFormat.Png);
+            return (direct.ToArray(), source.Width, source.Height);
+        }
+
+        var scale = (double)maxLongestEdgePixels / longestEdge;
+        var width = Math.Max(1, (int)Math.Round(source.Width * scale));
+        var height = Math.Max(1, (int)Math.Round(source.Height * scale));
+
+        using var resized = new Bitmap(width, height);
+        using (var graphics = Graphics.FromImage(resized))
+        {
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            graphics.SmoothingMode = SmoothingMode.HighQuality;
+            graphics.DrawImage(source, 0, 0, width, height);
+        }
+
+        using var output = new MemoryStream();
+        resized.Save(output, ImageFormat.Png);
+        return (output.ToArray(), width, height);
     }
 
     public static byte[] CreateDownscaledPng(byte[] originalBytes, int maxLongestEdgePixels = DefaultMaxLongestEdgePixels)

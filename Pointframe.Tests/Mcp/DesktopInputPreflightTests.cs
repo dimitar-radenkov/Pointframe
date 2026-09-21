@@ -107,6 +107,8 @@ public sealed class DesktopInputPreflightTests
         public int Clicks { get; private set; }
         public int TextInputs { get; private set; }
         public int Scrolls { get; private set; }
+        public int? ScrollX { get; private set; }
+        public int? ScrollY { get; private set; }
 
         public nint GetForegroundWindow() => Foreground;
         public bool SetForeground(nint handle)
@@ -129,9 +131,11 @@ public sealed class DesktopInputPreflightTests
             TextInputs++;
             return true;
         }
-        public bool SendScroll(int detents)
+        public bool SendScroll(int? x, int? y, int detents)
         {
             Scrolls++;
+            ScrollX = x;
+            ScrollY = y;
             return true;
         }
         public void ReleaseOwnedInput() { }

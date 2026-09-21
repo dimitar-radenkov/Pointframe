@@ -905,3 +905,120 @@ Generated `.srt` files started with `EF BB BF` before the `1` cue index. Players
 ### Takeaway
 
 For any file consumed by an external parser, use `new UTF8Encoding(false)` rather than `Encoding.UTF8`, and test the bytes. String-level assertions cannot see a BOM or a wrong line ending.
+
+## The VS Code Pointframe MCP connector must be stopped before running desktop automation tests
+
+### Problem
+
+`Pointframe.AutomationTests` desktop tests hung for 60+ seconds per MCP call and failed 2 of 3,
+deterministically, with `OperationCanceledException` from the stdio read. Builds intermittently failed
+with `MSB3027: file locked by "Pointframe.Mcp"`. The same tests had passed minutes earlier, and a
+reboot did not help: a `Pointframe.Mcp.exe` was already running seconds after logging back in.
+
+### Root cause
+
+`.vscode/mcp.json` registers `pointframe` as an MCP server pointing at
+`Pointframe.Mcp\bin\Debug\...\Pointframe.Mcp.exe`, so VS Code launches and keeps that server alive
+for the editor session. It holds the Debug build output open, and a second live MCP server instance
+interferes with the desktop driver the tests are exercising. Nothing in the test harness creates or
+owns that process, so the usual "kill leftover processes" cleanup never touches it.
+
+### What fixed it
+
+Terminating the editor-owned `Pointframe.Mcp.exe` before running the suite. Runtime went from
+3 min 14 s with two hangs to 11-16 s with the suite passing.
+
+### Takeaway
+
+Before running `Category=DesktopAutomation` tests, check `tasklist` for `Pointframe.Mcp.exe` and stop
+any instance the test run did not start. A clean `tasklist` is part of the preconditions, not an
+afterthought. When a desktop test hangs rather than asserting, suspect a second MCP server before
+suspecting the code under test - and note that a reboot does not clear an editor-launched connector,
+because the editor starts it again.
+
+## DI silently binds null to an unregistered optional constructor parameter
+
+### Problem
+
+`desktop_observe_app` returned `uiaStatus=Unavailable` with zero elements on every call, for months.
+No error was logged and nothing failed to start, so the driver looked like it simply had no UI
+Automation support. Because no `element_ref` or `window_ref` was ever minted, `desktop_invoke`,
+`desktop_focus_window` and `desktop_check_ui` were all unreachable at the same time.
+
+### Root cause
+
+`WindowsUiAutomationProvider` takes `IWindowsUiAutomationBackend? backend = null`. The registration
+added the provider but never registered a backend, so the container supplied `null` for the optional
+parameter and the provider returned its `ProviderUnavailable` result forever. An optional parameter
+turns a missing registration from a startup failure into a silent runtime degradation.
+
+### What fixed it
+
+Routing observation to the supervised worker through a `uia.inspect` operation, and registering
+`WorkerUiObservationProvider` for `IDesktopUiObservationProvider`.
+
+### Takeaway
+
+Prefer a required constructor parameter for a dependency the type cannot work without: a missing
+registration should fail loudly when the container is built, not degrade quietly at runtime.
+`Pointframe.Tests/AppTests.cs` resolves services precisely so a missing registration fails there
+first, but an optional parameter defeats that check.
+
+## UI Automation property reads throw, and an unhandled worker exception poisons every later request
+
+### Problem
+
+The first real `uia.inspect` call against a WPF window returned `ProviderUnavailable`. The parent then
+saw `EndOfStreamException: The worker closed the pipe`, and every subsequent worker request failed the
+same way for the rest of the session.
+
+### Root cause
+
+Two faults stacked. `FlaUiWindowsUiAutomationBackend` read `element.AutomationId`, `Name`,
+`ControlType`, `IsEnabled` and `BoundingRectangle` directly; a UI Automation provider only implements
+the properties it chooses, so an element without an `AutomationId` threw
+`PropertyNotSupportedException`. That exception escaped the worker's operation handler, which caught
+only `JsonException` and `ArgumentException`, so the worker process died and took the pipe with it.
+
+### What fixed it
+
+Reading properties through the non-throwing accessors (`element.Properties.AutomationId.ValueOrDefault`
+and friends), and wrapping the inspect handler so any non-cancellation exception degrades that one
+observation instead of terminating the worker.
+
+### Takeaway
+
+Treat every UIA property read as failable. Separately, a supervised worker's request handler needs a
+catch-all: an escaped exception there is not one failed call, it is a dead pipe and every later call
+failing with a misleading `EndOfStream`. When a worker-backed feature fails once and then keeps
+failing, check whether the first failure killed the worker.
+
+## A verification tool that cannot fail is worse than no verification tool
+
+### Problem
+
+`desktop_check_ui` answered `inconclusive` for every condition, in every session, for as long as it
+had existed. Because the driver's action tools also reported `operationStatus: Completed` whether or
+not the action had any effect, there was no path by which an agent could discover that a click or a
+keystroke had silently done nothing. Two separate silent failures in the input layer survived for
+months behind it.
+
+### Root cause
+
+`Program.cs` wired `IDesktopUiCheckService` to an `UnavailableDesktopUiCheckSource` stub that returned
+`StateAvailable: false` unconditionally. The tool also discarded its `sessionId` parameter outright
+(`_ = sessionId;`), so even a working source would not have known which application to inspect, and
+its condition parameter was the engine's abstract `DesktopUiCheckCondition` record, which has no JSON
+polymorphism metadata and therefore cannot be constructed by any MCP client.
+
+### What fixed it
+
+`WorkerUiCheckSource` evaluates conditions against a real worker inspection; `CheckAsync` takes the
+session target's process identity; the tool exposes a flat, client-constructible condition.
+
+### Takeaway
+
+A stub that always answers "cannot tell" is not a neutral placeholder. Combined with actions that
+always report success, it makes the whole surface unfalsifiable, and every bug underneath it invisible.
+When adding a verification feature, test the negative case first: a check that cannot return "failed"
+is not verifying anything.

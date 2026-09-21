@@ -28,6 +28,15 @@ public sealed class WindowsProcessController : IDesktopProcessController
             FileName = executablePath,
             WorkingDirectory = Path.GetFullPath(request.WorkingDirectory),
             UseShellExecute = false,
+
+            // The server speaks MCP over its own stdin/stdout. With UseShellExecute false and no
+            // redirection the launched application inherits those handles, so anything it writes to
+            // standard output lands in the middle of the JSON-RPC stream and anything it reads steals
+            // the client's requests. A target that prints nothing (Notepad++) appears to work; a .NET
+            // or WPF target hung desktop_start_test_session outright until this was added.
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
         };
 
         foreach (var argument in request.Arguments)
@@ -35,11 +44,24 @@ public sealed class WindowsProcessController : IDesktopProcessController
             startInfo.ArgumentList.Add(argument);
         }
 
-        using var process = Process.Start(startInfo)
+        // Deliberately not disposed here: disposing the Process closes the redirected pipes while the
+        // target is still running, and the target then blocks or faults on its next write. The
+        // instance is retained below for the lifetime of the session instead.
+        var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The target process could not be started.");
+
+        // Drain both pipes. An unread pipe fills its buffer and then blocks the target on its next
+        // write, which looks exactly like the application hanging for no reason.
+        process.OutputDataReceived += static (_, _) => { };
+        process.ErrorDataReceived += static (_, _) => { };
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        process.StandardInput.Close();
         var processRef = $"process-{Guid.NewGuid():N}";
         var identity = await CaptureIdentityAsync(process, processRef, executablePath, cancellationToken).ConfigureAwait(false);
-        var retainedProcess = Process.GetProcessById(identity.ProcessId);
+        // Retain the started instance itself rather than re-opening the pid: it owns the redirected
+        // pipes, and those have to outlive this method.
+        var retainedProcess = process;
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try

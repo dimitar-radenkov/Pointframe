@@ -29,8 +29,11 @@ public static class DesktopTestingServiceRegistration
                     .GetRequiredService<WindowsDesktopInputService>()
                     .TryReleaseOwnedInput));
         services.AddSingleton<WindowsUiAutomationProvider>();
+        // Observation routes to the worker, which is the only process with a UI Automation backend.
+        // Registering the parent's backend-less WindowsUiAutomationProvider here is what made every
+        // observation report ProviderUnavailable with zero elements.
         services.AddSingleton<IDesktopUiObservationProvider>(serviceProvider =>
-            serviceProvider.GetRequiredService<WindowsUiAutomationProvider>());
+            new WorkerUiObservationProvider(serviceProvider.GetRequiredService<WorkerDesktopAutomationService>()));
         services.AddSingleton<WorkerDesktopAutomationService>();
         services.AddSingleton<IWindowsDesktopInputService>(serviceProvider =>
             serviceProvider.GetRequiredService<WorkerDesktopAutomationService>());

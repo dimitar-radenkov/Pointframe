@@ -3,10 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
+using Pointframe.Data;
 using Pointframe.Data.Context;
 using Pointframe.Data.Entities;
 using Pointframe.Data.Repository;
-using Pointframe.Data;
 using Pointframe.Engine;
 using Xunit;
 

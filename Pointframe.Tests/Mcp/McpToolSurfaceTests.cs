@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Reflection;
+using System.Text.Json;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
 using Pointframe.Engine;
@@ -81,13 +83,20 @@ public sealed class McpToolSurfaceTests
             .ReturnsAsync((DesktopTestSessionSnapshot?)null);
         var tools = CreateDesktopTestingTools(sessions);
 
-        var response = await tools.ObserveAppAsync("session-does-not-exist", []);
+        var result = await tools.ObserveAppAsync("session-does-not-exist", []);
 
+        Assert.NotNull(result);
+        Assert.True(result.IsError);
+        Assert.NotNull(result.StructuredContent);
+        var response = result.StructuredContent!.Value.Deserialize<DesktopTestingObservationResponse>(
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.NotNull(response);
-        Assert.Equal("SessionNotFound", response.Error?.Code);
+        Assert.Equal("SessionNotFound", response!.Error?.Code);
         Assert.Equal(nameof(DesktopTargetState.Unavailable), response.TargetState);
         Assert.Empty(response.Images);
         Assert.Empty(response.Elements);
+        // An unknown session has no pixels to show, so the result must not claim an image block.
+        Assert.DoesNotContain(result.Content, block => block is ImageContentBlock);
     }
 
     private static DesktopTestingMcpTools CreateDesktopTestingTools(Mock<IDesktopTestSessionService> sessions)

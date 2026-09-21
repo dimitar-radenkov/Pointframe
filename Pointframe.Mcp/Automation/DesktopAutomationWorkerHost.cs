@@ -125,6 +125,37 @@ public sealed class DesktopAutomationWorkerHost : IAsyncDisposable
         _pipe = null;
     }
 
+    // Used instead of StopAsync when the pipe protocol may already be desynchronized -- for example a
+    // caller gave up waiting on a response that the worker is still going to write. The graceful stop
+    // handshake reads a response off the same pipe, which would just read whatever stale message is
+    // queued next; killing the process outright is the only way to guarantee the connection is really
+    // gone, so the next StartAsync begins from a clean pipe and a clean process.
+    public ValueTask AbandonAsync()
+    {
+        if (_worker is not null)
+        {
+            try
+            {
+                if (!_worker.HasExited)
+                {
+                    _worker.Kill(entireProcessTree: true);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // The process exited between the check and the kill; nothing left to do.
+            }
+
+            _worker.Dispose();
+            _worker = null;
+        }
+
+        _pipe?.Dispose();
+        _pipe = null;
+        _started = false;
+        return ValueTask.CompletedTask;
+    }
+
     public static async Task<int> RunWorkerAsync(
         string pipeName,
         IDesktopAutomationWorkerProvider provider,

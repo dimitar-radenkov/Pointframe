@@ -188,7 +188,8 @@ public sealed record DesktopImageReference
         int width,
         int height,
         PixelBounds desktopBoundsPixels,
-        DateTimeOffset capturedUtc)
+        DateTimeOffset capturedUtc,
+        byte[]? pngBytes = null)
     {
         if (string.IsNullOrWhiteSpace(imageRef))
         {
@@ -205,9 +206,13 @@ public sealed record DesktopImageReference
             throw new ArgumentOutOfRangeException(nameof(height), height, "Image height must be positive.");
         }
 
-        if (desktopBoundsPixels.Width != width || desktopBoundsPixels.Height != height)
+        // Width/Height are the dimensions of the image the model actually sees, which is downscaled
+        // once a capture exceeds MaxImageLongestEdge. They are deliberately allowed to differ from
+        // the desktop bounds; DesktopCoordinateMapper rescales between the two. Requiring equality
+        // here is what previously forced observations to hand back full-size images or none at all.
+        if (desktopBoundsPixels.Width <= 0 || desktopBoundsPixels.Height <= 0)
         {
-            throw new ArgumentException("Image dimensions must match the desktop bounds.", nameof(desktopBoundsPixels));
+            throw new ArgumentException("Desktop bounds must have positive dimensions.", nameof(desktopBoundsPixels));
         }
 
         ImageRef = imageRef;
@@ -215,6 +220,7 @@ public sealed record DesktopImageReference
         Height = height;
         DesktopBoundsPixels = desktopBoundsPixels;
         CapturedUtc = capturedUtc;
+        PngBytes = pngBytes;
     }
 
     public string ImageRef { get; }
@@ -226,6 +232,11 @@ public sealed record DesktopImageReference
     public PixelBounds DesktopBoundsPixels { get; }
 
     public DateTimeOffset CapturedUtc { get; }
+
+    public byte[]? PngBytes { get; }
+
+    public DesktopCoordinateTransform CreateTransform(int topologyGeneration) =>
+        new(ImageRef, DesktopBoundsPixels, Width, Height, topologyGeneration, CapturedUtc);
 
     public DesktopTarget.ImagePoint CreatePoint(int x, int y)
     {

@@ -50,6 +50,7 @@ public sealed class DesktopObservationService : IDesktopObservationService
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        using var trace = DesktopTrace.Scope("DesktopObservationService.ObserveAsync");
         var capturedUtc = _timeProvider.GetUtcNow();
         var images = new List<DesktopImageReference>();
         foreach (var bounds in request.CaptureBoundsPixels)
@@ -60,9 +61,18 @@ public sealed class DesktopObservationService : IDesktopObservationService
                 throw new ArgumentOutOfRangeException(nameof(request), "Capture bounds must have positive dimensions.");
             }
 
+            DesktopTrace.Write($"capture begin {bounds.Width}x{bounds.Height}@({bounds.X},{bounds.Y})");
             using var bitmap = _captureEngine.Capture(bounds);
+            DesktopTrace.Write("capture end");
             var imageRef = $"image-{Guid.NewGuid():N}";
-            images.Add(new DesktopImageReference(imageRef, bitmap.Width, bitmap.Height, bounds, capturedUtc));
+
+            // The pixels are the whole point of an observation: an agent that cannot see the screen
+            // cannot decide where to click. Encode here, bounded by MaxImageLongestEdge, and record
+            // the preview dimensions so coordinates coming back from the model can be rescaled.
+            var (png, previewWidth, previewHeight) = CapturePreviewImage.CreateDownscaledPng(
+                bitmap,
+                DesktopTestingLimits.MaxImageLongestEdge);
+            images.Add(new DesktopImageReference(imageRef, previewWidth, previewHeight, bounds, capturedUtc, png));
         }
 
         var topologyGeneration = request.TopologyGeneration ?? Interlocked.Increment(ref _topologyGeneration);
@@ -101,9 +111,8 @@ public sealed class DesktopObservationService : IDesktopObservationService
         var image = observation.Observation.Images.SingleOrDefault(item => item.ImageRef == imageRef)
             ?? throw new KeyNotFoundException($"Image '{imageRef}' was not found.");
         return new DesktopCoordinateMapper(_timeProvider).ToDesktopPixels(
-            image,
+            image.CreateTransform(observation.TopologyGeneration),
             x,
-            y,
-            observation.TopologyGeneration);
+            y);
     }
 }

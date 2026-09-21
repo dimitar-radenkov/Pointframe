@@ -88,6 +88,27 @@ public sealed class DesktopAutomationWorkerTests
     }
 
     [Fact]
+    public async Task ProviderPreservesNativeWindowHandleAcrossTheWorkerBoundary()
+    {
+        var input = new RecordingInputService();
+        var provider = new DesktopAutomationWorkerProvider(input, new RecordingUiProvider());
+        var process = new DesktopProcessIdentity("process-1", 1, DateTimeOffset.UtcNow, "target.exe", "hash");
+        var target = new DesktopInputTarget(
+            new DesktopWindowIdentity("window-process-1-1234", process.ProcessRef, new nint(0x1234)));
+        var workerRequest = new DesktopAutomationWorkerRequest(
+            1,
+            "request-focus",
+            DesktopAutomationWorkerProtocol.Operations.Focus,
+            DesktopAutomationWorkerProtocol.SerializePayload(
+                new DesktopAutomationWorkerInputRequest(DesktopAutomationWorkerProtocol.Operations.Focus, target, process)));
+
+        var response = await provider.HandleAsync(workerRequest, CancellationToken.None);
+
+        Assert.True(response.Succeeded);
+        Assert.Equal(new nint(0x1234), input.FocusedHandle);
+    }
+
+    [Fact]
     public async Task ProviderPreflightFailureDoesNotReachNativeInput()
     {
         var input = new RecordingInputService();
@@ -141,10 +162,15 @@ public sealed class DesktopAutomationWorkerTests
     {
         public int Clicks { get; private set; }
 
+        public nint FocusedHandle { get; private set; }
+
         public bool ReleaseResult { get; init; } = true;
 
-        public Task<DesktopInputPreflightResult> FocusAsync(DesktopInputTarget target, DesktopProcessIdentity expectedProcess, CancellationToken cancellationToken = default) =>
-            Task.FromResult(DesktopInputPreflightResult.Valid());
+        public Task<DesktopInputPreflightResult> FocusAsync(DesktopInputTarget target, DesktopProcessIdentity expectedProcess, CancellationToken cancellationToken = default)
+        {
+            FocusedHandle = target.Window?.NativeHandle ?? nint.Zero;
+            return Task.FromResult(DesktopInputPreflightResult.Valid());
+        }
 
         public Task<DesktopInputPreflightResult> ClickAsync(DesktopClickRequest request, DesktopProcessIdentity expectedProcess, CancellationToken cancellationToken = default)
         {

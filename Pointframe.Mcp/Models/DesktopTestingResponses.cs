@@ -58,3 +58,17 @@ public sealed record DesktopTestingActionResponse(
     McpCaptureError? Error = null,
     string? SessionRef = null,
     string? TargetRef = null);
+
+/// <summary>
+/// A desktop_check_ui condition in a shape an MCP client can actually build. The tool previously took
+/// the engine's abstract DesktopUiCheckCondition record directly, which has no JSON polymorphism
+/// metadata, so no caller could construct one over the wire.
+/// </summary>
+public sealed record McpUiCheckRequest(
+    string Kind,
+    string? AutomationId = null,
+    string? Role = null,
+    string? Name = null,
+    string? WindowRef = null,
+    string? Expected = null,
+    string? ProcessRef = null);

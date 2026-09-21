@@ -13,6 +13,7 @@ public sealed class DesktopUiCheckTests
         var service = new DesktopUiCheckService(source);
 
         var result = await service.CheckAsync(
+            Process(),
             new DesktopUiCheckCondition.WindowExists("window-1"),
             TimeSpan.FromMilliseconds(100));
 
@@ -27,6 +28,7 @@ public sealed class DesktopUiCheckTests
         var service = new DesktopUiCheckService(source);
 
         var result = await service.CheckAsync(
+            Process(),
             new DesktopUiCheckCondition.Enabled(
                 new DesktopLocator(DesktopLocatorKind.AutomationId, AutomationId: "save")),
             TimeSpan.FromMilliseconds(100));
@@ -35,9 +37,19 @@ public sealed class DesktopUiCheckTests
         Assert.Equal(2, result.MatchCount);
     }
 
+    internal static DesktopProcessIdentity Process() => new(
+        "process-1",
+        1234,
+        DateTimeOffset.UnixEpoch,
+        "C:/fixture/fixture.exe",
+        new string('a', 64));
+
     private sealed class FakeSource(DesktopUiCheckEvaluation evaluation) : IDesktopUiCheckSource
     {
-        public Task<DesktopUiCheckEvaluation> EvaluateAsync(DesktopUiCheckCondition condition, CancellationToken cancellationToken)
+        public Task<DesktopUiCheckEvaluation> EvaluateAsync(
+            DesktopProcessIdentity process,
+            DesktopUiCheckCondition condition,
+            CancellationToken cancellationToken)
         {
             return Task.FromResult(evaluation);
         }
