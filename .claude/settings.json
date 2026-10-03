@@ -1,4 +1,57 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(pwsh scripts/verify.ps1)",
+      "Bash(pwsh scripts/verify.ps1 *)",
+      "Bash(pwsh -NoProfile -File scripts/verify.ps1)",
+      "Bash(pwsh -NoProfile -File scripts/verify.ps1 *)",
+      "Bash(pwsh scripts/kb.ps1 *)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)",
+      "Bash(dotnet format *)",
+      "Bash(dotnet restore *)",
+      "Bash(dotnet tool restore)",
+      "Bash(git status *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git diff)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git rev-parse *)",
+      "Bash(git ls-files *)",
+      "Bash(git branch --show-current)",
+      "Bash(tasklist *)",
+      "PowerShell(pwsh scripts/verify.ps1)",
+      "PowerShell(pwsh scripts/verify.ps1 *)",
+      "PowerShell(pwsh -NoProfile -File scripts/verify.ps1)",
+      "PowerShell(pwsh -NoProfile -File scripts/verify.ps1 *)",
+      "PowerShell(./scripts/verify.ps1)",
+      "PowerShell(./scripts/verify.ps1 *)",
+      "PowerShell(pwsh scripts/kb.ps1 *)",
+      "PowerShell(./scripts/kb.ps1 *)",
+      "PowerShell(dotnet build *)",
+      "PowerShell(dotnet test *)",
+      "PowerShell(dotnet format *)",
+      "PowerShell(dotnet restore *)",
+      "PowerShell(dotnet tool restore)",
+      "PowerShell(git status *)",
+      "PowerShell(git status)",
+      "PowerShell(git diff *)",
+      "PowerShell(git diff)",
+      "PowerShell(git log *)",
+      "PowerShell(git show *)",
+      "PowerShell(git rev-parse *)",
+      "PowerShell(git ls-files *)",
+      "PowerShell(git branch --show-current)",
+      "PowerShell(tasklist *)"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "PowerShell(git commit *)",
+      "PowerShell(git push *)"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {

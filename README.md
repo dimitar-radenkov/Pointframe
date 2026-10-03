@@ -667,8 +667,9 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 
 | Event | Properties |
 |---|---|
-| `snip_started` | `type` (region / whole_screen), `source` (tray / hotkey) |
-| `snip_cancelled` | `type` (region / whole_screen) |
+| `snip_started` | `type` (region / whole_screen / window_clean / scrolling), `source` (tray / hotkey) |
+| `snip_cancelled` | `type` (region / whole_screen / scrolling) |
+| `scrolling_capture_completed` | `count` (frames captured), `stop_reason` (end_of_content / no_overlap / frame_limit / height_limit) |
 | `capture_delay_used` | `delay_seconds` |
 | `capture_completed` | `action` (copy / save / save_as / auto_save) |
 | `capture_pinned` | — |

@@ -85,6 +85,80 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         ExecuteCleanWindowSnip();
     }
 
+    public void StartScrollingSnip(string source = "tray")
+    {
+        _logger.LogDebug("Scrolling snip started");
+        _telemetry.TrackEvent(TelemetryEvents.SnipStarted, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Type] = "scrolling",
+            [TelemetryPropertyKeys.Source] = source,
+        });
+
+        var delay = _userSettings.Current.CaptureDelaySeconds;
+        if (delay > 0)
+        {
+            _telemetry.TrackEvent(TelemetryEvents.CaptureDelayUsed, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.DelaySeconds] = delay.ToString(),
+            });
+            new CountdownWindow(delay, () => ExecuteScrollingSnip()).Show();
+            return;
+        }
+
+        ExecuteScrollingSnip();
+    }
+
+    private async void ExecuteScrollingSnip()
+    {
+        var screenCapture = _services.GetRequiredService<IScreenCaptureService>();
+        var selection = await SelectionSession.SelectAsync(screenCapture, _loggerFactory);
+        if (selection is null)
+        {
+            _telemetry.TrackEvent(TelemetryEvents.SnipCancelled, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.Type] = "scrolling",
+            });
+            return;
+        }
+
+        ScrollingCaptureResult result;
+        try
+        {
+            var scrollingCapture = _services.GetRequiredService<IScrollingCaptureService>();
+            result = await scrollingCapture.CaptureAsync(selection.SelectionBoundsPixels);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Scrolling capture failed");
+            _messageBox.ShowWarning(
+                "The scrolling capture failed. Select a region inside scrollable content and try again.",
+                "Scrolling snip");
+            return;
+        }
+
+        _telemetry.TrackEvent(TelemetryEvents.ScrollingCaptureCompleted, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Count] = result.FrameCount.ToString(),
+            [TelemetryPropertyKeys.StopReason] = ToTelemetryValue(result.StopReason),
+        });
+
+        var overlay = _services.GetRequiredService<OverlayWindow>();
+        overlay.InitializeFromImage(result.Image, "scrolling-capture://region", SelectionSessionMode.OpenedImage);
+        DpiAwarenessScope.RunPerMonitorV2(() => overlay.Show());
+    }
+
+    internal static string ToTelemetryValue(ScrollingCaptureStopReason stopReason)
+    {
+        return stopReason switch
+        {
+            ScrollingCaptureStopReason.EndOfContent => "end_of_content",
+            ScrollingCaptureStopReason.NoOverlap => "no_overlap",
+            ScrollingCaptureStopReason.FrameLimit => "frame_limit",
+            ScrollingCaptureStopReason.HeightLimit => "height_limit",
+            _ => "unknown",
+        };
+    }
+
     private void ExecuteCleanWindowSnip()
     {
 

@@ -31,6 +31,7 @@ public sealed class AppTests
         Assert.IsType<TrayIconManager>(provider.GetRequiredService<ITrayIconManager>());
         Assert.NotNull(provider.GetRequiredService<Func<IScreenRecordingService, string, RecordingHudViewModel>>());
         Assert.IsType<CaptureIndexWorker>(provider.GetRequiredService<ICaptureIndexWorker>());
+        Assert.IsType<ScrollingCaptureService>(provider.GetRequiredService<IScrollingCaptureService>());
     }
 
     [Fact]

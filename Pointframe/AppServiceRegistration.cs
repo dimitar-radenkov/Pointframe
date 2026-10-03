@@ -56,6 +56,8 @@ internal static class AppServiceRegistration
         services.AddSingleton<ICaptureTextLookupService, CaptureTextLookupService>();
         services.AddTransient<IScreenCaptureService, ScreenCaptureService>();
         services.AddTransient<IWindowCaptureService, WindowCaptureService>();
+        services.AddTransient<IScrollInputService, ScrollInputService>();
+        services.AddTransient<IScrollingCaptureService, ScrollingCaptureService>();
         services.AddTransient<IVideoWriterFactory, VideoWriterFactory>();
         services.AddTransient<IScreenRecordingService, ScreenRecordingService>();
         services.AddSingleton<IGifExportService, GifExportService>();
