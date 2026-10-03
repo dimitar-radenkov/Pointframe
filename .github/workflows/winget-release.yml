@@ -31,6 +31,22 @@ jobs:
       }}
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      # Both packages push branches to the same fork; one at a time avoids racing the sync.
+      max-parallel: 1
+      matrix:
+        include:
+          # Winget migration target for the Pointframe brand.
+          # Historical SnippingTool manifests remain intact.
+          - identifier: DimitarRadenkov.Pointframe
+            installers-regex: 'x64-Setup\.exe$'
+          # Portable zip with a `pointframe` command alias. The versioned asset only, never
+          # the stable Pointframe.Cli-win-x64.zip alias, whose content changes every release.
+          - identifier: DimitarRadenkov.Pointframe.Cli
+            installers-regex: 'Pointframe\.Cli-[0-9.]+-win-x64\.zip$'
+    env:
+      PACKAGE_ID: ${{ matrix.identifier }}
 
     steps:
       - uses: actions/checkout@v7
@@ -58,12 +74,33 @@ jobs:
           "display=$display" | Out-File -Append $env:GITHUB_OUTPUT
           "tag=$tag" | Out-File -Append $env:GITHUB_OUTPUT
 
+      # The releaser can only update a package that already exists upstream; a new package ID
+      # needs a manual first PR (see lessons.md). Skip, rather than fail, until that PR merges.
+      - name: Check package exists upstream
+        id: upstream
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          $path = 'manifests/' + $env:PACKAGE_ID.Substring(0, 1).ToLowerInvariant() + '/' + $env:PACKAGE_ID.Replace('.', '/')
+          gh api "repos/microsoft/winget-pkgs/contents/$path" --silent 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            "exists=true" | Out-File -Append $env:GITHUB_OUTPUT
+          }
+          else {
+            Write-Output "::warning::$env:PACKAGE_ID is not in microsoft/winget-pkgs yet ($path); submit its first version manually."
+            "exists=false" | Out-File -Append $env:GITHUB_OUTPUT
+          }
+          exit 0
+
       - name: Sync winget fork
+        if: steps.upstream.outputs.exists == 'true'
         env:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: gh repo sync dimitar-radenkov/winget-pkgs -b master
 
       - name: Verify winget fork head
+        if: steps.upstream.outputs.exists == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
@@ -76,30 +113,31 @@ jobs:
           }
 
       - name: Submit to winget
+        if: steps.upstream.outputs.exists == 'true'
         uses: vedantmgoyal9/winget-releaser@v2
         with:
-          # Winget migration target for the Pointframe brand.
-          # Historical SnippingTool manifests remain intact. Starting with the
-          # next release, new submissions should publish under the Pointframe package identifier.
-          identifier: DimitarRadenkov.Pointframe
+          identifier: ${{ matrix.identifier }}
           version: ${{ steps.version.outputs.display }}
           release-tag: ${{ steps.version.outputs.tag }}
-          installers-regex: 'x64-Setup\.exe$'
+          installers-regex: ${{ matrix.installers-regex }}
           fork-user: dimitar-radenkov
           token: ${{ secrets.WINGET_TOKEN }}
 
       - name: Pin LicenseUrl and clear stale review threads
+        if: steps.upstream.outputs.exists == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $id         = 'DimitarRadenkov.Pointframe'
+          $id         = $env:PACKAGE_ID
           $version    = '${{ steps.version.outputs.display }}'
           $tag        = '${{ steps.version.outputs.tag }}'
           $forkUser   = 'dimitar-radenkov'
-          $localePath = "manifests/d/DimitarRadenkov/Pointframe/$version/$id.locale.en-US.yaml"
+          # winget-pkgs path: manifests/<first letter>/<id with dots as folders>/<version>
+          $packagePath = 'manifests/' + $id.Substring(0, 1).ToLowerInvariant() + '/' + $id.Replace('.', '/')
+          $localePath  = "$packagePath/$version/$id.locale.en-US.yaml"
 
           # WinGet Releaser runs `komac update`, which regenerates LicenseUrl
           # from GitHub repository metadata on every submission. That always
