@@ -173,6 +173,7 @@ public sealed class TrayIconManagerTests
                 "New Snip",
                 "Whole Screen Snip",
                 "Clean Window Snip",
+                "Scrolling Snip",
                 "Open Image...",
                 "<separator>",
                 "Recent Captures",
@@ -203,6 +204,7 @@ public sealed class TrayIconManagerTests
             AssertMenuItemHasIcon(contextMenu, "New Snip");
             AssertMenuItemHasIcon(contextMenu, "Whole Screen Snip");
             AssertMenuItemHasIcon(contextMenu, "Clean Window Snip");
+            AssertMenuItemHasIcon(contextMenu, "Scrolling Snip");
             AssertMenuItemHasIcon(contextMenu, "Open Image...");
             AssertMenuItemHasIcon(contextMenu, "Recent Captures");
             AssertMenuItemHasIcon(contextMenu, "Recent Recordings");
@@ -340,10 +342,12 @@ public sealed class TrayIconManagerTests
             InvokePrivate(manager, "NewSnip_Click", new object(), new RoutedEventArgs());
             InvokePrivate(manager, "WholeScreenSnip_Click", new object(), new RoutedEventArgs());
             InvokePrivate(manager, "CleanWindowSnip_Click", new object(), new RoutedEventArgs());
+            InvokePrivate(manager, "ScrollingSnip_Click", new object(), new RoutedEventArgs());
 
             captureLaunchMock.Verify(service => service.StartRegionSnip("tray"), Times.Once);
             captureLaunchMock.Verify(service => service.StartWholeScreenSnip("tray"), Times.Once);
             captureLaunchMock.Verify(service => service.StartCleanWindowSnip("tray"), Times.Once);
+            captureLaunchMock.Verify(service => service.StartScrollingSnip("tray"), Times.Once);
         });
     }
 

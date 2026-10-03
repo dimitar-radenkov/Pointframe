@@ -31,6 +31,7 @@ public static class TelemetryPropertyKeys
     public const string SessionMinutes = "session_minutes";
     public const string SkipReason = "skip_reason";
     public const string Source = "source";
+    public const string StopReason = "stop_reason";
     public const string State = "state";
     public const string Success = "success";
     public const string TimeFromInstallMinutes = "time_from_install_minutes";
@@ -87,6 +88,7 @@ public static class TelemetryEvents
     public const string SettingsSectionReset = "settings_section_reset";
     public const string ScreenshotBeautified = "screenshot_beautified";
     public const string ScreenshotBeautifiedCopied = "screenshot_beautified_copied";
+    public const string ScrollingCaptureCompleted = "scrolling_capture_completed";
     public const string SnipCancelled = "snip_cancelled";
     public const string SnipStarted = "snip_started";
     public const string StartupCompleted = "startup_completed";
@@ -181,6 +183,7 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.SettingsSectionReset] = Product(TelemetryEvents.SettingsSectionReset, TelemetryPropertyKeys.AppSection),
             [TelemetryEvents.ScreenshotBeautified] = Product(TelemetryEvents.ScreenshotBeautified),
             [TelemetryEvents.ScreenshotBeautifiedCopied] = Product(TelemetryEvents.ScreenshotBeautifiedCopied),
+            [TelemetryEvents.ScrollingCaptureCompleted] = Product(TelemetryEvents.ScrollingCaptureCompleted, TelemetryPropertyKeys.Count, TelemetryPropertyKeys.StopReason),
             [TelemetryEvents.SnipCancelled] = Product(TelemetryEvents.SnipCancelled, TelemetryPropertyKeys.Type),
             [TelemetryEvents.SnipStarted] = Product(TelemetryEvents.SnipStarted, TelemetryPropertyKeys.Type, TelemetryPropertyKeys.Source),
             [TelemetryEvents.StartupCompleted] = Diagnostic(TelemetryEvents.StartupCompleted, TelemetryPropertyKeys.DurationMilliseconds),

@@ -73,7 +73,7 @@ Generated from the area files under `docs/knowledge-base/features/`. Each featur
 
 <!-- features -->
 
-- [Capture](features/capture.md): F-01 Region snip; F-02 Whole-screen snip; F-03 Clean-window snip; F-04 Capture delay countdown; F-05 Open an image in the overlay; F-06 Copy, save, save as; F-07 Pin a screenshot; F-08 Copy text with an OCR lasso; F-09 Beautify a screenshot; F-10 Watermarks on screenshots and videos
+- [Capture](features/capture.md): F-01 Region snip; F-02 Whole-screen snip; F-03 Clean-window snip; F-04 Capture delay countdown; F-05 Open an image in the overlay; F-06 Copy, save, save as; F-07 Pin a screenshot; F-08 Copy text with an OCR lasso; F-09 Beautify a screenshot; F-38 Scrolling snip; F-10 Watermarks on screenshots and videos
 - [Annotation](features/annotation.md): F-11 Annotation tools: arrow, line, rectangle, circle, pen, highlight, text, number, blur, callout, pixel ruler; F-12 Undo and redo; F-13 Color picker; F-14 Annotation style presets
 - [Recording](features/recording.md): F-15 Region recording; F-16 Whole-screen recording; F-17 Recording HUD: pause, stop, minimize, expand; F-18 Microphone audio; F-19 Live annotation while recording; F-20 Blur redaction burned into the video; F-21 Cursor effects; F-22 Trim a recording; F-23 Export a recording as GIF
 - [Transcription](features/transcription.md): F-24 Transcripts and subtitles

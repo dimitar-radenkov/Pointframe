@@ -188,6 +188,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         contextMenu.Items.Add(CreateTrayMenuItem("New Snip", NewSnip_Click, "\uE722"));
         contextMenu.Items.Add(CreateTrayMenuItem("Whole Screen Snip", WholeScreenSnip_Click, "\uE7F4"));
         contextMenu.Items.Add(CreateTrayMenuItem("Clean Window Snip", CleanWindowSnip_Click, "\uE8A7"));
+        contextMenu.Items.Add(CreateTrayMenuItem("Scrolling Snip", ScrollingSnip_Click, "\uE8CB"));
         contextMenu.Items.Add(CreateTrayMenuItem("Open Image...", OpenImage_Click, "\uE91B"));
         contextMenu.Items.Add(new WpfSeparator());
 
@@ -250,6 +251,7 @@ internal sealed class TrayIconManager : ITrayIconManager
     private void NewSnip_Click(object sender, RoutedEventArgs e) => _captureLaunch.StartRegionSnip("tray");
     private void WholeScreenSnip_Click(object sender, RoutedEventArgs e) => _captureLaunch.StartWholeScreenSnip("tray");
     private void CleanWindowSnip_Click(object sender, RoutedEventArgs e) => _captureLaunch.StartCleanWindowSnip("tray");
+    private void ScrollingSnip_Click(object sender, RoutedEventArgs e) => _captureLaunch.StartScrollingSnip("tray");
     private void Settings_Click(object sender, RoutedEventArgs e) => _ = _eventAggregator.Publish(new ShowSettingsWindowRequestedMessage());
     private void About_Click(object sender, RoutedEventArgs e) => _ = _eventAggregator.Publish(new ShowAboutWindowRequestedMessage());
     private void Library_Click(object sender, RoutedEventArgs e) => _ = _eventAggregator.Publish(new ShowLibraryWindowRequestedMessage());

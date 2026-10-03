@@ -17,6 +17,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 | F-07 | Pin a screenshot | Overlay action bar `Pin` | `Pointframe/ViewModels/OverlayViewModel.cs` (`Pin`), `Pointframe/Views/PinnedScreenshotWindow.xaml.cs` | `capture_pinned` | `Pointframe.Tests/PinnedScreenshotWindowTests.cs`, `Pointframe.AutomationTests/Smoke/McpPinWorkflowTests.cs` | [Capture overlay and selection](#capture-overlay-and-selection) |
 | F-08 | Copy text with an OCR lasso | Overlay copy-text action | `Pointframe/ViewModels/OverlayViewModel.cs` (`CopyText`), `Pointframe/Services/Annotation/OcrLassoController.cs`, `Pointframe/Services/Infrastructure/WindowsOcrService.cs` | `ocr_attempted`, `ocr_used`, `ocr_no_text` | `Pointframe.Tests/Services/WindowsOcrServiceTests.cs` | [Capture overlay and selection](#capture-overlay-and-selection) |
 | F-09 | Beautify a screenshot | Overlay beautify action | `Pointframe/ViewModels/BeautifierViewModel.cs`, `Pointframe/Views/BeautifierWindow.xaml.cs`, `Pointframe/Services/Recording/BeautifierRenderService.cs` | `beautify_opened`, `screenshot_beautified`, `screenshot_beautified_copied` | — | [Capture overlay and selection](#capture-overlay-and-selection) |
+| F-38 | Scrolling snip | Tray "Scrolling Snip" | `Pointframe/Services/Capture/CaptureLaunchService.cs` (`StartScrollingSnip`), `Pointframe/Services/Capture/ScrollingCaptureService.cs` | `snip_started`, `snip_cancelled`, `scrolling_capture_completed` | `Pointframe.Tests/Services/ScrollingCaptureStitcherTests.cs`, `Pointframe.Tests/Services/ScrollingCaptureServiceTests.cs` | [Scrolling capture](#scrolling-capture), [Capture overlay and selection](#capture-overlay-and-selection) |
 | F-10 | Watermarks on screenshots and videos | Watermark settings | `Pointframe/Services/Recording/ScreenshotWatermarkService.cs`, `Pointframe/Services/Recording/WatermarkTokenResolver.cs` | — | `Pointframe.Tests/Services/ScreenshotWatermarkServiceLayoutTests.cs`, `Pointframe.Tests/Services/WatermarkTokenResolverTests.cs` | [User settings](settings.md#user-settings), [Recording pipeline](recording.md#recording-pipeline) |
 
 ## Capture overlay and selection
@@ -27,7 +28,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 
 | Trigger | Path |
 |---|---|
-| Hotkey or tray menu | `ICaptureLaunchService.StartRegionSnip`, `StartWholeScreenSnip`, `StartCleanWindowSnip`, `StartWholeScreenRecord`; the `source` argument (`"hotkey"` or `"tray"`) feeds telemetry |
+| Hotkey or tray menu | `ICaptureLaunchService.StartRegionSnip`, `StartWholeScreenSnip`, `StartCleanWindowSnip`, `StartScrollingSnip` (tray only), `StartWholeScreenRecord`; the `source` argument (`"hotkey"` or `"tray"`) feeds telemetry |
 | Open an image file | `OpenImageRequestedMessage` through the event aggregator; mode `OpenedImage` |
 | Library item | `LibraryViewModel` closes the library, then launches the overlay with the file |
 
@@ -70,3 +71,31 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 - Lesson: Window picker overlays must enumerate capturable windows before showing any picker UI
 - Lesson: Cursor-targeted tray captures must honor capture delay
 - Lesson: Selection-adjacent toolbars need a compact fallback for small snips
+
+## Scrolling capture
+
+**Responsibility.** Capture content taller than its viewport (a long page, document, or chat) by scrolling it under a selected region and stitching the frames into one image that opens in the annotation overlay.
+
+**Flow.**
+
+1. `StartScrollingSnip` honors the capture delay, then runs the normal region selection (`SelectionSession.SelectAsync`).
+2. `ScrollingCaptureService.CaptureAsync` waits `SettleDelay` so the selection windows are gone, captures the region (`SelectionBoundsPixels`, physical pixels), and parks the cursor at its center through `IScrollInputService.BeginScrolling`. Windows routes wheel input to the window under the cursor when it processes the input, so the cursor stays there until the capture ends, then is restored.
+3. Loop: `ScrollDown` sends wheel notches with `SendInput`, waits `SettleDelay`, captures, and calls `ScrollingCaptureStitcher.Append`. After each step the notch count is resized so a step moves about 60% of the body.
+4. It stops on `NoMovement` (end of content), `NoOverlap`, the frame limit (40), or the height limit (20,000 px), and keeps what it stitched. `scrolling_capture_completed` records the frame count and stop reason.
+5. The image opens through `OverlayWindow.InitializeFromImage` in `OpenedImage` mode, so copy, save, pin, and annotation work unchanged. The overlay scales a tall image down to fit; export stays full resolution.
+
+**How the stitcher matches frames.** It works on `PixelFrame` (BGRA `int[]`), so it is pure and tested pixel-exact.
+
+- Fixed bands: rows equal at the top and bottom of two consecutive frames are a sticky header and footer. The header comes from the first frame, the footer from the last; only the body between is stitched. If the bands leave no match (blank margins that only look fixed), it retries with none.
+- Shift: rows whose hash is unique in both frames vote for `previousRow - nextRow`; the top candidates are confirmed with a tolerant comparison (a row may differ in 5% of its pixels, 90% of overlapping rows must match), so a blinking caret or a moving scrollbar thumb does not break the match.
+- End of content needs 90% of rows exactly equal at shift zero. It cannot use the tolerant comparison, because a sparse text row shifted a few pixels passes it.
+- Not handled: content with no unique rows (a blank or repeating stretch taller than the overlap) stops with `NoOverlap`; horizontal scrolling; lazy-loaded content beyond what the settle delay covers.
+
+**Tests.** `Pointframe.Tests/Services/ScrollingCaptureStitcherTests.cs` (uneven steps, sticky bands, caret and scrollbar, stop outcomes), `Pointframe.Tests/Services/ScrollingCaptureServiceTests.cs` (the loop against a simulated scrolling page).
+
+**Files.** `Pointframe/Services/Capture/ScrollingCaptureService.cs`, `Pointframe/Services/Capture/IScrollingCaptureService.cs`, `Pointframe/Services/Capture/ScrollingCaptureStitcher.cs`, `Pointframe/Services/Capture/PixelFrame.cs`, `Pointframe/Services/Capture/ScrollInputService.cs`, `Pointframe/Services/Capture/IScrollInputService.cs`. See [DIPs and physical pixels](../knowledge-base.md#dips-and-physical-pixels-are-converted-explicitly-per-monitor).
+
+**Lessons.**
+
+- Lesson: Overlay capture must yield the dispatcher after hiding the overlay window
+- Lesson: Cursor-targeted tray captures must honor capture delay
