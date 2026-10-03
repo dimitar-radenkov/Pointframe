@@ -1,8 +1,9 @@
 # Pointframe CLI
 
 `Pointframe.Cli.exe` is a self-contained Windows command-line tool for
-discovering monitors, capturing a whole monitor as PNG, running Windows OCR
-against a monitor capture, and recording a whole monitor to MP4. It uses
+discovering monitors and windows, capturing a monitor, a monitor sub-region,
+or a single window as PNG, running Windows OCR against those captures, and
+recording a whole monitor to MP4. It uses
 `Pointframe.Engine` directly and does not start the Pointframe tray
 application or any WPF window.
 

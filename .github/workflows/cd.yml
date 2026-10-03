@@ -13,6 +13,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
+      id-token: write # GitHub OIDC login to the MCP Registry
     env:
       SIGNING_CERT_B64: ${{ secrets.SIGNING_CERT_B64 }}
       SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
@@ -201,3 +202,25 @@ jobs:
             - Includes a standalone Pointframe CLI for whole-monitor screenshots.
             - Includes the Pointframe MCPB stdio server bundle and registry metadata.
             - For the full list of commits, see Compare in this release page.
+
+      # Runs after the release exists because server.json pins the MCPB release URL and SHA-256.
+      # OIDC proves ownership of the io.github.dimitar-radenkov/* namespace; no secret is needed.
+      - name: Publish MCP server to the MCP Registry
+        shell: pwsh
+        run: |
+          $publisherVersion = 'v1.8.1'
+          $publisherArchive = Join-Path $env:RUNNER_TEMP 'mcp-publisher.tar.gz'
+          Invoke-WebRequest `
+            -Uri "https://github.com/modelcontextprotocol/registry/releases/download/$publisherVersion/mcp-publisher_windows_amd64.tar.gz" `
+            -OutFile $publisherArchive
+          tar -xzf $publisherArchive -C $env:RUNNER_TEMP mcp-publisher.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $publisher = Join-Path $env:RUNNER_TEMP 'mcp-publisher.exe'
+
+          $serverJson = 'packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.server.json'
+          & $publisher validate $serverJson
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $publisher login github-oidc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $publisher publish $serverJson
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

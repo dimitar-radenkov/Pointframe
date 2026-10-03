@@ -105,7 +105,7 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 | Path | What lives here | Read first |
 |---|---|---|
 | `*`, `.vscode/**` | Root config: solution, central package versions, NBGV `version.json`, local tools, editor and MCP client config | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `CLAUDE.md`, `CONTRIBUTING.md`, `lessons.md`, `docs/**`, `.claude/**`, `.agents/skills/kb-*/**`, `scripts/kb.ps1` | Agent and contributor docs, this file, the kb skills and their script, the project hook, and the generated Codex skill copies | [How to maintain this file](#how-to-maintain-this-file), [D-006](decisions.md#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area) |
+| `CLAUDE.md`, `CONTRIBUTING.md`, `lessons.md`, `docs/**`, `.claude/**`, `.codex/**`, `.agents/skills/kb-*/**`, `scripts/kb.ps1` | Agent and contributor docs, this file, the kb skills and their script, the Claude Code and Codex project hooks, and the generated Codex skill copies | [How to maintain this file](#how-to-maintain-this-file), [D-006](decisions.md#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area) |
 | `docs/cli/**`, `docs/mcp-desktop-testing/**`, `README.md` | CLI and MCP user docs; the DocsSync tests fail when they drift from the code | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
 | `docs/appinsights*` | Kusto queries and the workbook template | [Telemetry](features/telemetry.md#telemetry-pipeline) |
 | `.github/**`, `winget/**`, `website/**` | Workflows, Dependabot, release drafter, winget manifests, the GitHub Pages site | [CI, CD, and versioning](#ci-cd-and-versioning) |
@@ -388,7 +388,7 @@ Identifiers still prefixed `SnippingTool` are pre-rename names kept for compatib
 | Workflow | Trigger | Does |
 |---|---|---|
 | `.github/workflows/ci.yml` | push to `master`, `feature/**`, `fix/**`; PR to `master` | `dotnet tool restore`, build `Pointframe.Tests` in Release, `dotnet format Pointframe/Pointframe.csproj --verify-no-changes`, `dotnet test` with `--filter "Category!=Integration"`, upload Cobertura to Codecov |
-| `.github/workflows/cd.yml` | `workflow_run` after a successful CI on `master` | compute the version with nbgv, inject the App Insights connection string and verify it, publish self-contained single-file, sign the exe when the certificate secret exists, build the CLI and MCP packages, create stable CLI/MCP asset aliases and their checksums, build the Inno Setup installer from `installer/Pointframe.iss`, sign it, upload `Pointframe-<version>-x64-Setup`, create the GitHub Release tagged `v<version>` |
+| `.github/workflows/cd.yml` | `workflow_run` after a successful CI on `master` | compute the version with nbgv, inject the App Insights connection string and verify it, publish self-contained single-file, sign the exe when the certificate secret exists, build the CLI and MCP packages, create stable CLI/MCP asset aliases and their checksums, build the Inno Setup installer from `installer/Pointframe.iss`, sign it, upload `Pointframe-<version>-x64-Setup`, create the GitHub Release tagged `v<version>`, then publish the MCP server's `server.json` to the MCP Registry (GitHub OIDC; the job has `id-token: write`) |
 | `.github/workflows/desktop-automation.yml` | manual (`workflow_dispatch`) | runs `Pointframe.AutomationTests` UI automation on a Windows runner |
 | `.github/workflows/winget-release.yml` | after CD completes on `master`, or manual with a version | submits the winget manifest update |
 | `.github/workflows/codeql.yml`, `.github/workflows/release-drafter.yml`, `.github/workflows/dependabot-auto-merge.yml` | as named | static analysis, release-notes draft, Dependabot merges |
@@ -413,7 +413,7 @@ The format gate covers the main project only. Do not run `dotnet format` on `Poi
 **Installer and packaging.**
 
 - `installer/Pointframe.iss` is the Inno Setup script; `installer/build-installer.ps1` and `installer/test-installer.ps1` build and check it locally. Its ARP `AppPublisher` is the source of truth that the winget manifests must mirror.
-- `winget/` holds the winget manifests; `packaging/scoop/` holds the scoop manifest.
+- `winget/` holds the winget manifests; `packaging/scoop/` holds the scoop manifest. The MCP server is listed in the official MCP Registry, published by CD; see [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation).
 - CD publishes both immutable versioned CLI/MCP assets and stable aliases (`Pointframe.Cli-win-x64.zip`, `Pointframe.Mcp-win-x64.mcpb`, and matching `.sha256` files). Use the aliases for `releases/latest/download` links and Shields.io badges; they prevent release-version changes from breaking those links.
 - Renaming anything in the delivery path (exe name, installer name, package id) touches the workflows, the installer, the winget manifests, and the updater's asset-name expectation together.
 

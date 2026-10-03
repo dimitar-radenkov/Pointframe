@@ -224,9 +224,11 @@ Download the matching `Pointframe.Mcp-*-win-x64.mcpb` asset from the
 and install it in an MCPB-compatible host. Verify the adjacent `.sha256` file
 before installation when the host does not verify the bundle automatically.
 
-For clients that use the MCP Registry, each release also publishes a matching
-`*.server.json` file. It uses the `io.github.dimitar-radenkov/pointframe-mcp`
-server name, pins the MCPB URL, and includes the bundle SHA-256.
+Each release is also published to the official
+[MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=pointframe)
+as `io.github.dimitar-radenkov/pointframe-mcp`, so registry-aware clients can find
+and install it. The matching `*.server.json` attached to the release pins the MCPB
+URL and includes the bundle SHA-256.
 
 To build the same artifacts locally:
 
@@ -281,8 +283,8 @@ dotnet build Pointframe.Mcp/Pointframe.Mcp.csproj
   -ExecutablePath ".\Pointframe.Mcp\bin\Debug\net10.0-windows10.0.18362.0\Pointframe.Mcp.exe"
 ```
 
-The smoke test verifies the MCP initialize handshake and confirms that all five
-tools are advertised. To test an actual capture, configure the executable in VS
+The smoke test verifies the MCP initialize handshake and confirms that the exact
+expected tool set is advertised, both with desktop testing disabled and enabled. To test an actual capture, configure the executable in VS
 Code, call `list_displays`, then call `capture_monitor` (or `read_text_from_monitor`)
 with one of the returned monitor names. A successful capture should have a matching
 `.metadata.json` sidecar whose SHA-256 and byte length agree with the image.
