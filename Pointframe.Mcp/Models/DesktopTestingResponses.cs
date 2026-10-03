@@ -47,7 +47,8 @@ public sealed record DesktopTestingCheckResponse(
     bool StateAvailable,
     bool Matches,
     int MatchCount,
-    McpCaptureError? Error = null);
+    McpCaptureError? Error = null,
+    string? ActualValue = null);
 
 public sealed record DesktopTestingActionResponse(
     int SchemaVersion,

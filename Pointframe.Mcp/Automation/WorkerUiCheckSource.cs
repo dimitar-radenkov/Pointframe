@@ -83,20 +83,15 @@ public sealed class WorkerUiCheckSource(
         {
             DesktopUiCheckCondition.Exists => new DesktopUiCheckEvaluation(true, matches.Length > 0, matches.Length),
             DesktopUiCheckCondition.Absent => new DesktopUiCheckEvaluation(true, matches.Length == 0, matches.Length),
-            DesktopUiCheckCondition.Enabled enabled => Single(
-                matches,
-                element => element.IsEnabled == enabled.Expected),
-            DesktopUiCheckCondition.ToggleEquals toggle => Single(
-                matches,
-                element => Matches(element.ToggleState, toggle.Expected)),
-            DesktopUiCheckCondition.SelectionEquals selection => Single(
-                matches,
-                element => Matches(element.Selection, selection.Expected)),
+            DesktopUiCheckCondition.Enabled enabled => Single(matches, element => element.IsEnabled == enabled.Expected, element => element.IsEnabled.ToString().ToLowerInvariant()),
+            DesktopUiCheckCondition.ToggleEquals toggle => Single(matches, element => Matches(element.ToggleState, toggle.Expected), element => element.ToggleState),
+            DesktopUiCheckCondition.SelectionEquals selection => Single(matches, element => Matches(element.Selection, selection.Expected), element => element.Selection),
             DesktopUiCheckCondition.TextEquals text => Single(
                 matches,
                 // A password field reports no text by design, so a text assertion against one can
                 // never be satisfied and must not silently read as a mismatch.
-                element => !element.IsSensitive && string.Equals(element.Text, text.Expected, StringComparison.Ordinal)),
+                element => !element.IsSensitive && string.Equals(element.Text, text.Expected, StringComparison.Ordinal),
+                element => element.IsSensitive ? null : element.Text),
             _ => new DesktopUiCheckEvaluation(false, false, 0, "UnsupportedCondition"),
         };
     }
@@ -132,8 +127,9 @@ public sealed class WorkerUiCheckSource(
     // other than one for every state predicate, so report the real count rather than collapsing it.
     private static DesktopUiCheckEvaluation Single(
         IReadOnlyList<DesktopUiElementSnapshot> matches,
-        Func<DesktopUiElementSnapshot, bool> predicate) =>
-        new(true, matches.Count == 1 && predicate(matches[0]), matches.Count);
+        Func<DesktopUiElementSnapshot, bool> predicate,
+        Func<DesktopUiElementSnapshot, string?> actualValue) =>
+        new(true, matches.Count == 1 && predicate(matches[0]), matches.Count, ActualValue: matches.Count == 1 ? actualValue(matches[0]) : null);
 
     private static bool Matches(string? actual, string? expected) =>
         string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase);

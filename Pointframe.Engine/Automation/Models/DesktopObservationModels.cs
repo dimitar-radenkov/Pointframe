@@ -75,7 +75,8 @@ public sealed record DesktopUiCheckEvaluation(
     bool Matches,
     int MatchCount,
     string? ErrorCode = null,
-    string? Message = null);
+    string? Message = null,
+    string? ActualValue = null);
 
 public abstract record DesktopUiCheckCondition
 {

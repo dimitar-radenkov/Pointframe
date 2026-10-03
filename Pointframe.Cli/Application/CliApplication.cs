@@ -53,6 +53,27 @@ internal sealed class CliApplication
                 return 0;
             }
 
+            if (string.Equals(command.Name, "mcp", StringComparison.Ordinal))
+            {
+                using var httpClient = new HttpClient();
+                var installRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Programs",
+                    "Pointframe.Mcp");
+                var configurationPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Code",
+                    "User",
+                    "mcp.json");
+                var mcpApplication = new McpManagementApplication(
+                    new McpPackageInstaller(new GitHubMcpPackageSource(httpClient), installRoot),
+                    new VsCodeMcpConfigurator(configurationPath),
+                    new McpStdioHealthChecker(),
+                    standardOutput,
+                    standardError);
+                return await mcpApplication.RunAsync(command, cancellationToken);
+            }
+
             Directory.CreateDirectory(PointframePaths.LocalAppDataDirectory);
             using var serviceProvider = new ServiceCollection()
                 .AddPointframeDataServices($"Data Source={PointframePaths.PointframeDatabasePath}")

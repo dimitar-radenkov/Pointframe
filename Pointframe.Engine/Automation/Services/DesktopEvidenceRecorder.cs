@@ -31,7 +31,7 @@ public interface IDesktopEvidenceRecorder
 // Evidence is what the server saw, saved where the agent cannot rewrite the report's view of it: each
 // image is referenced by its SHA-256, so a changed file no longer matches the report.
 public sealed class DesktopEvidenceRecorder(
-    IDisplayCaptureEngine captureEngine,
+    IWindowContentCapture windowCapture,
     IWindowDiscoveryService windowDiscovery,
     TimeProvider? timeProvider = null) : IDesktopEvidenceRecorder
 {
@@ -81,18 +81,27 @@ public sealed class DesktopEvidenceRecorder(
             sequence = ++session.Sequence;
         }
 
-        // Only the target's own windows are captured. A whole-monitor capture would store whatever else
-        // the user had open, which the policy never approved as evidence.
-        if (TargetBounds(process.ProcessId) is not { } bounds)
+        // Only the target's own windows are captured, each from its own contents. A copy of the screen would
+        // store whatever else the user had open, including a window covering the target, which the policy
+        // never approved as evidence.
+        var windows = TargetWindows(process.ProcessId);
+        if (windows.Length == 0)
         {
             return new DesktopTestEvidence(null, null, null, capturedUtc, "NoVisibleWindow");
         }
+
+        var bounds = Union(windows);
 
         // Capture failures must not fail the action or check they document; they are recorded instead,
         // so a reviewer sees that evidence is missing rather than finding nothing.
         try
         {
-            using var bitmap = captureEngine.Capture(bounds);
+            using var bitmap = Compose(windows, bounds);
+            if (bitmap is null)
+            {
+                return new DesktopTestEvidence(null, null, bounds, capturedUtc, "CaptureFailed");
+            }
+
             using var png = new MemoryStream();
             bitmap.Save(png, ImageFormat.Png);
             var bytes = png.ToArray();
@@ -107,25 +116,48 @@ public sealed class DesktopEvidenceRecorder(
         }
     }
 
-    private PixelBounds? TargetBounds(int processId)
-    {
-        var windows = windowDiscovery.GetWindows()
+    // Window discovery enumerates top-level windows from the top of the z-order down.
+    private WindowDescriptor[] TargetWindows(int processId) =>
+        windowDiscovery.GetWindows()
             .Where(window => window.ProcessId == processId
                 && !window.IsMinimized
                 && window.BoundsPixels.Width > 0
                 && window.BoundsPixels.Height > 0)
-            .Select(window => window.BoundsPixels)
             .ToArray();
-        if (windows.Length == 0)
+
+    private static PixelBounds Union(IReadOnlyList<WindowDescriptor> windows)
+    {
+        var left = windows.Min(window => window.BoundsPixels.X);
+        var top = windows.Min(window => window.BoundsPixels.Y);
+        var right = windows.Max(window => window.BoundsPixels.X + window.BoundsPixels.Width);
+        var bottom = windows.Max(window => window.BoundsPixels.Y + window.BoundsPixels.Height);
+        return new PixelBounds(left, top, right - left, bottom - top);
+    }
+
+    // Paints the target's windows bottom-most first, so its own dialogs stay on top as the user saw them.
+    // Area no target window covers stays transparent rather than showing the screen. Any window that cannot
+    // be rendered fails the whole image: a partial picture could look like the app without a dialog it had.
+    private Bitmap? Compose(IReadOnlyList<WindowDescriptor> windows, PixelBounds bounds)
+    {
+        var canvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
+        using var graphics = Graphics.FromImage(canvas);
+        foreach (var window in windows.Reverse())
         {
-            return null;
+            using var image = windowCapture.Capture(window.Hwnd, window.BoundsPixels);
+            if (image is null)
+            {
+                canvas.Dispose();
+                return null;
+            }
+
+            graphics.DrawImage(image, new Rectangle(
+                window.BoundsPixels.X - bounds.X,
+                window.BoundsPixels.Y - bounds.Y,
+                image.Width,
+                image.Height));
         }
 
-        var left = windows.Min(window => window.X);
-        var top = windows.Min(window => window.Y);
-        var right = windows.Max(window => window.X + window.Width);
-        var bottom = windows.Max(window => window.Y + window.Height);
-        return new PixelBounds(left, top, right - left, bottom - top);
+        return canvas;
     }
 
     private sealed class SessionEvidence(string? directory, DesktopEvidenceMode mode)

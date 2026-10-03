@@ -63,6 +63,76 @@ public class DesktopUiCheckEvaluationTests
         Assert.True(result.Matches);
     }
 
+    [Theory]
+    [InlineData("true", "On")]
+    [InlineData("checked", "On")]
+    [InlineData("on", "On")]
+    [InlineData("false", "Off")]
+    [InlineData("unchecked", "Off")]
+    [InlineData("indeterminate", "Indeterminate")]
+    public void BuildConditionNormalizesToggleValues(string expected, string normalized)
+    {
+        var condition = DesktopTestingMcpTools.BuildCondition(
+            new McpUiCheckRequest("toggleEquals", AutomationId: "check", Expected: expected));
+
+        Assert.Equal(normalized, Assert.IsType<DesktopUiCheckCondition.ToggleEquals>(condition).Expected);
+    }
+
+    [Theory]
+    [InlineData("nope")]
+    [InlineData("yes")]
+    [InlineData("")]
+    public void BuildConditionRejectsUnknownToggleValues(string expected)
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            DesktopTestingMcpTools.BuildCondition(
+                new McpUiCheckRequest("toggleEquals", AutomationId: "check", Expected: expected)));
+
+        Assert.Contains("indeterminate", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("selected", "Selected")]
+    [InlineData("notSelected", "NotSelected")]
+    public void BuildConditionNormalizesSelectionValues(string expected, string normalized)
+    {
+        var condition = DesktopTestingMcpTools.BuildCondition(
+            new McpUiCheckRequest("selectionEquals", AutomationId: "item", Expected: expected));
+
+        Assert.Equal(normalized, Assert.IsType<DesktopUiCheckCondition.SelectionEquals>(condition).Expected);
+    }
+
+    [Fact]
+    public void BuildConditionRejectsUnknownSelectionValue()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            DesktopTestingMcpTools.BuildCondition(
+                new McpUiCheckRequest("selectionEquals", AutomationId: "item", Expected: "true")));
+
+        Assert.Contains("selected or notSelected", exception.Message);
+    }
+
+    [Fact]
+    public void FailedStateCheckReturnsActualValue()
+    {
+        var result = WorkerUiCheckSource.Evaluate(
+            [Element("el-1-0", automationId: "check", toggleState: "On")],
+            new DesktopUiCheckCondition.ToggleEquals(ById("check"), "Off"));
+
+        Assert.False(result.Matches);
+        Assert.Equal("On", result.ActualValue);
+    }
+
+    [Fact]
+    public void SensitiveTextIsNeverReturnedAsActualValue()
+    {
+        var result = WorkerUiCheckSource.Evaluate(
+            [Element("el-1-0", automationId: "password", text: "secret", isSensitive: true)],
+            new DesktopUiCheckCondition.TextEquals(ById("password"), "expected"));
+
+        Assert.Null(result.ActualValue);
+    }
+
     [Fact]
     public void EnabledReportsTheRealMatchCountWhenAmbiguous()
     {

@@ -93,7 +93,7 @@ internal sealed class DesktopTestingMcpTools(
     }
 
     [McpServerTool(Name = "desktop_restart_app", Title = "Restart desktop application", UseStructuredContent = true)]
-    [Description("Stops and relaunches the application under test for an existing session, using the same policy profile it was started with. The session id stays valid; observation and element references from before the restart do not.")]
+    [Description("Relaunches the application under test for an existing session, using the same policy profile it was started with. It does not stop the application: close it through its own UI first (its Close or Exit command, or desktop_press_keys), or the call fails with TargetStillRunning. Use it to check that saved state survives a restart. The session id stays valid; observation and element references from before the restart do not.")]
     public async Task<DesktopTestingActionResponse> RestartAppAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
         [Description("A UUID action identifier.")] string actionId,
@@ -107,16 +107,41 @@ internal sealed class DesktopTestingMcpTools(
 
         var policy = LoadPolicy();
         var profile = policy.Profiles.Single(item => item.Id == session.ProfileId);
-        var result = await sessions.RestartAsync(
+
+        // A restart goes through the coordinator like any other action, so it lands in the signed report.
+        // Checks after it only mean "survives a restart" if the report shows the restart between them.
+        string? targetRef = null;
+        var result = await coordinator.ExecuteAsync(
             sessionId,
-            new DesktopLaunchRequest(profile.ExecutablePath, profile.Arguments, profile.WorkingDirectory),
-            cancellationToken).ConfigureAwait(false);
-        return result.Succeeded
-            ? Ok(actionId, sessionId, result.Session?.Target?.TargetRef)
-            : Error(actionId, result.Code, result.Message);
+            actionId,
+            new { operation = "restart_app", sessionId },
+            async token =>
+            {
+                var restart = await sessions.RestartAsync(
+                    sessionId,
+                    new DesktopLaunchRequest(profile.ExecutablePath, profile.Arguments, profile.WorkingDirectory),
+                    token).ConfigureAwait(false);
+                if (!restart.Succeeded)
+                {
+                    return new DesktopActionExecution(
+                        DesktopDispatchStatus.NotStarted,
+                        DesktopVerificationStatus.Failed,
+                        DesktopObservationStatus.NotRequested,
+                        new DesktopOperationError(restart.Code, restart.Message));
+                }
+
+                targetRef = restart.Session?.Target?.TargetRef;
+                return new DesktopActionExecution(DesktopDispatchStatus.Complete);
+            },
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        await AnnotateActionAsync(sessionId, actionId, "restart_app", result, cancellationToken).ConfigureAwait(false);
+        return DesktopTestingResponseMapper.MapAction(result, sessionId, targetRef);
     }
 
-    [McpServerTool(Name = "desktop_observe_app", Title = "Observe desktop application", ReadOnly = true, UseStructuredContent = true)]
+    // No UseStructuredContent: on a method returning CallToolResult the SDK derives an output schema from
+    // CallToolResult itself, with "structuredContent": true, and Claude Code then rejects the whole tool list.
+    // The result builder sets StructuredContent directly, so callers still get it.
+    [McpServerTool(Name = "desktop_observe_app", Title = "Observe desktop application", ReadOnly = true)]
     [Description("Captures the current state of the application under test: one image block per requested rectangle, plus the UI Automation element tree when requested. This is the only way to obtain the observation_ref and image_ref that desktop_click, desktop_drag, desktop_enter_text, and desktop_scroll require, so call it before every interaction — refs expire 30 seconds after capture, and are also invalidated if the monitor topology changes, after which any action using them is rejected as StaleObservation.")]
     public async Task<CallToolResult> ObserveAppAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -275,15 +300,15 @@ internal sealed class DesktopTestingMcpTools(
     }
 
     [McpServerTool(Name = "desktop_check_ui", Title = "Check desktop UI", ReadOnly = true, UseStructuredContent = true)]
-    [Description("Waits until a condition holds over the application's UI Automation state, or until the timeout elapses. Use this to synchronize with the UI after an action instead of guessing at delays. Returns verification 'passed', 'failed', or 'inconclusive' when the state could not be read at all. Every evaluated check is recorded in the session report, and a failed check fails the report, so use desktop_observe_app rather than this tool to explore.")]
+    [Description("Waits until a condition holds over the application's UI Automation state, or until the timeout elapses. Use this to synchronize with the UI after an action instead of guessing at delays. Returns verification 'passed', 'failed', or 'inconclusive' when the state could not be read at all, plus actualValue when one element's state was read. Every evaluated check is recorded in the session report, and a failed check fails the report, so use desktop_observe_app rather than this tool to explore.")]
     public async Task<DesktopTestingCheckResponse> CheckUiAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
-        [Description("What to check: one of exists, absent, enabled, toggleEquals, selectionEquals, textEquals, windowExists, windowAbsent, processExited.")] string kind,
+        [Description("What to check: exists/absent find elements; enabled checks true/false; toggleEquals checks checked or unchecked state; selectionEquals checks selected state; textEquals checks exact text; windowExists/windowAbsent check a window; processExited checks process liveness.")] string kind,
         [Description("The AutomationId of the element to check. Supply this or both role and name.")] string? automationId = null,
         [Description("The control type of the element to check, such as Button or Edit. Use with name.")] string? role = null,
         [Description("The accessible name of the element to check. Use with role.")] string? name = null,
         [Description("Optional window_ref from desktop_observe_app, to scope the check to one window. Required for windowExists and windowAbsent.")] string? windowRef = null,
-        [Description("The expected value, for enabled (true/false), toggleEquals, selectionEquals and textEquals.")] string? expected = null,
+        [Description("The expected value: enabled accepts true/false; toggleEquals accepts true/checked/on or false/unchecked/off (reported as On/Off), or indeterminate; selectionEquals accepts selected/notSelected; textEquals accepts exact text.")] string? expected = null,
         [Description("How long to wait for the condition before giving up, in seconds. At most 30.")] int timeoutSeconds = DesktopTestingLimits.DefaultUiCheckTimeoutSeconds,
         [Description("Optional acceptance criterion id (C1, C2, ...) from desktop_start_test_session that this check provides evidence for. An id the session did not declare is rejected without running the check.")] string? criterionId = null,
         [Description("Marks this check as a negative control: a deliberately wrong expectation, such as textEquals with a value the element does not hold. It passes only when the condition does not hold, which shows the check can tell states apart. A session with criteria needs at least one passing negative control for its report to pass. Cannot be combined with criterionId.")] bool expectFailure = false,
@@ -360,7 +385,9 @@ internal sealed class DesktopTestingMcpTools(
             verdict,
             External: false,
             OracleType: "server-uia",
-            Message: response.Error?.Message,
+            Message: response.Error?.Message ?? (response.Verification == "failed" && response.ActualValue is not null
+                ? $"Expected '{spec.Expected}', but found '{response.ActualValue}'."
+                : null),
             RecordedUtc: DateTimeOffset.UtcNow,
             CriterionId: criterionId,
             NegativeControl: expectFailure,
@@ -529,6 +556,21 @@ internal sealed class DesktopTestingMcpTools(
             _ => throw new ArgumentException($"The '{request.Kind}' condition requires expected to be 'true' or 'false'.", nameof(request)),
         };
 
+        string ExpectedToggle() => request.Expected?.Trim().ToLowerInvariant() switch
+        {
+            "true" or "checked" or "on" => "On",
+            "false" or "unchecked" or "off" => "Off",
+            "indeterminate" => "Indeterminate",
+            _ => throw new ArgumentException("The 'toggleEquals' condition expects true/checked/on, false/unchecked/off, or indeterminate.", nameof(request)),
+        };
+
+        string ExpectedSelection() => request.Expected?.Trim().ToLowerInvariant() switch
+        {
+            "selected" => "Selected",
+            "notselected" or "not selected" => "NotSelected",
+            _ => throw new ArgumentException("The 'selectionEquals' condition expects selected or notSelected.", nameof(request)),
+        };
+
         string Window() => string.IsNullOrWhiteSpace(request.WindowRef)
             ? throw new ArgumentException($"The '{request.Kind}' condition requires a window reference.", nameof(request))
             : request.WindowRef;
@@ -538,8 +580,8 @@ internal sealed class DesktopTestingMcpTools(
             "exists" => new DesktopUiCheckCondition.Exists(Locator()),
             "absent" => new DesktopUiCheckCondition.Absent(Locator()),
             "enabled" => new DesktopUiCheckCondition.Enabled(Locator(), ExpectedBoolean()),
-            "toggleequals" => new DesktopUiCheckCondition.ToggleEquals(Locator(), Expected()),
-            "selectionequals" => new DesktopUiCheckCondition.SelectionEquals(Locator(), Expected()),
+            "toggleequals" => new DesktopUiCheckCondition.ToggleEquals(Locator(), ExpectedToggle()),
+            "selectionequals" => new DesktopUiCheckCondition.SelectionEquals(Locator(), ExpectedSelection()),
             "textequals" => new DesktopUiCheckCondition.TextEquals(Locator(), Expected()),
             "windowexists" => new DesktopUiCheckCondition.WindowExists(Window()),
             "windowabsent" => new DesktopUiCheckCondition.WindowAbsent(Window()),

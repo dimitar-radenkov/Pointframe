@@ -19,4 +19,8 @@
     <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Guides\verify-desktop-work.md" LogicalName="Pointframe.Mcp.Guides.verify-desktop-work.md" />
+  </ItemGroup>
+
 </Project>

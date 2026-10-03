@@ -59,13 +59,13 @@ if (hostOptions.Enabled)
             serviceProvider.GetRequiredService<IDesktopProofSigner>()));
     builder.Services.AddSingleton<IDesktopEvidenceRecorder>(serviceProvider =>
         new DesktopEvidenceRecorder(
-            serviceProvider.GetRequiredService<IDisplayCaptureEngine>(),
+            new WindowContentCapture(),
             new WindowDiscoveryService(),
             serviceProvider.GetRequiredService<TimeProvider>()));
     builder.Services.AddSingleton<IDesktopActionCoordinator, DesktopActionCoordinator>();
 }
 var mcpServer = builder.Services
-    .AddMcpServer()
+    .AddMcpServer(options => options.ServerInstructions = ServerInstructions(hostOptions.Enabled))
     .WithStdioServerTransport()
     .WithTools<PointframeMcpTools>()
     .WithResources<PointframeMcpResources>();
@@ -100,6 +100,16 @@ _ = Task.Run(async () =>
 });
 await host.RunAsync();
 return 0;
+
+// Clients show these instructions to the agent at connect time, which is the one moment an agent that has
+// never seen Pointframe learns that it can verify its own desktop work here, and where the steps are.
+static string ServerInstructions(bool desktopTestingEnabled) =>
+    "Pointframe captures, reads (OCR), and records the Windows desktop. " +
+    (desktopTestingEnabled
+        ? "Desktop testing is enabled: to verify a change in a running desktop app and return a signed proof, read the resource " +
+          $"{PointframeMcpResources.VerifyDesktopWorkGuideUri} before calling any desktop_ tool."
+        : "Desktop testing tools are disabled on this server. To learn how an agent verifies its desktop work once they are enabled, read the resource " +
+          $"{PointframeMcpResources.VerifyDesktopWorkGuideUri}.");
 
 static async Task ReconcileUntilStoppedAsync(
     ICaptureImportService importer,
