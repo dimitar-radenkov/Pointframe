@@ -66,7 +66,7 @@ public partial class SettingsViewModel : ObservableObject
     private int _recordingFps;
     private int _hudGapPixels;
     private DateTime? _lastAutoUpdateCheckUtc;
-    private readonly ScreenshotWatermarkSettings _watermarkOther;
+    private WatermarkSettings _watermarkHiddenStyle;
 
     public SettingsViewModel(
         IUserSettingsService settingsService,
@@ -143,7 +143,7 @@ public partial class SettingsViewModel : ObservableObject
         _lastAutoUpdateCheckUtc = s.LastAutoUpdateCheckUtc;
 
         var watermark = s.ScreenshotWatermark ?? new ScreenshotWatermarkSettings();
-        _watermarkOther = watermark;
+        _watermarkHiddenStyle = watermark;
         _watermarkEnabled = watermark.Enabled;
         _watermarkTextTemplate = watermark.TextTemplate;
         _watermarkPosition = watermark.Position;
@@ -160,10 +160,7 @@ public partial class SettingsViewModel : ObservableObject
             AddPresetCommand.NotifyCanExecuteChanged();
         };
 
-        _telemetry.TrackEvent(TelemetryEvents.SettingsOpened, new Dictionary<string, string>
-        {
-            [TelemetryPropertyKeys.AppSection] = SelectedSection.ToString().ToLowerInvariant(),
-        });
+        TrackSectionEvent(TelemetryEvents.SettingsOpened, SelectedSection);
     }
 
     public IReadOnlyList<SettingsSectionItem> Sections => SectionItems;
@@ -392,10 +389,7 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnSelectedSectionChanged(SettingsSection value)
     {
-        _telemetry.TrackEvent(TelemetryEvents.SettingsSectionChanged, new Dictionary<string, string>
-        {
-            [TelemetryPropertyKeys.AppSection] = value.ToString().ToLowerInvariant(),
-        });
+        TrackSectionEvent(TelemetryEvents.SettingsSectionChanged, value);
     }
 
     public SolidColorBrush ColorPreviewBrush => new(DefaultAnnotationColor);
@@ -443,7 +437,7 @@ public partial class SettingsViewModel : ObservableObject
         _stylePresets.Add(new AnnotationStylePresetViewModel(new AnnotationStylePreset
         {
             Name = $"Preset {_stylePresets.Count + 1}",
-            Color = $"#{DefaultAnnotationColor.A:X2}{DefaultAnnotationColor.R:X2}{DefaultAnnotationColor.G:X2}{DefaultAnnotationColor.B:X2}",
+            Color = ToArgbHex(DefaultAnnotationColor),
             StrokeThickness = DefaultStrokeThickness,
         }));
     }
@@ -467,7 +461,6 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void Save()
     {
-        var c = DefaultAnnotationColor;
         var clampedRecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(RecordingCursorHighlightSize);
         var currentSettings = _settingsService.Current;
         RecordingCursorHighlightSize = clampedRecordingCursorHighlightSize;
@@ -487,33 +480,9 @@ public partial class SettingsViewModel : ObservableObject
             RecordingCursorHighlightSize = clampedRecordingCursorHighlightSize,
             CaptureDelaySeconds = CaptureDelaySeconds,
             HudGapPixels = _hudGapPixels,
-            ScreenshotWatermark = new ScreenshotWatermarkSettings
-            {
-                Enabled = WatermarkEnabled,
-                TextTemplate = WatermarkTextTemplate,
-                Position = WatermarkPosition,
-                FontSize = WatermarkFontSize,
-                ApplyToCopy = WatermarkApplyToCopy,
-                ApplyToSave = WatermarkApplyToSave,
-                ColorHex = _watermarkOther.ColorHex,
-                BackgroundEnabled = _watermarkOther.BackgroundEnabled,
-                Opacity = _watermarkOther.Opacity,
-                Margin = _watermarkOther.Margin,
-            },
-            VideoWatermark = new VideoWatermarkSettings
-            {
-                Enabled = WatermarkEnabled,
-                TextTemplate = WatermarkTextTemplate,
-                Position = WatermarkPosition,
-                FontSize = WatermarkFontSize,
-                ApplyToCopy = WatermarkApplyToCopy,
-                ApplyToSave = WatermarkApplyToSave,
-                ColorHex = _watermarkOther.ColorHex,
-                BackgroundEnabled = _watermarkOther.BackgroundEnabled,
-                Opacity = _watermarkOther.Opacity,
-                Margin = _watermarkOther.Margin,
-            },
-            DefaultAnnotationColor = $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}",
+            ScreenshotWatermark = BuildWatermark<ScreenshotWatermarkSettings>(),
+            VideoWatermark = BuildWatermark<VideoWatermarkSettings>(),
+            DefaultAnnotationColor = ToArgbHex(DefaultAnnotationColor),
             DefaultStrokeThickness = DefaultStrokeThickness,
             StylePresets = [.. _stylePresets.Select(p => p.ToModel())],
             RegionCaptureHotkey = RegionCaptureHotkey,
@@ -542,10 +511,7 @@ public partial class SettingsViewModel : ObservableObject
             FirstCaptureCompletedTracked = currentSettings.FirstCaptureCompletedTracked,
             FirstRecordingCompletedTracked = currentSettings.FirstRecordingCompletedTracked,
         });
-        _telemetry.TrackEvent(TelemetryEvents.SettingsSaved, new Dictionary<string, string>
-        {
-            [TelemetryPropertyKeys.AppSection] = SelectedSection.ToString().ToLowerInvariant(),
-        });
+        TrackSectionEvent(TelemetryEvents.SettingsSaved, SelectedSection);
         RequestClose?.Invoke();
     }
 
@@ -554,18 +520,16 @@ public partial class SettingsViewModel : ObservableObject
     {
         IsCapturingWholeScreenRecordHotkey = false;
         IsCapturingCleanWindowCaptureHotkey = false;
-        IsCapturingOverlayShortcut = false;
-        OverlayShortcutCaptureTarget = string.Empty;
-        OverlayShortcutCaptureDisplayName = string.Empty;
-        OverlayShortcutConflictMessage = string.Empty;
+        CancelCapturingOverlayShortcut();
         IsRecordingHotkey = true;
     }
 
     [RelayCommand]
     private void ResetHotkey()
     {
-        RegionCaptureHotkey = 0x2C; // VK_SNAPSHOT (Print Screen)
-        RegionCaptureHotkeyModifiers = HotkeyModifiers.None;
+        var defaults = new UserSettings();
+        RegionCaptureHotkey = defaults.RegionCaptureHotkey;
+        RegionCaptureHotkeyModifiers = defaults.RegionCaptureHotkeyModifiers;
         IsRecordingHotkey = false;
     }
 
@@ -574,10 +538,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         IsRecordingHotkey = false;
         IsCapturingCleanWindowCaptureHotkey = false;
-        IsCapturingOverlayShortcut = false;
-        OverlayShortcutCaptureTarget = string.Empty;
-        OverlayShortcutCaptureDisplayName = string.Empty;
-        OverlayShortcutConflictMessage = string.Empty;
+        CancelCapturingOverlayShortcut();
         IsCapturingWholeScreenRecordHotkey = true;
     }
 
@@ -585,10 +546,7 @@ public partial class SettingsViewModel : ObservableObject
     private void StartCapturingCleanWindowCaptureHotkey()
     {
         IsRecordingHotkey = false;
-        IsCapturingOverlayShortcut = false;
-        OverlayShortcutCaptureTarget = string.Empty;
-        OverlayShortcutCaptureDisplayName = string.Empty;
-        OverlayShortcutConflictMessage = string.Empty;
+        CancelCapturingOverlayShortcut();
         IsCapturingWholeScreenRecordHotkey = false;
         IsCapturingCleanWindowCaptureHotkey = true;
     }
@@ -596,16 +554,18 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void ResetRecordHotkey()
     {
-        WholeScreenRecordHotkey = 0x52; // VK_R
-        WholeScreenRecordHotkeyModifiers = HotkeyModifiers.Ctrl | HotkeyModifiers.Shift;
+        var defaults = new UserSettings();
+        WholeScreenRecordHotkey = defaults.WholeScreenRecordHotkey;
+        WholeScreenRecordHotkeyModifiers = defaults.WholeScreenRecordHotkeyModifiers;
         IsCapturingWholeScreenRecordHotkey = false;
     }
 
     [RelayCommand]
     private void ResetCleanWindowCaptureHotkey()
     {
-        CleanWindowCaptureHotkey = 0x57; // VK_W
-        CleanWindowCaptureHotkeyModifiers = HotkeyModifiers.Ctrl | HotkeyModifiers.Shift;
+        var defaults = new UserSettings();
+        CleanWindowCaptureHotkey = defaults.CleanWindowCaptureHotkey;
+        CleanWindowCaptureHotkeyModifiers = defaults.CleanWindowCaptureHotkeyModifiers;
         IsCapturingCleanWindowCaptureHotkey = false;
     }
 
@@ -667,59 +627,25 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void ResetCurrentSection()
     {
-        _telemetry.TrackEvent(TelemetryEvents.SettingsSectionReset, new Dictionary<string, string>
-        {
-            [TelemetryPropertyKeys.AppSection] = SelectedSection.ToString().ToLowerInvariant(),
-        });
+        TrackSectionEvent(TelemetryEvents.SettingsSectionReset, SelectedSection);
 
         var defaults = new UserSettings();
         switch (SelectedSection)
         {
             case SettingsSection.Capture:
-                ScreenshotSavePath = defaults.ScreenshotSavePath;
-                AutoSaveScreenshots = defaults.AutoSaveScreenshots;
-                CaptureDelaySeconds = defaults.CaptureDelaySeconds;
-                WatermarkEnabled = defaults.ScreenshotWatermark.Enabled;
-                WatermarkTextTemplate = defaults.ScreenshotWatermark.TextTemplate;
-                WatermarkPosition = defaults.ScreenshotWatermark.Position;
-                WatermarkFontSize = defaults.ScreenshotWatermark.FontSize;
-                WatermarkApplyToCopy = defaults.ScreenshotWatermark.ApplyToCopy;
-                WatermarkApplyToSave = defaults.ScreenshotWatermark.ApplyToSave;
-                RegionCaptureHotkey = defaults.RegionCaptureHotkey;
-                RegionCaptureHotkeyModifiers = defaults.RegionCaptureHotkeyModifiers;
-                IsRecordingHotkey = false;
+                ResetCaptureSection(defaults);
                 break;
             case SettingsSection.Recording:
-                RecordingOutputPath = defaults.RecordingOutputPath;
-                RecordMicrophone = defaults.RecordMicrophone;
-                RecordingTranscriptEnabled = defaults.RecordingTranscriptEnabled;
-                SelectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(defaults.RecordingMicrophoneDeviceName);
-                GifFps = defaults.GifFps;
-                RecordingCursorHighlightEnabled = defaults.RecordingCursorHighlightEnabled;
-                RecordingClickRippleEnabled = defaults.RecordingClickRippleEnabled;
-                RecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(defaults.RecordingCursorHighlightSize);
-                WholeScreenRecordHotkey = defaults.WholeScreenRecordHotkey;
-                WholeScreenRecordHotkeyModifiers = defaults.WholeScreenRecordHotkeyModifiers;
-                IsCapturingWholeScreenRecordHotkey = false;
-                CleanWindowCaptureHotkey = defaults.CleanWindowCaptureHotkey;
-                CleanWindowCaptureHotkeyModifiers = defaults.CleanWindowCaptureHotkeyModifiers;
-                IsCapturingCleanWindowCaptureHotkey = false;
+                ResetRecordingSection(defaults);
                 break;
             case SettingsSection.Annotation:
-                DefaultAnnotationColor = ParseAnnotationColorOrFallback(defaults.DefaultAnnotationColor);
-                DefaultStrokeThickness = defaults.DefaultStrokeThickness;
-                ResetStylePresets(defaults.StylePresets);
+                ResetAnnotationSection(defaults);
                 break;
             case SettingsSection.App:
-                AutoUpdateCheckInterval = defaults.AutoUpdateCheckInterval;
-                AppTheme = defaults.Theme;
+                ResetAppSection(defaults);
                 break;
             case SettingsSection.Shortcuts:
-                ResetOverlayShortcutsTo(defaults);
-                IsCapturingOverlayShortcut = false;
-                OverlayShortcutCaptureTarget = string.Empty;
-                OverlayShortcutCaptureDisplayName = string.Empty;
-                OverlayShortcutConflictMessage = string.Empty;
+                ResetShortcutsSection(defaults);
                 break;
         }
     }
@@ -729,20 +655,23 @@ public partial class SettingsViewModel : ObservableObject
     {
         _telemetry.TrackEvent(TelemetryEvents.SettingsDefaultsRestored);
 
+        // Values the window does not show are reset here directly; see lessons.md,
+        // "Restore-defaults flows must update hidden persisted settings directly".
         var defaults = new UserSettings();
         _recordingFps = defaults.RecordingFps;
         _hudGapPixels = defaults.HudGapPixels;
         _lastAutoUpdateCheckUtc = defaults.LastAutoUpdateCheckUtc;
+        ResetCaptureSection(defaults);
+        ResetRecordingSection(defaults);
+        ResetAnnotationSection(defaults);
+        ResetShortcutsSection(defaults);
+        ResetAppSection(defaults);
+    }
+
+    private void ResetCaptureSection(UserSettings defaults)
+    {
         ScreenshotSavePath = defaults.ScreenshotSavePath;
         AutoSaveScreenshots = defaults.AutoSaveScreenshots;
-        RecordingOutputPath = defaults.RecordingOutputPath;
-        RecordingTranscriptEnabled = defaults.RecordingTranscriptEnabled;
-        RecordMicrophone = defaults.RecordMicrophone;
-        SelectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(defaults.RecordingMicrophoneDeviceName);
-        GifFps = defaults.GifFps;
-        RecordingCursorHighlightEnabled = defaults.RecordingCursorHighlightEnabled;
-        RecordingClickRippleEnabled = defaults.RecordingClickRippleEnabled;
-        RecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(defaults.RecordingCursorHighlightSize);
         CaptureDelaySeconds = defaults.CaptureDelaySeconds;
         WatermarkEnabled = defaults.ScreenshotWatermark.Enabled;
         WatermarkTextTemplate = defaults.ScreenshotWatermark.TextTemplate;
@@ -750,23 +679,45 @@ public partial class SettingsViewModel : ObservableObject
         WatermarkFontSize = defaults.ScreenshotWatermark.FontSize;
         WatermarkApplyToCopy = defaults.ScreenshotWatermark.ApplyToCopy;
         WatermarkApplyToSave = defaults.ScreenshotWatermark.ApplyToSave;
-        DefaultAnnotationColor = ParseAnnotationColorOrFallback(defaults.DefaultAnnotationColor);
-        DefaultStrokeThickness = defaults.DefaultStrokeThickness;
-        ResetStylePresets(defaults.StylePresets);
+        _watermarkHiddenStyle = defaults.ScreenshotWatermark;
         RegionCaptureHotkey = defaults.RegionCaptureHotkey;
         RegionCaptureHotkeyModifiers = defaults.RegionCaptureHotkeyModifiers;
         IsRecordingHotkey = false;
+    }
+
+    private void ResetRecordingSection(UserSettings defaults)
+    {
+        RecordingOutputPath = defaults.RecordingOutputPath;
+        RecordMicrophone = defaults.RecordMicrophone;
+        RecordingTranscriptEnabled = defaults.RecordingTranscriptEnabled;
+        SelectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(defaults.RecordingMicrophoneDeviceName);
+        GifFps = defaults.GifFps;
+        RecordingCursorHighlightEnabled = defaults.RecordingCursorHighlightEnabled;
+        RecordingClickRippleEnabled = defaults.RecordingClickRippleEnabled;
+        RecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(defaults.RecordingCursorHighlightSize);
         WholeScreenRecordHotkey = defaults.WholeScreenRecordHotkey;
         WholeScreenRecordHotkeyModifiers = defaults.WholeScreenRecordHotkeyModifiers;
         IsCapturingWholeScreenRecordHotkey = false;
         CleanWindowCaptureHotkey = defaults.CleanWindowCaptureHotkey;
         CleanWindowCaptureHotkeyModifiers = defaults.CleanWindowCaptureHotkeyModifiers;
         IsCapturingCleanWindowCaptureHotkey = false;
+    }
+
+    private void ResetAnnotationSection(UserSettings defaults)
+    {
+        DefaultAnnotationColor = ParseAnnotationColorOrFallback(defaults.DefaultAnnotationColor);
+        DefaultStrokeThickness = defaults.DefaultStrokeThickness;
+        ResetStylePresets(defaults.StylePresets);
+    }
+
+    private void ResetShortcutsSection(UserSettings defaults)
+    {
         ResetOverlayShortcutsTo(defaults);
-        IsCapturingOverlayShortcut = false;
-        OverlayShortcutCaptureTarget = string.Empty;
-        OverlayShortcutCaptureDisplayName = string.Empty;
-        OverlayShortcutConflictMessage = string.Empty;
+        CancelCapturingOverlayShortcut();
+    }
+
+    private void ResetAppSection(UserSettings defaults)
+    {
         AutoUpdateCheckInterval = defaults.AutoUpdateCheckInterval;
         AppTheme = defaults.Theme;
     }
@@ -803,6 +754,34 @@ public partial class SettingsViewModel : ObservableObject
 
     private static string OverlayShortcutLabel(string shortcutKey) =>
         FindOverlayShortcut(shortcutKey)?.Label ?? "Shortcut";
+
+    private TWatermark BuildWatermark<TWatermark>()
+        where TWatermark : WatermarkSettings, new()
+    {
+        return new TWatermark
+        {
+            Enabled = WatermarkEnabled,
+            TextTemplate = WatermarkTextTemplate,
+            Position = WatermarkPosition,
+            FontSize = WatermarkFontSize,
+            ApplyToCopy = WatermarkApplyToCopy,
+            ApplyToSave = WatermarkApplyToSave,
+            ColorHex = _watermarkHiddenStyle.ColorHex,
+            BackgroundEnabled = _watermarkHiddenStyle.BackgroundEnabled,
+            Opacity = _watermarkHiddenStyle.Opacity,
+            Margin = _watermarkHiddenStyle.Margin,
+        };
+    }
+
+    private static string ToArgbHex(Color color) => $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}";
+
+    private void TrackSectionEvent(string eventName, SettingsSection section)
+    {
+        _telemetry.TrackEvent(eventName, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.AppSection] = section.ToString().ToLowerInvariant(),
+        });
+    }
 
     private static double ClampRecordingCursorHighlightSize(double size)
     {

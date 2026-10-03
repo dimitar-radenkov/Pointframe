@@ -1325,3 +1325,6 @@ if ($errors.Count -gt 0)
 {
     exit 1
 }
+# Explicit: GitHub's pwsh step ends with "exit $LASTEXITCODE", and the last git call (check-ignore exits 1
+# when nothing is ignored) would otherwise fail a clean check.
+exit 0

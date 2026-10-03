@@ -301,7 +301,7 @@ dip         = physical_px / scale
 **Steps.**
 
 1. `Pointframe/Models/UserSettings.cs`: add the property with its default in the initializer. Use an enum for choices, not strings.
-2. `Pointframe/ViewModels/SettingsViewModel.cs`: add an `[ObservableProperty]` field, load it from `Current` in the constructor, write it back in `Save()`.
+2. `Pointframe/ViewModels/SettingsViewModel.cs`: add an `[ObservableProperty]` field, load it from `Current` in the constructor, write it back in `Save()`, and reset it in its section's `Reset<Section>Section` method. Both "Reset section" and "Restore defaults" call those methods, so one edit covers both.
 3. `Pointframe/Views/SettingsWindow.xaml`: bind a control in the right section (Capture, Recording, Annotation, Shortcuts, App) and give it an `AutomationProperties.AutomationId` that matches a new constant in `Pointframe.AutomationTests/Support/AutomationIds.cs`.
 4. Consumers read `IUserSettingsService.Current.<Name>` at the point of use.
 5. If the setting has a hidden or derived companion value, make Restore Defaults reset it directly.

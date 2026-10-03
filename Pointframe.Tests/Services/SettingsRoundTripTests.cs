@@ -97,7 +97,7 @@ public sealed class SettingsRoundTripTests : IDisposable
     // colors in canonical #AARRGGBB uppercase form, cursor highlight size inside the
     // 8..96 clamp range, microphone device name present in the mocked device list, and
     // ScreenshotWatermark equal to VideoWatermark (the VM edits one shared watermark state).
-    private static UserSettings CreateFullyPopulatedSettings()
+    internal static UserSettings CreateFullyPopulatedSettings()
     {
         return new UserSettings
         {

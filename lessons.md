@@ -744,9 +744,11 @@ The redesigned `SettingsWindow` could silently overwrite hidden persisted fields
 - reset those hidden fields directly inside `RestoreDefaults()`
 - save from the current viewmodel state instead of branching through a historical mode flag
 
+The same trap came back on 2026-10-03 with the watermark: the window has no controls for its color, background, opacity, and margin, and neither Restore defaults nor the Capture section reset touched them, so they kept their old values. The fix resets `_watermarkHiddenStyle` in `ResetCaptureSection`, which both reset paths call. `SettingsViewModelCharacterizationTests` now saves after each reset from settings in which every property differs from its default, so a hidden value that survives a reset fails a test.
+
 ### Takeaway
 
-If a settings screen does not expose every persisted field, model the hidden values as real state and update them explicitly during reset flows. Do not make save semantics depend on whether the user previously clicked a restore action.
+If a settings screen does not expose every persisted field, model the hidden values as real state and update them explicitly during reset flows. Do not make save semantics depend on whether the user previously clicked a restore action. Hidden fields can also be parts of a visible setting, such as the style fields of a watermark whose text and position are shown; test resets against fully populated settings so a field you did not think of still fails a test.
 
 ## Winget package renames need a one-time upstream bootstrap before automated updates can work
 
