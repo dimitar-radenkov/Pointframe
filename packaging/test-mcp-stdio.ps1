@@ -148,7 +148,7 @@ if (-not $SkipEnabledDiscovery)
         "desktop_list_apps", "desktop_start_test_session", "desktop_restart_app",
         "desktop_observe_app", "desktop_focus_window", "desktop_click", "desktop_press_keys",
         "desktop_drag", "desktop_enter_text", "desktop_invoke", "desktop_check_ui",
-        "desktop_scroll", "desktop_get_action_result", "desktop_get_test_report",
+        "desktop_scroll", "desktop_get_action_result", "desktop_get_test_report", "desktop_replay_checks",
         "desktop_end_test_session"
     )
     $policyPath = Join-Path (Split-Path $resolvedExecutablePath -Parent) "desktop-testing-policy.test.json"

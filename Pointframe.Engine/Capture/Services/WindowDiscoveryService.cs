@@ -30,6 +30,11 @@ public sealed class WindowDiscoveryService : IWindowDiscoveryService
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(nint hwnd, out RECT rect);
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(nint hwnd, int attribute, out RECT value, int size);
+
+    private const int DwmwaExtendedFrameBounds = 9;
+
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint hwnd, out uint processId);
 
@@ -120,7 +125,11 @@ public sealed class WindowDiscoveryService : IWindowDiscoveryService
 
         var title = new string(buffer, 0, actualLength);
 
-        if (!GetWindowRect(hwnd, out var rect))
+        // GetWindowRect includes the invisible resize border (about 7 px per side on Windows 10/11), so a
+        // capture of those bounds shows slivers of whatever lies behind the window. The DWM extended frame
+        // is the visible frame; fall back to GetWindowRect only when composition cannot answer.
+        if (DwmGetWindowAttribute(hwnd, DwmwaExtendedFrameBounds, out var rect, Marshal.SizeOf<RECT>()) != 0
+            && !GetWindowRect(hwnd, out rect))
         {
             return false;
         }

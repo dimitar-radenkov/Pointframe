@@ -126,8 +126,108 @@ the caller with two indistinguishable `click` tools.
 | `desktop_check_ui` | Evaluate bounded UI conditions |
 | `desktop_scroll` | Send bounded mouse-wheel input |
 | `desktop_get_action_result` | Read an action result |
-| `desktop_get_test_report` | Finalize the session report |
+| `desktop_get_test_report` | Finalize the signed session report and write its proof bundle |
+| `desktop_replay_checks` | Re-run a signed report's checks in a fresh session and compare verdicts |
 | `desktop_end_test_session` | Release the driver session without force-killing targets |
+
+### Session report verdict
+
+The server, not the agent, writes the session report: every action it ran and
+every check `desktop_check_ui` evaluated. `desktop_get_test_report` returns:
+
+- `failed` when any check failed, or any dispatched action failed verification.
+- `inconclusive` when no check ran, a check could not read the UI state, an
+  action's dispatch was partial or unknown, or a declared criterion is not
+  covered by a passing check.
+- `passed` otherwise.
+
+Actions rejected before dispatch (for example a stale observation) do not
+affect the verdict, so they can be retried. A failed check always fails the
+report, so explore with `desktop_observe_app`, not `desktop_check_ui`.
+
+To judge a session against goals written before the work starts, pass
+`criteria` to `desktop_start_test_session`. They are numbered `C1`, `C2`, ...,
+hashed (`criteriaSha256`), and frozen for the session. Name the criterion a
+check supports with `criterionId` on `desktop_check_ui`. The report lists a
+verdict per criterion: `passed`, `failed`, `inconclusive`, or `uncovered`.
+
+A session with criteria also needs a negative control: a `desktop_check_ui`
+call with `expectFailure: true` and a deliberately wrong expectation, such as
+`textEquals` with a value the element does not hold. It passes only when the
+condition does not hold, which shows the check can tell states apart; without
+one, covered criteria still leave the report `inconclusive`. If the wrong
+expectation holds, the check fails with `NegativeControlMatched` and so does the
+report. A negative control cannot name a `criterionId`, and a short
+`timeoutSeconds` is enough because the tool waits for the condition to hold.
+
+### Evidence screenshots
+
+The policy's `evidencePolicy` decides which report entries get a screenshot the
+server takes itself: `All` (every check and every action that reached the
+app), `Failures` (only entries that are not `passed`, plus actions that failed
+or whose dispatch is uncertain), or `None`. Images are full-resolution PNGs in
+`<artifactRoot>/<sessionRef>/evidence/`, named `0001-check.png`,
+`0002-action.png`, and so on. The report gives that folder as
+`evidenceDirectory` and each entry's `evidence` as `path`, `sha256`, and
+`boundsPixels`, so a changed image no longer matches its report.
+
+Only the target's own visible windows are captured, not the whole desktop,
+though anything lying on top of them in that rectangle is included. An action's
+image is taken right after dispatch, so it may show the app before it has
+updated; a check's image is taken after the check has waited for its
+condition. When no image could be taken, `evidence.error` says why
+(`NoVisibleWindow` or `CaptureFailed`) instead of the entry having nothing.
+
+### Signed reports
+
+Every report from `desktop_get_test_report` carries a `proof`:
+
+- `entries`: a hash chain over a header (session, executable hash, criteria
+  hash, evidence folder), each action, each check, and a summary (verdict and
+  per-criterion verdicts). Each hash covers the previous one, and evidence
+  hashes sit inside the entries, so editing any part of the report or any image
+  breaks the chain from that entry on.
+- `rootHash`: the last chain hash, signed with ECDSA P-256 (`signature`).
+- `publicKey` and `keyId`: the signing key. The private key is a
+  non-exportable Windows CNG key (`Pointframe.DesktopProof.v1`) in the current
+  user's key store, created on first use.
+
+`DesktopProofService.Verify` recomputes the chain, checks the signature, and,
+given the evidence folder, re-hashes every image. It names the first entry that
+differs. A valid proof shows the report and images are what this key signed. It
+does not show the work is correct, and anyone can sign an edited report with
+their own key, so compare `keyId` with the one you expect.
+
+### Proof bundle
+
+Each `desktop_get_test_report` call also writes the report's
+`sessionDirectory` (`<artifactRoot>/<sessionRef>/`):
+
+- `report.json`: the signed report, which verifies on its own.
+- `evidence/`: the screenshots it hashes.
+- `index.html`: a timeline of actions and checks with their screenshots,
+  the criteria verdicts, and the key ID. It is a readable view and is not
+  itself signed.
+
+Actions are named by their operation (`click`, `enter_text`, `drag`, and so
+on). The bundle is rewritten on every call, so it always matches the latest
+report.
+
+### Replaying checks
+
+`desktop_replay_checks` re-runs the checks of a signed `report.json` in a
+fresh session and compares the verdicts, check by check and per criterion.
+Start a new session for the same profile, then pass its `sessionId` and the
+report path. The tool refuses a report outside the policy's `artifactRoot`, a
+report whose proof does not verify, and a session whose executable hash
+differs from the report's. Checks scoped to a `windowRef` are skipped, because
+window refs belong to one session.
+
+The result is `matched` when every replayed verdict equals the original and
+`differs` otherwise. Replay starts from a fresh launch, so it confirms only
+what survives a restart, such as saved data that reopens. Typed text that was
+never saved replays as `failed`, which is the correct answer. The replayed
+checks are recorded in the new session's own report.
 
 The normal, disabled server continues to expose only the delivered capture and
 recording tools:

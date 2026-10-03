@@ -52,7 +52,16 @@ if (hostOptions.Enabled)
     builder.Services.AddSingleton<IDesktopUiCheckService>(serviceProvider =>
         new DesktopUiCheckService(serviceProvider.GetRequiredService<IDesktopUiCheckSource>()));
     builder.Services.AddSingleton<IDesktopActionLedger, DesktopActionLedger>();
-    builder.Services.AddSingleton<IDesktopTestReportService, DesktopTestReportService>();
+    builder.Services.AddSingleton<IDesktopProofSigner, CngDesktopProofSigner>();
+    builder.Services.AddSingleton<IDesktopTestReportService>(serviceProvider =>
+        new DesktopTestReportService(
+            serviceProvider.GetRequiredService<TimeProvider>(),
+            serviceProvider.GetRequiredService<IDesktopProofSigner>()));
+    builder.Services.AddSingleton<IDesktopEvidenceRecorder>(serviceProvider =>
+        new DesktopEvidenceRecorder(
+            serviceProvider.GetRequiredService<IDisplayCaptureEngine>(),
+            new WindowDiscoveryService(),
+            serviceProvider.GetRequiredService<TimeProvider>()));
     builder.Services.AddSingleton<IDesktopActionCoordinator, DesktopActionCoordinator>();
 }
 var mcpServer = builder.Services

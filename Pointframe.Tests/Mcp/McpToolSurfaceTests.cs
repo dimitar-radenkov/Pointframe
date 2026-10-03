@@ -110,6 +110,7 @@ public sealed class McpToolSurfaceTests
             new Mock<IDesktopUiCheckService>().Object,
             new Mock<IDesktopOcrObservationProvider>().Object,
             new Mock<IDesktopTestReportService>().Object,
+            new Mock<IDesktopEvidenceRecorder>().Object,
             new DesktopTestingPolicyLoader(),
             new DesktopTestingHostOptions(Enabled: true, WorkerMode: false, PolicyPath: null, WorkerPipeName: null, ParentProcessId: null));
     }

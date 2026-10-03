@@ -59,6 +59,27 @@ public sealed record DesktopTestingActionResponse(
     string? SessionRef = null,
     string? TargetRef = null);
 
+public sealed record DesktopReplayCheck(
+    int Index,
+    string Description,
+    string Original,
+    string? Replayed,
+    string? Skipped = null);
+
+public sealed record DesktopReplayCriterion(
+    string Id,
+    string Original,
+    string Replayed);
+
+public sealed record DesktopReplayResponse(
+    int SchemaVersion,
+    string Status,
+    string? OriginalSessionRef,
+    string? KeyId,
+    IReadOnlyList<DesktopReplayCriterion> Criteria,
+    IReadOnlyList<DesktopReplayCheck> Checks,
+    McpCaptureError? Error = null);
+
 /// <summary>
 /// A desktop_check_ui condition in a shape an MCP client can actually build. The tool previously took
 /// the engine's abstract DesktopUiCheckCondition record directly, which has no JSON polymorphism

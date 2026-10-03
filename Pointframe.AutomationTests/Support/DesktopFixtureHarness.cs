@@ -68,6 +68,7 @@ public sealed class DesktopFixtureHarness : IAsyncDisposable
         string mcpExecutablePath,
         string artifactDirectory,
         int monitorIndex,
+        IReadOnlyList<string>? criteria = null,
         CancellationToken cancellationToken = default)
     {
         EnsurePerMonitorDpiAwareness();
@@ -88,7 +89,7 @@ public sealed class DesktopFixtureHarness : IAsyncDisposable
         var before = Process.GetProcessesByName("Pointframe.DesktopTestFixture").Select(item => item.Id).ToHashSet();
         var start = await client.CallToolAsync(
             "desktop_start_test_session",
-            new { actionId = Guid.NewGuid().ToString(), profileId = FixtureProfileId },
+            new { actionId = Guid.NewGuid().ToString(), profileId = FixtureProfileId, criteria },
             TimeSpan.FromSeconds(60),
             cancellationToken).ConfigureAwait(false);
         var structured = start.GetProperty("structuredContent");
@@ -236,6 +237,8 @@ public sealed class DesktopFixtureHarness : IAsyncDisposable
         string? automationId = null,
         string? expected = null,
         int timeoutSeconds = 5,
+        string? criterionId = null,
+        bool expectFailure = false,
         CancellationToken cancellationToken = default) =>
         _client.CallToolAsync(
             "desktop_check_ui",
@@ -246,8 +249,67 @@ public sealed class DesktopFixtureHarness : IAsyncDisposable
                 automationId,
                 expected,
                 timeoutSeconds,
+                criterionId,
+                expectFailure,
             },
             TimeSpan.FromSeconds(timeoutSeconds + 20),
+            cancellationToken);
+
+    // Replay needs a fresh launch of the same executable, so this starts a second session with its own
+    // fixture process, and always ends that session and kills that process, which the harness does not own.
+    public async Task<JsonElement> ReplayInFreshSessionAsync(string reportPath, CancellationToken cancellationToken = default)
+    {
+        var before = Process.GetProcessesByName("Pointframe.DesktopTestFixture").Select(item => item.Id).ToHashSet();
+        var start = await _client.CallToolAsync(
+            "desktop_start_test_session",
+            new { actionId = Guid.NewGuid().ToString(), profileId = FixtureProfileId },
+            TimeSpan.FromSeconds(60),
+            cancellationToken).ConfigureAwait(false);
+        var sessionRef = start.GetProperty("structuredContent").GetProperty("sessionRef").GetString()!;
+        var processId = await WaitForFixtureAsync(before, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // A check against a window that is not up yet reads no state and would be inconclusive for the
+            // wrong reason, so wait for the second fixture's main window first.
+            for (var attempt = 0; attempt < 100; attempt++)
+            {
+                using var process = Process.GetProcessById(processId);
+                if (process.MainWindowHandle != nint.Zero)
+                {
+                    break;
+                }
+
+                await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+            }
+
+            return await _client.CallToolAsync(
+                "desktop_replay_checks",
+                new { sessionId = sessionRef, reportPath },
+                TimeSpan.FromSeconds(120),
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                await _client.CallToolAsync(
+                    "desktop_end_test_session",
+                    new { sessionId = sessionRef, actionId = Guid.NewGuid().ToString() },
+                    TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or TimeoutException or OperationCanceledException)
+            {
+            }
+
+            KillFixtureProcess(processId);
+        }
+    }
+
+    public Task<JsonElement> GetTestReportAsync(CancellationToken cancellationToken = default) =>
+        _client.CallToolAsync(
+            "desktop_get_test_report",
+            new { sessionId = SessionId },
+            TimeSpan.FromSeconds(30),
             cancellationToken);
 
     public Task<JsonElement> ScrollAsync(

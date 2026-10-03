@@ -8,10 +8,10 @@ namespace Pointframe.Tests.Mcp;
 public sealed class DesktopTestingToolContractTests
 {
     [Fact]
-    public void CatalogContainsExactlyFifteenGateATools()
+    public void CatalogContainsExactlySixteenDesktopTools()
     {
-        Assert.Equal(15, PointframeCommandCatalog.DesktopTestingTools.Count);
-        Assert.Equal(15, PointframeCommandCatalog.DesktopTestingTools.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(16, PointframeCommandCatalog.DesktopTestingTools.Count);
+        Assert.Equal(16, PointframeCommandCatalog.DesktopTestingTools.Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public sealed class DesktopTestingToolContractTests
             "desktop_list_apps", "desktop_start_test_session", "desktop_restart_app",
             "desktop_observe_app", "desktop_focus_window", "desktop_click", "desktop_press_keys",
             "desktop_drag", "desktop_enter_text", "desktop_invoke", "desktop_check_ui",
-            "desktop_scroll", "desktop_get_action_result", "desktop_get_test_report",
+            "desktop_scroll", "desktop_get_action_result", "desktop_get_test_report", "desktop_replay_checks",
             "desktop_end_test_session",
         };
 
@@ -53,7 +53,7 @@ public sealed class DesktopTestingToolContractTests
     }
 
     [Fact]
-    public void ToolTypeExposesFifteenMethods()
+    public void ToolTypeExposesSixteenMethods()
     {
         var type = typeof(PointframeCommandCatalog).Assembly.GetType("Pointframe.Mcp.DesktopTestingMcpTools");
         Assert.NotNull(type);
@@ -61,7 +61,7 @@ public sealed class DesktopTestingToolContractTests
             .Where(method => method.GetCustomAttribute<McpServerToolAttribute>() is not null)
             .ToArray();
 
-        Assert.Equal(15, methods.Length);
+        Assert.Equal(16, methods.Length);
     }
 
     [Fact]
