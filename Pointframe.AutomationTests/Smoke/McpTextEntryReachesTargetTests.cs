@@ -100,5 +100,24 @@ public class McpTextEntryReachesTargetTests(ITestOutputHelper output)
         var proof = Pointframe.Engine.Automation.Services.DesktopProofService.Verify(report.GetRawText(), evidenceDirectory);
         output.WriteLine($"[proof] valid={proof.IsValid} keyId={proof.KeyId} problems={string.Join("; ", proof.Problems)}");
         Assert.True(proof.IsValid, string.Join("; ", proof.Problems));
+
+        // The proof bundle on disk must verify on its own, without the MCP response.
+        var sessionDirectory = report.GetProperty("sessionDirectory").GetString()!;
+        var reportPath = Path.Combine(sessionDirectory, "report.json");
+        Assert.True(File.Exists(Path.Combine(sessionDirectory, "index.html")), "The bundle has no index.html.");
+        var fromDisk = Pointframe.Engine.Automation.Services.DesktopProofService.Verify(File.ReadAllText(reportPath), evidenceDirectory);
+        Assert.True(fromDisk.IsValid, string.Join("; ", fromDisk.Problems));
+        output.WriteLine($"[bundle] {sessionDirectory}");
+
+        // Replay in a fresh launch. The fixture does not save its text, so C1 must not replay as passed, while
+        // the negative control must still reject the wrong text: replay reports what really survives a restart.
+        var replay = (await harness.ReplayInFreshSessionAsync(reportPath)).GetProperty("structuredContent");
+        output.WriteLine($"[replay] {replay.GetRawText()}");
+        Assert.Equal("differs", replay.GetProperty("status").GetString());
+        var replayedCriterion = Assert.Single(replay.GetProperty("criteria").EnumerateArray());
+        Assert.Equal("passed", replayedCriterion.GetProperty("original").GetString());
+        Assert.Equal("failed", replayedCriterion.GetProperty("replayed").GetString());
+        var negativeControl = replay.GetProperty("checks")[1];
+        Assert.Equal("passed", negativeControl.GetProperty("replayed").GetString());
     }
 }

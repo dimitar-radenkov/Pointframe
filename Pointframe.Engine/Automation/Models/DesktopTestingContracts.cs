@@ -39,6 +39,7 @@ public enum DesktopTestingAction
     EnterText,
     Invoke,
     Scroll,
+    ReplayChecks,
 }
 
 public enum DesktopUiAutomationStatus

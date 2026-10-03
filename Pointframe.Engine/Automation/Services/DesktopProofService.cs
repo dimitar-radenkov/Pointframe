@@ -190,6 +190,7 @@ public static class DesktopProofService
                 report.StartedUtc,
                 report.CriteriaSha256,
                 report.EvidenceDirectory,
+                report.SessionDirectory,
             }),
         };
         parts.AddRange(report.Actions.Select((action, index) => ("action", index, (object)action)));

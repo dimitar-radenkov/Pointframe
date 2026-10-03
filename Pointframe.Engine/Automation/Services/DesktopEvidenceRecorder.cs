@@ -45,7 +45,7 @@ public sealed class DesktopEvidenceRecorder(
         ArgumentException.ThrowIfNullOrWhiteSpace(artifactRoot);
         var directory = mode == DesktopEvidenceMode.None
             ? null
-            : System.IO.Path.Combine(artifactRoot, sessionRef, "evidence");
+            : System.IO.Path.Combine(artifactRoot, sessionRef, DesktopProofBundle.EvidenceFolderName);
         lock (_sync)
         {
             _sessions[sessionRef] = new SessionEvidence(directory, mode);

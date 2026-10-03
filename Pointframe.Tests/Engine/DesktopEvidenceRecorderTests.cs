@@ -120,13 +120,13 @@ public sealed class DesktopEvidenceRecorderTests : IDisposable
     }
 
     [Fact]
-    public async Task ActionEvidenceAttachesOnceToTheRecordedAction()
+    public async Task ActionIsAnnotatedOnceWithItsOperationAndEvidence()
     {
         var reports = new DesktopTestReportService();
         var actionId = Guid.NewGuid().ToString();
         reports.RecordAction("session-1", new DesktopTestActionReport(
             actionId,
-            "desktop action",
+            DesktopTestReportService.UnannotatedActionDescription,
             new DesktopActionResult(
                 DesktopTestingLimits.SchemaVersion,
                 actionId,
@@ -137,11 +137,14 @@ public sealed class DesktopEvidenceRecorderTests : IDisposable
             DateTimeOffset.UtcNow));
         var evidence = new DesktopTestEvidence("0001-action.png", "ABC", null, DateTimeOffset.UtcNow);
 
-        Assert.True(reports.NeedsActionEvidence("session-1", actionId));
-        reports.AttachActionEvidence("session-1", actionId, evidence);
+        Assert.True(reports.IsActionUnannotated("session-1", actionId));
+        reports.AnnotateAction("session-1", actionId, "click", evidence);
+        reports.AnnotateAction("session-1", actionId, "replayed", null);
 
-        Assert.False(reports.NeedsActionEvidence("session-1", actionId));
-        Assert.Same(evidence, (await reports.FinalizeAsync("session-1")).Actions[0].Evidence);
+        Assert.False(reports.IsActionUnannotated("session-1", actionId));
+        var action = (await reports.FinalizeAsync("session-1")).Actions[0];
+        Assert.Equal("click", action.Description);
+        Assert.Same(evidence, action.Evidence);
     }
 
     private DesktopEvidenceRecorder CreateRecorder() => new(_capture.Object, _windows.Object);

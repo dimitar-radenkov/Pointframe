@@ -21,7 +21,18 @@ public sealed record DesktopTestCheckReport(
     DateTimeOffset RecordedUtc,
     string? CriterionId = null,
     bool NegativeControl = false,
-    DesktopTestEvidence? Evidence = null);
+    DesktopTestEvidence? Evidence = null,
+    DesktopCheckSpec? Spec = null);
+
+// The condition a check evaluated, kept inside the signed record so a replay re-runs exactly what was signed.
+public sealed record DesktopCheckSpec(
+    string Kind,
+    string? AutomationId,
+    string? Role,
+    string? Name,
+    string? WindowRef,
+    string? Expected,
+    int TimeoutSeconds);
 
 public sealed record DesktopTestCriterion(
     string Id,
@@ -41,15 +52,16 @@ public sealed record DesktopTestReport(
     IReadOnlyList<DesktopTestCriterion> Criteria,
     string? CriteriaSha256,
     string? EvidenceDirectory,
+    string? SessionDirectory,
     DesktopProof? Proof = null);
 
 public interface IDesktopTestReportService
 {
-    void Initialize(string sessionRef, string executablePath, string executableSha256, IReadOnlyList<string>? criteria = null, string? evidenceDirectory = null);
+    void Initialize(string sessionRef, string executablePath, string executableSha256, IReadOnlyList<string>? criteria = null, string? evidenceDirectory = null, string? sessionDirectory = null);
 
-    bool NeedsActionEvidence(string sessionRef, string actionId);
+    bool IsActionUnannotated(string sessionRef, string actionId);
 
-    void AttachActionEvidence(string sessionRef, string actionId, DesktopTestEvidence evidence);
+    void AnnotateAction(string sessionRef, string actionId, string description, DesktopTestEvidence? evidence);
 
     bool HasCriterion(string sessionRef, string criterionId);
 
@@ -64,6 +76,7 @@ public interface IDesktopTestReportService
 
 public sealed class DesktopTestReportService(TimeProvider? timeProvider = null, IDesktopProofSigner? signer = null) : IDesktopTestReportService
 {
+    public const string UnannotatedActionDescription = "desktop action";
     public const int MaxCriteria = 50;
     public const int MaxCriterionLength = 500;
 
@@ -89,7 +102,7 @@ public sealed class DesktopTestReportService(TimeProvider? timeProvider = null, 
         }
     }
 
-    public void Initialize(string sessionRef, string executablePath, string executableSha256, IReadOnlyList<string>? criteria = null, string? evidenceDirectory = null)
+    public void Initialize(string sessionRef, string executablePath, string executableSha256, IReadOnlyList<string>? criteria = null, string? evidenceDirectory = null, string? sessionDirectory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(executableSha256);
@@ -109,6 +122,7 @@ public sealed class DesktopTestReportService(TimeProvider? timeProvider = null, 
             report.Criteria.AddRange(normalized.Select((text, index) => ($"C{index + 1}", text)));
             report.CriteriaSha256 = normalized.Count == 0 ? null : HashCriteria(normalized);
             report.EvidenceDirectory = evidenceDirectory;
+            report.SessionDirectory = sessionDirectory;
         }
     }
 
@@ -122,29 +136,35 @@ public sealed class DesktopTestReportService(TimeProvider? timeProvider = null, 
     }
 
     // A replayed action ID returns its stored result without a new record, so only the first record of an
-    // action ever needs a capture.
-    public bool NeedsActionEvidence(string sessionRef, string actionId)
+    // action is ever annotated, and a replay never captures a second screenshot for it.
+    public bool IsActionUnannotated(string sessionRef, string actionId)
     {
         var report = GetOrCreate(sessionRef);
         lock (_sync)
         {
-            return report.Actions.FindLastIndex(action => action.ActionId == actionId && action.Evidence is null) >= 0;
+            return FindUnannotated(report, actionId) >= 0;
         }
     }
 
-    public void AttachActionEvidence(string sessionRef, string actionId, DesktopTestEvidence evidence)
+    public void AnnotateAction(string sessionRef, string actionId, string description, DesktopTestEvidence? evidence)
     {
-        ArgumentNullException.ThrowIfNull(evidence);
+        ArgumentException.ThrowIfNullOrWhiteSpace(description);
         var report = GetOrCreate(sessionRef);
         lock (_sync)
         {
-            var index = report.Actions.FindLastIndex(action => action.ActionId == actionId && action.Evidence is null);
+            var index = FindUnannotated(report, actionId);
             if (index >= 0)
             {
-                report.Actions[index] = report.Actions[index] with { Evidence = evidence };
+                report.Actions[index] = report.Actions[index] with { Description = description, Evidence = evidence };
             }
         }
     }
+
+    private static int FindUnannotated(MutableReport report, string actionId) =>
+        report.Actions.FindLastIndex(action =>
+            action.ActionId == actionId
+            && action.Description == UnannotatedActionDescription
+            && action.Evidence is null);
 
     public DesktopTestReport Get(string sessionRef)
     {
@@ -299,6 +319,7 @@ public sealed class DesktopTestReportService(TimeProvider? timeProvider = null, 
         public List<(string Id, string Text)> Criteria { get; } = [];
         public string? CriteriaSha256 { get; set; }
         public string? EvidenceDirectory { get; set; }
+        public string? SessionDirectory { get; set; }
         public string Verdict { get; set; } = "inconclusive";
 
         public DesktopTestCriterion[] CriterionVerdicts() =>
@@ -321,7 +342,8 @@ public sealed class DesktopTestReportService(TimeProvider? timeProvider = null, 
                 Verdict,
                 CriterionVerdicts(),
                 CriteriaSha256,
-                EvidenceDirectory);
+                EvidenceDirectory,
+                SessionDirectory);
         }
     }
 }

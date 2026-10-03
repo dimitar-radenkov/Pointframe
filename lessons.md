@@ -1031,3 +1031,30 @@ always report success, it makes the whole surface unfalsifiable, and every bug u
 When adding a verification feature, test the negative case first: a check that cannot return "failed"
 is not verifying anything. The same goes for an aggregate verdict. "No failures" is not "passed".
 An empty record has to come out as not proven.
+
+## GetWindowRect includes the invisible resize border, so window captures leak what lies behind
+
+### Problem
+
+The first real run of the proof-of-work smoke test produced evidence screenshots of the fixture window
+with strips about 10 px wide of the code editor behind it along the left, right and bottom edges.
+Evidence is supposed to contain only the target application, so this leaked content the desktop
+testing policy never approved. `capture_window` used the same bounds and had the same edges.
+
+### Root cause
+
+`WindowDiscoveryService` took window bounds from `GetWindowRect`. On Windows 10 and 11 that rectangle
+includes the invisible resize border (about 7 px per side, scaled by DPI) around the visible frame, so a
+capture of it shows whatever is behind the window there.
+
+### What fixed it
+
+`WindowDiscoveryService` now reads `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)`, the visible frame
+in physical pixels for a PerMonitorV2 process, and falls back to `GetWindowRect` only when DWM cannot
+answer. Only the few pixels outside Windows 11's rounded corners still show the background.
+
+### Takeaway
+
+When a rectangle from a Win32 window API is used to crop pixels, use the DWM extended frame bounds, not
+`GetWindowRect`. Look at a real captured image at least once: unit tests with fake window bounds cannot
+show this.

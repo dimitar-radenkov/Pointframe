@@ -154,7 +154,7 @@ public sealed class DesktopActionCoordinator : IDesktopActionCoordinator
         {
             _ledger.Record(actionId, canonical, result);
         }
-        _reports.RecordAction(sessionRef, new DesktopTestActionReport(actionId, "desktop action", result, DateTimeOffset.UtcNow));
+        _reports.RecordAction(sessionRef, new DesktopTestActionReport(actionId, DesktopTestReportService.UnannotatedActionDescription, result, DateTimeOffset.UtcNow));
         return result;
     }
 
