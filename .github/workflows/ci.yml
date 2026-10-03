@@ -88,6 +88,12 @@ jobs:
       - name: Format check
         run: dotnet format Pointframe/Pointframe.csproj --verify-no-changes --no-restore
 
+      - name: Knowledge base check
+        # Fails on a broken KB link or path, a tracked file with no File map row,
+        # or a telemetry event or smoke test with no feature row.
+        shell: pwsh
+        run: ./scripts/kb.ps1 check -NoFix
+
       - name: Test with coverage
         # Hosted CI stays on the unit-test lane only.
         # DesktopAutomation and InstallerSmoke run outside this workflow.

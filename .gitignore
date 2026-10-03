@@ -21,7 +21,9 @@
 !CHANGELOG.md
 !packaging/scoop/README.md
 !docs/knowledge-base/*.md
-!.claude/skills/knowledge-base/*.md
+!docs/knowledge-base/features/*.md
+!.claude/skills/kb-*/SKILL.md
+!.agents/skills/kb-*/SKILL.md
 !.github/copilot-instructions.md
 !CLAUDE.md
 !lessons.md

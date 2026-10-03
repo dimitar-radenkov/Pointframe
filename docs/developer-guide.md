@@ -127,9 +127,9 @@ Every service has an `I<ServiceName>` interface next to it. The knowledge base (
 
 ## 6.1 Project Knowledge Base
 
-The knowledge base is one file, [knowledge-base.md](../docs/knowledge-base/knowledge-base.md), with five groups: subsystems, decisions, invariants, how-tos, references. Use its table of contents and read the sections that match your task. Its "How to maintain this file" section holds the templates and conventions.
+The knowledge base has two layers. [knowledge-base.md](knowledge-base/knowledge-base.md) holds cross-cutting knowledge: composition, shared invariants and how-tos, references, a File map, and generated indexes of features and decisions. Decisions that span areas are in [decisions.md](knowledge-base/decisions.md); a decision one area needs is in that area's file. Each feature area has its own file under [features/](knowledge-base/features/), with its `F-NN` features (trigger, entry point, telemetry, tests) and how the area works; open only the area your task touches. The main file's "How to maintain this file" section holds the templates and conventions.
 
-Maintain it with the `/knowledge-base` skill (`add`, `update`) or directly, then run `pwsh .claude/skills/knowledge-base/knowledge-base.ps1`, which refreshes the table of contents and checks that every path, lesson reference, and internal link still resolves. Bug post-mortems stay in `lessons.md`; sections reference them by heading.
+Three skills work with it, all backed by `scripts/kb.ps1`: `/kb-read <file, area, F-NN, or topic>` lists what to read (`pwsh scripts/kb.ps1 read ...`); `/kb-write` adds or updates knowledge; `/kb-check` runs `pwsh scripts/kb.ps1 check`, which refreshes the generated blocks and checks every file: paths, lesson references, links across files, feature IDs, and telemetry, smoke-test, and File map coverage. CI runs `check -NoFix`. Bug post-mortems stay in `lessons.md`; sections reference them by heading.
 
 ---
 

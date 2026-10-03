@@ -38,7 +38,7 @@ dotnet format Pointframe/Pointframe.csproj
 2. Add a matching `sealed record` in `Pointframe/Models/ShapeParameters.cs`.
 3. Handle the new case in `AnnotationViewModel.TryGetShapeParameters()`.
 4. Add a `<Name>ShapeHandler` under `Pointframe/Services/Annotation/Handlers/` implementing `IAnnotationShapeHandler`, and register it in `AnnotationCanvasRenderer`.
-5. Add unit tests in `Pointframe.Tests/ViewModels/AnnotationViewModelTests.cs`. The [Developer Guide](docs/developer-guide.md) §8 and the [knowledge base](docs/knowledge-base/knowledge-base.md) carry the full recipe.
+5. Add unit tests in `Pointframe.Tests/ViewModels/AnnotationViewModelTests.cs`. The [Developer Guide](docs/developer-guide.md) §8 and the knowledge base's [Add an annotation tool](docs/knowledge-base/features/annotation.md#add-an-annotation-tool) carry the full recipe.
 
 ## Pull Request Tips
 

@@ -35,55 +35,22 @@ dotnet format Pointframe/Pointframe.csproj --verify-no-changes
 
 ## Workflow
 
-- **Read `lessons.md` before changing UI flow or window-lifecycle code.** Treat this as a required first step for overlay, dialog, hotkey, capture, tray, recording, and multi-monitor/DPI changes — past bugs (e.g. PerMonitorV2 window sizing) are recorded there. When you diagnose a reusable trap, add a short note back to `lessons.md`.
-- **Read `docs/knowledge-base/knowledge-base.md` before architecture or cross-subsystem work.** Use its table of contents and read the sections that match the task.
-- **Before finishing any change under `Pointframe/` or `Pointframe.Data/`, state in your final message whether the knowledge base needs an add, an update, or nothing.** If it needs one, run `/knowledge-base add` or `/knowledge-base update`, or ask when unsure. A renamed or moved file always needs `/knowledge-base update`.
+- **Know the past bugs before changing UI flow or window-lifecycle code** (overlay, dialog, hotkey, capture, tray, recording, multi-monitor/DPI). `/kb-read <path>` ranks the `lessons.md` entries for the files you will touch, and the project hook shows the top five the first time you open a file in an area; read the full entry by its heading. When you diagnose a reusable trap, add it to `lessons.md` and link it from the owning knowledge base section.
+- **Read `docs/knowledge-base/knowledge-base.md` before architecture or cross-subsystem work; open `docs/knowledge-base/features/<area>.md` only for the area the task touches.** The main file holds cross-cutting knowledge and a Feature index; each area file lists its features (`F-NN`: trigger, entry point, telemetry, tests) and how the area works. `/kb-read <file, area, F-NN, or topic>` lists what to read.
+- **Before finishing any change under `Pointframe/` or `Pointframe.Data/`, state in your final message whether the knowledge base needs an add, an update, or nothing.** If it needs one, run `/kb-write`, or ask when unsure. A renamed or moved file always needs `/kb-write`. Finish with `/kb-check`; CI runs it too.
 - **Never commit or push on the user's behalf.** Prepare changes, run `dotnet format` and tests, then stop and let the user review and commit.
 - Run `dotnet format Pointframe/Pointframe.csproj` after every C# edit — CI fails on any style/whitespace violation.
 
 ## Architecture
 
-### App Bootstrap
+Rules to keep in every change. The why, the flows, and the recipes are in the knowledge base.
 
-`App.xaml.cs` is the entry point: it builds the Generic Host, wires Serilog, applies EF Core migrations, and starts the tray icon and global hotkeys. Every service and window is registered in `AppServiceRegistration.cs` (`AddPointframeAppServices`); `OverlayWindow` is built by the `CreateOverlayWindow` factory in the same file.
-
-**Lifetime rules:**
-- **Singleton** — long-lived state: settings, hotkeys, telemetry, event aggregator, annotation geometry, OCR, update service
-- **Transient** — per-operation: capture service, video writer, overlay/settings/about windows and their view models
-
-### Core Flows
-
-**Screenshot & annotation:** hotkey/tray → `OverlayWindow` opens full-screen → user selects region → annotation mode → `OverlayViewModel` coordinates copy/save/pin/record actions; `AnnotationViewModel` + `AnnotationCanvasRenderer` own drawing state.
-
-**Recording:** user selects region from overlay → recording pipeline starts (`ScreenRecordingService` → `IVideoWriter`/`FFMpegVideoWriter`) → `RecordingOverlayWindow` provides live annotation surface → `RecordingHudViewModel` controls pause/resume/stop.
-
-**Settings persistence:** never cache settings in fields — always read from `IUserSettingsService.Current` at the point of use. Adding a new setting requires updating two places together or the value is silently reset on save: `Pointframe/Models/UserSettings.cs` (the property + default) and `SettingsViewModel.Save()`. `UserSettingsService.Clone(...)` needs no edit — it round-trips through the serializer.
-
-### MVVM Conventions
-
-- ViewModels inherit `ObservableObject`. Use `[ObservableProperty]` on `private _camelCase` backing fields; use `[RelayCommand]` on private methods. Never call `OnPropertyChanged()` manually.
-- Every public service must have an `I<ServiceName>` interface and be registered in DI.
-
-### Undo/Redo Invariant
-
-The undo stack grows only in `AnnotationViewModel.CommitGroup()`, at the end of a drag. Shape handlers call `trackElement` only from `Commit`, never for draft/in-progress elements — tracking a draft corrupts the undo stack.
-
-### DPI & Coordinates
-
-WPF uses Device-Independent Pixels (DIPs); screen/GDI operations use physical pixels. Conversion: `physical_px = dip * dpiScale`. DPI scale is read from `PresentationSource` in `OverlayWindow.OnSourceInitialized`. Recording geometry requires even width/height (JPEG MCU constraint). Multi-monitor/mixed-DPI changes should be validated carefully — the canonical source is `RecordingSessionGeometry.cs`.
-
-### Adding a New Annotation Tool
-
-1. Add enum value to `Pointframe/Models/AnnotationTool.cs`
-2. Add sealed record to `Pointframe/Models/ShapeParameters.cs`
-3. Handle case in `AnnotationViewModel.TryGetShapeParameters()`
-4. Add `Pointframe/Services/Annotation/Handlers/<Name>ShapeHandler.cs` implementing `IAnnotationShapeHandler` (`Begin`/`Update` draft, `Commit` tracks final elements, `Cancel` removes the draft) and register it in the `_handlers` dictionary in `AnnotationCanvasRenderer`
-5. Add geometry helpers to `IAnnotationGeometryService`
-6. Add toolbar button in `Pointframe/Views/OverlayWindow.xaml` with an `AutomationId`
-7. Add unit tests (handler, `TryGetShapeParameters`, geometry)
-8. Keep overlay smoke coverage in sync: register the tool in `Pointframe.AutomationTests/Support/AutomationIds.cs` and `Pointframe.AutomationTests/Smoke/AnnotationToolSmokeTests.cs`
-
-Full recipe with rationale: the "Add an annotation tool" section of `docs/knowledge-base/knowledge-base.md`.
+- **Composition.** `App.xaml.cs` builds the Generic Host; every service and window is registered in `AppServiceRegistration.cs`. Singleton for long-lived state, transient per operation. See [App bootstrap](docs/knowledge-base/knowledge-base.md#app-bootstrap-di-and-messaging).
+- **MVVM.** ViewModels inherit `ObservableObject`; `[ObservableProperty]` on `private _camelCase` fields, `[RelayCommand]` on private methods, never `OnPropertyChanged()` by hand. Every public service has an `I<ServiceName>` interface and a DI registration.
+- **Settings.** Read `IUserSettingsService.Current` at the point of use; never cache it in a field. A new setting changes `UserSettings.cs` and `SettingsViewModel.Save()` together. See [Add a user setting](docs/knowledge-base/knowledge-base.md#add-a-user-setting).
+- **Undo.** The undo stack grows only in `AnnotationViewModel.CommitGroup()`; shape handlers track elements only in `Commit`, never drafts. See [Undo groups](docs/knowledge-base/features/annotation.md#undo-groups-are-added-only-on-commit).
+- **DPI.** WPF works in DIPs, screen and GDI in physical pixels, per monitor; `RecordingSessionGeometry.cs` is canonical, and recording width and height are even. See [DIPs and physical pixels](docs/knowledge-base/knowledge-base.md#dips-and-physical-pixels-are-converted-explicitly-per-monitor).
+- **New annotation tool.** Follow [Add an annotation tool](docs/knowledge-base/features/annotation.md#add-an-annotation-tool); it includes the automation ids and smoke tests.
 
 ## Code Style
 
@@ -110,6 +77,6 @@ Base version is in `version.json` (major.minor); patch auto-increments with comm
 ## Docs
 
 - `docs/developer-guide.md` — setup, conventions, patterns
-- `docs/knowledge-base/knowledge-base.md` — knowledge base: subsystems, decisions, invariants, how-tos, references; maintain with `/knowledge-base`
+- `docs/knowledge-base/knowledge-base.md` — knowledge base, cross-cutting: composition, shared invariants and how-tos, references, File map, feature and decision indexes; `docs/knowledge-base/decisions.md` — decisions that span areas; `docs/knowledge-base/features/*.md` — one file per feature area; use `/kb-read`, `/kb-write`, `/kb-check`
 - `lessons.md` — reusable lessons from past bugs and workflow traps
 - `plan/` — roadmap and feature plans (local-only, not in git)

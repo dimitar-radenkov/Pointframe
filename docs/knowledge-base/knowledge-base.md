@@ -1,66 +1,64 @@
 # Pointframe Knowledge Base
 
-Durable, agent-readable project knowledge in one file. Use the table of contents, then read only the sections that match the task.
+Durable, agent-readable project knowledge. This file holds what is cross-cutting: how the app is composed, rules every area must keep, shared recipes, paths, and CI, plus generated indexes of features and decisions. Each feature area has its own file under `docs/knowledge-base/features/`; open one only when the task touches that area. Start with the [Feature index](#feature-index) or run `/kb-read <file, area, F-NN, or topic>` (`pwsh scripts/kb.ps1 read ...`).
 
 Last full review against the code: 2026-09-05.
 
 ## How to maintain this file
 
-**What belongs here.** How a subsystem is composed and where its entry points are; decisions with lasting impact and their reasons; rules the code must keep, why, and what breaks; recipes for recurring changes; stable facts such as paths, lifetimes, pipelines, and tools.
+**What belongs where.**
 
-**What goes elsewhere.** Bug post-mortems: `lessons.md` (Problem, Root cause, What fixed it, Takeaway). Roadmap, plans, task status: `plan/` (local-only, not in git). Contributor setup: `docs/developer-guide.md`. Per-session instructions: `CLAUDE.md`, one line per topic pointing here. Test counts, PR numbers, "verified on my machine": the PR description.
+| Knowledge | Goes to |
+|---|---|
+| Composition, DI, messaging; rules that hold for every area; recipes any area uses; paths, pipelines, CI | This file |
+| A decision that spans areas | `docs/knowledge-base/decisions.md` |
+| One area's features, flows, entry points, area-only invariants, recipes, and decisions, its lessons | `docs/knowledge-base/features/<area>.md` |
+| Bug post-mortems (Problem, Root cause, What fixed it, Takeaway) | `lessons.md`, then a `- Lesson:` line in the owning section |
+| Roadmap, plans, task status | `plan/` (local-only, not in git) |
+| Contributor setup | `docs/developer-guide.md` |
+| Per-session instructions | `CLAUDE.md`, one line per topic pointing here |
+| Test counts, PR numbers, "verified on my machine" | The PR description |
 
-**Structure.** Five fixed groups, each a `##` heading; one `###` section per topic. Templates per group:
+**This file's structure.** A generated [Feature index](#feature-index), the [File map](#file-map), then five fixed groups, each a `##` heading with one `###` section per topic (Decisions holds only a generated index):
 
 | Group | Section layout |
 |---|---|
 | Subsystems | Responsibility, Entry points, Flow, Key types, Invariants, Tests, Files, Lessons |
-| Decisions | `D-NNN Title`, decided date, Context, Decision, Consequences, Alternatives rejected, Files. Numbers are never reused; a reversed decision stays with "Superseded by D-NNN" on its first line |
+| Decisions | A generated index only. Each decision is a `## D-NNN Title` section in `decisions.md` or its area file: decided date, Context, Decision, Consequences, Alternatives rejected, Files. Numbers are global and never reused; a reversed decision stays with "Superseded by D-NNN" on its first line |
 | Invariants | Rule, Why, Enforced by, Symptoms when violated, Files |
 | How-tos | When, Steps, Verify, Files |
 | References | Tables or short lists, each fact with its source, Files |
 
-**Conventions the script checks.** Repo paths in backticks must exist (`Pointframe/App.xaml.cs`). Lesson references are bullets of the form `- Lesson: <exact heading from lessons.md>`. Cross-references are anchor links, `[Recording pipeline](#recording-pipeline)`. The table of contents between the `toc` markers is generated.
+**A feature area file's structure.** `# <Area>`, a one-line scope, then `## Features`: one row per user-facing feature, `| ID | Feature | Triggered from | Entry point | Telemetry | Tests | Read first |`, with a stable `F-NN` ID that is never renumbered or reused. Then one `##` section per topic, using the Subsystems, Invariants, or How-tos layout above. A new area gets a new file; split a file that passes about 150 lines.
+
+**Conventions the script checks.** In every file: repo paths in backticks exist; `- Lesson: <exact heading from lessons.md>` bullets match `lessons.md`; links such as `[Recording pipeline](features/recording.md#recording-pipeline)` resolve to a heading in the target file; a section has at most one `**Files.**` line; no two headings in one file share an anchor. Feature IDs are unique across files; every feature names an entry point and links a section; every telemetry event named exists in `TelemetryEvents`, and every event there belongs to some feature; every smoke test in `Pointframe.AutomationTests/Smoke/` belongs to some feature. Every File map pattern matches a tracked file, and every tracked file matches a row. A `lessons.md` entry that no section links is reported as a warning, because `kb.ps1 read` and the hook never show it. The table of contents and the Feature index are generated. CI runs `kb.ps1 check -NoFix`, and the project hook in `.claude/settings.json` runs `kb.ps1 hook` when an agent reads or edits a file.
 
 **Writing rules.** Say why, not only what. Replace stale text in place; never append a correction below an old statement. Prefer a table or a short list over prose. Keep a section under about 80 lines. Absolute dates only. No status badges or task journals.
 
-**Maintenance.** Use the `/knowledge-base` skill (`.claude/skills/knowledge-base/SKILL.md`): `/knowledge-base add <group> <title>` and `/knowledge-base update [section]`. Both finish with:
+**Maintenance.** Three skills, all backed by `scripts/kb.ps1`. Edit them only under `.claude/skills/kb-*`; `check` regenerates the Codex copies in `.agents/skills/`.
 
-```powershell
-pwsh .claude/skills/knowledge-base/knowledge-base.ps1          # refresh the table of contents, then check paths, lessons, links
-pwsh .claude/skills/knowledge-base/knowledge-base.ps1 -Check   # check only
-```
+| Skill | Does | Script |
+|---|---|---|
+| `/kb-read <file, area, F-NN, or topic>` | Lists the sections, features, and lessons to read | `pwsh scripts/kb.ps1 read <target> [-All]` |
+| `/kb-write [topic]` | Adds or updates knowledge; with no topic, sweeps the current diff | `pwsh scripts/kb.ps1 changed [-Base <ref>]` |
+| `/kb-check` | Refreshes the generated blocks, checks every file, fixes what it reports | `pwsh scripts/kb.ps1 check` (CI: `check -NoFix`) |
+
+When a change adds a folder, a project, or a file that belongs to a different section than its folder's row says, add or narrow a File map row in the same change. When it adds, removes, or rewires a user-facing feature, a telemetry event, or a smoke test, update the feature's row in its area file in the same change.
 
 ## Contents
 
 <!-- toc -->
 
+- [Feature index](#feature-index)
+- [File map](#file-map)
 - [Subsystems](#subsystems)
   - [App bootstrap, DI, and messaging](#app-bootstrap-di-and-messaging)
-  - [Capture overlay and selection](#capture-overlay-and-selection)
-  - [Annotation engine](#annotation-engine)
-  - [Recording pipeline](#recording-pipeline)
-  - [Standalone CLI and MCP automation](#standalone-cli-and-mcp-automation)
-  - [User settings](#user-settings)
-  - [Capture library and data layer](#capture-library-and-data-layer)
-  - [Telemetry](#telemetry)
-  - [Update flow](#update-flow)
-  - [Recording transcription](#recording-transcription)
 - [Decisions](#decisions)
-  - [D-001 MVVM plus DI is the composition model](#d-001-mvvm-plus-di-is-the-composition-model)
-  - [D-002 One knowledge base file, checked by script](#d-002-one-knowledge-base-file-checked-by-script)
-  - [D-003 Recording uses one authoritative session geometry](#d-003-recording-uses-one-authoritative-session-geometry)
-  - [D-004 Native libraries ship loose and the installer packages them](#d-004-native-libraries-ship-loose-and-the-installer-packages-them)
-  - [D-005 The speech model is delivered by both the installer and the app](#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app)
 - [Invariants](#invariants)
-  - [Undo groups are added only on commit](#undo-groups-are-added-only-on-commit)
   - [Settings are read at the point of use and persisted through three files](#settings-are-read-at-the-point-of-use-and-persisted-through-three-files)
-  - [Recording width and height are even](#recording-width-and-height-are-even)
   - [DIPs and physical pixels are converted explicitly per monitor](#dips-and-physical-pixels-are-converted-explicitly-per-monitor)
   - [Everything emitted next to the exe must be in the installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list)
-  - [The MCP command list resource must name every registered tool](#the-mcp-command-list-resource-must-name-every-registered-tool)
 - [How-tos](#how-tos)
-  - [Add an annotation tool](#add-an-annotation-tool)
   - [Add a user setting](#add-a-user-setting)
   - [Register a service](#register-a-service)
 - [References](#references)
@@ -68,6 +66,103 @@ pwsh .claude/skills/knowledge-base/knowledge-base.ps1 -Check   # check only
   - [CI, CD, and versioning](#ci-cd-and-versioning)
 
 <!-- /toc -->
+
+## Feature index
+
+Generated from the area files under `docs/knowledge-base/features/`. Each feature's row there says how it is triggered, its entry point, telemetry events, tests, and what to read.
+
+<!-- features -->
+
+- [Capture](features/capture.md): F-01 Region snip; F-02 Whole-screen snip; F-03 Clean-window snip; F-04 Capture delay countdown; F-05 Open an image in the overlay; F-06 Copy, save, save as; F-07 Pin a screenshot; F-08 Copy text with an OCR lasso; F-09 Beautify a screenshot; F-10 Watermarks on screenshots and videos
+- [Annotation](features/annotation.md): F-11 Annotation tools: arrow, line, rectangle, circle, pen, highlight, text, number, blur, callout, pixel ruler; F-12 Undo and redo; F-13 Color picker; F-14 Annotation style presets
+- [Recording](features/recording.md): F-15 Region recording; F-16 Whole-screen recording; F-17 Recording HUD: pause, stop, minimize, expand; F-18 Microphone audio; F-19 Live annotation while recording; F-20 Blur redaction burned into the video; F-21 Cursor effects; F-22 Trim a recording; F-23 Export a recording as GIF
+- [Transcription](features/transcription.md): F-24 Transcripts and subtitles
+- [Capture library](features/library.md): F-25 Capture library: browse, search, open; F-26 Capture catalog indexing and import
+- [Tray menu](features/tray.md): F-27 Recent captures and recordings menus; F-28 Open snips, videos, and logs folders
+- [Settings](features/settings.md): F-29 Settings window; F-30 Custom global hotkeys; F-31 Light and dark theme
+- [Updates and About](features/updates.md): F-32 Update check and install; F-33 About window
+- [Telemetry](features/telemetry.md): F-34 App lifecycle and usage telemetry
+- [CLI and MCP](features/cli-mcp.md): F-35 CLI: displays, windows, capture, ocr, capture-window, ocr-window, record; F-36 MCP capture, OCR, recording, and library tools; F-37 MCP desktop testing tools
+
+<!-- /features -->
+
+## File map
+
+Answers "I am about to change this file: what must I read first?" Every tracked file matches at least one row; **every** matching row applies, and rows run from coarse to fine. A row names the sections to read before editing; the lessons are inside those sections.
+
+Fastest route: let the script resolve it. It prints the matching rows, the features that use the file, the linked sections with their line numbers, every other section that names the exact file, and the most relevant lessons:
+
+```powershell
+pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
+```
+
+**Pattern syntax** (anchored at the repo root like `.gitignore`; unlike CODEOWNERS, where the last match wins, every matching row applies): `*` matches within one folder, `**` crosses folders, `?` is one character. A pattern without `/` matches only root files. Several patterns in one cell are separated by commas. `—` in "Read first" means no section owns the area yet.
+
+**Rules the script checks.** Every pattern matches at least one tracked file. Every tracked file matches at least one row, so a new top-level folder or project fails the check until it gets a row. No row is redundant: a row whose files and links all sit inside another row is an error. Descriptions stay under 160 characters; explanation belongs in a section. Every link points at a heading. Tests are mapped by folder only: a test file is named after the class it covers, so look up that class.
+
+**Repository and build**
+
+| Path | What lives here | Read first |
+|---|---|---|
+| `*`, `.vscode/**` | Root config: solution, central package versions, NBGV `version.json`, local tools, editor and MCP client config | [CI, CD, and versioning](#ci-cd-and-versioning) |
+| `CLAUDE.md`, `CONTRIBUTING.md`, `lessons.md`, `docs/**`, `.claude/**`, `.agents/skills/kb-*/**`, `scripts/kb.ps1` | Agent and contributor docs, this file, the kb skills and their script, the project hook, and the generated Codex skill copies | [How to maintain this file](#how-to-maintain-this-file), [D-006](decisions.md#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area) |
+| `docs/cli/**`, `docs/mcp-desktop-testing/**`, `README.md` | CLI and MCP user docs; the DocsSync tests fail when they drift from the code | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
+| `docs/appinsights*` | Kusto queries and the workbook template | [Telemetry](features/telemetry.md#telemetry-pipeline) |
+| `.github/**`, `winget/**`, `website/**` | Workflows, Dependabot, release drafter, winget manifests, the GitHub Pages site | [CI, CD, and versioning](#ci-cd-and-versioning) |
+| `installer/**`, `Pointframe/Properties/**` | Inno Setup script, installer build and smoke scripts, publish profile | [D-004](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them), [Installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list), [D-005](features/transcription.md#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app) |
+| `Directory.Packages.props`, `Pointframe/Pointframe.csproj` | Package versions and app project references; a package that ships a native binary changes the installer file list | [D-004](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them), [Installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list) |
+| `packaging/**` | CLI and MCP zip packaging, scoop manifest, MCP stdio smoke script | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation), [MCP command list](features/cli-mcp.md#the-mcp-command-list-resource-must-name-every-registered-tool) |
+
+**WPF app: `Pointframe/`**
+
+| Path | What lives here | Read first |
+|---|---|---|
+| `Pointframe/*`, `Pointframe/Assets/**`, `Pointframe/Automation/**` | Host startup, DI registration, project file, automation launch options | [App bootstrap](#app-bootstrap-di-and-messaging), [D-001](decisions.md#d-001-mvvm-plus-di-is-the-composition-model), [Register a service](#register-a-service) |
+| `Pointframe/app.manifest`, `Pointframe/Native/**` | PerMonitorV2 manifest, Win32 interop, per-monitor DPI helpers | [DIPs and physical pixels](#dips-and-physical-pixels-are-converted-explicitly-per-monitor) |
+| `Pointframe/appsettings.json`, `Pointframe/Services/Infrastructure/AppPaths.cs` | Configuration and on-disk locations | [Runtime paths and external binaries](#runtime-paths-and-external-binaries) |
+| `Pointframe/Services/Messaging/**` | Event aggregator and message records | [App bootstrap](#app-bootstrap-di-and-messaging) |
+| `Pointframe/Services/Infrastructure/**` | Cross-cutting singletons: dialogs, files, processes, hotkeys, tray, theme, errors | [App bootstrap](#app-bootstrap-di-and-messaging), [Register a service](#register-a-service) |
+| `Pointframe/Services/Infrastructure/*UserSettings*`, `Pointframe/Services/Infrastructure/*Theme*`, `Pointframe/Services/Infrastructure/*Hotkey*`, `Pointframe/Themes/**` | Settings persistence, theme switching, hotkey bindings | [User settings](features/settings.md#user-settings), [Settings invariant](#settings-are-read-at-the-point-of-use-and-persisted-through-three-files) |
+| `Pointframe/Services/Infrastructure/*Telemetry*` | Telemetry client, event catalog, heartbeat, activation | [Telemetry](features/telemetry.md#telemetry-pipeline) |
+| `Pointframe/Services/Infrastructure/*Ocr*` | WPF-side OCR for the overlay lasso; library search reads text indexed by the catalog worker | [Capture overlay and selection](features/capture.md#capture-overlay-and-selection), [Capture library](features/library.md#capture-library-and-data-layer) |
+| `Pointframe/Services/Infrastructure/*Microphone*`, `Pointframe/Services/Infrastructure/*MouseHook*` | WASAPI microphone enumeration; global mouse hook used by recording cursor effects, the overlay, and capture launch | [Recording pipeline](features/recording.md#recording-pipeline) |
+| `Pointframe/Services/Infrastructure/*AppVersion*`, `Pointframe/Services/Update/**` | Release check, download, version source | [Update flow](features/updates.md#update-flow) |
+| `Pointframe/Services/Capture/**` | Capture launch, selection session, screen and window capture, clipboard, image files | [Capture overlay and selection](features/capture.md#capture-overlay-and-selection) |
+| `Pointframe/Services/Capture/*CaptureLibrary*`, `Pointframe/Services/Capture/*CaptureTextLookup*` | Library listing, search, OCR text cache | [Capture library](features/library.md#capture-library-and-data-layer) |
+| `Pointframe/Services/Annotation/**` | Canvas renderer, geometry, interaction controller, shape handlers | [Annotation engine](features/annotation.md#annotation-engine), [Undo invariant](features/annotation.md#undo-groups-are-added-only-on-commit), [Add an annotation tool](features/annotation.md#add-an-annotation-tool) |
+| `Pointframe/Services/Recording/**` | Recording session, ffmpeg writer, HUD and overlay coordinators, redaction, GIF, trim, watermarks | [Recording pipeline](features/recording.md#recording-pipeline), [Even dimensions](features/recording.md#recording-width-and-height-are-even) |
+| `Pointframe/Services/Recording/*Coordinator.cs`, `Pointframe/Services/Recording/RecordingOverlayNativeInterop.cs`, `Pointframe/Views/OverlayWindow.RecordingHud.cs`, `Pointframe/Views/RecordingOverlay*` | Placing the recording HUD, border, and annotation surface on the target monitor | [Recording pipeline](features/recording.md#recording-pipeline), [DIPs and physical pixels](#dips-and-physical-pixels-are-converted-explicitly-per-monitor) |
+| `Pointframe/Services/Recording/*Ffmpeg*`, `Pointframe/Services/Recording/FFMpeg*` | ffmpeg discovery and the video writer process | [Runtime paths and external binaries](#runtime-paths-and-external-binaries) |
+| `Pointframe/Services/Recording/Beautif*`, `Pointframe/Services/Recording/*ScreenshotWatermark*` | Screenshot post-processing reached from the overlay toolbar | [Capture overlay and selection](features/capture.md#capture-overlay-and-selection), [User settings](features/settings.md#user-settings) |
+| `Pointframe/Services/Transcription/**`, `Pointframe/Models/Transcript*` | Whisper transcription queue, model resolution, subtitles | [Recording transcription](features/transcription.md#recording-transcription), [D-005](features/transcription.md#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app) |
+| `Pointframe/Models/**`, `Pointframe/ViewModels/**`, `Pointframe/Views/**` | Models, ViewModels, and windows; the finer rows below name the owning subsystem | [D-001](decisions.md#d-001-mvvm-plus-di-is-the-composition-model) |
+| `Pointframe/Models/Annotation*`, `Pointframe/Models/ShapeParameters.cs`, `Pointframe/ViewModels/Annotation*`, `Pointframe/ViewModels/RecordingAnnotation*`, `Pointframe/Views/OverlayWindow.RecordingAnnotation.cs` | Tools, shape parameters, style presets, annotation state and undo | [Annotation engine](features/annotation.md#annotation-engine), [Undo invariant](features/annotation.md#undo-groups-are-added-only-on-commit), [Add an annotation tool](features/annotation.md#add-an-annotation-tool) |
+| `Pointframe/Models/Selection*`, `Pointframe/Models/BeautifyBackground.cs`, `Pointframe/ViewModels/Overlay*`, `Pointframe/ViewModels/Beautifier*`, `Pointframe/Views/OverlayWindow*`, `Pointframe/Views/Overlay*`, `Pointframe/Views/Selection*`, `Pointframe/Views/PinnedScreenshot*`, `Pointframe/Views/Beautifier*` | Overlay window partials, selection windows, pin and beautify | [Capture overlay and selection](features/capture.md#capture-overlay-and-selection), [DIPs and physical pixels](#dips-and-physical-pixels-are-converted-explicitly-per-monitor) |
+| `Pointframe/Models/Recording*`, `Pointframe/Services/Messaging/Recording*`, `Pointframe/Services/Messaging/Trim*`, `Pointframe/ViewModels/RecordingHud*`, `Pointframe/ViewModels/Trim*`, `Pointframe/Views/OverlayWindow.Recording*`, `Pointframe/Views/RecordingOverlay*`, `Pointframe/Views/Countdown*`, `Pointframe/Views/Trim*` | Recording geometry, events, redaction regions, HUD, countdown, trim | [Recording pipeline](features/recording.md#recording-pipeline) |
+| `Pointframe/Models/RecordingSessionGeometry.cs` | The one geometry model per recording session | [D-003](features/recording.md#d-003-recording-uses-one-authoritative-session-geometry), [Even dimensions](features/recording.md#recording-width-and-height-are-even), [DIPs and physical pixels](#dips-and-physical-pixels-are-converted-explicitly-per-monitor) |
+| `Pointframe/Models/UserSettings.cs`, `Pointframe/Models/Settings*`, `Pointframe/Models/Hotkey*`, `Pointframe/Models/AppTheme.cs`, `Pointframe/Models/*Watermark*`, `Pointframe/ViewModels/Settings*`, `Pointframe/Views/Settings*` | Settings model, settings window and its sections | [User settings](features/settings.md#user-settings), [Settings invariant](#settings-are-read-at-the-point-of-use-and-persisted-through-three-files), [Add a user setting](#add-a-user-setting) |
+| `Pointframe/Models/Capture*`, `Pointframe/ViewModels/Library*`, `Pointframe/Views/Library*` | Library window and capture items | [Capture library](features/library.md#capture-library-and-data-layer) |
+| `Pointframe/Models/UpdateCheck*`, `Pointframe/Services/Messaging/Update*`, `Pointframe/ViewModels/UpdateDownload*`, `Pointframe/Views/UpdateDownload*`, `Pointframe/ViewModels/About*`, `Pointframe/Views/About*` | Update settings, download window, About window with the manual update check | [Update flow](features/updates.md#update-flow) |
+
+**Other projects**
+
+| Path | What lives here | Read first |
+|---|---|---|
+| `Pointframe.Engine/**`, `Pointframe.Cli/**`, `Pointframe.Mcp/**`, `Pointframe.DesktopTestFixture/**` | WPF-free capture, recording, OCR, and desktop automation engine; the CLI and MCP hosts; the WinForms fixture the desktop tools drive | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
+| `Pointframe.Mcp/Resources/**`, `Pointframe.Mcp/Tools/**` | Tool methods and the command list resource; a new tool also updates the contract test sets, `test-mcp-stdio.ps1`, and both READMEs | [MCP command list](features/cli-mcp.md#the-mcp-command-list-resource-must-name-every-registered-tool) |
+| `Pointframe.Engine/Library/**`, `Pointframe.Data/**` | Capture catalog, import and index worker, EF Core context, repositories, migrations | [Capture library](features/library.md#capture-library-and-data-layer) |
+| `Pointframe.Data/DependencyInjection.cs`, `Pointframe.Data/Services/**` | Data service registration and the startup migration | [App bootstrap](#app-bootstrap-di-and-messaging) |
+
+**Tests**
+
+| Path | What lives here | Read first |
+|---|---|---|
+| `Pointframe.Tests/**` | xUnit and Moq unit tests; run in CI | Look up the class under test |
+| `Pointframe.Tests/Mcp/**`, `Pointframe.Tests/Engine/**`, `Pointframe.Tests/Cli/**`, `Pointframe.Tests/DocsSync/**` | Engine, CLI, and MCP tests, and docs-sync tests that fail when docs drift from code | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation), [MCP command list](features/cli-mcp.md#the-mcp-command-list-resource-must-name-every-registered-tool) |
+| `Pointframe.Tests/Services/Handlers/**` | Annotation shape handler tests | [Annotation engine](features/annotation.md#annotation-engine) |
+| `Pointframe.AutomationTests/**` | FlaUI smoke tests against the real app, and MCP desktop-tool tests against the WinForms fixture and Notepad; separate workflow | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation), [CI, CD, and versioning](#ci-cd-and-versioning) |
+| `Pointframe.AutomationTests/Installer/**` | Installer smoke tests | [Installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list), [D-004](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them) |
+| `Pointframe.AutomationTests/Support/AutomationIds.cs`, `Pointframe.AutomationTests/Smoke/*AnnotationTool*` | Toolbar automation ids and per-tool smoke coverage | [Add an annotation tool](features/annotation.md#add-an-annotation-tool) |
 
 ## Subsystems
 
@@ -122,471 +217,22 @@ pwsh .claude/skills/knowledge-base/knowledge-base.ps1 -Check   # check only
 - Lesson: Automation-mode window replacement should not rely on OnLastWindowClose
 - Lesson: Tray-launched file dialog can lose focus in a tray-only WPF app
 
-### Capture overlay and selection
-
-**Responsibility.** Turn a user gesture into a selected region and a bitmap, then host the annotation surface and the action toolbar (copy, save, pin, record, OCR, beautify). Everything screenshot-shaped starts here; recording branches off the same selection.
-
-**Entry points.**
-
-| Trigger | Path |
-|---|---|
-| Hotkey or tray menu | `ICaptureLaunchService.StartRegionSnip`, `StartWholeScreenSnip`, `StartCleanWindowSnip`, `StartWholeScreenRecord`; the `source` argument (`"hotkey"` or `"tray"`) feeds telemetry |
-| Open an image file | `OpenImageRequestedMessage` through the event aggregator; mode `OpenedImage` |
-| Library item | `LibraryViewModel` closes the library, then launches the overlay with the file |
-
-**Flow.**
-
-1. `SelectionSession.SelectAsync` creates one `SelectionMonitorWindow` per `Screen.AllScreens`, each with its own snapshot from `IScreenCaptureService` and its own scale from `MonitorDpiHelper`. The first window to complete wins and closes the rest. Result: `SelectionSessionResult` with pixel bounds and the owning monitor.
-2. `OverlayWindow` is resolved from DI (transient) and initialized from the session result. Its bounds are assigned before `Show()`; see the PerMonitorV2 lesson.
-3. `OverlayViewModel` moves through phases (selecting, annotating, recording) and exposes the toolbar commands. It reads DPI from `PresentationSource` in `OnSourceInitialized`.
-4. Output: `IOverlayBitmapCapture` renders the annotated result (`OverlayBitmapCapture` for live captures, `OpenedImageBitmapCapture` for opened files). Copy goes through `IClipboardService`, save through `IImageFileService`, pin opens `PinnedScreenshotWindow`, beautify opens `BeautifierWindow`.
-5. OCR: `OcrLassoController` collects a lasso region and `IOcrService` (`WindowsOcrService`, Windows.Media.Ocr) extracts the text.
-
-`SelectionSessionMode` values: `Region`, `FullScreen`, `OpenedImage`, `WindowClean`. `WindowClean` captures the window under the cursor through `IWindowCaptureService` after the configured capture delay, so a tray launch gives the user time to move off the menu.
-
-**Key types.**
-
-- `OverlayWindow` is split into partial files by concern: `Selection`, `Layout`, `Recording`, `RecordingAnnotation`, `RecordingHud`, `ColorPicker`. Put new code in the partial that owns the concern.
-- `OverlayToolbarLayoutHelper` decides toolbar placement, including the compact fallback for small selections.
-- `DpiAwarenessScope` switches the thread DPI context. The virtual-desktop-wide selection runs system-aware; recording hosts stay PerMonitorV2.
-
-**Invariants.**
-
-- Hide the overlay and yield the dispatcher before capturing the screen, or the overlay lands in the bitmap.
-- Assign window bounds before `Show()`, never inside HWND-lifecycle callbacks.
-- Do not show a replacement window (pin, beautifier, library) until the overlay has fully closed.
-- Convert coordinates per monitor; see [DPI coordinate systems](#dips-and-physical-pixels-are-converted-explicitly-per-monitor). Never divide Win32 screen coordinates by a single overlay DPI.
-
-**Tests.** `Pointframe.Tests/ViewModels/OverlayViewModelTests.cs`, `Pointframe.Tests/OverlayWindowLayoutTests.cs`, `Pointframe.Tests/OverlayWindowInteractionTests.cs`, `Pointframe.Tests/OverlayToolbarLayoutTests.cs`, `Pointframe.Tests/SelectionSessionTests.cs`, `Pointframe.Tests/SelectionMonitorWindowTests.cs`, `Pointframe.Tests/PinnedScreenshotWindowTests.cs`, `Pointframe.Tests/Services/ScreenCaptureServiceTests.cs`, `Pointframe.Tests/Services/OverlayBitmapCaptureTests.cs`, `Pointframe.Tests/Services/WindowsOcrServiceTests.cs`. Automation: `Pointframe.AutomationTests/Smoke/OpenedImageOverlaySmokeTests.cs`, `Pointframe.AutomationTests/Smoke/TrayOpenImageSmokeTests.cs`.
-
-**Files.** `Pointframe/Services/Capture/CaptureLaunchService.cs`, `Pointframe/Services/Capture/SelectionSession.cs`, `Pointframe/Models/SelectionSessionMode.cs`, `Pointframe/Models/SelectionSessionResult.cs`, `Pointframe/Views/SelectionMonitorWindow.cs`, `Pointframe/Views/SelectionBackdropWindow.cs`, `Pointframe/Views/OverlayWindow.xaml.cs`, `Pointframe/Views/OverlayWindow.Selection.cs`, `Pointframe/Views/OverlayWindow.Layout.cs`, `Pointframe/Views/OverlayToolbarLayoutHelper.cs`, `Pointframe/ViewModels/OverlayViewModel.cs`, `Pointframe/Services/Capture/ScreenCaptureService.cs`, `Pointframe/Services/Capture/WindowCaptureService.cs`, `Pointframe/Services/Capture/OverlayBitmapCapture.cs`, `Pointframe/Services/Capture/OpenedImageBitmapCapture.cs`, `Pointframe/Services/Annotation/OcrLassoController.cs`, `Pointframe/Services/Infrastructure/WindowsOcrService.cs`, `Pointframe/Views/PinnedScreenshotWindow.xaml.cs`, `Pointframe/Views/BeautifierWindow.xaml.cs`, `Pointframe/Native/MonitorDpiHelper.cs`, `Pointframe/Native/DpiAwarenessScope.cs`.
-
-**Lessons.**
-
-- Lesson: WPF PerMonitorV2: set window bounds before Show(), not in OnSourceInitialized
-- Lesson: Full-desktop selection overlays are safer in a system-aware DPI context while monitor-scoped recording hosts stay PerMonitorV2
-- Lesson: Overlay capture must yield the dispatcher after hiding the overlay window
-- Lesson: Pin capture must not restore the live overlay before the overlay window closes
-- Lesson: Replacement windows should not be shown until the full-screen overlay has fully closed
-- Lesson: Active-window capture must map Win32 screen coordinates into overlay space instead of dividing by one overlay DPI
-- Lesson: Opened-image overlay layout must target a single monitor, not the full virtual desktop
-- Lesson: Window picker overlays must enumerate capturable windows before showing any picker UI
-- Lesson: Cursor-targeted tray captures must honor capture delay
-- Lesson: Selection-adjacent toolbars need a compact fallback for small snips
-
-### Annotation engine
-
-**Responsibility.** Own everything about drawing on a captured image: the active tool, its color and stroke, the draft shape during a drag, committed elements, and undo and redo. The same engine serves the screenshot overlay and the recording overlay.
-
-**Key types.**
-
-| Type | Role |
-|---|---|
-| `AnnotationTool` enum | Arrow, Rectangle, Text, Highlight, Pen, Line, Circle, Number, Blur, Callout, ColorPicker, PixelRuler |
-| `ShapeParameters` sealed records | Immutable description of one shape per tool, produced by `AnnotationViewModel.TryGetShapeParameters()` |
-| `AnnotationViewModel` | Tool, color, thickness, style presets, number counter, undo and redo stacks of element groups |
-| `RecordingAnnotationViewModel` | Recording-time variant with the reduced tool set |
-| `AnnotationCanvasRenderer` | Maps each `AnnotationTool` to an `IAnnotationShapeHandler` and drives the active one through a drag |
-| `IAnnotationShapeHandler` | `Begin(point, brush, thickness, canvas)`, `Update(point)`, `Commit(canvas, trackElement)`, `Cancel(canvas)`; one class per tool under `Pointframe/Services/Annotation/Handlers/` |
-| `AnnotationCanvasInteractionController` | Translates mouse events into renderer calls |
-| `IAnnotationGeometryService` | Pure math: arrowheads, bounding boxes, hit tests; unit-tested without WPF |
-
-**Flow of one drag.**
-
-1. Mouse down: the controller asks the renderer to begin. The renderer picks the handler for `SelectedTool` and calls `Begin` with the current style.
-2. Mouse move: `Update(point)` mutates the draft element only.
-3. Mouse up: `Commit` adds final elements to the canvas and calls `trackElement` for each; the ViewModel records them as one undo group.
-4. Escape or tool switch mid-drag: `Cancel` removes the draft. Exactly one of `Commit` or `Cancel` runs per drag, or the next drag throws on a stale draft.
-
-Text and Callout edit in a live `TextBox`; `LostFocus` converts it to a `TextBlock`. Removing that handler leaves editable boxes in the exported bitmap. Number resets its counter through the ViewModel on undo and redo.
-
-**Invariants.**
-
-- Undo groups are added only on commit. See [Undo groups are added only on commit](#undo-groups-are-added-only-on-commit).
-- The recording HUD's tool list derives from the annotation allowlist; there is no second list to keep in sync.
-- Shape definitions are records in `Pointframe/Models/ShapeParameters.cs`; handlers hold no state between drags.
-
-**Tests.** `Pointframe.Tests/ViewModels/AnnotationViewModelTests.cs`, `Pointframe.Tests/ViewModels/RecordingAnnotationViewModelTests.cs`, `Pointframe.Tests/Services/AnnotationCanvasRendererTests.cs`, `Pointframe.Tests/Services/AnnotationCanvasInteractionControllerTests.cs`, `Pointframe.Tests/Services/AnnotationGeometryServiceTests.cs`, per-handler tests under `Pointframe.Tests/Services/Handlers/`. Smoke coverage: `Pointframe.AutomationTests/Smoke/AnnotationToolSmokeTests.cs` and `Pointframe.AutomationTests/Smoke/RecordingAnnotationToolSmokeTests.cs`, driven by ids in `Pointframe.AutomationTests/Support/AutomationIds.cs`.
-
-**Files.** `Pointframe/Models/AnnotationTool.cs`, `Pointframe/Models/ShapeParameters.cs`, `Pointframe/Models/AnnotationStylePreset.cs`, `Pointframe/ViewModels/AnnotationViewModel.cs`, `Pointframe/ViewModels/RecordingAnnotationViewModel.cs`, `Pointframe/ViewModels/AnnotationStylePresetViewModel.cs`, `Pointframe/Services/Annotation/AnnotationCanvasRenderer.cs`, `Pointframe/Services/Annotation/AnnotationCanvasInteractionController.cs`, `Pointframe/Services/Annotation/IAnnotationGeometryService.cs`, `Pointframe/Services/Annotation/AnnotationGeometryService.cs`, `Pointframe/Services/Annotation/Handlers/IAnnotationShapeHandler.cs`.
-
-**Lessons.**
-
-- Lesson: Recording HUD tool selection should not duplicate the annotation-tool allowlist
-
-### Recording pipeline
-
-**Responsibility.** Record a screen region to MP4 (and optionally GIF) while the user can pause, resume, stop, toggle the microphone, and draw on the live desktop. Keep every visual (border, HUD, annotation surface, cursor effects) aligned with the exact pixels being captured on mixed-DPI multi-monitor setups.
-
-**Entry points.**
-
-| Trigger | Path |
-|---|---|
-| Overlay "Record" on a selection | The `OverlayWindow.Recording.cs` partial starts the countdown, then the session |
-| Hotkey full-screen record | `ICaptureLaunchService.StartWholeScreenRecord` |
-| Post-recording trim | `TrimRecordingRequestedMessage` opens `TrimWindow` with a `TrimViewModel` built by `Func<string, TrimViewModel>` |
-
-**Flow.**
-
-1. `CountdownWindow` runs the pre-roll. Recording adornments must be invisible to the capture, or they are burned into the frames.
-2. `RecordingSessionGeometry` is computed once for the target monitor: host and capture bounds in physical pixels, the same in DIPs, work area, monitor name, scale X and Y. Every consumer maps through its `Map*` methods. Compute it only after the monitor-scoped host window has settled.
-3. `IScreenRecordingService.Start(x, y, width, height, outputPath)` (transient `ScreenRecordingService`) truncates width and height to even numbers, starts the capture loop, and writes frames through `IVideoWriterFactory` to `FFMpegVideoWriter`, which pipes into an ffmpeg process located by `FfmpegResolver`.
-4. `RecordingOverlayWindow` hosts the border, HUD, and annotation surface for that monitor in PerMonitorV2 context. `RecordingHudCoordinator`, `RecordingAnnotationSurfaceCoordinator`, and `RecordingMousePassthroughCoordinator` place them and toggle click-through; `RecordingOverlayNativeInterop` holds the Win32 calls.
-5. `RecordingHudViewModel` (one per session through `Func<IScreenRecordingService, string, RecordingHudViewModel>`) drives pause, resume, stop, microphone, and tool selection. `RecordingMicrophoneSession` restores the device's original mute state on stop.
-6. Stop publishes `RecordingCompletedMessage`, carrying whether the microphone was captured. `GifExportService` and `VideoTrimService` post-process through ffmpeg. `WatermarkTokenResolver` expands watermark text templates. See [Recording transcription](#recording-transcription).
-7. Committed blur elements retain their `RecordingRedactionRegion` identity. Recording annotation undo removes that exact region from the frame redaction snapshot, and redo restores it. The event sidecar uses an unbounded producer queue so event bursts do not fail before recording cleanup.
-
-`FfmpegResolver` order: `AppContext` data key override, `ffmpeg.exe` next to the binary, `Assets\ffmpeg\ffmpeg.exe`, then `PATH`. See [Runtime paths](#runtime-paths-and-external-binaries).
-
-**Invariants.**
-
-- One geometry model per session; see [D-003](#d-003-recording-uses-one-authoritative-session-geometry). Never recompute DPI conversions in a consumer.
-- Even width and height before ffmpeg starts; see [Recording width and height are even](#recording-width-and-height-are-even).
-- Border and annotation windows are positioned in physical pixels, not DIPs.
-- Microphone enumeration uses WASAPI (`MicrophoneDeviceService`); WinMM names are truncated and do not match ffmpeg device names.
-- The ffmpeg process must end when the video input ends, or it keeps running on the audio input alone.
-
-**Tests.** Services: `Pointframe.Tests/Services/ScreenRecordingServiceTests.cs`, `Pointframe.Tests/Services/FFMpegVideoWriterTests.cs`, `Pointframe.Tests/Services/VideoWriterFactoryTests.cs`, `Pointframe.Tests/Services/RecordingMicrophoneSessionTests.cs`, `Pointframe.Tests/Services/RecordingCursorEffectsServiceTests.cs`, `Pointframe.Tests/Services/GifExportServiceTests.cs`, `Pointframe.Tests/Services/VideoTrimServiceTests.cs`, `Pointframe.Tests/Services/WatermarkTokenResolverTests.cs`. Models and ViewModels: `Pointframe.Tests/Models/RecordingSessionGeometryTests.cs`, `Pointframe.Tests/ViewModels/RecordingHudViewModelTests.cs`, `Pointframe.Tests/ViewModels/TrimViewModelTests.cs`. Windows: `Pointframe.Tests/RecordingHudPositionTests.cs`, `Pointframe.Tests/RecordingOverlayWindowTests.cs`, `Pointframe.Tests/OverlayWindowRecordingFlowTests.cs`, `Pointframe.Tests/OverlayWindowRecordingAnnotationTests.cs`. Automation: `Pointframe.AutomationTests/Smoke/RecordingOverlaySmokeTests.cs`, `Pointframe.AutomationTests/Smoke/RecordingHudInteractionTests.cs`.
-
-### Standalone CLI and MCP automation
-
-**Responsibility.** Provide agent-facing desktop capture and whole-monitor recording without starting the WPF tray application or creating overlay windows. Both hosts call the shared `Pointframe.Engine` services directly and require an interactive Windows desktop session.
-
-**Entry points.**
-
-| Host | Entry point | Transport |
-|---|---|---|
-| CLI | `Pointframe.Cli/Program.cs` and `CliApplication.RunAsync` | Process arguments and stdout/stderr |
-| MCP server | `Pointframe.Mcp/Program.cs`, `PointframeMcpTools`, and `PointframeMcpResources` | MCP stdio |
-
-**Capabilities.**
-
-- The CLI accepts `displays`, `capture --monitor <exact Windows device name> [--region <x,y,width,height>]`, `ocr --monitor <exact Windows device name> [--region <x,y,width,height>]`, `record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]...`, `--help`/`-h`, or `--version`/`-v`. `--monitor`, `--region`, `--seconds`, `--fps`, `--redact`, and `--output` each accept a short alias (`-m`, `-g`, `-s`, `-f`, `-r`, `-o`); both forms are interchangeable and can be mixed within one invocation, and `capture`/`ocr` flags may appear in either order (`CliCommandParser.TryParseCaptureLikeCommand` loops over tokens rather than requiring a fixed position). Any long-form flag also accepts inline `--flag=value` syntax (e.g. `--monitor=\\.\DISPLAY1`); `CliCommandParser.ExpandInlineFlagValues` splits these into two tokens before the rest of parsing runs, so both `--flag value` and `--flag=value` are equivalent everywhere. `--help`/`-h`/`--version`/`-v` take priority over any other arguments present and are detected anywhere in the argument list (e.g. `record --monitor X --help` prints help instead of attempting to parse `record`), not just when passed alone. Invalid or incomplete commands print usage to standard error and return exit code 2; runtime failures return exit code 1. Since 2026-09-09 a runtime failure also writes a single-line `DirectCaptureResponse` with `Success: false` and an `Error` carrying a stable `Code` (`target_not_found`, `target_not_capturable`, `invalid_region`, `canceled`, or `capture_failed`, mapped from the exception type by `CliApplication.ToErrorCode`) to standard output, so a script parses standard output the same way on both paths; the human-readable `Pointframe CLI failed: ...` line stays on standard error for interactive use. Before that only `record` reported failures as JSON and the capture path left standard output empty, contradicting the help text. `--help`/`--version` (and bare `help`/`version`) write plain text rather than JSON to standard output, always exit 0, and skip constructing/invoking the capture and recording services entirely. `record` is a single blocking command scoped to one CLI process: it starts the recording, waits for the requested duration (or an earlier Ctrl+C, handled as a graceful stop rather than a hard kill), stops the recording, and writes one combined JSON response containing both the started `Session` and the finished `Artifact`. There is no separate CLI `stop-recording` command because a CLI invocation has no state that persists across two separate process launches; use the MCP server's `start_recording`/`stop_recording` tools for a start-now/stop-later workflow instead. `Pointframe.Engine.DirectRecordingResponse` (`SchemaVersion`, `Success`, `Error`, `Session`, `Artifact`) is the shared JSON response DTO used by both the CLI `record` command and `DirectRecordingMcpService`, so the two hosts serialize recording results identically.
-- `capture`/`ocr` (CLI) and `capture_monitor`/`read_text_from_monitor` (MCP) accept an optional region limited to a sub-rectangle of the monitor: `Pointframe.Engine.CaptureRegion` (`X`, `Y`, `Width`, `Height`) is expressed in monitor-local physical pixels relative to the monitor's own top-left corner, not the virtual desktop. `CaptureRegion.ResolveWithin(monitorBoundsPixels)` validates positive width/height and that the region is fully contained by the monitor, then offsets it into absolute physical-pixel `PixelBounds`; an out-of-bounds or non-positive region throws `ArgumentOutOfRangeException` rather than being clipped, which both hosts surface as a runtime failure (CLI exit code 1; MCP tool error). `DirectCaptureService.ResolveCapturedMonitor` is the single place that applies this: with no region it captures the whole monitor via `IDisplayCaptureEngine.CaptureMonitor`; with a region it resolves the display via `GetDisplays()` and calls `IDisplayCaptureEngine.Capture` directly with the resolved bounds, so `IDisplayCaptureEngine.CaptureMonitor` itself never gained a region parameter. `ImageArtifactMetadata`/`McpImageArtifactMetadata` report both `MonitorBoundsPixels` (the full monitor) and `CaptureBoundsPixels` (what was actually captured), so a region capture is distinguishable from a whole-monitor one in the JSON response and metadata sidecar. The MCP tools take `region` as a `{x, y, width, height}` object (`McpCaptureRegion`), not a comma string, for real JSON-schema validation.
-- Every command that writes a file (`capture`, `ocr`, `capture-window`, `ocr-window`, `record`) accepts `--output <file>` (`-o`) naming the exact artifact path, added 2026-09-09. `DirectCaptureService.ResolveArtifactPath` and the explicit-path branch of `DirectRecordingService.Start` create missing parent directories, reject an existing directory as the target, and otherwise fall back to the previous generated `yyyyMMdd-HHmmss-<id>` name under `%LOCALAPPDATA%\Pointframe`. The capture methods on `IDirectCaptureService` therefore take `string? outputPath` before the cancellation token, and `DirectRecordingRequest` gained `OutputPath` alongside the pre-existing `OutputDirectory` (an explicit path wins). The MCP tools deliberately do not expose this: their artifact locations stay server-controlled, so pass `cancellationToken:` by name at those call sites.
-- Desktop-testing MCP tools are named with an explicit `desktop_` prefix (`desktop_click`, `desktop_drag`, `desktop_observe_app`, ...) set through `Name` on `[McpServerTool]`, since 2026-09-09. Their bare action names collided with tools from other MCP servers connected to the same client, which leaves a caller choosing between two indistinguishable `click` tools. The nine direct tools keep their unprefixed names because they are the released, published surface. Every tool method and every caller-supplied parameter on both tool types carries a `[Description]`; `Pointframe.Tests/Mcp/McpToolSurfaceTests.cs` fails the build when one is missing, because an MCP client selects tools from those descriptions and an undescribed tool is effectively invisible.
-- `Pointframe.Tests/DocsSync/` guards documentation against drifting out of sync with the code it describes: `McpToolDocumentationTests` asserts every name in `PointframeCommandCatalog.DirectTools`/`DesktopTestingTools` is mentioned in README.md/`docs/mcp-desktop-testing/README.md`; `CliDocumentationTests` asserts every command and long flag extracted from `CliCommandParser.HelpText` is mentioned in `docs/cli/README.md`; `McpPackagingScriptDocumentationTests` asserts `packaging/test-mcp-stdio.ps1`'s hand-maintained `$expectedTools`/`$enabledExpectedTools` arrays match the same catalog (a second, earlier line of defense in addition to that script's own runtime assertion in CI). These follow the same pattern as `Pointframe.Tests/Services/TelemetryDocumentationTests.cs`: fail a normal `dotnet test` run immediately when a tool or flag is added/renamed without updating its documentation, rather than relying on someone remembering to update docs by hand.
-- The MCP resource `pointframe://commands` lists the supported command identifiers. `PointframeCommandCatalog` derives these identifiers by reflecting over `[McpServerTool]`-decorated methods on `PointframeMcpTools` and `DesktopTestingMcpTools` (converting the method name to snake_case and stripping an `Async` suffix, or using an explicit `Name` on the attribute), so the resource cannot drift out of sync with the registered tools the way a hand-maintained list could.
-- The MCP resource `pointframe://server-info` reports `SchemaVersion`, `Version` (the server's `FileVersionInfo.ProductVersion`, resolved via `Environment.ProcessPath` the same way the CLI resolves `--version`, since `Assembly.Location` is empty for single-file publishes), `DesktopTestingEnabled` (from `DesktopTestingHostOptions.Enabled`), and `Ffmpeg` availability (`Found`, `Path`, `Source` — `EnvironmentVariable`, `Bundled`, `Path`, or `NotFound`, from `FfmpegDirectVideoWriterFactory.GetAvailability()`). This lets an MCP client check server health/version and whether recording will work before calling `start_recording`, without starting a process or attempting a real recording.
-- MCP tools list displays, capture a named monitor (or an optional sub-region) to a PNG artifact, read text from a named monitor (capture plus OCR, optionally scoped to a sub-region) via `read_text_from_monitor`, start a no-microphone MP4 recording, stop that recording with finalized artifact and sidecar metadata, and check whether a recording is currently active via `get_recording_status` (returns `IsRecording`, and when true, the active `Session` and `Elapsed` duration; `Session`/`Elapsed` are omitted when nothing is recording). `get_recording_status` is read-only and does not require a prior `start_recording` call to be safe to invoke.
-- Since 2026-09-09 the four capture/OCR MCP tools (`capture_monitor`, `capture_window`, `read_text_from_monitor`, `read_text_from_window`) return a `ModelContextProtocol.Protocol.CallToolResult` instead of a typed `McpCaptureResponse`. `StructuredContent` still carries the full `McpCaptureResponse` JSON and a `TextContentBlock` repeats it, so existing structured-content readers are unaffected; unless the caller passes `includeImage: false`, an `ImageContentBlock` with the captured PNG is appended so a client that cannot read the server's filesystem can still see the screenshot. `McpCaptureResultBuilder.Build` assembles the result and `Pointframe.Engine.CapturePreviewImage.CreateDownscaledPng` produces the inline copy — it returns the on-disk bytes unchanged when the longest edge is already within `CapturePreviewImage.DefaultMaxLongestEdgePixels` (1600) and otherwise downscales with high-quality interpolation, preserving aspect ratio. The full-resolution PNG is always still written to disk (`%LOCALAPPDATA%\Pointframe\Screenshots` or the server-controlled path). Trade-off: because a directly-returned `CallToolResult` bypasses the SDK's return-type schema generation, these four tools no longer set `UseStructuredContent` and no longer advertise an output schema in `tools/list`; `list_displays`, `list_windows`, and the recording tools keep their typed returns and output schemas.
-- As of 2026-09-07, the opt-in desktop-testing driver registers its policy-gated observation and mutation MCP tools and routes physical input and UIA actions through a supervised MCP worker. Owned-key release is synchronous: the worker is attempted first, then the parent-side `DesktopControlGuard` fallback is used when the worker or pipe is unavailable. The native input adapter records only successfully injected keys that were not already down, so fallback release cannot release user-owned keys; failed native release is reported rather than fabricated as success. The tool layer must route every mutation through `IDesktopActionCoordinator` and the worker-backed input/UIA services; preflight failures must produce no input and uncertain dispatch must not be replayed. Do not claim Gate A, B, or C evidence from headless contract tests. UI Automation inspection runs in the worker too, reached through the `uia.inspect` operation and surfaced to the parent by `WorkerUiObservationProvider`. The parent must not construct a UI Automation backend of its own: creating FlaUI's `UIA3Automation` initializes COM inside whichever process creates it, and doing that in the process serving the MCP protocol made unrelated tools hang intermittently. Before the worker operation existed, the parent registered `WindowsUiAutomationProvider` with no backend at all, so every observation reported `ProviderUnavailable` with zero elements and no `element_ref` or `window_ref` was ever minted for `desktop_invoke`, `desktop_focus_window`, or `desktop_check_ui` to address.
-- A UIA inspection root mints a `window-{process_ref}-{hwnd}` reference and every descendant inherits it, so `desktop_focus_window`, window-scoped locators, and window checks address one actual top-level window rather than only the target process. The tool accepts a reference only when its embedded process reference matches the active session, then resolves the hexadecimal HWND. The parent sends that native handle to the worker as an integer through `DesktopAutomationWorkerProtocol.SerializePayload`/`DeserializePayload`; default `System.Text.Json` does not support `nint`/`IntPtr` serialization.
-- The interactive gate harness creates its policy through `Pointframe.AutomationTests/Support/DesktopGatePolicyFactory.cs` and must launch the MCP executable with `--desktop-testing --desktop-policy <absolute-policy-path>`. The factory uses ordinary empty Pointframe arguments and writes the temporary policy beneath the configured evidence directory; `DesktopGatePolicyFactoryTests` verifies enabled tool registration without launching Pointframe. This registration check is not a desktop gate: the real Gate A workflow still needs a generic notification-area interaction and normal target exit before it can safely launch the target, while Gates B and C require their external visual/file evidence.
-- Real desktop acceptance requires explicit operator approval of the chosen Windows account or machine. A dedicated account or machine is preferred, but a personal account is permitted with informed consent because normal settings and desktop state may change; the driver cannot prove that the environment is safe. Isolation is not implemented through target data-root overrides.
-- OCR (`ocr` CLI command / `read_text_from_monitor` MCP tool) captures the monitor like `capture` does (including the optional region), then runs `Windows.Media.Ocr.OcrEngine` against the captured bitmap via `IOcrEngineService`/`WindowsOcrEngineService`. The response always includes the PNG artifact; `RecognizedText` is `null` when no text is found or no OCR language pack is installed for the user's profile languages. `DirectCaptureService.CaptureMonitorInternalAsync` is the shared helper behind both `CaptureMonitorAsync` and `CaptureMonitorTextAsync` so save/hash/metadata-sidecar logic isn't duplicated. `WindowsOcrEngineService.RecognizeDetailedAsync` bounds the attempt at `RecognitionTimeout` (30 seconds) and returns `OcrRecognitionStatus.Failed` rather than waiting forever: the Windows OCR stack can wedge indefinitely, and neither `OcrEngine.TryCreateFromUserProfileLanguages` nor `RecognizeAsync` is reliably cancellable, so an unbounded wait takes the whole host process with it. The recognition task owns and disposes the `SoftwareBitmap` copy, because on the timeout path the caller returns while that task is still reading it.
-- Recording requires an explicit redaction-region array. Regions are capture-local physical pixels and are applied before frames reach ffmpeg.
-- `desktop_observe_app` returns the captured pixels, not only metadata: it answers with a `CallToolResult` carrying one `ImageContentBlock` per requested rectangle (assembled by `DesktopObservationResultBuilder`), alongside the unchanged structured payload, and `includeImages: false` suppresses them. `DesktopObservationService` encodes each capture with `CapturePreviewImage.CreateDownscaledPng`, bounded by `DesktopTestingLimits.MaxImageLongestEdge` (1600). Consequently `DesktopImageReference.Width`/`Height` are the *preview* dimensions the model sees and deliberately differ from `DesktopBoundsPixels`; `DesktopCoordinateMapper` rescales between the two, and its non-transform overload delegates to the transform one so no caller can skip the rescale. An agent that treated a preview coordinate as a desktop offset would click short of its target by the downscale factor.
-- `desktop_check_ui` evaluates its condition against a fresh worker inspection of the session's target (`WorkerUiCheckSource`), and `processExited` is answered by `IDesktopProcessController` instead, because an exited target has no element tree to read. It was previously wired to a stub that reported `StateAvailable: false` for everything, so every check came back inconclusive and no action tool's reported success could be contradicted by anything. The tool takes a flat condition (`kind` plus `automationId`/`role`+`name`, optional `windowRef`, optional `expected`) rather than the engine's abstract `DesktopUiCheckCondition`, which carries no JSON polymorphism metadata and so could not be constructed by a client at all; `DesktopTestingMcpTools.BuildCondition` maps one to the other and rejects an unknown kind or a missing `expected`/`windowRef`. `IDesktopUiCheckService.CheckAsync` now takes the target `DesktopProcessIdentity`: the tool used to discard its `sessionId`, so nothing identified which application to inspect. A `textEquals` check never matches an element reporting `IsSensitive`, because a password field withholds its value by design.
-- OCR on an observation is selected with `includeOcr` plus a zero-based `ocrImageIndex` into `captureBoundsPixels`. The earlier `ocrImageRef` parameter was unusable: it had to name an image from the observation the same call creates, so any value a caller could supply resolved to `ImageNotFound`.
-- Synthesized input has to imitate hardware, not merely be accepted by `SendInput`. Every absolute mouse event carries `MOUSEEVENTF_VIRTUALDESK`, without which Windows maps normalized coordinates onto the primary monitor only and every secondary-monitor click lands elsewhere. A drag presses, moves through at least `MinDragMoveSteps` interpolated points, then releases, tracking the held button in `_ownedMouseButtons` so a failure cannot leave it down; two disconnected clicks are not a drag. A scroll moves the cursor to its point first, because the wheel goes to the window under the cursor rather than the focused one. A click emits move, press and release as separate events with a hold between them. `desktop_enter_text` clicks to place the caret before typing (it previously validated the point and never clicked, so characters went wherever focus happened to be) and paces characters in chunks, because one large `SendInput` batch is accepted and reported as success while the target's message pump drops the tail.
-
-**Packaging and configuration.**
-
-`Pointframe.Cli` is released as a self-contained, single-file `win-x64` ZIP with a SHA-256 checksum. `packaging/build-cli-package.ps1` publishes it and creates the versioned archive. Users extract it and run `Pointframe.Cli.exe`; it has no WPF application or .NET runtime prerequisite. An optional `-FfmpegPath` parameter bundles `ffmpeg.exe` into the package (mirroring the MCP package builder) so `record` works out of the box; when omitted, `record` still works if `ffmpeg.exe` is on `PATH` or `POINTFRAME_FFMPEG_PATH` is set on the target machine.
-
-`Pointframe.Mcp` is published self-contained for `win-x64`. `packaging/build-mcp-package.ps1` copies the published executable and a supplied `ffmpeg.exe` into a versioned legacy ZIP and MCPB bundle, alongside `packaging/assets/mcp-icon.png` bundled as `icon.png` and referenced from the manifest's `icon` field so Claude Desktop's Extensions UI shows a Pointframe icon instead of the default placeholder. `mcp-icon.png` is a dedicated 512x512 asset (recreating the brand glyph on a dark rounded-square badge); it is separate from the 32x32 `website/app-icon.png` favicon because MCPB/Claude Desktop recommend 128-256px+ icons. If the glyph or brand colors change, re-export a new `mcp-icon.png` at 512x512 and rebuild the package. The build also emits a SHA-256 checksum and MCP Registry `server.json` metadata pointing at the GitHub Release MCPB asset. The standalone package contains no WPF application. VS Code and other MCP clients launch the executable as a local stdio server.
-
-CI publishes the CLI and MCP executables and runs `packaging/test-mcp-stdio.ps1`, which verifies disabled and explicitly enabled discovery against the exact delivered tool set (the nine direct tools when disabled, plus the fifteen desktop-testing tools when enabled) without starting WPF. The MCP package also includes a disabled-by-default policy schema example. CD attaches the CLI ZIP/checksum plus the MCPB, checksum, and registry metadata to the versioned GitHub Release. Both standalone hosts remain Windows-only and require an interactive desktop session for capture and recording.
-
-**Invariants.**
-
-- Capture and recording must run in the logged-in interactive desktop session; Windows services in session 0 cannot capture the user desktop.
-- Monitor names passed to CLI/MCP commands are exact Windows device names, such as `\\.\DISPLAY1`.
-- Both standalone hosts set `<ApplicationManifest>` to `Pointframe/app.manifest`, so both are PerMonitorV2 and report true physical pixels. `Pointframe.Cli` lacked it until 2026-09-19 and was DPI-unaware, reporting a 2560x1440 monitor at 150% scaling as 1707x960 with `DpiScale` 1 while `Pointframe.Mcp` reported it correctly. Both hosts document the same monitor-local physical-pixel contract, so a region computed from one must mean the same rectangle in the other.
-- Artifact paths and metadata are produced through the shared direct services under `%LOCALAPPDATA%\Pointframe`; recording also emits an event sidecar without bitmap data, OCR text, clipboard contents, or prompts.
-- `Pointframe.Engine` targets `net10.0-windows10.0.18362.0` and can call WinRT APIs (`Windows.Media.Ocr`, `Windows.Graphics.Imaging`) directly without a WPF dependency. `WindowsOcrEngineService` converts from GDI+ `System.Drawing.Bitmap` (what the capture pipeline produces) straight to `SoftwareBitmap`, unlike the main WPF app's `WindowsOcrService`, which converts from WPF's `BitmapSource`. Do not introduce a WPF dependency into `Pointframe.Engine` to reuse the WPF OCR service; keep the two implementations separate.
-
-**Tests.** `Pointframe.Tests/Cli/CliApplicationTests.cs`, `Pointframe.Tests/Mcp/DirectCaptureServiceTests.cs`, `Pointframe.Tests/Mcp/DirectRecordingMcpServiceTests.cs`, `Pointframe.Tests/Mcp/DesktopInputPreflightTests.cs`, `Pointframe.Tests/Mcp/DesktopTestingToolContractTests.cs`, `Pointframe.Tests/Mcp/McpToolSurfaceTests.cs`, `Pointframe.Tests/Mcp/PointframeMcpToolsImageContentTests.cs`, `Pointframe.Tests/Engine/CapturePreviewImageTests.cs`, `Pointframe.Tests/Engine/DirectRecordingServiceTests.cs`, `Pointframe.Tests/Engine/WindowsOcrEngineServiceTests.cs`, `Pointframe.Tests/Engine/DesktopObservationPixelTests.cs`, and `Pointframe.Tests/Mcp/DesktopNativeInputCorrectnessTests.cs`. Protocol smoke coverage is in `packaging/test-mcp-stdio.ps1`; enabled-policy harness coverage is in `Pointframe.AutomationTests/Support/DesktopGatePolicyFactoryTests.cs`. Real-desktop coverage (`Category=DesktopAutomation`, operator-gated) lives in `Pointframe.AutomationTests/Smoke/McpDesktopObserveAndInputTests.cs`, `Pointframe.AutomationTests/Smoke/McpTextEntryReachesTargetTests.cs`, and `Pointframe.AutomationTests/Support/DesktopFixtureHarness.cs`; the text-entry test reads the target's own reported state rather than OCR, so it does not depend on the Windows OCR engine.
-
-**Files.** `Pointframe.Cli/Program.cs`, `Pointframe.Cli/Application/CliApplication.cs`, `Pointframe.Cli/Commands/CliCommandParser.cs`, `Pointframe.Cli/Commands/CliCommand.cs`, `Pointframe.Mcp/Program.cs`, `Pointframe.Mcp/Tools/PointframeMcpTools.cs`, `Pointframe.Mcp/Tools/DesktopTestingMcpTools.cs`, `Pointframe.Mcp/Automation/WindowsDesktopInputService.cs`, `Pointframe.Mcp/Automation/WindowsDesktopNativeMethods.cs`, `Pointframe.Mcp/Automation/DesktopAutomationWorkerHost.cs`, `Pointframe.Mcp/Resources/PointframeMcpResources.cs`, `Pointframe.Mcp/Resources/PointframeCommandCatalog.cs`, `Pointframe.Mcp/Services/DirectRecordingMcpService.cs`, `Pointframe.Mcp/Mappers/McpResponseMapper.cs`, `Pointframe.Mcp/Mappers/McpCaptureResultBuilder.cs`, `Pointframe.Mcp/Mappers/DesktopTestingResponseMapper.cs`, `Pointframe.Mcp/Models/McpToolResponses.cs`, `Pointframe.Mcp/Models/DesktopTestingResponses.cs`, `Pointframe.Mcp/AssemblyInfo.cs`, `Pointframe.Engine/Automation/Services/DesktopActionCoordinator.cs`, `Pointframe.Engine/Automation/Services/DesktopActionLedger.cs`, `Pointframe.Engine/Automation/Services/DesktopTestReportService.cs`, `Pointframe.Engine/Capture/Services/DirectCaptureService.cs`, `Pointframe.Engine/Capture/Services/IDirectCaptureService.cs`, `Pointframe.Engine/Capture/Services/CapturePreviewImage.cs`, `Pointframe.Engine/Capture/Services/DisplayCaptureEngine.cs`, `Pointframe.Engine/Capture/Models/DirectCaptureModels.cs`, `Pointframe.Engine/Capture/Models/CaptureRegion.cs`, `Pointframe.Engine/Ocr/Services/IOcrEngineService.cs`, `Pointframe.Engine/Ocr/Services/WindowsOcrEngineService.cs`, `Pointframe.Engine/Recording/Services/DirectRecordingService.cs`, `Pointframe.Engine/Recording/Services/IRecordingServices.cs`, `Pointframe.Engine/Recording/Services/RawFrameRecordingPipeline.cs`, `Pointframe.Engine/Recording/Services/FfmpegDirectVideoWriter.cs`, `Pointframe.Engine/Recording/Models/DirectRecordingModels.cs`, `Pointframe/Services/Recording/ArtifactMetadataService.cs`, `Pointframe.AutomationTests/Support/DesktopGatePolicyFactory.cs`, `Pointframe.AutomationTests/Support/DesktopGatePolicyFactoryTests.cs`, `packaging/build-cli-package.ps1`, `packaging/build-mcp-package.ps1`, `packaging/test-mcp-stdio.ps1`, `.github/workflows/ci.yml`, `.github/workflows/cd.yml`.
-
-**Lessons.**
-
-- Lesson: The VS Code Pointframe MCP connector must be stopped before running desktop automation tests
-- Lesson: DI silently binds null to an unregistered optional constructor parameter
-- Lesson: UI Automation property reads throw, and an unhandled worker exception poisons every later request
-- Lesson: A verification tool that cannot fail is worse than no verification tool
-
-**Files.** `Pointframe/Services/Recording/ScreenRecordingService.cs`, `Pointframe/Services/Recording/IScreenRecordingService.cs`, `Pointframe/Services/Recording/IRecordingRedactionSession.cs`, `Pointframe/Services/Recording/RecordingRedactionSession.cs`, `Pointframe/Services/Recording/IRecordingEventTrack.cs`, `Pointframe/Services/Recording/RecordingEventTrack.cs`, `Pointframe/Services/Recording/VideoWriterFactory.cs`, `Pointframe/Services/Recording/FFMpegVideoWriter.cs`, `Pointframe/Services/Recording/FfmpegResolver.cs`, `Pointframe/Models/RecordingSessionGeometry.cs`, `Pointframe/Views/RecordingOverlayWindow.xaml.cs`, `Pointframe/Views/OverlayWindow.Recording.cs`, `Pointframe/Views/OverlayWindow.RecordingHud.cs`, `Pointframe/Views/OverlayWindow.RecordingAnnotation.cs`, `Pointframe/Views/CountdownWindow.xaml.cs`, `Pointframe/ViewModels/RecordingHudViewModel.cs`, `Pointframe/Services/Recording/RecordingHudCoordinator.cs`, `Pointframe/Services/Recording/RecordingAnnotationSurfaceCoordinator.cs`, `Pointframe/Services/Recording/RecordingMousePassthroughCoordinator.cs`, `Pointframe/Services/Recording/RecordingOverlayNativeInterop.cs`, `Pointframe/Services/Recording/RecordingCursorEffectsService.cs`, `Pointframe/Services/Recording/RecordingMicrophoneSession.cs`, `Pointframe/Services/Infrastructure/MicrophoneDeviceService.cs`, `Pointframe/Services/Recording/GifExportService.cs`, `Pointframe/Services/Recording/VideoTrimService.cs`, `Pointframe/ViewModels/TrimViewModel.cs`, `Pointframe/Services/Recording/WatermarkTokenResolver.cs`, `Pointframe/Services/Messaging/RecordingCompletedMessage.cs`, `Pointframe/Services/Messaging/TrimRecordingRequestedMessage.cs`.
-
-**Lessons.**
-
-- Lesson: Recording mode must use one authoritative geometry model
-- Lesson: Recording border windows must be positioned in physical screen pixels on mixed-DPI multi-monitor setups
-- Lesson: Recording annotation windows must be positioned in physical screen pixels on mixed-DPI multi-monitor setups
-- Lesson: Recording-time desktop capture and HUD placement must use the target monitor's coordinate system
-- Lesson: Monitor-scoped recording hosts must settle before capture geometry is computed
-- Lesson: Recording-time controls and annotation surfaces are most reliable when hosted inside the main overlay window
-- Lesson: Recording overlays need native click relays for interactive mode, not only `HTTRANSPARENT`
-- Lesson: Visible topmost WPF overlays can be captured by screen recording and still toggle click-through input at runtime
-- Lesson: Visible recording adornments are burned into CopyFromScreen output
-- Lesson: Full-screen recording HUDs need a compact default, not the region-recording layout
-- Lesson: ffmpeg microphone capture must use Windows capture-device names compatible with the recording backend
-- Lesson: Recording annotation undo must reconcile output redactions
-- Lesson: ffmpeg screen-plus-microphone recordings must stop when the video input ends
-- Lesson: Recording HUD microphone toggles must restore the device's original mute state
-- Lesson: Dropped recording frames shorten the final MP4 duration
-- Lesson: WinMM device names are truncated — use WASAPI (MMDeviceEnumerator) for microphone enumeration
-
-### User settings
-
-**Responsibility.** Hold every user preference, persist it as JSON, and expose it through one singleton so every consumer sees the current value.
-
-**Key types.**
-
-| Type | Role |
-|---|---|
-| `UserSettings` | Mutable POCO with defaults in property initializers; serialized as-is |
-| `IUserSettingsService` | `Current` (never cache it), `Save(settings)` replaces the whole object, `Update(Action<UserSettings>)` clones, mutates, and saves |
-| `UserSettingsService` | Loads on construction; a missing or corrupt file falls back to defaults with a log line; `Clone` copies every property for `Update` |
-| `SettingsViewModel` | One observable property per setting, grouped into `SettingsSection` items for the navigation rail; `Save()` writes them all back |
-| `SettingsWindow` | Sectioned window: Capture, Recording, Annotation, Shortcuts, App; automation ids live in `AutomationIds.cs` |
-| `HotkeyBinding`, `HotkeyModifiers` | Persisted hotkey model consumed by `GlobalHotkeyService` |
-| `IThemeService`, `AppTheme` | Applies the light, dark, or system theme from settings |
-| `ScreenshotWatermarkSettings`, `VideoWatermarkSettings` | Separate watermark settings; on load a missing video watermark is cloned from the screenshot one |
-
-**Storage.** `settings.json` in the Pointframe local app data folder. Automation tests redirect it with the `SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH` environment variable. See [Runtime paths](#runtime-paths-and-external-binaries).
-
-**Invariants.**
-
-- A new setting touches three files together or it is silently dropped on save. See [Settings persistence](#settings-are-read-at-the-point-of-use-and-persisted-through-three-files) and [Add a user setting](#add-a-user-setting).
-- Restore Defaults writes hidden persisted values directly; a mode flag that defers the write leaves stale values behind.
-- Consumers read `IUserSettingsService.Current` at the point of use.
-
-**Tests.** `Pointframe.Tests/Services/UserSettingsServiceTests.cs`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs` (reflection over every `UserSettings` property through save, load, `Update`, and `SettingsViewModel.Save`), `Pointframe.Tests/ViewModels/SettingsViewModelTests.cs`, `Pointframe.Tests/SettingsWindowTests.cs`, `Pointframe.Tests/Services/ThemeServiceTests.cs`, `Pointframe.Tests/Models/HotkeyBindingTests.cs`. Automation: `Pointframe.AutomationTests/Smoke/SettingsWindowSmokeTests.cs`, `Pointframe.AutomationTests/Smoke/SettingsSectionNavigationTests.cs`.
-
-**Files.** `Pointframe/Models/UserSettings.cs`, `Pointframe/Services/Infrastructure/IUserSettingsService.cs`, `Pointframe/Services/Infrastructure/UserSettingsService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml`, `Pointframe/Models/SettingsSection.cs`, `Pointframe/Models/SettingsSectionItem.cs`, `Pointframe/Models/HotkeyBinding.cs`, `Pointframe/Models/HotkeyModifiers.cs`, `Pointframe/Models/AppTheme.cs`, `Pointframe/Services/Infrastructure/ThemeService.cs`, `Pointframe/Models/WatermarkSettings.cs`, `Pointframe/Models/ScreenshotWatermarkSettings.cs`, `Pointframe/Models/VideoWatermarkSettings.cs`.
-
-**Lessons.**
-
-- Lesson: Restore-defaults flows must update hidden persisted settings directly, not through a sticky mode flag
-
-### Capture library and data layer
-
-**Responsibility.** Let the user find any saved screenshot by date, file name, or indexed text visible in the image, and open it in the annotation overlay without maintaining a second WPF OCR index.
-
-**Entry points.**
-
-| Trigger | Path |
-|---|---|
-| Tray "Library" | `ShowLibraryWindowRequestedMessage` through the event aggregator; `LibraryWindow` is transient |
-| Search | `LibraryViewModel.SearchAsync(query, from, to, progress, ct)` calls `ICaptureLibraryService.SearchAsync` |
-| Open item | The library closes first, then launches the overlay in `OpenedImage` mode |
-
-**Flow.**
-
-1. `CaptureLibraryService.GetCaptures()` retains direct-folder browsing, while its asynchronous search pages through `ICaptureCatalogService` and maps available catalog paths back to `CaptureItem` values.
-2. `CaptureTextLookupService` and its evictable cache remain for compatibility, but the WPF library search does not OCR files while the user types.
-3. Every completed WPF save, Save As, autosave, and beautifier export is registered by `ICaptureRegistrationService` only after its output stream closes. Direct CLI/MCP monitor and window captures use the same service; if registration fails, it writes a hash-bound receipt under the local data directory and a long-lived host replays it.
-4. WPF and MCP run cancellable initial and periodic non-recursive reconciliation plus OCR indexing. Reconciliation indexes PNG/JPEG/BMP files, trusts a direct-capture sidecar ID only when it is bound to the same file and SHA-256, and marks only direct children of a completely enumerated root missing.
-
-**Data layer (`Pointframe.Data`).**
-
-- EF Core with SQLite at `pointframe.db` in the local app data folder. The connection string is built in `AppServiceRegistration`.
-- The evictable `capture_text_cache` remains separate from the durable catalog foundation: `capture_artifacts` holds one immutable metadata generation per artifact ID and verified hash, while `capture_locations` maps a normalized absolute path to its current generation. A later overwrite must create a new artifact generation rather than make an existing ID resolve to different bytes.
-- `AddPointframeDataServices` registers `PointframeDataContext`, `IPointframeDataUnitOfWork`, `ICaptureTextCacheRepository`, `ICaptureCatalogRepository`, and `IMigrationService` as scoped. Resolve them inside `IServiceProvider.CreateScope()`; the app's singletons must not capture them.
-- Host-neutral catalog contracts and the shared local-data/database/default-standalone-screenshot paths live in `Pointframe.Engine/Library/`, keeping standalone hosts independent of the WPF assembly.
-- `CaptureCatalogService` verifies a closed PNG/JPEG/BMP file's hash, decoded format and dimensions before it writes a pending-OCR artifact. Re-observing the same normalized path and hash is idempotent. A different hash at that path creates a fresh artifact ID and marks the old generation superseded, so an existing ID never silently starts identifying replacement bytes.
-- `CaptureImportService` coalesces overlapping reconciliation requests. An enumerated but locked file remains observed, and a root-level access failure never marks any catalog location missing.
-- `CaptureIndexWorker` atomically claims bounded pending work with an owner and expiry lease, recovers expired leases, OCRs a locked byte snapshot outside database work, and completes only when that snapshot hash and lease still match the current artifact. A replacement file therefore cannot attach text to an old generation.
-- Catalog search uses cursor pagination and reports pending, failed, and unavailable index counts. `get_capture` verifies the same byte snapshot it uses for a preview and returns paged OCR text; it rejects missing, changed, unreadable, or oversized content rather than returning stale metadata/text.
-- Migrations live in `Pointframe.Data/Migrations/` and run at startup from `App.ApplyDataMigrations`. Add one with the `dotnet ef` tool from `dotnet-tools.json` (`dotnet tool restore` first); `PointframeDataContextFactory` is the design-time factory.
-- Generic `IRepository<T>` and `IReadOnlyRepository<T>` in `Pointframe.Data/Abstractions/` back the concrete repositories.
-
-**Tests.** `Pointframe.Tests/ViewModels/LibraryViewModelTests.cs`, `Pointframe.Tests/Services/CaptureLibraryServiceTests.cs`, `Pointframe.Tests/Services/CaptureLibrarySearchTests.cs`, `Pointframe.Tests/Services/CaptureLibraryOcrSearchTests.cs`, `Pointframe.Tests/Services/CaptureTextLookupServiceTests.cs`, `Pointframe.Tests/Services/SqliteCaptureTextCacheRepositoryTests.cs`, `Pointframe.Tests/Services/CaptureCatalogPersistenceTests.cs`, `Pointframe.Tests/Services/CaptureCatalogIntegrityTests.cs`.
-
-**Files.** `Pointframe/Views/LibraryWindow.xaml.cs`, `Pointframe/ViewModels/LibraryViewModel.cs`, `Pointframe/Services/Capture/ICaptureLibraryService.cs`, `Pointframe/Services/Capture/CaptureLibraryService.cs`, `Pointframe/Services/Capture/ICaptureTextLookupService.cs`, `Pointframe/Services/Capture/CaptureTextLookupService.cs`, `Pointframe/Models/CaptureItem.cs`, `Pointframe/Models/CaptureSearchProgress.cs`, `Pointframe/App.xaml.cs`, `Pointframe/AppServiceRegistration.cs`, `Pointframe.Mcp/Program.cs`, `Pointframe.Mcp/Tools/PointframeMcpTools.cs`, `Pointframe.Data/DependencyInjection.cs`, `Pointframe.Data/Context/PointframeDataContext.cs`, `Pointframe.Data/Context/PointframeDataContextFactory.cs`, `Pointframe.Data/Entities/CaptureTextCacheEntry.cs`, `Pointframe.Data/Entities/CaptureArtifactEntry.cs`, `Pointframe.Data/Entities/CaptureLocationEntry.cs`, `Pointframe.Data/Repository/CaptureCatalogRepository.cs`, `Pointframe.Data/Repository/CaptureTextCacheRepository.cs`, `Pointframe.Data/Repository/PointframeDataUnitOfWork.cs`, `Pointframe.Engine/Capture/Services/DirectCaptureService.cs`, `Pointframe.Engine/Library/CaptureCatalogContracts.cs`, `Pointframe.Engine/Library/CaptureCatalogService.cs`, `Pointframe.Engine/Library/CaptureImportService.cs`, `Pointframe.Engine/Library/CaptureIndexWorker.cs`, `Pointframe.Engine/Library/CaptureRegistrationService.cs`, `Pointframe.Engine/Library/StandaloneCaptureLibrarySources.cs`, `Pointframe.Engine/Library/PointframePaths.cs`, `Pointframe/Services/Capture/WpfCaptureLibrarySources.cs`.
-
-### Telemetry
-
-**Responsibility.** Record product usage and diagnostics in Application Insights without collecting content, and keep the public privacy statement and the code in lockstep.
-
-**Key types.**
-
-| Type | Role |
-|---|---|
-| `ITelemetryService` | `TrackEvent(name, properties)`, `TrackException(...)`, `Flush()` |
-| `TelemetryService` | Application Insights client; sends nothing when the connection string is empty |
-| `NullTelemetryService` | Explicit no-op for tests and disabled builds |
-| `TelemetryEventCatalog` | `TelemetryChannel` (Product, Diagnostic), `TelemetryPropertyKeys`, `TelemetryEvents` name constants, and `All` definitions with required properties |
-| `TelemetryHeartbeatService` | Hosted service emitting `app_heartbeat` with uptime and session data |
-| `ActivationTelemetryService` | First-run and activation funnel events |
-
-**Configuration.** `Pointframe/appsettings.json` ships `ApplicationInsights:ConnectionString` empty, so source builds and CI send nothing. The CD workflow injects the real string and verifies the injection before publishing. A developer can set a personal string in `appsettings.Local.json`, which is loaded after `appsettings.json`. See [CI, CD, and versioning](#ci-cd-and-versioning).
-
-**Invariants.**
-
-- Define every event in the catalog and emit it by its constant; the catalog is the single source for names and required properties.
-- The README section `### What is collected` lists every catalog event with its required properties and nothing else. `TelemetryDocumentationTests` parses that table and fails the build on drift, so an event change and its README row ship in the same change.
-- Properties are labels (tool, capture type, URL host), never content. Do not add file paths, OCR text, or image data.
-
-**Analysis.** Kusto queries and the workbook template: `docs/appinsights-feature-usage-queries.kql` and `docs/appinsights-pointframe-workbook.all-in-one.template.json`.
-
-**Tests.** `Pointframe.Tests/Services/TelemetryServiceTests.cs`, `Pointframe.Tests/Services/TelemetryEventCatalogTests.cs`, `Pointframe.Tests/Services/TelemetryDocumentationTests.cs`, `Pointframe.Tests/Services/ActivationTelemetryServiceTests.cs`.
-
-**Files.** `Pointframe/Services/Infrastructure/ITelemetryService.cs`, `Pointframe/Services/Infrastructure/TelemetryService.cs`, `Pointframe/Services/Infrastructure/NullTelemetryService.cs`, `Pointframe/Services/Infrastructure/TelemetryEventCatalog.cs`, `Pointframe/Services/Infrastructure/TelemetryHeartbeatService.cs`, `Pointframe/Services/Infrastructure/ActivationTelemetryService.cs`, `Pointframe/appsettings.json`.
-
-### Update flow
-
-**Responsibility.** Find newer releases on GitHub, tell the user, download the installer, and hand off to it.
-
-**Flow.**
-
-1. `AutoUpdateService` is a singleton registered three ways: as itself, as `IAutoUpdateService`, and as an `IHostedService`, so the host starts it and the tray can call it. It polls `IUpdateService` on the `UpdateCheckInterval` from settings (`EveryDay`, `Every2Days`, `Every3Days`, `Never`).
-2. `GitHubUpdateService.CheckForUpdates` compares the latest release with the running version from `IAppVersionService` (Nerdbank.GitVersioning) and returns an `UpdateCheckResult`.
-3. A newer version publishes `UpdateAvailableMessage`; the tray and `AboutViewModel` surface it. `AboutViewModel` can also trigger a manual check.
-4. `IAutoUpdateService.ConfirmAndInstall(result)` opens `UpdateDownloadWindow` through `IUpdateDownloadService` (`UpdateDownloadWindowService`), the testable seam. `UpdateDownloadViewModel` streams the installer with a shared `HttpClient` and launches it through `IProcessService`.
-
-**Invariants.**
-
-- Window services ignore UI events that arrive after their window closed; late progress callbacks after close are a crash source.
-- The installer asset name and the `v<version>` tag are produced by the CD workflow; the updater's expectations and the workflow change together. See [CI, CD, and versioning](#ci-cd-and-versioning).
-
-**Tests.** `Pointframe.Tests/Services/AutoUpdateServiceTests.cs`, `Pointframe.Tests/Services/GitHubUpdateServiceTests.cs`, `Pointframe.Tests/Services/UpdateDownloadWindowServiceTests.cs`, `Pointframe.Tests/Services/AppVersionServiceTests.cs`, `Pointframe.Tests/ViewModels/UpdateDownloadViewModelTests.cs`, `Pointframe.Tests/ViewModels/AboutViewModelTests.cs`.
-
-**Files.** `Pointframe/Services/Update/IUpdateService.cs`, `Pointframe/Services/Update/GitHubUpdateService.cs`, `Pointframe/Services/Update/IAutoUpdateService.cs`, `Pointframe/Services/Update/AutoUpdateService.cs`, `Pointframe/Services/Update/IUpdateDownloadService.cs`, `Pointframe/Services/Update/UpdateDownloadWindowService.cs`, `Pointframe/ViewModels/UpdateDownloadViewModel.cs`, `Pointframe/Views/UpdateDownloadWindow.xaml.cs`, `Pointframe/ViewModels/AboutViewModel.cs`, `Pointframe/Models/UpdateCheckResult.cs`, `Pointframe/Models/UpdateCheckInterval.cs`, `Pointframe/Services/Infrastructure/AppVersionService.cs`, `Pointframe/Services/Messaging/UpdateAvailableMessage.cs`.
-
-### Recording transcription
-
-**Responsibility.** After a recording that captured microphone audio, produce `.srt` and `.txt` transcripts next to the MP4, entirely on the local machine. Nothing is uploaded and no API key exists. English only, narration only: the recorder captures a microphone, never system audio, so a meeting or a played video produces nothing.
-
-**Entry points.**
-
-| Trigger | Path |
-|---|---|
-| A recording finishes | `App.HandleRecordingCompleted` enqueues when `RecordingTranscriptEnabled` and the message's `HadMicrophoneAudio` are both true |
-| The user asks for the model | `SettingsViewModel.DownloadTranscriptModelCommand` in the Settings Recording section |
-| Setup optional component | The `whispermodel` task in `installer/Pointframe.iss` |
-
-**Flow.**
-
-1. `RecordingHudViewModel.Stop` reads `IScreenRecordingService.IsRecordingMicrophoneEnabled` *before* awaiting `Stop()`, because the flag resets inside it, and passes it on `RecordingCompletedMessage`.
-2. `ITranscriptionQueue` (`TranscriptionQueue`) accepts the path and runs jobs serially on one background consumer built on `Channel<string>`.
-3. `TranscriptionService` resolves the model through `ITranscriptModelService`. A missing model returns a skip result before ffmpeg is ever started.
-4. `IAudioExtractor` (`FfmpegAudioExtractor`) writes a temp 16 kHz mono `pcm_s16le` WAV, the only format Whisper accepts. The temp file is deleted in a `finally`.
-5. `ISpeechRecognizer` (`WhisperSpeechRecognizer`) is handed the already-resolved model path and streams `TranscriptSegment` values.
-6. `SubtitleFormatter` renders both sidecars; `TranscriptionService` writes them without a byte-order mark.
-7. `App.HandleTranscriptionCompleted` marshals to the dispatcher, then reports through `ITrayIconManager.ShowTranscriptBalloon` and the telemetry catalog.
-
-**Key types.** `TranscriptionResult(Success, SrtPath, TxtPath, SkipReason, ErrorMessage, SegmentCount)` distinguishes an expected skip from a genuine failure; `TranscriptionSkipReasons` holds the two skip strings so the service and `App` cannot drift. `TranscriptSegment(Start, End, Text)`.
-
-**Invariants.**
-
-- The model path is resolved once, by `ITranscriptModelService`, and passed to the recognizer. Two independent resolutions previously disagreed: one skipped gracefully, the other threw.
-- `TranscriptModelResolver` returns a path only when the file exists, the `AppContext` override included. A stale override otherwise reports a model that is not there and fails inside Whisper instead of skipping.
-- Jobs are queued, never cancelled by a newer recording, or a second clip silently discards the first clip's transcript.
-- The queue runs on a thread pool thread; every tray call hops back through `Dispatcher.InvokeAsync` because `TaskbarIcon` has dispatcher affinity.
-- Every non-success outcome is reported. Reporting only `ErrorMessage` made a missing model look like the feature doing nothing at all.
-- `.srt` is UTF-8 without a BOM and CRLF; blank segments are skipped rather than written as empty-bodied cues, or strict parsers drop every cue that follows.
-
-**Tests.** `Pointframe.Tests/Services/TranscriptionServiceTests.cs`, `Pointframe.Tests/Services/SubtitleFormatterTests.cs`, `Pointframe.Tests/Services/TranscriptionQueueTests.cs`, `Pointframe.Tests/Services/FfmpegAudioExtractorTests.cs`, `Pointframe.Tests/Services/TranscriptModelResolverTests.cs`, `Pointframe.Tests/ViewModels/TranscriptSettingsTests.cs`.
-
-**Files.** `Pointframe/Services/Transcription/ITranscriptionService.cs`, `Pointframe/Services/Transcription/TranscriptionService.cs`, `Pointframe/Services/Transcription/ITranscriptionQueue.cs`, `Pointframe/Services/Transcription/TranscriptionQueue.cs`, `Pointframe/Services/Transcription/IAudioExtractor.cs`, `Pointframe/Services/Transcription/FfmpegAudioExtractor.cs`, `Pointframe/Services/Transcription/ISpeechRecognizer.cs`, `Pointframe/Services/Transcription/WhisperSpeechRecognizer.cs`, `Pointframe/Services/Transcription/SubtitleFormatter.cs`, `Pointframe/Services/Transcription/TranscriptModelResolver.cs`, `Pointframe/Services/Transcription/ITranscriptModelService.cs`, `Pointframe/Services/Transcription/TranscriptModelService.cs`, `Pointframe/Services/Transcription/NullTranscriptModelService.cs`, `Pointframe/Models/TranscriptSegment.cs`, `Pointframe/Models/TranscriptionResult.cs`. See [Recording pipeline](#recording-pipeline) and [D-005](#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app).
-
-**Lessons.**
-
-- Lesson: Encoding.UTF8 emits a BOM, which corrupts the first SRT cue
-
 ## Decisions
 
-### D-001 MVVM plus DI is the composition model
+A decision records why a choice was made over the obvious alternative, so nobody reverses it by accident. It lives with what it governs: a decision that only one area needs is in that area file, and one that spans areas is in [decisions.md](decisions.md). Numbers are global across files and never reused; a reversed decision stays, with "Superseded by D-NNN" on its first line. The list is generated.
 
-Decided 2026-04-09.
+<!-- decisions -->
 
-**Context.** WPF invites putting behavior in window code-behind, which cannot be tested without starting the app. Pointframe's flows (overlay, recording, settings, updates) need unit tests that run without a desktop session.
+- [D-001 MVVM plus DI is the composition model](decisions.md#d-001-mvvm-plus-di-is-the-composition-model)
+- [D-002 One knowledge base file, checked by script](decisions.md#d-002-one-knowledge-base-file-checked-by-script) (superseded)
+- [D-003 Recording uses one authoritative session geometry](features/recording.md#d-003-recording-uses-one-authoritative-session-geometry)
+- [D-004 Native libraries ship loose and the installer packages them](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them)
+- [D-005 The speech model is delivered by both the installer and the app](features/transcription.md#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app)
+- [D-006 Cross-cutting knowledge base plus one file per feature area](decisions.md#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area)
 
-**Decision.**
-
-- ViewModels (`ObservableObject`, `[ObservableProperty]`, `[RelayCommand]` from CommunityToolkit.Mvvm) own state and commands.
-- Every public service has an `I<Name>` interface and is registered in `AddPointframeAppServices`.
-- Window code-behind holds only view-specific work: layout, HWND interop, DPI reads, focus.
-- Tests target ViewModels and services with Moq; the WPF app is never started in `Pointframe.Tests`.
-
-**Consequences.** New user-facing behavior starts as a ViewModel command plus a service, then gets a thin view binding. Constructor injection everywhere; a window with many dependencies gets a factory in the registration file (see `CreateOverlayWindow`). Manual `OnPropertyChanged()` calls are a smell; use the source generators.
-
-**Alternatives rejected.** Code-behind-first WPF: fast to write, impossible to test without UI automation. A static service locator: hides dependencies and defeats Moq-based tests.
-
-**Files.** `Pointframe/AppServiceRegistration.cs`. See [App bootstrap](#app-bootstrap-di-and-messaging) and [Register a service](#register-a-service).
-
-### D-002 One knowledge base file, checked by script
-
-Decided 2026-09-05. Replaces the 2026-04-09 decision that kept one project-wide file plus ad hoc focused docs, and a same-day trial of one file per topic with frontmatter and a generated index.
-
-**Context.** The previous single file went stale within months: it still named `SnippingTool/` paths after the rename and linked to two docs that no longer existed, because nothing checked it against the code. The one-file-per-topic trial fixed staleness but added more files and metadata than the project needs to maintain.
-
-**Decision.** One file, `docs/knowledge-base/knowledge-base.md`, with five fixed groups (subsystems, decisions, invariants, how-tos, references), a generated table of contents, a `**Files.**` line per section, and `- Lesson:` references into `lessons.md`. `pwsh .claude/skills/knowledge-base/knowledge-base.ps1` refreshes the table of contents and fails when a repo path, lesson heading, or internal link no longer resolves. The `/knowledge-base` skill (`add`, `update`) is how agents change the file. `CLAUDE.md` stays a pointer; `lessons.md` stays the post-mortem log.
-
-**Consequences.** One place to read and one place to edit. Staleness is caught mechanically for paths, lessons, and links, but not for prose; running `/knowledge-base update` after a subsystem change is the human step. The file grows, so sections stay under about 80 lines and prefer tables.
-
-**Alternatives rejected.** One file per topic with frontmatter and an index: more to maintain. A wiki or external tool: not versioned with the code and invisible to agents on a clone. Docs generated from comments: the project bans XML doc comments, and the valuable facts (why, invariants) are not in the code.
-
-**Files.** `docs/knowledge-base/knowledge-base.md`, `.claude/skills/knowledge-base/SKILL.md`, `.claude/skills/knowledge-base/knowledge-base.ps1`.
-
-### D-003 Recording uses one authoritative session geometry
-
-Decided 2026-04-09.
-
-**Context.** Mixed-DPI multi-monitor bugs kept recurring: the border, the HUD, the annotation surface, and the recorder each converted DIPs to pixels with their own idea of the scale, so they drifted apart by a few pixels or by a whole monitor offset.
-
-**Decision.** `RecordingSessionGeometry` is computed once per recording session and carries host bounds and capture bounds in both physical pixels and DIPs, the work area, the monitor name, and the X and Y scale. Consumers call its `Map*` methods (`MapHostDipPointToScreenPixels`, `MapScreenPixelRectToHostDips`, `MapCaptureLocalDipRectToScreenPixels`, and the rest). No consumer reads `PresentationSource` DPI or `SystemParameters` to place recording visuals.
-
-**Consequences.** A new recording visual takes the geometry as input and adds a `Map*` method if none fits. The geometry is computed after the monitor-scoped host window has settled, or every consumer inherits the wrong scale. `Pointframe.Tests/Models/RecordingSessionGeometryTests.cs` pins the mapping math; extend it with each new method.
-
-**Alternatives rejected.** Per-window DPI reads with shared helper functions: still produced disagreements because each window's HWND could sit on a different monitor at read time.
-
-**Files.** `Pointframe/Models/RecordingSessionGeometry.cs`, `Pointframe/Services/Recording/ScreenRecordingService.cs`. See [Recording pipeline](#recording-pipeline) and [DPI coordinate systems](#dips-and-physical-pixels-are-converted-explicitly-per-monitor).
-
-**Lessons.**
-
-- Lesson: Recording mode must use one authoritative geometry model
-- Lesson: Mixed-DPI multi-monitor capture features need PerMonitorV2 process DPI awareness
-
-### D-004 Native libraries ship loose and the installer packages them
-
-Decided 2026-09-06.
-
-**Context.** Whisper.net resolves its native runtime by probing `runtimes\win-x64` on disk, which the self-extract directory of a single-file build is not. Setting `IncludeNativeLibrariesForSelfExtract` to `false` in `Pointframe/Properties/PublishProfiles/win-x64.pubxml` fixes that, but the flag is all-or-nothing: it pushes *every* native out of the bundle, not just Whisper's.
-
-**Decision.** Keep the flag `false` and make the installer package the publish output: `{#PublishDir}\*.dll` for the six loose WPF and SQLite natives, plus `{#PublishDir}\runtimes\win-x64\*` for the four Whisper DLLs. The arm64 and x86 copies the SDK emits are not shipped; this is an x64 build and they would only add weight.
-
-**Consequences.** A publish-property change that alters what lands next to the exe now has to change the installer file list in the same commit. `Pointframe.AutomationTests/Installer/InstallerSmokeTests.cs` asserts the natives exist after install, so the failure names the missing file rather than a vague launch error. `{app}\runtimes` is removed on uninstall.
-
-**Alternatives rejected.** Leaving the flag `true` and letting Whisper load from the self-extract directory: its loader does not look there. Copying only Whisper's DLLs out of the bundle: the flag has no per-library granularity.
-
-**Files.** `Pointframe/Properties/PublishProfiles/win-x64.pubxml`, `installer/Pointframe.iss`, `Pointframe.AutomationTests/Installer/InstallerSmokeTests.cs`. See [Everything emitted next to the exe must be in the installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list) and [CI, CD, and versioning](#ci-cd-and-versioning).
-
-**Lessons.**
-
-- Lesson: Turning off single-file native bundling silently breaks the installer, not the dev build
-
-### D-005 The speech model is delivered by both the installer and the app
-
-Decided 2026-09-06.
-
-**Context.** `ggml-base.en.bin` is about 141 MB, far too large to bundle. Delivering it only as an unchecked installer component means anyone who skips the checkbox has no way to get it later: they enable transcripts, record, and nothing happens. Delivering it only in-app leaves setup unable to prepare a machine up front.
-
-**Decision.** Ship both. The installer's optional `whispermodel` task downloads to `{app}\models\`; `SettingsViewModel.DownloadTranscriptModelCommand` downloads to `%LOCALAPPDATA%\Pointframe\models\`. `TranscriptModelResolver` probes, in order: the `AppContext` override, `{app}\models\`, next to the binary, then the per-user folder.
-
-**Consequences.** The per-user copy survives upgrades and reinstalls because it lives outside `{app}`; the installer copy does not, and is removed on uninstall. The installer runs elevated, so it must not write to `{localappdata}` — that would resolve to the administrator's profile, not the installing user's. Settings shows which prerequisite is missing and offers the download, so a skipped component is recoverable. Model URLs live in two places, `installer/Pointframe.iss` and `TranscriptModelService`, and change together.
-
-**Alternatives rejected.** Installer-only, the original plan: unchecked by default, so most installs would never have had the model, with no in-app remedy. In-app only: setup cannot pre-provision a machine, which matters for managed deployments.
-
-**Files.** `Pointframe/Services/Transcription/TranscriptModelResolver.cs`, `Pointframe/Services/Transcription/TranscriptModelService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `installer/Pointframe.iss`. See [Recording transcription](#recording-transcription) and [Runtime paths and external binaries](#runtime-paths-and-external-binaries).
+<!-- /decisions -->
 
 ## Invariants
-
-### Undo groups are added only on commit
-
-**Rule.** The undo stack in `AnnotationViewModel` grows in exactly one place: when a drag commits. A shape handler calls the `trackElement` callback only from `Commit`, never from `Begin` or `Update`. Redo re-adds the same group; nothing else adds to the stack.
-
-**Why.** A drag is one user-visible action. If the draft element is tracked at `Begin`, Ctrl+Z restores half-drawn shapes and the redo stack fills with junk. Text and Callout replace their `TextBox` with a `TextBlock` through `ReplaceTrackedElement`, which relies on the group containing only committed elements.
-
-**Enforced by.** `Pointframe.Tests/ViewModels/AnnotationViewModelTests.cs` and `Pointframe.Tests/Services/AnnotationCanvasRendererTests.cs`. There is no analyzer; review any new call to `TrackElement` or the undo stack by hand.
-
-**Symptoms when violated.** Undo restores a partial shape or removes two shapes at once. `UndoCount` disagrees with what the user drew. Number badges renumber incorrectly after undo because the counter reset runs per group.
-
-**Files.** `Pointframe/ViewModels/AnnotationViewModel.cs`, `Pointframe/Services/Annotation/AnnotationCanvasRenderer.cs`, `Pointframe/Services/Annotation/Handlers/IAnnotationShapeHandler.cs`. See [Annotation engine](#annotation-engine) and [Add an annotation tool](#add-an-annotation-tool).
 
 ### Settings are read at the point of use and persisted through three files
 
@@ -602,19 +248,7 @@ Decided 2026-09-06.
 
 **Symptoms when violated.** A setting reverts after restart or after saving an unrelated setting. A hotkey or theme change takes effect only after restart.
 
-**Files.** `Pointframe/Models/UserSettings.cs`, `Pointframe/Services/Infrastructure/UserSettingsService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs`. See [User settings](#user-settings) and [Add a user setting](#add-a-user-setting).
-
-### Recording width and height are even
-
-**Rule.** `ScreenRecordingService.Start` truncates an odd width or height by one pixel and aborts with a logged error if the result is too small. Anything that positions a visual against the capture (border, annotation surface, cursor mapping) uses the same even size, not the user's raw selection.
-
-**Why.** Frames are handed to ffmpeg as JPEG, whose minimum coded unit needs even dimensions, and the MP4 encoder's 4:2:0 chroma subsampling needs the same. An odd dimension makes the encoder fail or produce corrupt output.
-
-**Enforced by.** `Pointframe.Tests/Services/ScreenRecordingServiceTests.cs`: `Start_WithOddDimensions_TruncatesToEven` and `Start_OddDimensions_TruncatesToEvenBeforeFactory`. `RecordingSessionGeometry` does not round for you; callers pass the truncated size in.
-
-**Symptoms when violated.** ffmpeg exits immediately, or the MP4 has green or shifted edges. The recording border is one pixel wider than the recorded area.
-
-**Files.** `Pointframe/Services/Recording/ScreenRecordingService.cs`, `Pointframe/Models/RecordingSessionGeometry.cs`. See [Recording pipeline](#recording-pipeline) and [D-003](#d-003-recording-uses-one-authoritative-session-geometry).
+**Files.** `Pointframe/Models/UserSettings.cs`, `Pointframe/Services/Infrastructure/UserSettingsService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs`. See [User settings](features/settings.md#user-settings) and [Add a user setting](#add-a-user-setting).
 
 ### DIPs and physical pixels are converted explicitly per monitor
 
@@ -633,7 +267,7 @@ dip         = physical_px / scale
 
 **Symptoms when violated.** The overlay is cut off or offset on the secondary monitor when the primary has a higher scale. The recording border or HUD lands on the wrong monitor or is off by the scale ratio. Active-window capture selects a region shifted by the difference between two monitors' scales.
 
-**Files.** `Pointframe/Native/MonitorDpiHelper.cs`, `Pointframe/Native/DpiAwarenessScope.cs`, `Pointframe/Views/OverlayWindow.xaml.cs`, `Pointframe/Services/Capture/SelectionSession.cs`, `Pointframe/Models/RecordingSessionGeometry.cs`, `Pointframe/app.manifest`. See [Capture overlay](#capture-overlay-and-selection), [Recording pipeline](#recording-pipeline), and [D-003](#d-003-recording-uses-one-authoritative-session-geometry).
+**Files.** `Pointframe/Native/MonitorDpiHelper.cs`, `Pointframe/Native/DpiAwarenessScope.cs`, `Pointframe/Views/OverlayWindow.xaml.cs`, `Pointframe/Services/Capture/SelectionSession.cs`, `Pointframe/Models/RecordingSessionGeometry.cs`, `Pointframe/app.manifest`. See [Capture overlay](features/capture.md#capture-overlay-and-selection), [Recording pipeline](features/recording.md#recording-pipeline), and [D-003](features/recording.md#d-003-recording-uses-one-authoritative-session-geometry).
 
 **Lessons.**
 
@@ -646,7 +280,7 @@ dip         = physical_px / scale
 
 **Rule.** Whatever `dotnet publish` leaves in `Pointframe/bin/publish/win-x64/` beside `Pointframe.exe` is required at runtime and must appear in the `[Files]` section of `installer/Pointframe.iss`. Changing a publish property that alters that set changes the installer in the same commit.
 
-**Why.** The build is self-contained and single-file, so it is tempting to read the installer as needing only the exe — the script said exactly that in a comment for months. It is only true while every native is bundled. `IncludeNativeLibrariesForSelfExtract` controls that for all natives at once; see [D-004](#d-004-native-libraries-ship-loose-and-the-installer-packages-them).
+**Why.** The build is self-contained and single-file, so it is tempting to read the installer as needing only the exe — the script said exactly that in a comment for months. It is only true while every native is bundled. `IncludeNativeLibrariesForSelfExtract` controls that for all natives at once; see [D-004](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them).
 
 **Enforced by.** `Pointframe.AutomationTests/Installer/InstallerSmokeTests.cs` installs silently, asserts each required native exists under the install directory, launches the app, and uninstalls. It is opt-in: set `POINTFRAME_RUN_INSTALLER_SMOKE=1` and run elevated.
 
@@ -658,47 +292,7 @@ dip         = physical_px / scale
 
 - Lesson: Turning off single-file native bundling silently breaks the installer, not the dev build
 
-### The MCP command list resource must name every registered tool
-
-**Rule.** `PointframeMcpResources.GetCommands()` returns `PointframeCommandCatalog.Create(...)`, which reflects over the `[McpServerTool]` methods on `PointframeMcpTools` and `DesktopTestingMcpTools` and derives each tool's snake_case identifier from its method name (or an explicit `Name` on the attribute) instead of a hand-maintained string list. Adding, renaming, or removing a `[McpServerTool]` method automatically changes the resource's output; no separate list needs editing. The desktop-testing tools set `Name` explicitly to carry their `desktop_` prefix; the nine direct tools rely on the convention.
-
-**Why.** MCP clients that call the `pointframe://commands` resource before `tools/list` use it as a cheap capability check. Before 2026-09-08 the identifiers were a hardcoded array that nothing kept in sync automatically; a new tool method compiled and worked over MCP even if the resource still listed only the older commands, silently telling callers the new capability did not exist. Reflection over the attribute removes that failure mode entirely, at the cost of assuming the MCP SDK's default tool-naming convention (PascalCase method name, `Async` suffix stripped, converted to snake_case) unless a method sets an explicit `Name`.
-
-**Enforced by.** `Pointframe.Tests/Mcp/DesktopTestingToolContractTests.cs` asserts the reflected `DirectTools`/`DesktopTestingTools` catalogs exactly match the known-good tool identifier sets, and `packaging/test-mcp-stdio.ps1`'s `$expectedTools` list independently checks the live `tools/list` response against the same identifiers. If the MCP SDK's naming convention ever changes, or a tool method needs a name the convention would get wrong, set `Name` explicitly on that method's `[McpServerTool]` attribute.
-
-**Symptoms when violated.** A client that gates on `pointframe://commands` never offers a tool to the user or agent even though calling it directly still succeeds — this was possible before the reflection-based rewrite; the contract tests above now catch a mismatch at build time.
-
-**Files.** `Pointframe.Mcp/Resources/PointframeMcpResources.cs`, `Pointframe.Mcp/Resources/PointframeCommandCatalog.cs`, `Pointframe.Mcp/Tools/PointframeMcpTools.cs`, `Pointframe.Tests/Mcp/DesktopTestingToolContractTests.cs`, `packaging/test-mcp-stdio.ps1`. See [Standalone CLI and MCP automation](#standalone-cli-and-mcp-automation).
-
 ## How-tos
-
-### Add an annotation tool
-
-**When.** A new drawing primitive the user picks from the toolbar. Not for style presets (those are `AnnotationStylePreset`) and not for actions that do not draw (those are `OverlayViewModel` commands).
-
-**Steps.**
-
-1. Add the value to the `AnnotationTool` enum in `Pointframe/Models/AnnotationTool.cs`.
-2. Add a sealed record to `Pointframe/Models/ShapeParameters.cs` with the geometry and style the tool needs.
-3. Return it from `AnnotationViewModel.TryGetShapeParameters()` for the new tool.
-4. Create `Pointframe/Services/Annotation/Handlers/<Name>ShapeHandler.cs` implementing `IAnnotationShapeHandler`. Draft in `Begin` and `Update`; add final elements and call `trackElement` only in `Commit`; remove the draft in `Cancel`. Copy `RectShapeHandler` for a simple drag shape or `TextShapeHandler` for an editable one.
-5. Register it in the `_handlers` dictionary in `AnnotationCanvasRenderer`, passing `GetShapeParameters` and any ViewModel callbacks it needs.
-6. Put pure math in `IAnnotationGeometryService` and `AnnotationGeometryService`, not in the handler, so it is unit-testable without WPF.
-7. Add the toolbar button in `Pointframe/Views/OverlayWindow.xaml` with an `AutomationProperties.AutomationId`. Decide whether the tool is allowed during recording; the HUD derives its list from the annotation allowlist.
-8. Tests: a handler test under `Pointframe.Tests/Services/Handlers/`, a `TryGetShapeParameters` case in `AnnotationViewModelTests`, geometry cases in `AnnotationGeometryServiceTests`.
-9. Smoke coverage: add the id to `Pointframe.AutomationTests/Support/AutomationIds.cs` and the tool to `AnnotationToolSmokeTests.cs` (and `RecordingAnnotationToolSmokeTests.cs` if allowed while recording).
-10. Telemetry records the tool name through the existing `annotation_tool` property; check `TelemetryEventCatalog` only if the event constrains allowed values.
-
-**Verify.**
-
-```powershell
-dotnet format Pointframe/Pointframe.csproj
-dotnet test Pointframe.Tests/Pointframe.Tests.csproj --filter "FullyQualifiedName~Annotation"
-```
-
-Then draw with the tool, undo once, redo once, and export. The shape must survive export, and undo must remove exactly that one shape.
-
-**Files.** `Pointframe/Models/AnnotationTool.cs`, `Pointframe/Models/ShapeParameters.cs`, `Pointframe/ViewModels/AnnotationViewModel.cs`, `Pointframe/Services/Annotation/Handlers/IAnnotationShapeHandler.cs`, `Pointframe/Services/Annotation/AnnotationCanvasRenderer.cs`, `Pointframe/Services/Annotation/IAnnotationGeometryService.cs`, `Pointframe/Services/Annotation/AnnotationGeometryService.cs`, `Pointframe/Views/OverlayWindow.xaml`, `Pointframe.AutomationTests/Support/AutomationIds.cs`, `Pointframe.AutomationTests/Smoke/AnnotationToolSmokeTests.cs`. See [Annotation engine](#annotation-engine) and [Undo groups are added only on commit](#undo-groups-are-added-only-on-commit).
 
 ### Add a user setting
 
@@ -721,7 +315,7 @@ dotnet test Pointframe.Tests/Pointframe.Tests.csproj --filter "FullyQualifiedNam
 
 `SettingsRoundTripTests` fails if step 2 was skipped, and also if the test fixture does not set the new property to a non-default value. Then change the value in the running app, restart, and confirm it persisted.
 
-**Files.** `Pointframe/Models/UserSettings.cs`, `Pointframe/Services/Infrastructure/UserSettingsService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs`. See [Settings persistence](#settings-are-read-at-the-point-of-use-and-persisted-through-three-files) and [User settings](#user-settings).
+**Files.** `Pointframe/Models/UserSettings.cs`, `Pointframe/Services/Infrastructure/UserSettingsService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs`. See [Settings persistence](#settings-are-read-at-the-point-of-use-and-persisted-through-three-files) and [User settings](features/settings.md#user-settings).
 
 ### Register a service
 
@@ -748,7 +342,7 @@ dotnet test Pointframe.Tests/Pointframe.Tests.csproj --filter "FullyQualifiedNam
 
 `Pointframe.Tests/AppTests.cs` builds the container and resolves the core services, so a missing registration fails there before it fails at runtime.
 
-**Files.** `Pointframe/AppServiceRegistration.cs`. See [App bootstrap](#app-bootstrap-di-and-messaging) and [D-001](#d-001-mvvm-plus-di-is-the-composition-model).
+**Files.** `Pointframe/AppServiceRegistration.cs`. See [App bootstrap](#app-bootstrap-di-and-messaging) and [D-001](decisions.md#d-001-mvvm-plus-di-is-the-composition-model).
 
 ## References
 
@@ -823,7 +417,7 @@ The format gate covers the main project only. Do not run `dotnet format` on `Poi
 - CD publishes both immutable versioned CLI/MCP assets and stable aliases (`Pointframe.Cli-win-x64.zip`, `Pointframe.Mcp-win-x64.mcpb`, and matching `.sha256` files). Use the aliases for `releases/latest/download` links and Shields.io badges; they prevent release-version changes from breaking those links.
 - Renaming anything in the delivery path (exe name, installer name, package id) touches the workflows, the installer, the winget manifests, and the updater's asset-name expectation together.
 
-**Files.** `.github/workflows/ci.yml`, `.github/workflows/cd.yml`, `.github/workflows/desktop-automation.yml`, `.github/workflows/winget-release.yml`, `version.json`, `dotnet-tools.json`, `installer/Pointframe.iss`. See [Update flow](#update-flow) and [Telemetry](#telemetry).
+**Files.** `.github/workflows/ci.yml`, `.github/workflows/cd.yml`, `.github/workflows/desktop-automation.yml`, `.github/workflows/winget-release.yml`, `version.json`, `dotnet-tools.json`, `installer/Pointframe.iss`. See [Update flow](features/updates.md#update-flow) and [Telemetry](features/telemetry.md#telemetry-pipeline).
 
 **Lessons.**
 
@@ -832,3 +426,4 @@ The format gate covers the main project only. Do not run `dotnet format` on `Poi
 - Lesson: Winget package renames need a one-time upstream bootstrap before automated updates can work
 - Lesson: Renamed winget packages need a distinct installer identity if they are published as a new package ID
 - Lesson: Coverage workflows should run for fix branches and not hard-require a Codecov token on public repos
+- Lesson: CI publish of a self-contained exe needs `<RuntimeIdentifiers>` even with `--runtime win-x64` on the command line

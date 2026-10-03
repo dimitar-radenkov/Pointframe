@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Read|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -NonInteractive -File \"$CLAUDE_PROJECT_DIR/scripts/kb.ps1\" hook",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

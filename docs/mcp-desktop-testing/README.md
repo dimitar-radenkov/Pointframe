@@ -205,6 +205,6 @@ incomplete until the real workflows and their external oracles are executed.
 
 - [Detailed operator and evidence notes](../mcp-desktop-testing.md)
 - [Desktop-testing implementation plan](../../plan/feature-mcp-desktop-testing-2.md)
-- [Knowledge-base MCP subsystem entry](../knowledge-base/knowledge-base.md#standalone-cli-and-mcp-automation)
+- [Knowledge-base MCP subsystem entry](../knowledge-base/features/cli-mcp.md#standalone-cli-and-mcp-automation)
 - [Automation workflow](../../.github/workflows/desktop-automation.yml)
 

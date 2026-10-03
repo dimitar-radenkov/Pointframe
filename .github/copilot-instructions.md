@@ -15,7 +15,7 @@ dotnet format Pointframe/Pointframe.csproj --verify-no-changes
 
 ## Required Reading And Documentation
 
-- Before architectural or cross-subsystem work, read `docs/knowledge-base/knowledge-base.md`, using its contents list to load only relevant sections.
+- Before architectural or cross-subsystem work, read `docs/knowledge-base/knowledge-base.md`, using its contents list to load only relevant sections; for one feature area, read only `docs/knowledge-base/features/<area>.md`.
 - Before changing UI flow or window lifecycle code (overlay, dialog, hotkey, capture, tray, recording, DPI, multi-monitor), read `lessons.md` first.
 - Before finishing a change under `Pointframe/` or `Pointframe.Data/`, decide whether the knowledge base needs an add, an update, or nothing. State that decision in the final response.
 - Use the `knowledge-base` skill when documenting architecture, subsystems, decisions, invariants, recurring how-tos, or durable references; use it after a completed feature, refactor, or fix when those facts changed.
