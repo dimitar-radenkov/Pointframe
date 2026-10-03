@@ -309,14 +309,16 @@
                     </div>
                     <p class="feature-copy">A standalone Model Context Protocol server for AI agents that need a real, verifiable screenshot or recording instead of a text-only description. List displays and windows, capture a monitor, a sub-region, or a single window to a PNG artifact, read on-screen text with OCR, or start and stop a redaction-aware MP4 recording — all as local MCP tools.</p>
                     <pre class="code-sample"><code>list_displays / list_windows
-capture_monitor       → PNG + metadata
-capture_window        → PNG of one window
+capture_monitor        → PNG, shown to the model inline
+capture_window         → PNG of one window
 read_text_from_monitor → PNG + OCR text
 read_text_from_window  → PNG + OCR text
-start_recording       → MP4 (redaction-aware)
-get_recording_status  → is a recording active?
-stop_recording        → finalized artifact</code></pre>
-                    <p class="comparison-links"><a href="https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server" target="_blank" rel="noopener noreferrer" class="workflow-link">Read the MCP server docs &rarr;</a></p>
+search_captures        → find saved screenshots by text
+get_capture            → one saved capture + preview
+start_recording        → MP4 (redaction-aware)
+get_recording_status   → is a recording active?
+stop_recording         → finalized artifact</code></pre>
+                    <p class="comparison-links"><a href="./windows-screenshot-mcp-server.html" class="workflow-link">Set it up in Claude, VS Code, or Cursor &rarr;</a></p>
                 </article>
 
                 <article class="feature-card">
@@ -330,14 +332,15 @@ stop_recording        → finalized artifact</code></pre>
                         <h3 class="feature-title">Standalone CLI</h3>
                         <span class="chip-new">New</span>
                     </div>
-                    <p class="feature-copy">A self-contained Windows executable for scripts and terminals. Download the release ZIP, extract it, and run it directly — no installer, no .NET runtime, and no Pointframe app process required. Every command returns single-line JSON on both success and failure, with stable error codes for scripting.</p>
-                    <pre class="code-sample"><code>.\Pointframe.Cli.exe displays
-.\Pointframe.Cli.exe windows
-.\Pointframe.Cli.exe capture --monitor \\.\DISPLAY1 -o shot.png
-.\Pointframe.Cli.exe capture-window --window-id 12345678
-.\Pointframe.Cli.exe ocr --monitor \\.\DISPLAY1
-.\Pointframe.Cli.exe record --monitor \\.\DISPLAY1 --seconds 10</code></pre>
-                    <p class="comparison-links"><a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" target="_blank" rel="noopener noreferrer" class="workflow-link">Download the CLI &rarr;</a></p>
+                    <p class="feature-copy">A self-contained Windows command-line tool for scripts and terminals. Install it with winget and run <code>pointframe</code> — no .NET runtime and no Pointframe app process required. Every command returns single-line JSON on both success and failure, with stable error codes for scripting.</p>
+                    <pre class="code-sample"><code>winget install DimitarRadenkov.Pointframe.Cli
+pointframe displays
+pointframe windows
+pointframe capture --monitor \\.\DISPLAY1 -o shot.png
+pointframe capture-window --window-id 12345678
+pointframe ocr --monitor \\.\DISPLAY1
+pointframe record --monitor \\.\DISPLAY1 --seconds 10</code></pre>
+                    <p class="comparison-links"><a href="https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/README.md" target="_blank" rel="noopener noreferrer" class="workflow-link">Read the CLI docs &rarr;</a></p>
                 </article>
             </div>
 
@@ -431,6 +434,10 @@ stop_recording        → finalized artifact</code></pre>
             </div>
 
             <div class="resource-grid">
+                <a href="./windows-screenshot-mcp-server.html" class="resource-card">
+                    <h3 class="resource-title">Windows screenshot MCP server for AI agents</h3>
+                    <p class="resource-copy">Let Claude, Copilot, or Cursor capture, read, and record your Windows screen through a free local MCP server.</p>
+                </a>
                 <a href="./screen-recorder-with-annotations-windows.html" class="resource-card">
                     <h3 class="resource-title">Screen recorder with annotations for Windows</h3>
                     <p class="resource-copy">A dedicated page for people searching for Windows screen recording with live drawing, blur, and tutorial-friendly explanation tools.</p>

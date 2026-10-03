@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Windows Screenshot MCP Server for AI Agents | Pointframe</title>
+    <meta name="description" content="Let Claude, Copilot, Cursor, and other AI agents see your Windows screen. Pointframe's free MCP server captures monitors and windows, reads on-screen text with OCR, and records redacted MP4s.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://dimitar-radenkov.github.io/Pointframe/windows-screenshot-mcp-server.html">
+    <link rel="icon" href="./favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="./app-icon.png">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Windows Screenshot MCP Server for AI Agents | Pointframe">
+    <meta property="og:description" content="A free, local MCP server that lets AI agents capture, read, and record the Windows screen.">
+    <meta property="og:url" content="https://dimitar-radenkov.github.io/Pointframe/windows-screenshot-mcp-server.html">
+    <meta property="og:site_name" content="Pointframe">
+    <meta property="og:image" content="https://dimitar-radenkov.github.io/Pointframe/social-preview.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Pointframe social preview showing screen capture, recording, and OCR workflow highlights.">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Windows Screenshot MCP Server for AI Agents | Pointframe">
+    <meta name="twitter:description" content="Let AI agents capture, read, and record the Windows screen with a free, local MCP server.">
+    <meta name="twitter:image" content="https://dimitar-radenkov.github.io/Pointframe/social-preview.png">
+    <meta name="twitter:image:alt" content="Pointframe social preview showing screen capture, recording, and OCR workflow highlights.">
+    <link rel="stylesheet" href="./styles.css">
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": "Pointframe MCP Server",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "Windows 10, Windows 11",
+            "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "USD"
+            },
+            "license": "https://opensource.org/licenses/MIT",
+            "downloadUrl": "https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb",
+            "description": "A local Model Context Protocol server that lets AI agents list monitors and windows, capture screenshots, read on-screen text with OCR, search saved captures, and record the screen to MP4 with redaction.",
+            "url": "https://dimitar-radenkov.github.io/Pointframe/windows-screenshot-mcp-server.html"
+        }
+    </script>
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": "Can Claude see my screen on Windows?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Yes, with an MCP server that captures the screen. Pointframe's capture tools return the screenshot as an image the model can look at, along with the saved PNG and its metadata."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Does the MCP server send my screenshots anywhere?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "The server itself runs locally and writes captures to your own disk. A screenshot reaches the model only when a capture tool returns it to your MCP client, and you can pass includeImage false to return metadata only."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Does it need the Pointframe desktop app?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "No. The MCP server is a standalone, self-contained executable. It does not need the Pointframe tray app or the .NET runtime, and the bundle includes ffmpeg for recording."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Can the agent click or type on my desktop?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Not by default. The capture, OCR, and recording tools only observe. Desktop-testing tools that send input are a separate, opt-in mode that stays off unless you enable it with a local policy file."
+                    }
+                }
+            ]
+        }
+    </script>
+</head>
+<body>
+    <nav class="site-nav">
+        <div class="container nav-inner">
+            <a class="brand" href="./index.html" aria-label="Go to the Pointframe homepage">
+                <img src="./app-icon.png" alt="" class="brand-logo" width="32" height="32">
+                <span>Pointframe</span>
+            </a>
+            <div class="nav-links">
+                <a href="./index.html#mcp-cli" class="nav-link">MCP &amp; CLI</a>
+                <a href="./index.html#resources" class="nav-link">Guides</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-link js-utm-link" data-utm-campaign="mcp_server" data-utm-medium="cta" data-utm-content="mcp_server_nav" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="nav">Download</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="hero article-hero">
+        <div class="container hero-panel">
+            <p class="hero-eyebrow">MCP server for Windows screen capture</p>
+            <h1 class="hero-title article-title">Let your AI agent see your Windows screen</h1>
+            <p class="hero-copy">The Pointframe MCP server gives Claude, GitHub Copilot, Cursor, and any other MCP client real eyes on the Windows desktop. Agents can capture a monitor or a single window, read on-screen text with OCR, search earlier screenshots, and record a redacted MP4. Everything runs locally, and the server needs neither the Pointframe app nor the .NET runtime.</p>
+            <div class="hero-actions">
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb" class="primary-button js-utm-link" data-utm-campaign="mcp_server" data-utm-medium="cta" data-utm-content="mcp_server_hero" data-track-event="website_cta_clicked" data-cta-type="download_mcp" data-cta-location="hero">Download the MCP server</a>
+                <a href="#setup" class="secondary-link">Set it up in your client</a>
+            </div>
+        </div>
+    </main>
+
+    <section class="section">
+        <div class="container">
+            <div class="content-shell">
+                <article class="content-card">
+                    <h2>Why an agent needs a screenshot tool</h2>
+                    <p>A coding agent can read your files, but it cannot see what your app actually rendered, which error dialog popped up, or what a user would see on the second monitor. Describing it by hand is slow and loses detail. With the Pointframe MCP server, the agent captures the screen itself, looks at the image, and keeps a verifiable PNG on disk with its SHA-256 hash, monitor geometry, and DPI.</p>
+
+                    <h2>What the agent can do</h2>
+                    <ul>
+                        <li><strong>See a monitor or a window.</strong> <code>list_displays</code> and <code>list_windows</code> find the target; <code>capture_monitor</code> and <code>capture_window</code> save a PNG and return it inline, downscaled to at most 1600 px, so the model sees it directly. A monitor capture can be limited to a sub-region.</li>
+                        <li><strong>Read on-screen text.</strong> <code>read_text_from_monitor</code> and <code>read_text_from_window</code> run Windows OCR on the capture, which is useful for error dialogs, logs, and terminals that the agent cannot otherwise read.</li>
+                        <li><strong>Find earlier screenshots.</strong> <code>search_captures</code> searches saved screenshots by filename or by the text inside them, and <code>get_capture</code> returns one with its metadata and a preview.</li>
+                        <li><strong>Record a reproduction.</strong> <code>start_recording</code>, <code>get_recording_status</code>, and <code>stop_recording</code> produce an MP4 of a monitor. Pass rectangles to pixelate passwords, tokens, or customer data before the frames are encoded.</li>
+                    </ul>
+
+                    <h2 id="setup">Set it up</h2>
+                    <p><strong>Claude Desktop.</strong> Download <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb" class="js-utm-link" data-utm-campaign="mcp_server" data-utm-medium="cta" data-utm-content="mcp_server_setup_claude_desktop" data-track-event="website_cta_clicked" data-cta-type="download_mcp" data-cta-location="setup">Pointframe.Mcp-win-x64.mcpb</a> and open it. Claude Desktop installs it as an extension.</p>
+                    <p><strong>Claude Code, VS Code, Cursor, and other clients</strong> run the server from a folder on disk. Unpack the bundle once in PowerShell; run the same lines again to update:</p>
+                    <pre class="code-sample"><code>$dir = "$env:LOCALAPPDATA\Programs\Pointframe.Mcp"
+$mcpb = "$env:TEMP\Pointframe.Mcp-win-x64.mcpb"
+Invoke-WebRequest https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb -OutFile $mcpb
+New-Item -ItemType Directory -Force $dir | Out-Null
+tar -xf $mcpb -C $dir</code></pre>
+                    <p>Then register it. For Claude Code:</p>
+                    <pre class="code-sample"><code>claude mcp add --scope user pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"</code></pre>
+                    <p>For Cursor and other clients that use the <code>mcpServers</code> format, such as <code>%USERPROFILE%\.cursor\mcp.json</code>:</p>
+                    <pre class="code-sample"><code>{
+  "mcpServers": {
+    "pointframe": {
+      "command": "C:\\Users\\&lt;you&gt;\\AppData\\Local\\Programs\\Pointframe.Mcp\\Pointframe.Mcp.exe"
+    }
+  }
+}</code></pre>
+                    <p>In VS Code, run <strong>MCP: Add Server</strong> from the Command Palette, choose <strong>Command (stdio)</strong>, and enter the path to <code>Pointframe.Mcp.exe</code>. The server is also listed in the official <a href="https://registry.modelcontextprotocol.io/v0/servers?search=pointframe" target="_blank" rel="noopener noreferrer">MCP Registry</a> as <code>io.github.dimitar-radenkov/pointframe-mcp</code>.</p>
+
+                    <h2>Things to ask your agent</h2>
+                    <ul>
+                        <li>"Take a screenshot of my second monitor and tell me why the layout looks broken."</li>
+                        <li>"Read the error dialog in the installer window and suggest a fix."</li>
+                        <li>"Capture the app before and after your change so I can compare them."</li>
+                        <li>"Find the screenshot from yesterday that mentions 'timeout'."</li>
+                        <li>"Record my main monitor while I reproduce the bug, and blur the token field."</li>
+                    </ul>
+
+                    <h2>Local and observable by default</h2>
+                    <p>The server runs as a local stdio process in your own Windows session and writes captures under <code>%LOCALAPPDATA%\Pointframe</code>. The capture, OCR, and recording tools only observe; they never click or type. Tools that drive the desktop exist for automated UI testing, but they stay off unless you enable them with a local policy file. A capture tool returns the image to your MCP client unless you pass <code>includeImage: false</code>.</p>
+
+                    <h2>Prefer a script? Use the CLI</h2>
+                    <p>The same capture, OCR, and recording engine is available as a standalone command-line tool that prints single-line JSON with stable error codes, ready for scripts and CI jobs.</p>
+                    <pre class="code-sample"><code>winget install DimitarRadenkov.Pointframe.Cli
+pointframe displays
+pointframe capture --monitor \\.\DISPLAY1 -o shot.png
+pointframe ocr-window --window-id 12345678</code></pre>
+
+                    <div class="cta-panel">
+                        <h3>Give your agent eyes on Windows</h3>
+                        <p>Free and open source under the MIT license. Windows 10 and 11, interactive desktop session required.</p>
+                        <div class="hero-actions compact-actions">
+                            <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb" class="primary-button js-utm-link" data-utm-campaign="mcp_server" data-utm-medium="cta" data-utm-content="mcp_server_article_cta" data-track-event="website_cta_clicked" data-cta-type="download_mcp" data-cta-location="article_cta">Download the MCP server</a>
+                            <a href="https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server" class="secondary-link" target="_blank" rel="noopener noreferrer">Read the full tool reference</a>
+                        </div>
+                    </div>
+
+                    <h2>Frequently asked questions</h2>
+                    <div class="faq-list">
+                        <details class="faq-item">
+                            <summary>Can Claude see my screen on Windows?</summary>
+                            <p>Yes, with an MCP server that captures the screen. Pointframe's capture tools return the screenshot as an image the model can look at, along with the saved PNG and its metadata.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Does the MCP server send my screenshots anywhere?</summary>
+                            <p>The server itself runs locally and writes captures to your own disk. A screenshot reaches the model only when a capture tool returns it to your MCP client, and you can pass <code>includeImage: false</code> to return metadata only.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Does it need the Pointframe desktop app?</summary>
+                            <p>No. The MCP server is a standalone, self-contained executable. It does not need the Pointframe tray app or the .NET runtime, and the bundle includes ffmpeg for recording.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary>Can the agent click or type on my desktop?</summary>
+                            <p>Not by default. The capture, OCR, and recording tools only observe. Desktop-testing tools that send input are a separate, opt-in mode that stays off unless you enable it with a local policy file.</p>
+                        </details>
+                    </div>
+                </article>
+
+                <div class="related-links-block">
+                    <h2 class="related-heading">Related pages</h2>
+                    <div class="resource-grid compact-grid">
+                        <a href="./screen-capture-bug-reports.html" class="resource-card">
+                            <h3 class="resource-title">Screen capture tool for bug reports</h3>
+                            <p class="resource-copy">The manual workflow: capture, annotate with numbered steps, and attach evidence.</p>
+                        </a>
+                        <a href="./copy-text-from-screenshot-windows.html" class="resource-card">
+                            <h3 class="resource-title">Copy text from a screenshot</h3>
+                            <p class="resource-copy">The same Windows OCR, used by hand from the capture overlay.</p>
+                        </a>
+                        <a href="./blur-screen-recording-windows.html" class="resource-card">
+                            <h3 class="resource-title">Blur a screen recording</h3>
+                            <p class="resource-copy">Redact passwords and tokens live while you record.</p>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container footer-inner">
+            <div class="brand">
+                <img src="./app-icon.png" alt="" class="brand-logo" width="32" height="32">
+                <span>Pointframe</span>
+            </div>
+            <div class="footer-links">
+                <a href="./index.html">Home</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe">GitHub</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="js-utm-link" data-utm-campaign="mcp_server" data-utm-medium="cta" data-utm-content="mcp_server_footer" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="footer">Download</a>
+            </div>
+        </div>
+    </footer>
+    <script type="module" src="./index.js"></script>
+</body>
+</html>
