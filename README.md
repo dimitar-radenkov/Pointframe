@@ -63,11 +63,19 @@ exit codes, and troubleshooting, see the dedicated
 
 ## Pointframe CLI
 
-Each GitHub Release includes `Pointframe.Cli-<version>-win-x64.zip`, a self-contained
-Windows CLI for monitor and window discovery, PNG screenshots of a monitor, a
-sub-region, or a single window, on-screen text extraction via OCR, and whole-monitor
-MP4 recordings. Extract the ZIP and run `Pointframe.Cli.exe`; the Pointframe desktop
-app, the .NET runtime, and the .NET SDK are not required.
+A self-contained Windows CLI for monitor and window discovery, PNG screenshots of a
+monitor, a sub-region, or a single window, on-screen text extraction via OCR, and
+whole-monitor MP4 recordings. The Pointframe desktop app, the .NET runtime, and the
+.NET SDK are not required.
+
+```powershell
+winget install DimitarRadenkov.Pointframe.Cli
+pointframe displays
+```
+
+winget adds a `pointframe` command to `PATH`. Each GitHub Release also includes
+`Pointframe.Cli-<version>-win-x64.zip` for a manual install: extract it and run
+`Pointframe.Cli.exe`.
 
 The CLI requires an interactive Windows desktop session. It cannot capture a user's
 desktop from a Windows service (session 0).

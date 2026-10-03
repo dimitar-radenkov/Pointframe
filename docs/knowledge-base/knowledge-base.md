@@ -390,7 +390,7 @@ Identifiers still prefixed `SnippingTool` are pre-rename names kept for compatib
 | `.github/workflows/ci.yml` | push to `master`, `feature/**`, `fix/**`; PR to `master` | `dotnet tool restore`, build `Pointframe.Tests` in Release, `dotnet format Pointframe/Pointframe.csproj --verify-no-changes`, `dotnet test` with `--filter "Category!=Integration"`, upload Cobertura to Codecov |
 | `.github/workflows/cd.yml` | `workflow_run` after a successful CI on `master` | compute the version with nbgv, inject the App Insights connection string and verify it, publish self-contained single-file, sign the exe when the certificate secret exists, build the CLI and MCP packages, create stable CLI/MCP asset aliases and their checksums, build the Inno Setup installer from `installer/Pointframe.iss`, sign it, upload `Pointframe-<version>-x64-Setup`, create the GitHub Release tagged `v<version>`, then publish the MCP server's `server.json` to the MCP Registry (GitHub OIDC; the job has `id-token: write`) |
 | `.github/workflows/desktop-automation.yml` | manual (`workflow_dispatch`) | runs `Pointframe.AutomationTests` UI automation on a Windows runner |
-| `.github/workflows/winget-release.yml` | after CD completes on `master`, or manual with a version | submits the winget manifest update |
+| `.github/workflows/winget-release.yml` | after CD completes on `master`, or manual with a version | submits the winget manifest updates, one matrix entry per package: `DimitarRadenkov.Pointframe` (the installer) and `DimitarRadenkov.Pointframe.Cli` (the CLI ZIP). An entry whose package is not yet in `microsoft/winget-pkgs` warns and skips instead of failing, because the releaser cannot create a new package |
 | `.github/workflows/codeql.yml`, `.github/workflows/release-drafter.yml`, `.github/workflows/dependabot-auto-merge.yml` | as named | static analysis, release-notes draft, Dependabot merges |
 | `.github/workflows/pages.yml` | push to `master` | deploys the website from `website/` |
 
@@ -413,7 +413,7 @@ The format gate covers the main project only. Do not run `dotnet format` on `Poi
 **Installer and packaging.**
 
 - `installer/Pointframe.iss` is the Inno Setup script; `installer/build-installer.ps1` and `installer/test-installer.ps1` build and check it locally. Its ARP `AppPublisher` is the source of truth that the winget manifests must mirror.
-- `winget/` holds the winget manifests; `packaging/scoop/` holds the scoop manifest. The MCP server is listed in the official MCP Registry, published by CD; see [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation).
+- `winget/` holds the first manifest of each winget package (`DimitarRadenkov.Pointframe`, `DimitarRadenkov.Pointframe.Cli`); `packaging/scoop/` holds the scoop manifest, for the app only. The MCP server is listed in the official MCP Registry, published by CD; see [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation).
 - CD publishes both immutable versioned CLI/MCP assets and stable aliases (`Pointframe.Cli-win-x64.zip`, `Pointframe.Mcp-win-x64.mcpb`, and matching `.sha256` files). Use the aliases for `releases/latest/download` links and Shields.io badges; they prevent release-version changes from breaking those links.
 - Renaming anything in the delivery path (exe name, installer name, package id) touches the workflows, the installer, the winget manifests, and the updater's asset-name expectation together.
 

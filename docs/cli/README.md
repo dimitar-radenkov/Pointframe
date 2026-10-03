@@ -20,10 +20,23 @@ Run it as the same interactive user who owns the desktop being inspected.
 
 ## Install
 
-Download `Pointframe.Cli-<version>-win-x64.zip` from the
+Install with the Windows Package Manager:
+
+```powershell
+winget install DimitarRadenkov.Pointframe.Cli
+pointframe --version
+```
+
+winget extracts the release ZIP and adds a `pointframe` command to `PATH`; open
+a new terminal after the first install. Update it with
+`winget upgrade DimitarRadenkov.Pointframe.Cli`. This package is the CLI only;
+the desktop app is the separate `DimitarRadenkov.Pointframe` package.
+
+To install manually instead, download `Pointframe.Cli-<version>-win-x64.zip` from the
 [latest Pointframe release](https://github.com/dimitar-radenkov/Pointframe/releases/latest)
 and extract it to a directory. The ZIP is self-contained and includes the
-single-file executable and its native dependencies.
+single-file executable and its native dependencies. The examples below call
+`.\Pointframe.Cli.exe`; with the winget install, call `pointframe` instead.
 
 For source builds, use:
 
