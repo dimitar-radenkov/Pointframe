@@ -127,6 +127,11 @@
 
                     <h2 id="setup">Set it up</h2>
                     <p><strong>Claude Desktop.</strong> Download <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb" class="js-utm-link" data-utm-campaign="mcp_server" data-utm-medium="cta" data-utm-content="mcp_server_setup_claude_desktop" data-track-event="website_cta_clicked" data-cta-type="download_mcp" data-cta-location="setup">Pointframe.Mcp-win-x64.mcpb</a> and open it. Claude Desktop installs it as an extension.</p>
+                    <p><strong>VS Code.</strong> Install the Pointframe CLI, then let it download, verify, configure, and test the MCP server:</p>
+                    <pre class="code-sample"><code>winget install --id DimitarRadenkov.Pointframe.Cli -e
+pointframe mcp install --client vscode
+pointframe mcp doctor --client vscode</code></pre>
+                    <p>The installer preserves your other MCP servers, creates a backup before its first configuration change, and leaves desktop-testing tools disabled. Use <code>pointframe mcp install --client vscode --dry-run</code> to validate the package and proposed change without installing it.</p>
                     <p><strong>Claude Code, VS Code, Cursor, and other clients</strong> run the server from a folder on disk. Unpack the bundle once in PowerShell; run the same lines again to update:</p>
                     <pre class="code-sample"><code>$dir = "$env:LOCALAPPDATA\Programs\Pointframe.Mcp"
 $mcpb = "$env:TEMP\Pointframe.Mcp-win-x64.mcpb"

@@ -130,6 +130,14 @@ the caller with two indistinguishable `click` tools.
 | `desktop_replay_checks` | Re-run a signed report's checks in a fresh session and compare verdicts |
 | `desktop_end_test_session` | Release the driver session without force-killing targets |
 
+### For agents: verify your own work
+
+An agent that changed a desktop app can verify the change in the running app
+and return a signed proof. The server ships the steps as the MCP resource
+`pointframe://guides/verify-desktop-work` (source:
+`Pointframe.Mcp/Guides/verify-desktop-work.md`), and its connect-time
+instructions tell every client to read it before calling a `desktop_` tool.
+
 ### Session report verdict
 
 The server, not the agent, writes the session report: every action it ran and
@@ -171,9 +179,11 @@ or whose dispatch is uncertain), or `None`. Images are full-resolution PNGs in
 `evidenceDirectory` and each entry's `evidence` as `path`, `sha256`, and
 `boundsPixels`, so a changed image no longer matches its report.
 
-Only the target's own visible windows are captured, not the whole desktop,
-though anything lying on top of them in that rectangle is included. An action's
-image is taken right after dispatch, so it may show the app before it has
+Only the target's own windows are captured, each rendered from its own contents
+(`PrintWindow`), not copied from the screen. A window covering the app, or the
+desktop between the app's windows, never appears; the space between windows is
+transparent. A restarted app that opens behind other windows is still captured
+correctly. An action's image is taken right after dispatch, so it may show the app before it has
 updated; a check's image is taken after the check has waited for its
 condition. When no image could be taken, `evidence.error` says why
 (`NoVisibleWindow` or `CaptureFailed`) instead of the entry having nothing.

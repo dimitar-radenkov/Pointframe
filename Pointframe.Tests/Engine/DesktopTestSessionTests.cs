@@ -58,7 +58,7 @@ public sealed class DesktopTestSessionTests
     }
 
     [Fact]
-    public async Task EndAsync_ReportsCleanupIncompleteWithoutTerminatingLiveTarget()
+    public async Task EndAsync_StopsLaunchedTargetAndReleasesIt()
     {
         var controller = new FakeProcessController();
         var service = new DesktopTestSessionService(controller);
@@ -66,11 +66,24 @@ public sealed class DesktopTestSessionTests
 
         var result = await service.EndAsync("session-1");
 
-        Assert.False(result.Succeeded);
-        Assert.Equal("CleanupIncomplete", result.Code);
+        Assert.True(result.Succeeded);
         Assert.Equal(DesktopSessionState.Closed, result.Session!.State);
         Assert.Contains(started.Session!.Target!.Process.ProcessRef, controller.Released);
-        Assert.Empty(controller.Terminated);
+        Assert.Contains(started.Session.Target.Process.ProcessRef, controller.Terminated);
+    }
+
+    [Fact]
+    public async Task EndAsync_ReturnsTypedSessionNotFoundWhenCalledTwice()
+    {
+        var controller = new FakeProcessController();
+        var service = new DesktopTestSessionService(controller);
+        await service.StartAsync("session-1", "pointframe", CreateLaunchRequest());
+
+        Assert.True((await service.EndAsync("session-1")).Succeeded);
+        var second = await service.EndAsync("session-1");
+
+        Assert.False(second.Succeeded);
+        Assert.Equal("SessionNotFound", second.Code);
     }
 
     private static DesktopLaunchRequest CreateLaunchRequest()
@@ -118,6 +131,15 @@ public sealed class DesktopTestSessionTests
             CancellationToken cancellationToken = default)
         {
             Released.Add(process.ProcessRef);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask StopAsync(
+            DesktopProcessIdentity process,
+            CancellationToken cancellationToken = default)
+        {
+            Terminated.Add(process.ProcessRef);
+            _states[process.ProcessRef] = DesktopTargetState.Exited;
             return ValueTask.CompletedTask;
         }
 

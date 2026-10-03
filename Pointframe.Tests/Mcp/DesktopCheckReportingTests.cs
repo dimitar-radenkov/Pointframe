@@ -125,6 +125,21 @@ public sealed class DesktopCheckReportingTests
     }
 
     [Fact]
+    public async Task FailedCheckReturnsAndRecordsTheActualValue()
+    {
+        SetupEvaluation(new DesktopUiCheckEvaluation(true, false, 1, ActualValue: "On"));
+
+        var response = await CreateTools().CheckUiAsync(
+            SessionId,
+            "toggleEquals",
+            automationId: "checkBox",
+            expected: "false");
+
+        Assert.Equal("On", response.ActualValue);
+        Assert.Equal("Expected 'false', but found 'On'.", Assert.Single(_reports.Get(SessionId).Checks).Message);
+    }
+
+    [Fact]
     public async Task UnreadableStateIsRecordedAsInconclusive()
     {
         SetupEvaluation(new DesktopUiCheckEvaluation(false, false, 0, "UiaUnavailable", "No tree"));

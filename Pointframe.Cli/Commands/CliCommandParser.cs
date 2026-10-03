@@ -4,7 +4,7 @@ namespace Pointframe.Cli;
 
 internal static class CliCommandParser
 {
-    internal const string Usage = "Usage: Pointframe.Cli.exe displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | --help | --version";
+    internal const string Usage = "Usage: Pointframe.Cli.exe displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | mcp install|status|doctor --client vscode [--dry-run] | --help | --version";
 
     internal const string HelpText = """
         Pointframe CLI - standalone screen capture, OCR, and recording automation.
@@ -17,6 +17,9 @@ internal static class CliCommandParser
           Pointframe.Cli.exe capture-window --window-id <id> [--output <file>]
           Pointframe.Cli.exe ocr-window --window-id <id> [--output <file>]
           Pointframe.Cli.exe record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>]
+          Pointframe.Cli.exe mcp install --client vscode [--dry-run]
+          Pointframe.Cli.exe mcp status --client vscode
+          Pointframe.Cli.exe mcp doctor --client vscode
           Pointframe.Cli.exe --help
           Pointframe.Cli.exe --version
 
@@ -28,6 +31,7 @@ internal static class CliCommandParser
           capture-window  Capture the visible screen rectangle of a window by its handle.
           ocr-window      Capture a window and extract on-screen text via OCR.
           record          Record one monitor to an MP4 for a fixed duration, then exit with a JSON summary.
+          mcp             Install, configure, inspect, or diagnose the Pointframe MCP server.
 
         Options:
           -m, --monitor <name>              Exact Windows device name (see 'displays' for exact values), e.g. \\.\DISPLAY1
@@ -39,6 +43,8 @@ internal static class CliCommandParser
           -o, --output <file>               Exact output file to write (.png for capture/ocr, .mp4 for record);
                                             parent directories are created. Defaults to a timestamped name
                                             under %LOCALAPPDATA%\Pointframe when omitted.
+              --client <name>               MCP client to configure. The first supported client is vscode.
+              --dry-run                     Validate and report MCP installation changes without writing them.
           -h, --help                        Show this help text and exit
           -v, --version                     Show the CLI version and exit
 
@@ -135,9 +141,82 @@ internal static class CliCommandParser
             return TryParseRecord(args, out command, out error);
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "mcp", StringComparison.OrdinalIgnoreCase))
+        {
+            return TryParseMcp(args, out command, out error);
+        }
+
         command = default!;
         error = "Unknown or incomplete command.";
         return false;
+    }
+
+    private static bool TryParseMcp(string[] args, out CliCommand command, out string? error)
+    {
+        if (args.Length < 2)
+        {
+            command = default!;
+            error = "The mcp command requires an action: install, status, or doctor.";
+            return false;
+        }
+
+        var action = args[1].ToLowerInvariant();
+        if (action is not ("install" or "status" or "doctor"))
+        {
+            command = default!;
+            error = $"Unsupported mcp action '{args[1]}'. Expected install, status, or doctor.";
+            return false;
+        }
+
+        string? client = null;
+        var dryRun = false;
+        var index = 2;
+        while (index < args.Length)
+        {
+            var flag = args[index];
+            if (string.Equals(flag, "--client", StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
+                {
+                    command = default!;
+                    error = "The mcp command requires --client followed by a supported client name.";
+                    return false;
+                }
+
+                client = args[index + 1].ToLowerInvariant();
+                index += 2;
+                continue;
+            }
+
+            if (string.Equals(flag, "--dry-run", StringComparison.OrdinalIgnoreCase))
+            {
+                dryRun = true;
+                index++;
+                continue;
+            }
+
+            command = default!;
+            error = $"Unrecognized mcp option '{flag}'.";
+            return false;
+        }
+
+        if (!string.Equals(client, "vscode", StringComparison.Ordinal))
+        {
+            command = default!;
+            error = "The first supported MCP client is vscode; pass --client vscode.";
+            return false;
+        }
+
+        if (dryRun && !string.Equals(action, "install", StringComparison.Ordinal))
+        {
+            command = default!;
+            error = "--dry-run is supported only by mcp install.";
+            return false;
+        }
+
+        command = new CliCommand("mcp", McpAction: action, McpClient: client, DryRun: dryRun);
+        error = null;
+        return true;
     }
 
     private static bool TryParseCaptureLikeCommand(string commandName, string[] args, out CliCommand command, out string? error)

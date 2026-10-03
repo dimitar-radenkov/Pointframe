@@ -12,6 +12,10 @@ public interface IDesktopProcessController
         DesktopProcessIdentity process,
         CancellationToken cancellationToken = default);
 
+    ValueTask StopAsync(
+        DesktopProcessIdentity process,
+        CancellationToken cancellationToken = default);
+
     ValueTask ReleaseAsync(
         DesktopProcessIdentity process,
         CancellationToken cancellationToken = default);
@@ -103,6 +107,11 @@ public sealed class DesktopTestSessionService : IDesktopTestSessionService
                 return Failure("SessionNotFound", "The session reference was not found.");
             }
 
+            if (state.State == DesktopSessionState.Closed)
+            {
+                return Failure("SessionNotFound", "The desktop test session has already ended.");
+            }
+
             var currentState = await _processController
                 .GetStateAsync(state.Target.Process, cancellationToken)
                 .ConfigureAwait(false);
@@ -147,17 +156,30 @@ public sealed class DesktopTestSessionService : IDesktopTestSessionService
                 return Failure("SessionNotFound", "The session reference was not found.");
             }
 
+            if (state.State == DesktopSessionState.Closed)
+            {
+                return Failure("SessionNotFound", "The desktop test session has already ended.");
+            }
+
             var currentState = await _processController
                 .GetStateAsync(state.Target.Process, cancellationToken)
                 .ConfigureAwait(false);
             state.Target = state.Target with { State = currentState };
             _targetRegistry.Update(state.Target);
+            if (currentState == DesktopTargetState.Running && state.Target.LaunchedByDriver)
+            {
+                await _processController.StopAsync(state.Target.Process, cancellationToken).ConfigureAwait(false);
+                currentState = await _processController.GetStateAsync(state.Target.Process, cancellationToken).ConfigureAwait(false);
+                state.Target = state.Target with { State = currentState };
+                _targetRegistry.Update(state.Target);
+            }
+
             await _processController.ReleaseAsync(state.Target.Process, cancellationToken).ConfigureAwait(false);
             _targetRegistry.Remove(state.Target.TargetRef);
             state.State = DesktopSessionState.Closed;
 
             return currentState == DesktopTargetState.Running
-                ? Failure("CleanupIncomplete", "The launched target is still running; it was not terminated.", state)
+                ? Failure("CleanupIncomplete", "The launched target could not be stopped.", state)
                 : Success(state);
         }
         finally

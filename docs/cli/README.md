@@ -51,6 +51,44 @@ pwsh .\packaging\build-cli-package.ps1 -Version 1.0.0 -FfmpegPath 'C:\path\to\ff
 The script writes the ZIP and SHA-256 file under
 `packaging\output\Pointframe.Cli-<version>-win-x64`.
 
+## Install and verify the MCP server for VS Code
+
+The CLI can download the latest published Pointframe MCP bundle, verify its
+SHA-256 checksum, install it under a versioned directory in
+`%LOCALAPPDATA%\Programs\Pointframe.Mcp`, and add the `pointframe` server to VS
+Code's user-level `mcp.json`:
+
+```powershell
+pointframe mcp install --client vscode
+pointframe mcp status --client vscode
+pointframe mcp doctor --client vscode
+```
+
+`mcp install` backs up an existing VS Code MCP configuration to
+`mcp.json.pointframe.bak` before its first change and preserves unrelated
+servers and top-level settings. Existing JSON comments and trailing commas are
+accepted, although the rewritten file is normalized as JSON. Repeating the
+command is safe: the versioned package is reused and the original backup is not
+overwritten.
+
+Use `--dry-run` to download, checksum, and inspect the package and configuration
+without persisting the installation or changing VS Code:
+
+```powershell
+pointframe mcp install --client vscode --dry-run
+```
+
+`mcp status` checks the CLI-managed installation record and VS Code command
+path. `mcp doctor` additionally starts the installed server over stdio, performs
+the MCP initialize handshake, and requires the exact released direct-tool set.
+All three commands write a single-line JSON response and use exit code `0` for
+success, `1` for an installation/configuration/health failure, and `2` for
+invalid arguments. Desktop-testing tools remain disabled; these commands never
+create or enable a desktop-testing policy.
+
+The first supported managed client is `vscode`. Claude Code, Cursor, update,
+and uninstall adapters remain manual workflows for now.
+
 ## Commands
 
 Every long option below also accepts a short alias: `-m` for `--monitor`,

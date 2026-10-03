@@ -1032,6 +1032,11 @@ When adding a verification feature, test the negative case first: a check that c
 is not verifying anything. The same goes for an aggregate verdict. "No failures" is not "passed".
 An empty record has to come out as not proven.
 
+Condition inputs need the same care: a string parameter can be syntactically valid but semantically
+wrong (`true` versus UIA's `On`). Normalize documented natural values at the tool boundary and reject
+unknown ones before waiting on the UI. Return the observed state with failed checks, while suppressing
+sensitive text, so an agent can distinguish a bad expectation from a broken feature in one call.
+
 ## GetWindowRect includes the invisible resize border, so window captures leak what lies behind
 
 ### Problem
@@ -1058,3 +1063,30 @@ answer. Only the few pixels outside Windows 11's rounded corners still show the 
 When a rectangle from a Win32 window API is used to crop pixels, use the DWM extended frame bounds, not
 `GetWindowRect`. Look at a real captured image at least once: unit tests with fake window bounds cannot
 show this.
+
+## Evidence copied from the screen shows whatever covers the target window
+
+### Problem
+
+A fresh agent verified a save-and-restore feature end to end and got a valid, signed `passed` report. The
+screenshot taken after `desktop_restart_app` did not show the app: it showed the editor and chat window
+that lay on top of the relaunched app. The check itself was correct, because it reads the UI Automation
+tree, but the evidence was wrong and stored another application's content.
+
+### Root cause
+
+`DesktopEvidenceRecorder` cropped a copy of the screen (`CopyFromScreen`) at the target's window bounds.
+A relaunched process often opens behind the window that has focus, so the pixels at its position belonged
+to a different application.
+
+### What fixed it
+
+`WindowContentCapture` renders each target window from its own contents with `PrintWindow` and
+`PW_RENDERFULLCONTENT`, crops to the visible frame, and the recorder paints the windows bottom-most first
+onto a transparent canvas. Covering windows and the desktop between the target's windows can no longer
+appear. `ImageKeepsTheTargetsStackingAndNeverShowsAnythingElse` covers the composition.
+
+### Takeaway
+
+Evidence of one window must come from that window, not from the screen at its position. Unit tests with
+fake bounds cannot show this; look at one real screenshot taken after a relaunch.

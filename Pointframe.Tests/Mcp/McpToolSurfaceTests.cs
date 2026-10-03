@@ -115,6 +115,58 @@ public sealed class McpToolSurfaceTests
             new DesktopTestingHostOptions(Enabled: true, WorkerMode: false, PolicyPath: null, WorkerPipeName: null, ParentProcessId: null));
     }
 
+    [Theory]
+    [InlineData(typeof(PointframeMcpTools))]
+    [InlineData(typeof(DesktopTestingMcpTools))]
+    public void NoPublishedSchemaUsesBooleanSubschemas(Type toolType)
+    {
+        // Claude Code validates the whole tools/list and drops every tool if one schema has a boolean
+        // subschema such as "structuredContent": true. That once hid all desktop tools from Claude Code
+        // agents, because desktop_observe_app returned CallToolResult with UseStructuredContent set.
+        var offenders = ToolMethods(toolType)
+            .Select(method => McpServerTool.Create(method, _ => null!).ProtocolTool)
+            .SelectMany(tool => new[] { ("input", tool.Name, (JsonElement?)tool.InputSchema), ("output", tool.Name, tool.OutputSchema) })
+            .Where(schema => schema.Item3 is { } element && ContainsBooleanSubschema(element))
+            .Select(schema => $"{schema.Name} {schema.Item1}")
+            .ToArray();
+
+        Assert.Empty(offenders);
+    }
+
+    private static bool ContainsBooleanSubschema(JsonElement schema)
+    {
+        if (schema.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        foreach (var property in schema.EnumerateObject())
+        {
+            if (property.Name is "properties" && property.Value.ValueKind == JsonValueKind.Object
+                && property.Value.EnumerateObject().Any(child => child.Value.ValueKind is JsonValueKind.True or JsonValueKind.False))
+            {
+                return true;
+            }
+
+            if (property.Name is "items" or "additionalProperties" && property.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                return property.Name == "items";
+            }
+
+            if (property.Value.ValueKind == JsonValueKind.Object && ContainsBooleanSubschema(property.Value))
+            {
+                return true;
+            }
+
+            if (property.Value.ValueKind == JsonValueKind.Array && property.Value.EnumerateArray().Any(ContainsBooleanSubschema))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static IEnumerable<MethodInfo> ToolMethods(Type toolType)
     {
         return toolType

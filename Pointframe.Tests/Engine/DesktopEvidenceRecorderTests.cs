@@ -14,16 +14,17 @@ public sealed class DesktopEvidenceRecorderTests : IDisposable
     private const int TargetProcessId = 4242;
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"pointframe-evidence-{Guid.NewGuid():N}");
-    private readonly Mock<IDisplayCaptureEngine> _capture = new();
+    private readonly Mock<IWindowContentCapture> _capture = new();
     private readonly Mock<IWindowDiscoveryService> _windows = new();
     private readonly DesktopProcessIdentity _process = new("process-1", TargetProcessId, DateTimeOffset.UtcNow, "target.exe", "hash");
+    private long _nextHwnd = 1;
 
     public DesktopEvidenceRecorderTests()
     {
         Directory.CreateDirectory(_root);
         _capture
-            .Setup(engine => engine.Capture(It.IsAny<PixelBounds>()))
-            .Returns((PixelBounds bounds) => new Bitmap(bounds.Width, bounds.Height));
+            .Setup(capture => capture.Capture(It.IsAny<long>(), It.IsAny<PixelBounds>()))
+            .Returns((long _, PixelBounds bounds) => Solid(bounds, Color.Gray));
     }
 
     public void Dispose()
@@ -75,7 +76,46 @@ public sealed class DesktopEvidenceRecorderTests : IDisposable
         Assert.Equal("0001-check.png", evidence.Path);
         var bytes = File.ReadAllBytes(Path.Combine(directory, evidence.Path!));
         Assert.Equal(Convert.ToHexString(SHA256.HashData(bytes)), evidence.Sha256);
-        _capture.Verify(engine => engine.Capture(new PixelBounds(100, 100, 250, 150)), Times.Once);
+        _capture.Verify(capture => capture.Capture(It.IsAny<long>(), new PixelBounds(100, 100, 200, 100)), Times.Once);
+        _capture.Verify(capture => capture.Capture(It.IsAny<long>(), new PixelBounds(250, 150, 100, 100)), Times.Once);
+        _capture.Verify(capture => capture.Capture(It.IsAny<long>(), It.IsAny<PixelBounds>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public void ImageKeepsTheTargetsStackingAndNeverShowsAnythingElse()
+    {
+        // Windows are listed top-most first: the dialog (red) is above the main window (blue). The area of the
+        // union that no target window covers must stay transparent, not show the screen.
+        var dialog = Window(TargetProcessId, new PixelBounds(150, 150, 100, 100));
+        var main = Window(TargetProcessId, new PixelBounds(100, 100, 100, 100));
+        SetupWindows(dialog, main);
+        _capture.Setup(capture => capture.Capture(dialog.Hwnd, dialog.BoundsPixels)).Returns(Solid(dialog.BoundsPixels, Color.Red));
+        _capture.Setup(capture => capture.Capture(main.Hwnd, main.BoundsPixels)).Returns(Solid(main.BoundsPixels, Color.Blue));
+        var recorder = CreateRecorder();
+        var directory = recorder.BeginSession("session-1", _root, DesktopEvidenceMode.All)!;
+
+        var evidence = recorder.Capture("session-1", _process, "check");
+
+        using var image = new Bitmap(Path.Combine(directory, evidence.Path!));
+        Assert.Equal(Color.Blue.ToArgb(), image.GetPixel(10, 10).ToArgb());
+        Assert.Equal(Color.Red.ToArgb(), image.GetPixel(75, 75).ToArgb());
+        Assert.Equal(0, image.GetPixel(10, 140).A);
+    }
+
+    [Fact]
+    public void WindowThatCannotBeRenderedFailsTheWholeImage()
+    {
+        var dialog = Window(TargetProcessId, new PixelBounds(150, 150, 100, 100));
+        var main = Window(TargetProcessId, new PixelBounds(100, 100, 100, 100));
+        SetupWindows(dialog, main);
+        _capture.Setup(capture => capture.Capture(dialog.Hwnd, It.IsAny<PixelBounds>())).Returns((Bitmap?)null);
+        var recorder = CreateRecorder();
+        recorder.BeginSession("session-1", _root, DesktopEvidenceMode.All);
+
+        var evidence = recorder.Capture("session-1", _process, "check");
+
+        Assert.Equal("CaptureFailed", evidence.Error);
+        Assert.Null(evidence.Path);
     }
 
     [Fact]
@@ -102,14 +142,14 @@ public sealed class DesktopEvidenceRecorderTests : IDisposable
 
         Assert.Equal("NoVisibleWindow", evidence.Error);
         Assert.Null(evidence.Path);
-        _capture.Verify(engine => engine.Capture(It.IsAny<PixelBounds>()), Times.Never);
+        _capture.Verify(capture => capture.Capture(It.IsAny<long>(), It.IsAny<PixelBounds>()), Times.Never);
     }
 
     [Fact]
     public void CaptureFailureIsRecordedRatherThanThrown()
     {
         SetupWindows(Window(TargetProcessId, new PixelBounds(0, 0, 10, 10)));
-        _capture.Setup(engine => engine.Capture(It.IsAny<PixelBounds>())).Throws(new InvalidOperationException("no desktop"));
+        _capture.Setup(capture => capture.Capture(It.IsAny<long>(), It.IsAny<PixelBounds>())).Throws(new InvalidOperationException("no desktop"));
         var recorder = CreateRecorder();
         recorder.BeginSession("session-1", _root, DesktopEvidenceMode.All);
 
@@ -152,6 +192,14 @@ public sealed class DesktopEvidenceRecorderTests : IDisposable
     private void SetupWindows(params WindowDescriptor[] windows) =>
         _windows.Setup(discovery => discovery.GetWindows()).Returns(windows);
 
-    private static WindowDescriptor Window(int processId, PixelBounds bounds, bool isMinimized = false) =>
-        new(processId * 10L, "window", "process", processId, bounds, null, isMinimized);
+    private WindowDescriptor Window(int processId, PixelBounds bounds, bool isMinimized = false) =>
+        new(_nextHwnd++, "window", "process", processId, bounds, null, isMinimized);
+
+    private static Bitmap Solid(PixelBounds bounds, Color color)
+    {
+        var bitmap = new Bitmap(bounds.Width, bounds.Height);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(color);
+        return bitmap;
+    }
 }

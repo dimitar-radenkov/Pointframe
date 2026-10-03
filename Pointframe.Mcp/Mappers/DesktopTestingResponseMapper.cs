@@ -43,7 +43,8 @@ public static class DesktopTestingResponseMapper
             evaluation.StateAvailable,
             evaluation.Matches,
             evaluation.MatchCount,
-            evaluation.ErrorCode is null ? null : new McpCaptureError(evaluation.ErrorCode, evaluation.Message ?? evaluation.ErrorCode));
+            evaluation.ErrorCode is null ? null : new McpCaptureError(evaluation.ErrorCode, evaluation.Message ?? evaluation.ErrorCode),
+            evaluation.ActualValue);
     }
 
     // A negative control inverts only the verdict. Matches stays the oracle's raw answer, so a reader can

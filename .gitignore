@@ -28,6 +28,7 @@
 !CLAUDE.md
 !lessons.md
 !docs/developer-guide.md
+!Pointframe.Mcp/Guides/*.md
 
 # Claude Code per-user settings
 .claude/settings.local.json

@@ -10,4 +10,7 @@ internal sealed record CliCommand(
     int FramesPerSecond = 20,
     IReadOnlyList<PixelBounds>? RedactionRegions = null,
     CaptureRegion? Region = null,
-    string? OutputPath = null);
+    string? OutputPath = null,
+    string? McpAction = null,
+    string? McpClient = null,
+    bool DryRun = false);

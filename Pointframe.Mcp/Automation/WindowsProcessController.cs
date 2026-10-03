@@ -156,6 +156,58 @@ public sealed class WindowsProcessController : IDesktopProcessController
         }
     }
 
+    public async ValueTask StopAsync(
+        DesktopProcessIdentity process,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (await GetStateAsync(process, cancellationToken).ConfigureAwait(false) != DesktopTargetState.Running)
+        {
+            return;
+        }
+
+        Process? retainedProcess;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _processes.TryGetValue(process.ProcessRef, out retainedProcess);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        if (retainedProcess is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = retainedProcess.CloseMainWindow();
+            try
+            {
+                await retainedProcess.WaitForExitAsync(cancellationToken).WaitAsync(TimeSpan.FromSeconds(3), cancellationToken).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!retainedProcess.HasExited)
+                {
+                    retainedProcess.Kill(entireProcessTree: true);
+                    await retainedProcess.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+        }
+    }
+
     private static async Task<DesktopProcessIdentity> CaptureIdentityAsync(
         Process process,
         string processRef,

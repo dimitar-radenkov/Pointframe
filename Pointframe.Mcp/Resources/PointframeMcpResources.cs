@@ -31,6 +31,21 @@ internal sealed class PointframeMcpResources(DesktopTestingHostOptions options)
         return JsonSerializer.Serialize(response);
     }
 
+    [McpServerResource(UriTemplate = VerifyDesktopWorkGuideUri, Name = "Verify desktop work", MimeType = "text/markdown")]
+    [Description("A step-by-step guide for an agent that changed a Windows desktop app and must verify the change in the running app: write criteria first, start a session, act, check each criterion, run a negative control, and return the signed report.")]
+    public string GetVerifyDesktopWorkGuide() => ReadVerifyDesktopWorkGuide();
+
+    public const string VerifyDesktopWorkGuideUri = "pointframe://guides/verify-desktop-work";
+
+    // The guide ships inside the executable so every install serves the text that matches its own tools.
+    internal static string ReadVerifyDesktopWorkGuide()
+    {
+        using var stream = typeof(PointframeMcpResources).Assembly.GetManifestResourceStream("Pointframe.Mcp.Guides.verify-desktop-work.md")
+            ?? throw new InvalidOperationException("The verify-desktop-work guide is missing from the server assembly.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
     private static string GetVersion()
     {
         // Assembly.Location is empty for single-file publishes; use Environment.ProcessPath instead.
