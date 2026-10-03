@@ -68,6 +68,7 @@ public sealed class DesktopFixtureHarness : IAsyncDisposable
         string mcpExecutablePath,
         string artifactDirectory,
         int monitorIndex,
+        IReadOnlyList<string>? criteria = null,
         CancellationToken cancellationToken = default)
     {
         EnsurePerMonitorDpiAwareness();
@@ -88,7 +89,7 @@ public sealed class DesktopFixtureHarness : IAsyncDisposable
         var before = Process.GetProcessesByName("Pointframe.DesktopTestFixture").Select(item => item.Id).ToHashSet();
         var start = await client.CallToolAsync(
             "desktop_start_test_session",
-            new { actionId = Guid.NewGuid().ToString(), profileId = FixtureProfileId },
+            new { actionId = Guid.NewGuid().ToString(), profileId = FixtureProfileId, criteria },
             TimeSpan.FromSeconds(60),
             cancellationToken).ConfigureAwait(false);
         var structured = start.GetProperty("structuredContent");
@@ -236,6 +237,8 @@ public sealed class DesktopFixtureHarness : IAsyncDisposable
         string? automationId = null,
         string? expected = null,
         int timeoutSeconds = 5,
+        string? criterionId = null,
+        bool expectFailure = false,
         CancellationToken cancellationToken = default) =>
         _client.CallToolAsync(
             "desktop_check_ui",
@@ -246,8 +249,17 @@ public sealed class DesktopFixtureHarness : IAsyncDisposable
                 automationId,
                 expected,
                 timeoutSeconds,
+                criterionId,
+                expectFailure,
             },
             TimeSpan.FromSeconds(timeoutSeconds + 20),
+            cancellationToken);
+
+    public Task<JsonElement> GetTestReportAsync(CancellationToken cancellationToken = default) =>
+        _client.CallToolAsync(
+            "desktop_get_test_report",
+            new { sessionId = SessionId },
+            TimeSpan.FromSeconds(30),
             cancellationToken);
 
     public Task<JsonElement> ScrollAsync(

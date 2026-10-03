@@ -46,6 +46,25 @@ public static class DesktopTestingResponseMapper
             evaluation.ErrorCode is null ? null : new McpCaptureError(evaluation.ErrorCode, evaluation.Message ?? evaluation.ErrorCode));
     }
 
+    // A negative control inverts only the verdict. Matches stays the oracle's raw answer, so a reader can
+    // see that the wrong expectation was rejected rather than that the oracle said yes.
+    public static DesktopTestingCheckResponse MapNegativeControl(DesktopUiCheckEvaluation evaluation)
+    {
+        var response = MapCheck(evaluation);
+        if (!evaluation.StateAvailable)
+        {
+            return response;
+        }
+
+        return evaluation.Matches
+            ? response with
+            {
+                Verification = "failed",
+                Error = new McpCaptureError("NegativeControlMatched", "The deliberately wrong expectation held, so this check cannot tell states apart."),
+            }
+            : response with { Verification = "passed" };
+    }
+
     public static DesktopTestingObservationResponse WithOcr(
         DesktopTestingObservationResponse response,
         DesktopOcrObservation ocr)

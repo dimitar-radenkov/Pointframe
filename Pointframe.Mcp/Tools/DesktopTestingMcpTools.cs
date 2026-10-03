@@ -19,6 +19,7 @@ internal sealed class DesktopTestingMcpTools(
     IDesktopUiCheckService checks,
     IDesktopOcrObservationProvider ocr,
     IDesktopTestReportService reports,
+    IDesktopEvidenceRecorder evidence,
     DesktopTestingPolicyLoader policyLoader,
     DesktopTestingHostOptions options)
 {
@@ -35,11 +36,22 @@ internal sealed class DesktopTestingMcpTools(
         [Description("A UUID action identifier.")] string actionId,
         [Description("The policy profile to launch. Must match a profile id declared in the desktop testing policy file.")] string profileId,
         [Description("Reserved for attaching to an already-running approved process. Attaching is not implemented by this host; leave unset to launch the profile.")] string? appRef = null,
+        [Description("Optional acceptance criteria the session will be judged against, as plain-text statements written before the work starts. They are frozen and hashed, numbered C1, C2, ... in order, and cannot change for the session. When supplied, the report passes only if every criterion is covered by at least one passing desktop_check_ui call naming its id, and at least one desktop_check_ui negative control (expectFailure) passed.")] IReadOnlyList<string>? criteria = null,
         CancellationToken cancellationToken = default)
     {
         if (!string.IsNullOrWhiteSpace(appRef))
         {
             return Error(actionId, "AttachNotImplemented", "Attach candidates are not available from this host.");
+        }
+
+        IReadOnlyList<string> normalizedCriteria;
+        try
+        {
+            normalizedCriteria = DesktopTestReportService.NormalizeCriteria(criteria);
+        }
+        catch (ArgumentException exception)
+        {
+            return Error(actionId, "InvalidCriteria", exception.Message);
         }
 
         var policy = LoadPolicy();
@@ -60,10 +72,21 @@ internal sealed class DesktopTestingMcpTools(
             return Error(actionId, result.Code, result.Message);
         }
 
+        var evidenceDirectory = evidence.BeginSession(
+            sessionRef,
+            policy.ArtifactRoot,
+            policy.EvidencePolicy switch
+            {
+                DesktopEvidencePolicy.All => DesktopEvidenceMode.All,
+                DesktopEvidencePolicy.Failures => DesktopEvidenceMode.Failures,
+                _ => DesktopEvidenceMode.None,
+            });
         reports.Initialize(
             sessionRef,
             result.Session!.Target!.Process.ExecutablePath,
-            result.Session.Target.Process.ExecutableSha256);
+            result.Session.Target.Process.ExecutableSha256,
+            normalizedCriteria,
+            evidenceDirectory);
         return Ok(actionId, sessionRef, result.Session.Target.TargetRef);
     }
 
@@ -250,7 +273,7 @@ internal sealed class DesktopTestingMcpTools(
     }
 
     [McpServerTool(Name = "desktop_check_ui", Title = "Check desktop UI", ReadOnly = true, UseStructuredContent = true)]
-    [Description("Waits until a condition holds over the application's UI Automation state, or until the timeout elapses. Use this to synchronize with the UI after an action instead of guessing at delays. Returns verification 'passed', 'failed', or 'inconclusive' when the state could not be read at all.")]
+    [Description("Waits until a condition holds over the application's UI Automation state, or until the timeout elapses. Use this to synchronize with the UI after an action instead of guessing at delays. Returns verification 'passed', 'failed', or 'inconclusive' when the state could not be read at all. Every evaluated check is recorded in the session report, and a failed check fails the report, so use desktop_observe_app rather than this tool to explore.")]
     public async Task<DesktopTestingCheckResponse> CheckUiAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
         [Description("What to check: one of exists, absent, enabled, toggleEquals, selectionEquals, textEquals, windowExists, windowAbsent, processExited.")] string kind,
@@ -260,6 +283,8 @@ internal sealed class DesktopTestingMcpTools(
         [Description("Optional window_ref from desktop_observe_app, to scope the check to one window. Required for windowExists and windowAbsent.")] string? windowRef = null,
         [Description("The expected value, for enabled (true/false), toggleEquals, selectionEquals and textEquals.")] string? expected = null,
         [Description("How long to wait for the condition before giving up, in seconds. At most 30.")] int timeoutSeconds = DesktopTestingLimits.DefaultUiCheckTimeoutSeconds,
+        [Description("Optional acceptance criterion id (C1, C2, ...) from desktop_start_test_session that this check provides evidence for. An id the session did not declare is rejected without running the check.")] string? criterionId = null,
+        [Description("Marks this check as a negative control: a deliberately wrong expectation, such as textEquals with a value the element does not hold. It passes only when the condition does not hold, which shows the check can tell states apart. A session with criteria needs at least one passing negative control for its report to pass. Cannot be combined with criterionId.")] bool expectFailure = false,
         CancellationToken cancellationToken = default)
     {
         var session = await sessions.GetAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -269,11 +294,23 @@ internal sealed class DesktopTestingMcpTools(
                 new DesktopUiCheckEvaluation(false, false, 0, "SessionNotFound"));
         }
 
+        if (expectFailure && criterionId is not null)
+        {
+            return DesktopTestingResponseMapper.MapCheck(
+                new DesktopUiCheckEvaluation(false, false, 0, "InvalidCondition", "A negative control cannot cover a criterion."));
+        }
+
+        if (criterionId is not null && !reports.HasCriterion(sessionId, criterionId))
+        {
+            return DesktopTestingResponseMapper.MapCheck(
+                new DesktopUiCheckEvaluation(false, false, 0, "UnknownCriterion", $"The session declared no criterion '{criterionId}'."));
+        }
+
+        var request = new McpUiCheckRequest(kind, automationId, role, name, windowRef, expected, session.Target.Process.ProcessRef);
         DesktopUiCheckCondition condition;
         try
         {
-            condition = BuildCondition(
-                new McpUiCheckRequest(kind, automationId, role, name, windowRef, expected, session.Target.Process.ProcessRef));
+            condition = BuildCondition(request);
         }
         catch (ArgumentException exception)
         {
@@ -286,7 +323,63 @@ internal sealed class DesktopTestingMcpTools(
             condition,
             TimeSpan.FromSeconds(timeoutSeconds),
             cancellationToken).ConfigureAwait(false);
-        return DesktopTestingResponseMapper.MapCheck(evaluation);
+        var response = expectFailure
+            ? DesktopTestingResponseMapper.MapNegativeControl(evaluation)
+            : DesktopTestingResponseMapper.MapCheck(evaluation);
+
+        // The report is the record of what the server itself observed. Only checks the server evaluated
+        // land here; requests rejected before evaluation say nothing about the application.
+        var verdict = response.Verification switch
+        {
+            "passed" => DesktopVerificationStatus.Passed,
+            "failed" => DesktopVerificationStatus.Failed,
+            _ => DesktopVerificationStatus.Inconclusive,
+        };
+        var checkEvidence = evidence.ShouldCapture(sessionId, verdict != DesktopVerificationStatus.Passed)
+            ? evidence.Capture(sessionId, session.Target.Process, "check")
+            : null;
+        reports.RecordCheck(sessionId, new DesktopTestCheckReport(
+            DescribeCheck(request, expectFailure),
+            verdict,
+            External: false,
+            OracleType: "server-uia",
+            Message: response.Error?.Message,
+            RecordedUtc: DateTimeOffset.UtcNow,
+            CriterionId: criterionId,
+            NegativeControl: expectFailure,
+            Evidence: checkEvidence));
+        return response;
+    }
+
+    internal static string DescribeCheck(McpUiCheckRequest request, bool expectFailure = false)
+    {
+        var parts = new List<string> { expectFailure ? $"not {request.Kind}" : request.Kind };
+        if (!string.IsNullOrWhiteSpace(request.AutomationId))
+        {
+            parts.Add($"automationId={request.AutomationId}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Role))
+        {
+            parts.Add($"role={request.Role}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Name))
+        {
+            parts.Add($"name={request.Name}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.WindowRef))
+        {
+            parts.Add($"window={request.WindowRef}");
+        }
+
+        if (request.Expected is not null)
+        {
+            parts.Add($"expected={request.Expected}");
+        }
+
+        return string.Join(' ', parts);
     }
 
     internal static nint ResolveWindowHandle(string windowRef, string processRef)
@@ -682,7 +775,37 @@ internal sealed class DesktopTestingMcpTools(
             },
             observationsToInvalidate,
             cancellationToken).ConfigureAwait(false);
+        await RecordActionEvidenceAsync(sessionId, actionId, result, cancellationToken).ConfigureAwait(false);
         return DesktopTestingResponseMapper.MapAction(result, sessionId);
+    }
+
+    // The screenshot is taken immediately after dispatch, so it shows what the screen looked like when the
+    // action returned, not necessarily the settled result; checks wait for their condition and show that.
+    private async Task RecordActionEvidenceAsync(
+        string sessionId,
+        string actionId,
+        DesktopActionResult result,
+        CancellationToken cancellationToken)
+    {
+        if (result.Dispatch == DesktopDispatchStatus.NotStarted)
+        {
+            return;
+        }
+
+        var isFailure = result.Verification == DesktopVerificationStatus.Failed
+            || result.Dispatch is DesktopDispatchStatus.Partial or DesktopDispatchStatus.Unknown;
+        if (!evidence.ShouldCapture(sessionId, isFailure) || !reports.NeedsActionEvidence(sessionId, actionId))
+        {
+            return;
+        }
+
+        var session = await sessions.GetAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        if (session?.Target is null)
+        {
+            return;
+        }
+
+        reports.AttachActionEvidence(sessionId, actionId, evidence.Capture(sessionId, session.Target.Process, "action"));
     }
 
     private async Task<DesktopTestingActionResponse> ExecuteSemanticInputAsync(
@@ -707,6 +830,7 @@ internal sealed class DesktopTestingMcpTools(
                     new DesktopOperationError("InputDispatchFailed", $"The UI automation {operation} was not accepted."))),
             observationsToInvalidate,
             cancellationToken).ConfigureAwait(false);
+        await RecordActionEvidenceAsync(sessionId, actionId, result, cancellationToken).ConfigureAwait(false);
         return DesktopTestingResponseMapper.MapAction(result, sessionId);
     }
 
