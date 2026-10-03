@@ -31,9 +31,10 @@ internal sealed class VsCodeMcpConfigurator : IMcpClientConfigurator
         var directory = Path.GetDirectoryName(ConfigurationPath)
             ?? throw new InvalidOperationException("The VS Code MCP configuration path has no parent directory.");
         Directory.CreateDirectory(directory);
-        if (File.Exists(ConfigurationPath))
+        var backupPath = $"{ConfigurationPath}.pointframe.bak";
+        if (File.Exists(ConfigurationPath) && !File.Exists(backupPath))
         {
-            File.Copy(ConfigurationPath, $"{ConfigurationPath}.pointframe.bak", overwrite: true);
+            File.Copy(ConfigurationPath, backupPath);
         }
 
         var temporaryPath = $"{ConfigurationPath}.{Guid.NewGuid():N}.tmp";
@@ -62,7 +63,13 @@ internal sealed class VsCodeMcpConfigurator : IMcpClientConfigurator
             return [];
         }
 
-        return JsonNode.Parse(File.ReadAllText(ConfigurationPath)) as JsonObject
+        return JsonNode.Parse(
+            File.ReadAllText(ConfigurationPath),
+            documentOptions: new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+                CommentHandling = JsonCommentHandling.Skip,
+            }) as JsonObject
             ?? throw new JsonException("The VS Code MCP configuration root must be a JSON object.");
     }
 }

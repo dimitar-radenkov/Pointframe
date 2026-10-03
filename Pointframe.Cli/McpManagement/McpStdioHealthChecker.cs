@@ -33,6 +33,7 @@ internal sealed class McpStdioHealthChecker : IMcpHealthChecker
                 RedirectStandardError = true,
             },
         };
+        var started = false;
 
         try
         {
@@ -40,6 +41,8 @@ internal sealed class McpStdioHealthChecker : IMcpHealthChecker
             {
                 return new McpHealthResult(false, "handshake_failed", "The MCP process could not be started.");
             }
+
+            started = true;
 
             await process.StandardInput.WriteLineAsync("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},\"clientInfo\":{\"name\":\"Pointframe CLI doctor\",\"version\":\"1.0.0\"}}}");
             await process.StandardInput.WriteLineAsync("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\",\"params\":{}}");
@@ -97,7 +100,7 @@ internal sealed class McpStdioHealthChecker : IMcpHealthChecker
         }
         finally
         {
-            if (!process.HasExited)
+            if (started && !process.HasExited)
             {
                 process.Kill(entireProcessTree: true);
             }

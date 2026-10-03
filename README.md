@@ -99,6 +99,21 @@ carries an `Error.Code` (`target_not_found`, `target_not_capturable`, `invalid_r
 `invalid_output_path`, `canceled`, or `capture_failed`), and invalid arguments exit `2`
 with usage text on standard error.
 
+After installing the CLI, it can install and verify the standalone MCP server
+for VS Code without manual archive extraction or JSON editing:
+
+```powershell
+pointframe mcp install --client vscode
+pointframe mcp doctor --client vscode
+```
+
+The installer verifies the published MCPB SHA-256, preserves unrelated VS Code
+MCP entries, creates a configuration backup, and performs a real MCP handshake.
+Use `pointframe mcp install --client vscode --dry-run` to validate the download
+and proposed configuration without persisting changes. See the
+[CLI guide](docs/cli/README.md#install-and-verify-the-mcp-server-for-vs-code)
+for status, diagnostics, output contracts, and current client support.
+
 Pass `--output <file>` (`-o`) to any command that produces a file to choose the exact
 path to write; parent directories are created for you. Without it, screenshots and their
 metadata sidecars are saved under `%LOCALAPPDATA%\Pointframe\Screenshots` and recordings

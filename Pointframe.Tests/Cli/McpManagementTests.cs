@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Moq;
 using Pointframe.Cli;
+using Pointframe.Mcp;
 using Xunit;
 
 namespace Pointframe.Tests.Cli;
@@ -112,6 +113,36 @@ public sealed class McpManagementTests : IDisposable
     }
 
     [Fact]
+    public void Configure_JsonWithCommentsAndTrailingComma_PreservesExistingServer()
+    {
+        var configurationPath = Path.Combine(_root, "Code", "User", "mcp.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(configurationPath)!);
+        File.WriteAllText(configurationPath, "{ // existing configuration\n\"servers\": { \"other\": { \"command\": \"other.exe\", }, }, }");
+        var configurator = new VsCodeMcpConfigurator(configurationPath);
+
+        configurator.Configure(@"C:\Pointframe\Pointframe.Mcp.exe", dryRun: false);
+
+        using var configuration = JsonDocument.Parse(File.ReadAllText(configurationPath));
+        Assert.Equal("other.exe", configuration.RootElement.GetProperty("servers").GetProperty("other").GetProperty("command").GetString());
+        Assert.Equal(@"C:\Pointframe\Pointframe.Mcp.exe", configuration.RootElement.GetProperty("servers").GetProperty("pointframe").GetProperty("command").GetString());
+    }
+
+    [Fact]
+    public void Configure_RepeatedInstall_PreservesOriginalBackup()
+    {
+        var configurationPath = Path.Combine(_root, "Code", "User", "mcp.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(configurationPath)!);
+        const string original = "{\"servers\":{}}";
+        File.WriteAllText(configurationPath, original);
+        var configurator = new VsCodeMcpConfigurator(configurationPath);
+
+        configurator.Configure(@"C:\Pointframe\6.7.25\Pointframe.Mcp.exe", dryRun: false);
+        configurator.Configure(@"C:\Pointframe\6.7.26\Pointframe.Mcp.exe", dryRun: false);
+
+        Assert.Equal(original, File.ReadAllText($"{configurationPath}.pointframe.bak"));
+    }
+
+    [Fact]
     public void Configure_DryRun_DoesNotCreateConfiguration()
     {
         var configurationPath = Path.Combine(_root, "Code", "User", "mcp.json");
@@ -157,6 +188,12 @@ public sealed class McpManagementTests : IDisposable
 
         Assert.False(result.Success);
         Assert.Equal("package_not_installed", result.Code);
+    }
+
+    [Fact]
+    public void ExpectedTools_MatchesReleasedMcpDirectToolCatalog()
+    {
+        Assert.Equal(PointframeCommandCatalog.DirectTools, McpStdioHealthChecker.ExpectedTools);
     }
 
     public void Dispose()
