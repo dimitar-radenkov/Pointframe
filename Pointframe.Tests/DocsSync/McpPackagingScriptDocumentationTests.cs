@@ -34,14 +34,30 @@ public sealed class McpPackagingScriptDocumentationTests
         AssertSameSet(PointframeCommandCatalog.Create(desktopTestingEnabled: true), scriptEnabledTools, "$enabledExpectedTools");
     }
 
-    private static void AssertSameSet(IReadOnlyList<string> actual, IReadOnlyList<string> expected, string variableName)
+    // Claude Desktop shows the MCPB manifest's tool list on install, so a stale list misdescribes the server.
+    [Fact]
+    public void BuildScript_ManifestToolsMatchDirectCatalog()
+    {
+        var script = File.ReadAllText(FindRepoFile(Path.Combine("packaging", "build-mcp-package.ps1")));
+        var manifestTools = Regex.Matches(script, "@\\{\\s*name\\s*=\\s*\"(?<value>[^\"]+)\";\\s*description\\s*=")
+            .Select(m => m.Groups["value"].Value)
+            .ToArray();
+
+        AssertSameSet(PointframeCommandCatalog.DirectTools, manifestTools, "manifest tools", "packaging/build-mcp-package.ps1");
+    }
+
+    private static void AssertSameSet(
+        IReadOnlyList<string> actual,
+        IReadOnlyList<string> expected,
+        string variableName,
+        string scriptPath = "packaging/test-mcp-stdio.ps1")
     {
         var missing = actual.Where(name => !expected.Contains(name)).ToArray();
         var stale = expected.Where(name => !actual.Contains(name)).ToArray();
 
         Assert.True(
             missing.Length == 0 && stale.Length == 0,
-            $"packaging/test-mcp-stdio.ps1's '{variableName}' is out of sync with the registered MCP tool catalog. "
+            $"{scriptPath}'s '{variableName}' is out of sync with the registered MCP tool catalog. "
             + $"Missing from script: {string.Join(", ", missing)}. Stale in script: {string.Join(", ", stale)}.");
     }
 

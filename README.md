@@ -218,27 +218,84 @@ Recordings\*.mp4.events.jsonl
 
 Metadata includes the artifact path, byte length, SHA-256, timestamp, monitor, DPI, and physical capture bounds. Recording event sidecars contain lifecycle and declared-redaction events without bitmap data, OCR text, clipboard contents, or prompts.
 
-### Install a published MCP server
+### Connect your MCP client
 
-The standard release artifact is a versioned `.mcpb` bundle. It contains the
-self-contained `win-x64` server, `ffmpeg.exe`, and an MCPB `manifest.json`.
+The server ships as a `.mcpb` bundle on every
+[release](https://github.com/dimitar-radenkov/Pointframe/releases/latest): the
+self-contained `win-x64` server, `ffmpeg.exe` for recording, and an MCPB
+`manifest.json`. It does not need the Pointframe desktop app or the .NET runtime.
 
-For the opt-in black-box desktop-testing driver, including policy validation,
-worker behavior, gate procedures, and evidence limits, see the dedicated
-[desktop-testing MCP README](docs/mcp-desktop-testing/README.md). Detailed
-operator notes remain in [MCP desktop testing](docs/mcp-desktop-testing.md).
-Download the matching `Pointframe.Mcp-*-win-x64.mcpb` asset from the
-[latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest)
-and install it in an MCPB-compatible host. Verify the adjacent `.sha256` file
-before installation when the host does not verify the bundle automatically.
+**Claude Desktop.** Download
+[`Pointframe.Mcp-win-x64.mcpb`](https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb)
+and open it; Claude Desktop installs it as an extension.
+
+**Every other client** runs the server from a folder on disk. Download and unpack
+the latest bundle once (a `.mcpb` is a ZIP archive), and run the same lines again
+to update:
+
+```powershell
+$dir = "$env:LOCALAPPDATA\Programs\Pointframe.Mcp"
+$mcpb = "$env:TEMP\Pointframe.Mcp-win-x64.mcpb"
+Invoke-WebRequest https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb -OutFile $mcpb
+New-Item -ItemType Directory -Force $dir | Out-Null
+tar -xf $mcpb -C $dir
+```
+
+Stop the server in your client before updating, because Windows locks a running
+`Pointframe.Mcp.exe`. Then register it:
+
+- **Claude Code**
+
+  ```powershell
+  claude mcp add --scope user pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
+  ```
+
+- **VS Code**: run **MCP: Add Server** from the Command Palette, choose
+  **Command (stdio)**, and enter the path to `Pointframe.Mcp.exe`. Or add it to
+  `.vscode/mcp.json` or your user MCP configuration, using your own user name in
+  the path:
+
+  ```json
+  {
+    "servers": {
+      "pointframe": {
+        "type": "stdio",
+        "command": "C:\Users\<you>\AppData\Local\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
+      }
+    }
+  }
+  ```
+
+- **Cursor, Windsurf, and other clients** that use the `mcpServers` format, such as
+  `%USERPROFILE%\.cursor\mcp.json`:
+
+  ```json
+  {
+    "mcpServers": {
+      "pointframe": {
+        "command": "C:\Users\<you>\AppData\Local\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
+      }
+    }
+  }
+  ```
+
+To check the connection, ask the agent to list your displays; it should call
+`list_displays`. The `pointframe://server-info` resource reports the server version
+and whether `ffmpeg` was found for recording.
 
 Each release is also published to the official
 [MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=pointframe)
 as `io.github.dimitar-radenkov/pointframe-mcp`, so registry-aware clients can find
 and install it. The matching `*.server.json` attached to the release pins the MCPB
-URL and includes the bundle SHA-256.
+URL and includes the bundle SHA-256; verify the adjacent `.sha256` file before
+installation when your client does not verify the bundle itself.
 
-To build the same artifacts locally:
+For the opt-in black-box desktop-testing driver, including policy validation,
+worker behavior, gate procedures, and evidence limits, see the dedicated
+[desktop-testing MCP README](docs/mcp-desktop-testing/README.md). Detailed
+operator notes remain in [MCP desktop testing](docs/mcp-desktop-testing.md).
+
+### Build the MCP package locally
 
 ```powershell
 dotnet restore Pointframe.Mcp/Pointframe.Mcp.csproj
@@ -248,38 +305,12 @@ dotnet restore Pointframe.Mcp/Pointframe.Mcp.csproj
 ```
 
 Use the current release version instead of `1.0.0` when producing a release package.
+The script writes the MCPB bundle, a legacy ZIP with the same contents, a SHA-256
+checksum, and release-ready `server.json` metadata under `packaging/output`.
 
-The script also emits a legacy ZIP, the MCPB bundle, a SHA-256 checksum, and
-release-ready `server.json` metadata under `packaging/output`.
-
-```powershell
-Get-FileHash packaging/output/Pointframe.Mcp-*-win-x64.mcpb -Algorithm SHA256
-```
-
-The legacy ZIP remains useful for manual installation. Extract it to a
-directory such as `C:\Program Files\Pointframe.Mcp`; it contains the standalone
-MCP executable and `ffmpeg.exe`, not the WPF Pointframe application.
-
-### Configure VS Code
-
-For a manually extracted ZIP, point VS Code at the published executable in
-`.vscode/mcp.json` or the user MCP configuration:
-
-```json
-{
-  "servers": {
-    "pointframe": {
-      "type": "stdio",
-      "command": "C:\\Program Files\\Pointframe.Mcp\\Pointframe.Mcp.exe"
-    }
-  }
-}
-```
-
-After changing the command or executable path, reload the VS Code window or restart
-the MCP server from the MCP server controls. For local development, the workspace
-configuration can point at the Debug executable instead. Rebuild `Pointframe.Mcp`
-after code changes before restarting the MCP server.
+For local development, point your client's configuration at the Debug executable
+instead, and rebuild `Pointframe.Mcp` after code changes before restarting the MCP
+server.
 
 ### Test the MCP server locally
 

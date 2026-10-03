@@ -54,8 +54,8 @@ Copy-Item $iconSourcePath (Join-Path $packageDirectory "icon.png") -Force
     name = "pointframe-mcp"
     display_name = "Pointframe MCP Server"
     version = $Version
-    description = "Local Windows MCP server for Pointframe monitor discovery, OCR, screenshots, and recordings."
-    long_description = "Runs as a local stdio MCP server in an interactive Windows desktop session. Captures and recordings are written to the user's local Pointframe data directory. Desktop-testing services are opt-in and disabled unless explicitly enabled with a local policy."
+    description = "Windows screenshots, OCR, and redacted screen recording for AI agents. No desktop app needed."
+    long_description = "Lets an AI agent see and record the Windows desktop: list monitors and windows, capture a monitor, a sub-region, or a window (returned inline so the model can see it), read on-screen text with Windows OCR, search previously saved captures, and record a monitor to MP4 with pixelated redaction regions. Runs as a local stdio MCP server in an interactive Windows desktop session. Captures and recordings are written to the user's local Pointframe data directory. Desktop-testing services are opt-in and disabled unless explicitly enabled with a local policy."
     author = @{
         name = "Dimitar Radenkov"
         url = $RepositoryUrl
@@ -69,7 +69,7 @@ Copy-Item $iconSourcePath (Join-Path $packageDirectory "icon.png") -Force
     support = "$RepositoryUrl/issues"
     license = "MIT"
     icon = "icon.png"
-    keywords = @("mcp", "screenshots", "ocr", "screen-recording", "windows", "pointframe")
+    keywords = @("mcp", "screenshot", "screen-capture", "ocr", "screen-recording", "redaction", "windows", "ai-agents", "pointframe")
     compatibility = @{
         platforms = @("win32")
     }
@@ -82,11 +82,17 @@ Copy-Item $iconSourcePath (Join-Path $packageDirectory "icon.png") -Force
         }
     }
     tools = @(
-        @{ name = "list_displays"; description = "List available Windows displays." },
-        @{ name = "capture_monitor"; description = "Capture a monitor to a PNG artifact." },
-        @{ name = "read_text_from_monitor"; description = "Capture a monitor and return OCR text when a Windows language pack is available." },
-        @{ name = "start_recording"; description = "Start a monitor recording with optional pixelation regions." },
-        @{ name = "stop_recording"; description = "Stop the active recording and return its artifacts." }
+        @{ name = "search_captures"; description = "Search saved screenshots by filename or indexed OCR text." },
+        @{ name = "get_capture"; description = "Get a saved capture by ID, with metadata, OCR text, and an optional preview image." },
+        @{ name = "list_displays"; description = "List monitors with their names, pixel bounds, and DPI scales." },
+        @{ name = "list_windows"; description = "List visible top-level windows with handles, titles, processes, and bounds." },
+        @{ name = "capture_monitor"; description = "Capture a monitor or a sub-region to PNG and return the image inline." },
+        @{ name = "capture_window"; description = "Capture a window by handle to PNG and return the image inline." },
+        @{ name = "read_text_from_monitor"; description = "Capture a monitor or a sub-region and return its text with Windows OCR." },
+        @{ name = "read_text_from_window"; description = "Capture a window by handle and return its text with Windows OCR." },
+        @{ name = "start_recording"; description = "Start an MP4 recording of a monitor, with optional pixelated redaction regions." },
+        @{ name = "stop_recording"; description = "Stop the active recording and return the MP4 and its metadata." },
+        @{ name = "get_recording_status"; description = "Report whether a recording is active and how long it has run." }
     )
     tools_generated = $true
 } | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $packageDirectory "manifest.json") -Encoding utf8NoBOM
@@ -130,7 +136,7 @@ $releaseUrl = "$RepositoryUrl/releases/download/v$Version/$(Split-Path $mcpbPath
     '$schema' = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
     name = $serverName
     title = "Pointframe MCP Server"
-    description = "Local Windows MCP server for monitor discovery, screenshots, and recordings."
+    description = "Windows screenshots, OCR, and redacted screen recording for AI agents. No desktop app needed."
     websiteUrl = $RepositoryUrl
     repository = @{
         url = "$RepositoryUrl"
