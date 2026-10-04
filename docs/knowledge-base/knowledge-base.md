@@ -444,3 +444,4 @@ The format gate covers the main project only. Do not run `dotnet format` on `Poi
 - Lesson: Coverage workflows should run for fix branches and not hard-require a Codecov token on public repos
 - Lesson: CI publish of a self-contained exe needs `<RuntimeIdentifiers>` even with `--runtime win-x64` on the command line
 - Lesson: workflow_run checks out the default branch HEAD, not the commit that triggered it
+- Lesson: PowerShell reads "$name:" inside a string as a scoped variable
