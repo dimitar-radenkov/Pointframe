@@ -1,0 +1,9 @@
+{
+  "name": "pointframe-verify-sample-node",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A tiny Node project that pointframe verify checks in CI.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

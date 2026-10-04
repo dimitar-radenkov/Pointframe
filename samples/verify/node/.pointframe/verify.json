@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "gates": [
+    {
+      "id": "test",
+      "run": "npm test"
+    }
+  ],
+  "scenarios": []
+}

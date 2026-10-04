@@ -77,7 +77,7 @@ internal sealed class VerificationInit(
         var specPath = Path.Combine(rootDirectory, VerificationSpecLoader.DefaultSpecRelativePath);
         var hadSpec = fileSystem.FileExists(specPath);
         var preserveExistingSpec = hadSpec && !command.Force;
-        var gates = DetectGates(rootDirectory);
+        var gates = DetectGates(rootDirectory, warnings);
         var app = command.AppPath is not null
             ? Path.GetFullPath(Path.Combine(rootDirectory, command.AppPath))
             : DetectApp(rootDirectory, warnings);
@@ -205,7 +205,7 @@ internal sealed class VerificationInit(
         return 0;
     }
 
-    internal IReadOnlyList<VerificationGate> DetectGates(string rootDirectory)
+    internal IReadOnlyList<VerificationGate> DetectGates(string rootDirectory, List<string>? warnings = null)
     {
         var slnx = fileSystem.EnumerateFiles(rootDirectory, "*.slnx", SearchOption.TopDirectoryOnly).OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
         var solution = slnx ?? fileSystem.EnumerateFiles(rootDirectory, "*.sln", SearchOption.TopDirectoryOnly).OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
@@ -235,12 +235,13 @@ internal sealed class VerificationInit(
                 return [];
             }
 
+            var packageManager = DetectNodePackageManager(rootDirectory, package.RootElement, warnings);
             var gates = new List<VerificationGate>();
             foreach (var script in new[] { "build", "lint", "test" })
             {
                 if (scripts.TryGetProperty(script, out _))
                 {
-                    var run = script == "test" ? "npm test" : $"npm run {script}";
+                    var run = script == "test" ? $"{packageManager} test" : $"{packageManager} run {script}";
                     gates.Add(Gate(rootDirectory, script, run));
                 }
             }
@@ -251,6 +252,52 @@ internal sealed class VerificationInit(
         {
             return [];
         }
+    }
+
+    private string DetectNodePackageManager(string rootDirectory, JsonElement package, List<string>? warnings)
+    {
+        var lockfiles = new (string FileName, string Manager)[]
+        {
+            ("pnpm-lock.yaml", "pnpm"),
+            ("yarn.lock", "yarn"),
+            ("package-lock.json", "npm"),
+        };
+        var found = lockfiles.Where(lockfile => fileSystem.FileExists(Path.Combine(rootDirectory, lockfile.FileName))).ToArray();
+        if (found.Length > 1)
+        {
+            var declaredManager = package.TryGetProperty("packageManager", out var packageManager)
+                    && packageManager.ValueKind == JsonValueKind.String
+                ? packageManager.GetString()
+                : null;
+            var selectedManager = ManagerFromPackageManager(declaredManager);
+            if (selectedManager is not null)
+            {
+                return selectedManager;
+            }
+
+            warnings?.Add($"Multiple Node package manager lockfiles were found ({string.Join(", ", found.Select(lockfile => lockfile.FileName))}); using {found[0].Manager} by priority order.");
+        }
+
+        return found.Length == 0 ? "npm" : found[0].Manager;
+    }
+
+    private static string? ManagerFromPackageManager(string? packageManager)
+    {
+        if (packageManager is null)
+        {
+            return null;
+        }
+
+        foreach (var manager in new[] { "pnpm", "yarn", "npm" })
+        {
+            if (packageManager.Equals(manager, StringComparison.OrdinalIgnoreCase)
+                || packageManager.StartsWith($"{manager}@", StringComparison.OrdinalIgnoreCase))
+            {
+                return manager;
+            }
+        }
+
+        return null;
     }
 
     private bool HasTestProject(string rootDirectory, string solution)

@@ -258,7 +258,7 @@ code `1`.
 
 ## Verify a desktop app from a spec
 
-To adopt verify in another project, start with the [verify guide](verify.md).
+To adopt verify in another project, start with the [verify guide](verify.md). To require a pass on pull requests, see [Run in CI](verify.md#run-in-ci).
 
 `verify run` checks a project against a verification spec that the project keeps
 in git. It runs the spec's gates (build, test, or any command), then launches the

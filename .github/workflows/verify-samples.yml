@@ -1,0 +1,125 @@
+name: Verify samples
+
+# Proves that the RELEASED Pointframe CLI (not the one built from this checkout) verifies a small
+# .NET project and a small Node project, the way a user's CI job would. The recipe in
+# docs/cli/verify.md ("Run in CI") is the same steps for a repo root.
+#
+# Git-tree decision. `verify` computes the tree hash with `git add -A` into a throwaway index and
+# `git write-tree` (WorkingTree.cs). Inside this repository's checkout that would hash the WHOLE
+# repo, and the repo's own .gitignore and root Directory.Packages.props would leak into the sample.
+# So each sample is copied to a temp folder and made its own git root (`git init` + one commit),
+# exactly like a user's project. That keeps `fresh` hermetic: it is true only when nothing in the
+# sample changed between `verify run` and `verify status`.
+
+on:
+  pull_request:
+    branches: [ master ]
+    paths:
+      - "samples/verify/**"
+      - ".github/workflows/verify-samples.yml"
+      - "docs/cli/verify.md"
+  push:
+    branches: [ master ]
+    paths:
+      - "samples/verify/**"
+      - ".github/workflows/verify-samples.yml"
+      - "docs/cli/verify.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  POINTFRAME_CLI_VERSION: "6.7.34"
+
+jobs:
+  verify-sample:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [ dotnet, node ]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        if: matrix.sample == 'dotnet'
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Setup Node
+        if: matrix.sample == 'node'
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Download and check the released CLI
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:POINTFRAME_CLI_VERSION
+          $download = Join-Path $env:RUNNER_TEMP 'pointframe-cli-download'
+          $cli = Join-Path $env:RUNNER_TEMP 'pointframe-cli'
+          New-Item -ItemType Directory -Force $download | Out-Null
+          gh release download "v$version" --repo dimitar-radenkov/Pointframe `
+            --pattern "Pointframe.Cli-$version-win-x64.zip" `
+            --pattern "Pointframe.Cli-$version-win-x64.zip.sha256" `
+            --dir $download
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the CLI release.' }
+          $zip = Join-Path $download "Pointframe.Cli-$version-win-x64.zip"
+          $expected = ((Get-Content "$zip.sha256" -Raw).Trim() -split '\s+')[0]
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($actual -ne $expected) { throw "SHA-256 mismatch: expected $expected, got $actual." }
+          Expand-Archive $zip -DestinationPath $cli
+          $exe = Get-ChildItem $cli -Recurse -Filter Pointframe.Cli.exe | Select-Object -First 1
+          if ($null -eq $exe) { throw 'Pointframe.Cli.exe was not found in the ZIP.' }
+          "POINTFRAME_CLI=$($exe.FullName)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          & $exe.FullName --version
+
+      - name: Copy the sample to its own git repository
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:RUNNER_TEMP 'sample'
+          Copy-Item "samples/verify/${{ matrix.sample }}" $project -Recurse
+          Set-Location $project
+          git init --quiet
+          git config user.email "ci@example.invalid"
+          git config user.name "CI"
+          git add -A
+          git commit --quiet -m "Sample"
+          if ($LASTEXITCODE -ne 0) { throw 'git commit failed.' }
+
+      - name: Verify run (pass and complete)
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/sample
+        run: |
+          & $env:POINTFRAME_CLI verify run
+          $exitCode = $LASTEXITCODE
+          $verdict = Get-Content 'artifacts/pointframe-verify/verdict.json' -Raw | ConvertFrom-Json
+          Write-Host "exit=$exitCode status=$($verdict.status) complete=$($verdict.complete)"
+          if ($exitCode -ne 0) { throw "verify run exited with $exitCode." }
+          if ($verdict.status -ne 'pass') { throw "Expected status pass, got '$($verdict.status)'." }
+          if ($verdict.complete -ne $true) { throw 'The verdict is not complete.' }
+
+      - name: Verify status (fresh)
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/sample
+        run: |
+          $json = & $env:POINTFRAME_CLI verify status
+          $exitCode = $LASTEXITCODE
+          $json
+          $status = ($json | Out-String) | ConvertFrom-Json
+          if ($exitCode -ne 0) { throw "verify status exited with $exitCode." }
+          if ($status.status -ne 'pass') { throw "Expected status pass, got '$($status.status)'." }
+          if ($status.fresh -ne $true) { throw 'The pass is not fresh for the current files.' }
+
+      - name: Upload verify output
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pointframe-verify-${{ matrix.sample }}
+          path: ${{ runner.temp }}/sample/artifacts/pointframe-verify/
+          if-no-files-found: ignore

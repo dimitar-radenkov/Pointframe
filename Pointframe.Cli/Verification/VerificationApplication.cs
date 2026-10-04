@@ -213,8 +213,12 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         var root = VerificationSpecLoader.RootDirectoryFor(specPath);
         var verdictPath = Path.Combine(root, OutputRelativePath, "verdict.json");
         var current = services.WorkingTree.Read(root);
+        var currentSpecSha256 = File.Exists(specPath)
+            ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(specPath)))
+            : null;
         var status = "none";
         string? verdictTree = null;
+        string? verdictSpecSha256 = null;
         DateTimeOffset? startedUtc = null;
         if (File.Exists(verdictPath))
         {
@@ -224,10 +228,18 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             verdictTree = verdict.TryGetProperty("provenance", out var provenance) && provenance.TryGetProperty("treeHash", out var tree)
                 ? tree.GetString()
                 : null;
+            verdictSpecSha256 = verdict.TryGetProperty("specSha256", out var specSha256) ? specSha256.GetString() : null;
             startedUtc = verdict.TryGetProperty("startedUtc", out var startedElement) ? startedElement.GetDateTimeOffset() : null;
         }
 
-        var fresh = status == VerificationStatus.Pass && verdictTree is not null && verdictTree == current.TreeHash;
+        var treeMatches = verdictTree is not null && verdictTree == current.TreeHash;
+        var specMatches = currentSpecSha256 is not null && verdictSpecSha256 == currentSpecSha256;
+        var fresh = status == VerificationStatus.Pass && treeMatches && specMatches;
+        var freshnessReason = !specMatches && verdictSpecSha256 is not null
+            ? "verdict_for_another_spec"
+            : !treeMatches && verdictTree is not null
+                ? "tree_changed"
+                : null;
         var hookCommand = (services.CommandResolver ?? new PointframeCommandResolver()).Resolve();
         var review = ReadReviewStatus(Path.Combine(root, OutputRelativePath, VerificationHook.ReviewFileName), current.TreeHash);
         await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new
@@ -237,6 +249,9 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             fresh,
             verdictTreeHash = verdictTree,
             currentTreeHash = current.TreeHash,
+            verdictSpecSha256,
+            currentSpecSha256,
+            freshnessReason,
             startedUtc,
             verdictPath,
             hookCommand = new { path = hookCommand.Path, version = hookCommand.Version, ok = hookCommand.Ok },

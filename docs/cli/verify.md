@@ -118,6 +118,14 @@ each of the `build`, `lint`, and `test` scripts that exist:
 ]
 ```
 
+Init picks the package manager from the lockfile: `pnpm-lock.yaml` gives
+`pnpm test` and `pnpm run <script>`; otherwise `yarn.lock` gives `yarn test` and
+`yarn run <script>`; otherwise (`package-lock.json`, or no lockfile) it uses `npm`.
+When more than one lockfile exists, init uses the `packageManager` field in
+`package.json` if it names `pnpm`, `yarn`, or `npm`. Without that field it picks in
+the same order and adds a warning that names the lockfiles it found. All of these
+commands are standard, so they are approved by policy.
+
 If init finds no gate, it writes nothing and says what is missing.
 
 ### Approval of the commands
@@ -200,6 +208,121 @@ pointframe verify status
 
 You want `status` to be `pass` and `fresh` to be `true`. For a project that
 matters, also require a pass in CI.
+
+## Run in CI
+
+The hook is a local safety net. It can be absent (a fresh clone, a different
+agent, a human editing by hand), skipped, or used up after five blocks. A CI job
+is the check that nobody can skip, so make it a required check on pull requests.
+
+The job below downloads a pinned release of the CLI, checks its hash, and verifies
+the repository. It is the same recipe that
+[`verify-samples.yml`](../../.github/workflows/verify-samples.yml) runs against the
+two [sample projects](../../samples/verify) (.NET and Node).
+
+```yaml
+name: Verify
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  POINTFRAME_CLI_VERSION: "6.7.34"
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Install the toolchain your gates call, for example:
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Download and check the CLI
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:POINTFRAME_CLI_VERSION
+          $download = Join-Path $env:RUNNER_TEMP 'pointframe-cli-download'
+          $cli = Join-Path $env:RUNNER_TEMP 'pointframe-cli'
+          New-Item -ItemType Directory -Force $download | Out-Null
+          gh release download "v$version" --repo dimitar-radenkov/Pointframe `
+            --pattern "Pointframe.Cli-$version-win-x64.zip" `
+            --pattern "Pointframe.Cli-$version-win-x64.zip.sha256" `
+            --dir $download
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the CLI release.' }
+          $zip = Join-Path $download "Pointframe.Cli-$version-win-x64.zip"
+          $expected = ((Get-Content "$zip.sha256" -Raw).Trim() -split '\s+')[0]
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($actual -ne $expected) { throw "SHA-256 mismatch: expected $expected, got $actual." }
+          Expand-Archive $zip -DestinationPath $cli
+          $exe = Get-ChildItem $cli -Recurse -Filter Pointframe.Cli.exe | Select-Object -First 1
+          "POINTFRAME_CLI=$($exe.FullName)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Verify run
+        shell: pwsh
+        run: |
+          & $env:POINTFRAME_CLI verify run
+          $exitCode = $LASTEXITCODE
+          $verdict = Get-Content 'artifacts/pointframe-verify/verdict.json' -Raw | ConvertFrom-Json
+          if ($exitCode -ne 0) { throw "verify run exited with $exitCode." }
+          if ($verdict.status -ne 'pass') { throw "Expected status pass, got '$($verdict.status)'." }
+          if ($verdict.complete -ne $true) { throw 'The verdict is not complete.' }
+
+      - name: Verify status
+        shell: pwsh
+        run: |
+          $json = & $env:POINTFRAME_CLI verify status
+          $exitCode = $LASTEXITCODE
+          $status = ($json | Out-String) | ConvertFrom-Json
+          if ($exitCode -ne 0) { throw "verify status exited with $exitCode." }
+          if ($status.status -ne 'pass') { throw "Expected status pass, got '$($status.status)'." }
+          if ($status.fresh -ne $true) { throw 'The pass is not fresh for the current files.' }
+
+      - name: Upload verify output
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pointframe-verify
+          path: artifacts/pointframe-verify/
+          if-no-files-found: ignore
+```
+
+Change `POINTFRAME_CLI_VERSION` to a release you have checked. Run the job from
+the project root, where `.pointframe/verify.json` is; the checkout must be a git
+repository, which `actions/checkout` gives you.
+
+What to require, all three:
+
+- `verify run` exits `0`. This also covers a failed gate (exit `1`) and a broken
+  spec (exit `2`).
+- The verdict has `status: "pass"` and `complete: true`. Exit `0` alone is not
+  enough, because `partial` also exits `0`.
+- `verify status` exits `0` with `fresh: true`: the pass belongs to the files as the
+  job sees them, not to an older tree.
+
+Things to know:
+
+- Do not use `--only gates` or `--scenario` in the job. A filtered run is `partial`
+  and is never `fresh`, so it is not a completion check.
+- A fresh runner has no stored approvals, and nobody is there to type `yes`. The
+  job approves commands by policy only: standard commands (`dotnet build`,
+  `dotnet test`, `npm test`, `npm run <script>`, and the pnpm and yarn forms) pass.
+  A nonstandard command cannot be approved there, so the job fails with
+  `spec_untrusted` or `approver_unavailable`. Keep the gates standard, and put
+  anything else inside a project script that a standard command calls.
+- CI runs the spec from the pull request itself, so a pull request could weaken
+  its own gates. Protect `.pointframe/` with CODEOWNERS or required review. The
+  reviewer flags edits to the spec and to tests, but a person decides.
+- Desktop scenarios drive a running Windows app and need an interactive desktop
+  session. A hosted runner has none, so scenarios are not covered by this recipe
+  yet. Keep them in your local checks.
 
 ## Agents
 

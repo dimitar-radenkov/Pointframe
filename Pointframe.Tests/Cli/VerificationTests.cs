@@ -197,6 +197,75 @@ public sealed class VerificationTests : IDisposable
     }
 
     [Fact]
+    public async Task Status_IsFreshWhenTreeAndSpecMatchVerdict()
+    {
+        _fixture.WriteSpec();
+        WritePassingVerdict(_fixture.Root, _fixture.SpecPath, "TREE1");
+        var output = new StringWriter();
+
+        var exitCode = await new VerificationFixture.Services(treeHash: "TREE1")
+            .Application(_fixture.Store, output)
+            .RunAsync(new CliCommand("verify", SpecPath: _fixture.SpecPath, VerifyAction: "status"), CancellationToken.None);
+
+        using var result = JsonDocument.Parse(output.ToString());
+        Assert.Equal(0, exitCode);
+        Assert.True(result.RootElement.GetProperty("fresh").GetBoolean());
+        Assert.Equal("TREE1", result.RootElement.GetProperty("verdictTreeHash").GetString());
+        Assert.Equal("TREE1", result.RootElement.GetProperty("currentTreeHash").GetString());
+        Assert.Equal(result.RootElement.GetProperty("verdictSpecSha256").GetString(), result.RootElement.GetProperty("currentSpecSha256").GetString());
+    }
+
+    [Fact]
+    public async Task Status_IsNotFreshWhenTreeMatchesButSpecChanged()
+    {
+        _fixture.WriteSpec();
+        WritePassingVerdict(_fixture.Root, _fixture.SpecPath, "TREE1", specSha256: "OTHER_SPEC");
+        var output = new StringWriter();
+
+        var exitCode = await new VerificationFixture.Services(treeHash: "TREE1")
+            .Application(_fixture.Store, output)
+            .RunAsync(new CliCommand("verify", SpecPath: _fixture.SpecPath, VerifyAction: "status"), CancellationToken.None);
+
+        using var result = JsonDocument.Parse(output.ToString());
+        Assert.Equal(1, exitCode);
+        Assert.False(result.RootElement.GetProperty("fresh").GetBoolean());
+        Assert.Equal("verdict_for_another_spec", result.RootElement.GetProperty("freshnessReason").GetString());
+    }
+
+    [Fact]
+    public async Task Status_IsNotFreshWhenTreeChanged()
+    {
+        _fixture.WriteSpec();
+        WritePassingVerdict(_fixture.Root, _fixture.SpecPath, "TREE1");
+        var output = new StringWriter();
+
+        var exitCode = await new VerificationFixture.Services(treeHash: "TREE2")
+            .Application(_fixture.Store, output)
+            .RunAsync(new CliCommand("verify", SpecPath: _fixture.SpecPath, VerifyAction: "status"), CancellationToken.None);
+
+        using var result = JsonDocument.Parse(output.ToString());
+        Assert.Equal(1, exitCode);
+        Assert.False(result.RootElement.GetProperty("fresh").GetBoolean());
+        Assert.Equal("tree_changed", result.RootElement.GetProperty("freshnessReason").GetString());
+    }
+
+    private static void WritePassingVerdict(string root, string specPath, string treeHash, string? specSha256 = null)
+    {
+        var outputDirectory = Path.Combine(root, VerificationApplication.OutputRelativePath);
+        Directory.CreateDirectory(outputDirectory);
+        specSha256 ??= Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(specPath)));
+        File.WriteAllText(
+            Path.Combine(outputDirectory, "verdict.json"),
+            JsonSerializer.Serialize(new
+            {
+                status = "pass",
+                specSha256,
+                startedUtc = DateTimeOffset.UtcNow,
+                provenance = new { treeHash },
+            }));
+    }
+
+    [Fact]
     public void Parser_VerifyHookStopEntryPointRemainsStable()
     {
         var parsed = CliCommandParser.TryParse(["verify", "hook", "stop", "--review"], out var command, out var error);

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "gates": [
+    {
+      "id": "build",
+      "run": "dotnet build Sample.slnx -c Release"
+    },
+    {
+      "id": "tests",
+      "run": "dotnet test Sample.slnx -c Release --no-build"
+    }
+  ],
+  "scenarios": []
+}
