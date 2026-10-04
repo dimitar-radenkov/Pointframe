@@ -132,7 +132,9 @@ function Get-TrackedCached
     {
         try
         {
-            $out = & git -C $RepoRoot ls-files 2>$null
+            # New, not-ignored files count too: CI sees them as tracked once they are committed, so a
+            # local check that skipped them passed while CI failed (lessons.md, File map check).
+            $out = & git -C $RepoRoot ls-files --cached --others --exclude-standard 2>$null
             $script:trackedCache = if ($LASTEXITCODE -eq 0) { @($out | Where-Object { $_ }) } else { @() }
         }
         catch

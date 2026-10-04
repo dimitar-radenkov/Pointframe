@@ -53,13 +53,32 @@ internal sealed class CliApplication
                 return 0;
             }
 
+            if (string.Equals(command.Name, "verify", StringComparison.Ordinal))
+            {
+                using var httpClient = new HttpClient();
+                var installer = new McpPackageInstaller(new GitHubMcpPackageSource(httpClient), McpInstallRoot());
+                var verifyApplication = new VerificationApplication(
+                    new VerificationServices(
+                        new McpStdioToolClientFactory(),
+                        () => installer.GetCurrent()?.ExecutablePath,
+                        new ShellCommandRunner(),
+                        new GitWorkingTreeReader(),
+                        VerificationStore.Default,
+                        new ConsoleConfirmation(standardError),
+                        new ClaudeCodeExaminer(ClaudeCodeExaminer.ResolveDefaultExecutable),
+                        VerifierVersion: GetVersion(),
+                        Reviewer: new ClaudeCodeReviewer(ClaudeCodeExaminer.ResolveDefaultExecutable),
+                        HookInput: Console.IsInputRedirected ? Console.In : null,
+                        Approver: new ClaudeCodeApprover(ClaudeCodeExaminer.ResolveDefaultExecutable)),
+                    standardOutput,
+                    standardError);
+                return await verifyApplication.RunAsync(command, cancellationToken);
+            }
+
             if (string.Equals(command.Name, "mcp", StringComparison.Ordinal))
             {
                 using var httpClient = new HttpClient();
-                var installRoot = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "Programs",
-                    "Pointframe.Mcp");
+                var installRoot = McpInstallRoot();
                 var configurationPath = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                     "Code",
@@ -216,6 +235,11 @@ internal sealed class CliApplication
         await _standardOutput.WriteLineAsync(JsonSerializer.Serialize(response));
         return stopResult.Success ? 0 : 1;
     }
+
+    private static string McpInstallRoot() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Programs",
+        "Pointframe.Mcp");
 
     private static string GetVersion()
     {

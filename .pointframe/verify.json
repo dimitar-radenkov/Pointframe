@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "app": {
+    "id": "fixture",
+    "executable": "Pointframe.DesktopTestFixture/bin/Release/net10.0-windows10.0.18362.0/Pointframe.DesktopTestFixture.exe"
+  },
+  "gates": [
+    { "id": "build", "run": "dotnet build Pointframe.Tests/Pointframe.Tests.csproj --configuration Release --nologo -v q" },
+    { "id": "fixture", "run": "dotnet build Pointframe.DesktopTestFixture/Pointframe.DesktopTestFixture.csproj --configuration Release --nologo -v q" },
+    { "id": "format", "run": "dotnet format Pointframe/Pointframe.csproj --verify-no-changes --no-restore" },
+    { "id": "tests", "run": "dotnet test Pointframe.Tests/Pointframe.Tests.csproj --configuration Release --no-build --nologo --filter Category!=Integration", "timeoutMinutes": 30 },
+    { "id": "kb", "run": "pwsh -NoProfile -NonInteractive -File scripts/kb.ps1 check -NoFix" }
+  ],
+  "scenarios": [
+    {
+      "id": "fixture-text-entry",
+      "criteria": ["The fixture's text box shows the text that was entered."],
+      "steps": [
+        { "enterText": { "automationId": "textBox", "text": "hello from verify run" } },
+        { "check": { "kind": "textEquals", "automationId": "textBox", "expected": "hello from verify run", "criterion": "C1" } },
+        { "check": { "kind": "textEquals", "automationId": "textBox", "expected": "something else", "expectFailure": true, "timeoutSeconds": 1 } }
+      ]
+    }
+  ]
+}

@@ -4,7 +4,7 @@ namespace Pointframe.Cli;
 
 internal static class CliCommandParser
 {
-    internal const string Usage = "Usage: Pointframe.Cli.exe displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | mcp install|status|doctor --client vscode [--dry-run] | --help | --version";
+    internal const string Usage = "Usage: Pointframe.Cli.exe displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | mcp install|status|doctor --client vscode [--dry-run] | verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios] | verify status|trust [--spec <file>] [--revoke] | verify task start <task-file> [--id <id>] [--replace] | verify hook stop [--review] [--max-blocks <n>] | --help | --version";
 
     internal const string HelpText = """
         Pointframe CLI - standalone screen capture, OCR, and recording automation.
@@ -20,6 +20,11 @@ internal static class CliCommandParser
           Pointframe.Cli.exe mcp install --client vscode [--dry-run]
           Pointframe.Cli.exe mcp status --client vscode
           Pointframe.Cli.exe mcp doctor --client vscode
+          Pointframe.Cli.exe verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios]
+          Pointframe.Cli.exe verify status [--spec <file>]
+          Pointframe.Cli.exe verify trust [--spec <file>] [--revoke]
+          Pointframe.Cli.exe verify task start <task-file> [--spec <file>] [--mcp <file>] [--id <id>] [--replace]
+          Pointframe.Cli.exe verify hook stop [--spec <file>] [--mcp <file>] [--review] [--max-blocks <n>]
           Pointframe.Cli.exe --help
           Pointframe.Cli.exe --version
 
@@ -32,6 +37,11 @@ internal static class CliCommandParser
           ocr-window      Capture a window and extract on-screen text via OCR.
           record          Record one monitor to an MP4 for a fixed duration, then exit with a JSON summary.
           mcp             Install, configure, inspect, or diagnose the Pointframe MCP server.
+          verify          Run a project's verification spec (gates, then desktop scenarios) and write a signed
+                          verdict to artifacts\pointframe-verify\verdict.json; report whether the last verdict
+                          still matches the working tree (status); approve the spec's gate commands (trust);
+                          have an examiner agent freeze a task's criteria before work starts (task start);
+                          or, as an agent's Stop hook, refuse "done" until the verdict passes (hook stop).
 
         Options:
           -m, --monitor <name>              Exact Windows device name (see 'displays' for exact values), e.g. \\.\DISPLAY1
@@ -45,6 +55,17 @@ internal static class CliCommandParser
                                             under %LOCALAPPDATA%\Pointframe when omitted.
               --client <name>               MCP client to configure. The first supported client is vscode.
               --dry-run                     Validate and report MCP installation changes without writing them.
+              --spec <file>                 verify: the verification spec (default .pointframe\verify.json)
+              --mcp <file>                  verify: the Pointframe.Mcp.exe to drive the app with (default
+                                            POINTFRAME_MCP_EXECUTABLE, then the CLI-installed server)
+              --scenario <id>               verify: run one scenario only; the verdict is then "partial"
+              --task <id>                   verify run: also run the frozen criteria of this task
+              --only <gates|scenarios>      verify run: run only the gates or only the scenarios ("partial")
+              --revoke                      verify trust: withdraw the approval of the spec's gate commands
+              --id <id>                     verify task start: the task id (default: the task file's name)
+              --replace                     verify task start: replace a frozen task; needs a person's approval
+              --review                      verify hook stop: after a pass, have a reviewer agent flag the diff
+              --max-blocks <n>              verify hook stop: let the agent stop after n blocked attempts (default 5)
           -h, --help                        Show this help text and exit
           -v, --version                     Show the CLI version and exit
 
@@ -146,6 +167,11 @@ internal static class CliCommandParser
             return TryParseMcp(args, out command, out error);
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "verify", StringComparison.OrdinalIgnoreCase))
+        {
+            return TryParseVerify(args, out command, out error);
+        }
+
         command = default!;
         error = "Unknown or incomplete command.";
         return false;
@@ -215,6 +241,139 @@ internal static class CliCommandParser
         }
 
         command = new CliCommand("mcp", McpAction: action, McpClient: client, DryRun: dryRun);
+        error = null;
+        return true;
+    }
+
+    private static bool TryParseVerify(string[] args, out CliCommand command, out string? error)
+    {
+        command = default!;
+        var action = args.Length >= 2 ? args[1].ToLowerInvariant() : null;
+        string? taskFile = null;
+        var index = 2;
+        if (action == "task")
+        {
+            if (args.Length < 4 || !string.Equals(args[2], "start", StringComparison.OrdinalIgnoreCase) || args[3].StartsWith("--", StringComparison.Ordinal))
+            {
+                error = "The verify task command requires: task start <task-file>.";
+                return false;
+            }
+
+            action = "task-start";
+            taskFile = args[3];
+            index = 4;
+        }
+        else if (action == "hook")
+        {
+            if (args.Length < 3 || !string.Equals(args[2], "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                error = "The verify hook command requires: hook stop.";
+                return false;
+            }
+
+            action = "hook-stop";
+            index = 3;
+        }
+
+        string[] allowed = action switch
+        {
+            "run" => ["--spec", "--mcp", "--scenario", "--task", "--only"],
+            "status" => ["--spec"],
+            "trust" => ["--spec", "--revoke"],
+            "task-start" => ["--spec", "--mcp", "--id", "--replace"],
+            "hook-stop" => ["--spec", "--mcp", "--review", "--max-blocks"],
+            _ => [],
+        };
+        if (allowed.Length == 0)
+        {
+            error = "The verify command requires an action: run, status, trust, task start, or hook stop.";
+            return false;
+        }
+
+        string? specPath = null;
+        string? mcpPath = null;
+        string? scenarioId = null;
+        string? taskId = null;
+        string? only = null;
+        var revoke = false;
+        var replace = false;
+        var review = false;
+        int? maxBlocks = null;
+        while (index < args.Length)
+        {
+            var flag = args[index].ToLowerInvariant();
+            if (!allowed.Contains(flag))
+            {
+                error = $"Unrecognized verify {args[1].ToLowerInvariant()} option '{args[index]}'.";
+                return false;
+            }
+
+            if (flag is "--revoke" or "--replace" or "--review")
+            {
+                revoke |= flag == "--revoke";
+                replace |= flag == "--replace";
+                review |= flag == "--review";
+                index++;
+                continue;
+            }
+
+            if (index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
+            {
+                error = $"The verify option {flag} requires a value.";
+                return false;
+            }
+
+            var value = args[index + 1];
+            switch (flag)
+            {
+                case "--spec":
+                    specPath = value;
+                    break;
+                case "--mcp":
+                    mcpPath = value;
+                    break;
+                case "--scenario":
+                    scenarioId = value;
+                    break;
+                case "--only":
+                    only = value.ToLowerInvariant();
+                    if (only is not ("gates" or "scenarios"))
+                    {
+                        error = "The verify option --only takes gates or scenarios.";
+                        return false;
+                    }
+
+                    break;
+                case "--max-blocks":
+                    if (!int.TryParse(value, out var blocks) || blocks < 1 || blocks > 50)
+                    {
+                        error = "The verify option --max-blocks takes a whole number from 1 through 50.";
+                        return false;
+                    }
+
+                    maxBlocks = blocks;
+                    break;
+                default:
+                    taskId = value;
+                    break;
+            }
+
+            index += 2;
+        }
+
+        command = new CliCommand(
+            "verify",
+            SpecPath: specPath,
+            McpExecutablePath: mcpPath,
+            ScenarioId: scenarioId,
+            VerifyAction: action,
+            TaskId: taskId,
+            TaskFile: taskFile,
+            Only: only,
+            Revoke: revoke,
+            Replace: replace,
+            Review: review,
+            MaxBlocks: maxBlocks);
         error = null;
         return true;
     }

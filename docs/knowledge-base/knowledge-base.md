@@ -82,7 +82,7 @@ Generated from the area files under `docs/knowledge-base/features/`. Each featur
 - [Settings](features/settings.md): F-29 Settings window; F-30 Custom global hotkeys; F-31 Light and dark theme
 - [Updates and About](features/updates.md): F-32 Update check and install; F-33 About window
 - [Telemetry](features/telemetry.md): F-34 App lifecycle and usage telemetry
-- [CLI and MCP](features/cli-mcp.md): F-35 CLI: capture/OCR/recording plus managed MCP install, status, and doctor for VS Code; F-36 MCP capture, OCR, recording, and library tools; F-37 MCP desktop testing tools
+- [CLI and MCP](features/cli-mcp.md): F-35 CLI: capture/OCR/recording plus managed MCP install, status, and doctor for VS Code; F-36 MCP capture, OCR, recording, and library tools; F-37 MCP desktop testing tools; F-39 CLI: spec-driven verification (`verify run`, `status`, `trust`, `task start`, `hook stop`): gates, desktop scenarios, frozen task criteria
 
 <!-- /features -->
 
@@ -149,7 +149,8 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 
 | Path | What lives here | Read first |
 |---|---|---|
-| `Pointframe.Engine/**`, `Pointframe.Cli/**`, `Pointframe.Mcp/**`, `Pointframe.DesktopTestFixture/**` | WPF-free capture, recording, OCR, and desktop automation engine; the CLI and MCP hosts; the WinForms fixture the desktop tools drive | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
+| `Pointframe.Engine/**`, `Pointframe.Cli/**`, `Pointframe.Mcp/**`, `Pointframe.DesktopTestFixture/**` | WPF-free capture, recording, OCR, and desktop automation engine; the CLI and MCP hosts; the WinForms fixture the desktop tools drive | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation), [Spec-driven verification runs](features/cli-mcp.md#spec-driven-verification-runs) |
+| `.pointframe/**` | Pointframe's own verification spec for `verify run`: the gates of `scripts/verify.ps1` plus a fixture scenario | [Spec-driven verification runs](features/cli-mcp.md#spec-driven-verification-runs) |
 | `Pointframe.Mcp/Resources/**`, `Pointframe.Mcp/Tools/**` | Tool methods and the command list resource; a new tool also updates the contract test sets, `test-mcp-stdio.ps1`, and both READMEs | [MCP command list](features/cli-mcp.md#the-mcp-command-list-resource-must-name-every-registered-tool) |
 | `Pointframe.Engine/Library/**`, `Pointframe.Data/**` | Capture catalog, import and index worker, EF Core context, repositories, migrations | [Capture library](features/library.md#capture-library-and-data-layer) |
 | `Pointframe.Data/DependencyInjection.cs`, `Pointframe.Data/Services/**` | Data service registration and the startup migration | [App bootstrap](#app-bootstrap-di-and-messaging) |
@@ -230,6 +231,9 @@ A decision records why a choice was made over the obvious alternative, so nobody
 - [D-004 Native libraries ship loose and the installer packages them](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them)
 - [D-005 The speech model is delivered by both the installer and the app](features/transcription.md#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app)
 - [D-006 Cross-cutting knowledge base plus one file per feature area](decisions.md#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area)
+- [D-007 `verify run` drives the MCP server instead of sharing an Engine service](features/cli-mcp.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service)
+- [D-008 Verify approvals need a person at a terminal and live outside the repository](features/cli-mcp.md#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository) (superseded)
+- [D-009 An approver agent behind fixed rules approves verify commands](features/cli-mcp.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands)
 
 <!-- /decisions -->
 

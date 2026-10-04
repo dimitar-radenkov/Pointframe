@@ -13,4 +13,15 @@ internal sealed record CliCommand(
     string? OutputPath = null,
     string? McpAction = null,
     string? McpClient = null,
-    bool DryRun = false);
+    bool DryRun = false,
+    string? SpecPath = null,
+    string? McpExecutablePath = null,
+    string? ScenarioId = null,
+    string? VerifyAction = null,
+    string? TaskId = null,
+    string? TaskFile = null,
+    string? Only = null,
+    bool Revoke = false,
+    bool Replace = false,
+    bool Review = false,
+    int? MaxBlocks = null);

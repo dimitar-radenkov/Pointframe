@@ -1090,3 +1090,101 @@ appear. `ImageKeepsTheTargetsStackingAndNeverShowsAnythingElse` covers the compo
 
 Evidence of one window must come from that window, not from the screen at its position. Unit tests with
 fake bounds cannot show this; look at one real screenshot taken after a relaunch.
+
+## A named Mutex cannot guard work that awaits
+
+### Problem
+
+The first draft of `verify run` took a named `Mutex` so that only one run drives the desktop at a time,
+and released it in a `finally` after the scenarios ran. Found in review before it shipped: the release
+would have thrown, and the lock test would have passed for the wrong reason.
+
+### Root cause
+
+A `Mutex` belongs to the thread that acquired it. After an `await`, the `finally` can run on another
+thread pool thread, and `ReleaseMutex` there throws `ApplicationException`. The owning thread can also
+acquire the same mutex again, so a test that holds it on the test thread and then calls the code under
+test on that thread sees the lock as free.
+
+### What fixed it
+
+`VerificationApplication` uses a named `Semaphore(1, 1, name)`: no thread affinity, and Windows destroys it
+when the last process holding a handle exits, so a crashed run does not leave the desktop locked.
+`VerifyRun_DesktopAlreadyInUse_ExitsOne` holds the semaphore and expects `desktop_busy`.
+
+### Takeaway
+
+Use a named `Semaphore` for a cross-process lock that is held across `await`s. A lock test must hold the
+lock in a way the code under test cannot re-enter.
+
+## A stdio client must drain the MCP server's stderr
+
+### Problem
+
+`verify run` starts `Pointframe.Mcp.exe` and reads JSON-RPC from its stdout. The server logs every
+request at Debug level to stderr. A client that redirects stderr but reads it only at exit stops the
+server as soon as the pipe buffer fills: the server blocks on a log write, and the client waits forever
+for a response. Found while writing the client, before it shipped.
+
+### Root cause
+
+`Pointframe.Mcp/Program.cs` sets `LogToStandardErrorThreshold = LogLevel.Trace` and the minimum level to
+Debug, so stderr volume grows with every tool call. A redirected pipe has a small fixed buffer.
+
+### What fixed it
+
+`McpStdioToolClient` reads stderr continuously (`BeginErrorReadLine`) and keeps only the last 40 lines,
+which it puts into the error when the server exits mid-request.
+
+### Takeaway
+
+When you redirect a child process's stderr, read it concurrently, or do not redirect it. Keep a short tail
+for diagnostics instead of the whole log.
+
+
+## Closing an app through its own UI returns before the process exits
+
+### Problem
+
+The examiner's scenario for "the checkbox survives two restarts" invoked the app's Close button and then
+`desktop_restart_app`, twice. The first restart worked; the second was refused with `TargetStillRunning`,
+so the second criterion was never reached and the fail-before result was weaker than it looked.
+
+### Root cause
+
+`desktop_invoke` on a Close button completes when the click is delivered, not when the process exits.
+`desktop_restart_app` refuses while the target still runs. Whether a restart works depends on how fast
+the app shuts down, so the same scenario passes or fails by timing.
+
+### What fixed it
+
+`DesktopScenarioRunner` retries a `restart` step on `TargetStillRunning` every poll interval for up to
+10 seconds. `RunAsync_RestartWhileTheClosedAppIsStillExiting_WaitsForTheExit` covers it.
+
+### Takeaway
+
+After closing an app through its own UI, wait for the process to exit before relaunching. An agent
+driving the MCP tools by hand needs the same wait.
+
+## A new file passes the File map check locally and fails it in CI
+
+### Problem
+
+`pwsh scripts/verify.ps1` passed locally, but CI's "Knowledge base check" failed on the pull request
+with `tracked file matches no File map row: .pointframe/verify.json`.
+
+### Root cause
+
+`scripts/kb.ps1 check` matches File map rows against tracked files (`git ls-files`). Before the commit,
+the new `.pointframe/verify.json` was untracked, so the local check never saw it. After the commit, CI
+did.
+
+### What fixed it
+
+A File map row for `.pointframe/**` in `docs/knowledge-base/knowledge-base.md`. `kb.ps1` now lists files with
+`git ls-files --cached --others --exclude-standard`, so new, not-ignored files are checked locally too.
+
+### Takeaway
+
+A local check must see what CI will see after the commit: include new, not-ignored files whenever a
+check walks the repository's files.
