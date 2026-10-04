@@ -10,6 +10,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private readonly IMicrophoneDeviceService _microphoneDeviceService;
     private readonly IUserSettingsService _settings;
     private readonly IVideoWriterFactory _writerFactory;
+    private readonly IRawFrameCapture? _frameCapture;
     private IVideoWriter? _writer;
     private RawFrameRecordingPipeline? _pipeline;
     private int _fps;
@@ -25,12 +26,13 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     public bool IsMicrophoneMuted { get; private set; }
     public RecordingEventTrackSummary? EventTrackSummary { get; private set; }
 
-    public ScreenRecordingService(ILogger<ScreenRecordingService> logger, IMicrophoneDeviceService microphoneDeviceService, IUserSettingsService settings, IVideoWriterFactory writerFactory)
+    public ScreenRecordingService(ILogger<ScreenRecordingService> logger, IMicrophoneDeviceService microphoneDeviceService, IUserSettingsService settings, IVideoWriterFactory writerFactory, IRawFrameCapture? frameCapture = null)
     {
         _logger = logger;
         _microphoneDeviceService = microphoneDeviceService;
         _settings = settings;
         _writerFactory = writerFactory;
+        _frameCapture = frameCapture;
     }
 
     public void Start(int x, int y, int width, int height, string outputPath)
@@ -67,7 +69,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _eventTrack.Write("recording.started", new RecordingEventPayload(CaptureX: x, CaptureY: y, CaptureWidth: width, CaptureHeight: height, FramesPerSecond: fps, IsEnabled: IsRecordingMicrophoneEnabled, IsMuted: IsMicrophoneMuted));
             _pipeline = new RawFrameRecordingPipeline(
                 new VideoWriterRawFrameWriter(_writer),
-                new RawFrameRecordingOptions(new PixelBounds(x, y, width, height), fps, () => _redactionSession?.SnapshotPixelBounds() ?? ReadOnlyMemory<PixelBounds>.Empty));
+                new RawFrameRecordingOptions(new PixelBounds(x, y, width, height), fps, () => _redactionSession?.SnapshotPixelBounds() ?? ReadOnlyMemory<PixelBounds>.Empty),
+                _frameCapture);
             IsRecording = true;
             _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps (MP4) to {Path}", width, height, fps, outputPath);
         }

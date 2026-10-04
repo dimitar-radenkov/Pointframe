@@ -470,6 +470,24 @@ If a recording feature temporarily controls a shared OS audio endpoint, treat th
 
 The recording HUD timer can show a longer wall-clock session than the saved MP4 duration, for example a roughly 4-5 second recording producing a file closer to 2 seconds.
 
+## Backpressure tests must synchronize on frame events, not elapsed sleeps
+
+### Problem
+
+Recording statistics tests that used a fixed sleep with a writer slower than capture intermittently logged dropped frames under load.
+
+### Root cause
+
+The recording pipeline has a bounded frame pool. When the writer remains slower than capture long enough to exhaust it, the pipeline correctly counts dropped frames. A fixed wall-clock delay does not guarantee how many frames have reached the writer because thread scheduling and blocking writes vary under load.
+
+### What fixed it
+
+The tests use a blocking writer and a signaling frame capture, then release the writer after observing the second captured frame. This coordinates on the actual queued work while keeping the zero-dropped assertion strict.
+
+### Takeaway
+
+When testing backpressure statistics, synchronize on capture or writer events instead of assuming a fixed sleep corresponds to a stable queue state.
+
 ## Rename migrations must update hardcoded delivery paths in workflows and installer assets together
 
 ### Problem

@@ -67,6 +67,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 - Lesson: Full-screen recording HUDs need a compact default, not the region-recording layout
 - Lesson: ffmpeg microphone capture must use Windows capture-device names compatible with the recording backend
 - Lesson: Recording annotation undo must reconcile output redactions
+- Lesson: Backpressure tests must synchronize on frame events, not elapsed sleeps
 - Lesson: ffmpeg screen-plus-microphone recordings must stop when the video input ends
 - Lesson: Recording HUD microphone toggles must restore the device's original mute state
 - Lesson: Dropped recording frames shorten the final MP4 duration
