@@ -61,6 +61,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         "trust" => TrustAsync(command),
         "task-start" => TaskStartAsync(command, cancellationToken),
         "hook-stop" => new VerificationHook(services, services.HookInput ?? TextReader.Null, standardOutput, standardError).StopAsync(command, cancellationToken),
+        "agent" => AgentAsync(command),
         _ => VerifyAsync(command, cancellationToken),
     };
 
@@ -232,6 +233,37 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         return fresh ? 0 : 1;
     }
 
+    // `verify agent`: which agent plays the examiner, reviewer, and approver, and whether it is installed.
+    // `--use claude|codex` pins one; `--use auto` returns to detection. A custom command is set by editing
+    // agent.json, because its arguments need placeholders a flag cannot carry well.
+    private async Task<int> AgentAsync(CliCommand command)
+    {
+        if (command.UseAgent is { } use)
+        {
+            var path = Path.Combine(services.Store.BaseDirectory, AgentSelection.FileName);
+            if (use == "auto")
+            {
+                File.Delete(path);
+            }
+            else
+            {
+                AgentSelection.Write(services.Store, new AgentSettings(use));
+            }
+        }
+
+        var settings = AgentSelection.Read(services.Store);
+        var (runner, description) = AgentSelection.Create(settings);
+        await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new
+        {
+            schemaVersion = SchemaVersion,
+            selected = settings?.Agent ?? "auto",
+            available = runner is not null,
+            agent = description,
+            settingsPath = Path.Combine(services.Store.BaseDirectory, AgentSelection.FileName),
+        }, VerdictJson));
+        return runner is null ? 1 : 0;
+    }
+
     private async Task<int> TrustAsync(CliCommand command)
     {
         VerificationSpec spec;
@@ -371,7 +403,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             proposal = await services.Examiner.ProposeAsync(
                 new ExaminerRequest(taskText, spec.App.Id, mcpExecutable, policyPath, examinerDirectory, examinerEnvironment), cancellationToken);
         }
-        catch (Exception exception) when (exception is ExaminerException or IOException or System.ComponentModel.Win32Exception)
+        catch (Exception exception) when (exception is AgentException or IOException or System.ComponentModel.Win32Exception)
         {
             return await TaskErrorAsync(taskId, 1, "examiner_failed", exception.Message);
         }

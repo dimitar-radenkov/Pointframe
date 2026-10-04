@@ -246,34 +246,41 @@ public sealed class VerificationHookTests : IDisposable
     }
 
     [Fact]
-    public void ReviewerOutput_FlagsAreParsed()
+    public void ReviewerAnswer_FlagsAreParsed()
     {
-        const string output = """{ "is_error": false, "structured_output": { "summary": "One problem.", "flags": [ { "file": "A.cs", "line": 3, "severity": "high", "message": "Test removed." }, { "file": "B.cs", "severity": "low", "message": "Unused." } ] } }""";
+        using var document = JsonDocument.Parse("""{ "summary": "One problem.", "flags": [ { "file": "A.cs", "line": 3, "severity": "high", "message": "Test removed." }, { "file": "B.cs", "severity": "low", "message": "Unused." } ] }""");
 
-        var review = ClaudeCodeReviewer.ParseOutput(output);
+        var review = AgentReviewer.ParseReview(document.RootElement, "codex");
 
         Assert.Equal("One problem.", review.Summary);
         Assert.Equal(3, review.Flags[0].Line);
         Assert.Null(review.Flags[1].Line);
+        Assert.Equal("codex", review.Reviewer);
     }
 
     [Fact]
-    public void ReviewerOutput_LeftoverMarkupIsCutFromTheSummary()
+    public void ReviewerAnswer_LeftoverMarkupIsCutFromTheSummary()
     {
-        const string output = """{ "structured_output": { "summary": "No flags.</parameter>\n</invoke>\n", "flags": [] } }""";
+        using var document = JsonDocument.Parse("""{ "summary": "No flags.</parameter>\n</invoke>\n", "flags": [] }""");
 
-        Assert.Equal("No flags.", ClaudeCodeReviewer.ParseOutput(output).Summary);
+        Assert.Equal("No flags.", AgentReviewer.ParseReview(document.RootElement, "claude-code").Summary);
     }
 
     [Fact]
-    public void ReviewerArguments_GiveItNoToolsAndNoProjectSettings()
+    public async Task Reviewer_GetsNoMcpServer()
     {
-        var arguments = ClaudeCodeReviewer.Arguments(1m).ToList();
+        var runner = new Mock<IAgentRunner>();
+        AgentRequest? sent = null;
+        using var answer = JsonDocument.Parse("""{ "summary": "Fine.", "flags": [] }""");
+        runner.Setup(item => item.RunAsync(It.IsAny<AgentRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AgentRequest, CancellationToken>((request, _) => sent = request)
+            .ReturnsAsync(answer.RootElement.Clone());
 
-        Assert.Equal(string.Empty, arguments[arguments.IndexOf("--tools") + 1]);
-        Assert.Contains("--strict-mcp-config", arguments);
-        Assert.DoesNotContain("--mcp-config", arguments);
-        Assert.Equal("user", arguments[arguments.IndexOf("--setting-sources") + 1]);
+        await new AgentReviewer(runner.Object).ReviewAsync("task", "diff", "pass", CancellationToken.None);
+
+        Assert.Equal("reviewer", sent!.Role);
+        Assert.Null(sent.McpServer);
+        Assert.Contains("diff", sent.Input, StringComparison.Ordinal);
     }
 
     private async Task<JsonElement> StopAsync(VerificationFixture.Services services, string sessionId, int? maxBlocks = null, bool review = false)

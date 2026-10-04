@@ -375,13 +375,20 @@ public sealed class VerificationRunTests : IDisposable
         Assert.Contains(failingCode, string.Join(" ", failBefore.Problems), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void GitWorkingTree_OwnOutputDoesNotChangeTheHashButOtherFilesDo()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GitWorkingTree_OwnOutputDoesNotChangeTheHashButOtherFilesDo(bool artifactsIgnored)
     {
         var repository = Path.Combine(_fixture.Root, "repo");
         Directory.CreateDirectory(repository);
         Git(repository, "init", "-q");
         File.WriteAllText(Path.Combine(repository, "a.txt"), "one");
+        if (artifactsIgnored)
+        {
+            File.WriteAllText(Path.Combine(repository, ".gitignore"), "artifacts/\n");
+        }
+
         var reader = new GitWorkingTreeReader();
         var before = reader.Read(repository).TreeHash;
 
@@ -394,6 +401,26 @@ public sealed class VerificationRunTests : IDisposable
         Assert.NotNull(before);
         Assert.Equal(before, withOwnOutput);
         Assert.NotEqual(before, withNewFile);
+    }
+
+    [Fact]
+    public void GitWorkingTree_DiffShowsUncommittedAndNewFiles()
+    {
+        var repository = Path.Combine(_fixture.Root, "repo");
+        Directory.CreateDirectory(repository);
+        Git(repository, "init", "-q");
+        File.WriteAllText(Path.Combine(repository, ".gitignore"), "artifacts/\n");
+        File.WriteAllText(Path.Combine(repository, "a.txt"), "one\n");
+        Git(repository, "add", "-A");
+        Git(repository, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "base");
+        File.WriteAllText(Path.Combine(repository, "a.txt"), "changed\n");
+        File.WriteAllText(Path.Combine(repository, "new.txt"), "added\n");
+
+        var diff = new GitWorkingTreeReader().Diff(repository, "HEAD");
+
+        Assert.NotNull(diff);
+        Assert.Contains("+changed", diff, StringComparison.Ordinal);
+        Assert.Contains("new.txt", diff, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -20,7 +20,7 @@ internal sealed class GitWorkingTreeReader : IWorkingTreeReader
 {
     // verify's own output lives in the project; without this, every run would change the hash it is
     // compared against in a project that does not ignore artifacts/, and evidence images would be hashed.
-    private const string OwnOutputPathspec = ":(exclude)artifacts/pointframe-verify";
+    private const string OwnOutputPath = "artifacts/pointframe-verify";
 
     public WorkingTreeState Read(string directory)
     {
@@ -54,8 +54,12 @@ internal sealed class GitWorkingTreeReader : IWorkingTreeReader
                 File.Copy(indexPath, tempIndex);
             }
 
+            // Stage everything, then drop verify's own output from the copy. An exclude pathspec on `git add`
+            // fails outright when that folder is also in .gitignore (as artifacts/ usually is), which made the
+            // hash unknown in exactly the projects that ignore it.
             var environment = new Dictionary<string, string> { ["GIT_INDEX_FILE"] = tempIndex };
-            return Git(directory, environment, "add", "-A", "--", ".", OwnOutputPathspec).ExitCode == 0
+            return Git(directory, environment, "add", "-A").ExitCode == 0
+                && Git(directory, environment, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", OwnOutputPath).ExitCode == 0
                 ? action(environment)
                 : null;
         }

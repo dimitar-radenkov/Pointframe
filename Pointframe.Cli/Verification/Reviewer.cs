@@ -11,13 +11,15 @@ internal interface IReviewer
     Task<Review> ReviewAsync(string taskText, string diff, string verdictSummary, CancellationToken cancellationToken);
 }
 
-// The reviewer reads the task, the diff, and the verdict after a pass, with a fresh context and no tools at
-// all, and flags what checks cannot see: weakened tests, edited gates or hooks, work outside the task, and
+// The reviewer reads the task, the diff, and the verdict after a pass, with a fresh context and no MCP tools,
+// on whichever agent the person chose, and flags what checks cannot see: weakened tests, edited gates or hooks, work outside the task, and
 // criteria met only in form. Its flags go to the person; they never change the verdict.
-internal sealed class ClaudeCodeReviewer(Func<string?> resolveExecutable, decimal maxBudgetUsd = 1m) : IReviewer
+internal sealed class AgentReviewer(IAgentRunner? runner, decimal maxBudgetUsd = 1m) : IReviewer
 {
     internal const int MaxDiffCharacters = 150_000;
 
+    // Strict structured-output form (every object closed, every property required, "line" nullable): Codex
+    // rejects any other schema, and Claude Code accepts this one.
     internal const string OutputSchema = """
         {
           "type": "object",
@@ -29,19 +31,21 @@ internal sealed class ClaudeCodeReviewer(Func<string?> resolveExecutable, decima
                 "type": "object",
                 "properties": {
                   "file": { "type": "string" },
-                  "line": { "type": "integer" },
+                  "line": { "type": ["integer", "null"] },
                   "severity": { "type": "string", "enum": ["high", "medium", "low"] },
                   "message": { "type": "string" }
                 },
-                "required": ["file", "severity", "message"]
+                "required": ["file", "line", "severity", "message"],
+                "additionalProperties": false
               }
             }
           },
-          "required": ["summary", "flags"]
+          "required": ["summary", "flags"],
+          "additionalProperties": false
         }
         """;
 
-    internal const string SystemPrompt = """
+    internal const string Instructions = """
         You review a change that an AI agent made to a Windows desktop app after its verification passed. You did
         not write it. You see the task, the full diff, and the verdict. You have no tools: read and judge.
 
@@ -59,10 +63,11 @@ internal sealed class ClaudeCodeReviewer(Func<string?> resolveExecutable, decima
 
     public async Task<Review> ReviewAsync(string taskText, string diff, string verdictSummary, CancellationToken cancellationToken)
     {
-        var executable = resolveExecutable()
-            ?? throw new ExaminerException("Claude Code was not found, so the review was skipped.");
-        var workDirectory = Path.Combine(Path.GetTempPath(), $"pointframe-reviewer-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(workDirectory);
+        if (runner is null)
+        {
+            throw new AgentException("No agent is available to act as the reviewer, so the review was skipped.");
+        }
+
         var truncated = diff.Length > MaxDiffCharacters;
         var input = $"""
             The task:
@@ -77,28 +82,12 @@ internal sealed class ClaudeCodeReviewer(Func<string?> resolveExecutable, decima
 
             {(truncated ? diff[..MaxDiffCharacters] : diff)}
             """;
-        var (exitCode, output, error) = await ClaudeCodeExaminer.RunClaudeAsync(
-            executable, Arguments(maxBudgetUsd), input, workDirectory, cancellationToken);
-        if (exitCode != 0)
-        {
-            throw new ExaminerException($"The reviewer exited with {exitCode}: {(error.Length > 0 ? error : output).Trim()}");
-        }
-
-        return ParseOutput(output);
+        var workDirectory = Path.Combine(Path.GetTempPath(), $"pointframe-reviewer-{Guid.NewGuid():N}");
+        var answer = await runner.RunAsync(
+            new AgentRequest("reviewer", Instructions, input, OutputSchema, workDirectory, McpServer: null, maxBudgetUsd),
+            cancellationToken);
+        return ParseReview(answer, runner.Name);
     }
-
-    internal static IReadOnlyList<string> Arguments(decimal maxBudgetUsd) =>
-    [
-        "-p",
-        "--output-format", "json",
-        "--json-schema", OutputSchema,
-        "--system-prompt", SystemPrompt,
-        "--strict-mcp-config",
-        "--tools", string.Empty,
-        "--setting-sources", "user",
-        "--no-session-persistence",
-        "--max-budget-usd", maxBudgetUsd.ToString(System.Globalization.CultureInfo.InvariantCulture),
-    ];
 
     // The model sometimes ends the summary with leftover tool-call markup ("</parameter>"); cut it off.
     internal static string CleanSummary(string? summary)
@@ -108,32 +97,20 @@ internal sealed class ClaudeCodeReviewer(Func<string?> resolveExecutable, decima
         return (markup >= 0 ? text[..markup] : text).Trim();
     }
 
-    internal static Review ParseOutput(string output)
+    internal static Review ParseReview(JsonElement review, string reviewer)
     {
         try
         {
-            using var document = JsonDocument.Parse(output);
-            var root = document.RootElement;
-            if (root.TryGetProperty("is_error", out var isError) && isError.ValueKind == JsonValueKind.True)
-            {
-                throw new ExaminerException($"The reviewer reported an error: {(root.TryGetProperty("result", out var message) ? message.ToString() : output)}");
-            }
-
-            if (!root.TryGetProperty("structured_output", out var review) || review.ValueKind != JsonValueKind.Object)
-            {
-                throw new ExaminerException("The reviewer returned no structured output.");
-            }
-
             var flags = review.GetProperty("flags").EnumerateArray().Select(flag => new ReviewFlag(
                 flag.GetProperty("file").GetString() ?? string.Empty,
-                flag.TryGetProperty("line", out var line) && line.TryGetInt32(out var number) ? number : null,
+                flag.TryGetProperty("line", out var line) && line.ValueKind == JsonValueKind.Number && line.TryGetInt32(out var number) ? number : null,
                 flag.GetProperty("severity").GetString() ?? "low",
                 flag.GetProperty("message").GetString() ?? string.Empty)).ToArray();
-            return new Review(CleanSummary(review.GetProperty("summary").GetString()), flags, "claude-code");
+            return new Review(CleanSummary(review.GetProperty("summary").GetString()), flags, reviewer);
         }
-        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException)
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException)
         {
-            throw new ExaminerException($"The reviewer's output is not the expected JSON: {exception.Message}");
+            throw new AgentException($"The reviewer's answer is not the expected JSON: {exception.Message}");
         }
     }
 }

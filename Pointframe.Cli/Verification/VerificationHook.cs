@@ -212,7 +212,7 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
                 ? $"Reviewer: no flags. {review.Summary}"
                 : $"Reviewer: {review.Flags.Count} flag(s), {high} high; look before merging ({path}). {review.Summary}";
         }
-        catch (Exception exception) when (exception is ExaminerException or IOException or System.ComponentModel.Win32Exception)
+        catch (Exception exception) when (exception is AgentException or IOException or System.ComponentModel.Win32Exception)
         {
             return $"Review failed: {exception.Message}";
         }
