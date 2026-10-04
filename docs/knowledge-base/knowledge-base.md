@@ -108,7 +108,8 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 | `CLAUDE.md`, `CONTRIBUTING.md`, `lessons.md`, `docs/**`, `.claude/**`, `.codex/**`, `.agents/skills/kb-*/**`, `scripts/kb.ps1` | Agent and contributor docs, this file, the kb skills and their script, the Claude Code and Codex project hooks, and the generated Codex skill copies | [How to maintain this file](#how-to-maintain-this-file), [D-006](decisions.md#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area) |
 | `docs/cli/**`, `docs/mcp-desktop-testing/**`, `README.md` | CLI and MCP user docs; the DocsSync tests fail when they drift from the code | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
 | `docs/appinsights*` | Kusto queries and the workbook template | [Telemetry](features/telemetry.md#telemetry-pipeline) |
-| `scripts/verify.ps1` | The one local verify command: build, format, unit tests, kb check, and a JSON verdict | [CI, CD, and versioning](#ci-cd-and-versioning) |
+| `scripts/check-workflow-scripts.ps1`, `scripts/tests/workflow-scripts/**` | Parses the PowerShell in workflow `run:` blocks, and the good and bad fixtures its self-test runs | [CI, CD, and versioning](#ci-cd-and-versioning) |
+| `scripts/verify.ps1` | The one local verify command: build, format, unit tests, kb check, workflow script check, and a JSON verdict | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `.github/**`, `winget/**`, `website/**` | Workflows, Dependabot, release drafter, winget manifests, the GitHub Pages site | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `installer/**`, `Pointframe/Properties/**` | Inno Setup script, installer build and smoke scripts, publish profile | [D-004](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them), [Installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list), [D-005](features/transcription.md#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app) |
 | `Directory.Packages.props`, `Pointframe/Pointframe.csproj` | Package versions and app project references; a package that ships a native binary changes the installer file list | [D-004](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them), [Installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list) |
@@ -407,12 +408,12 @@ Identifiers still prefixed `SnippingTool` are pre-rename names kept for compatib
 **Gates a change must pass locally.** One command runs what CI's unit job runs, and a change is ready only when it passes:
 
 ```powershell
-pwsh scripts/verify.ps1                                    # preflight, build, format, tests, kb; exit 0 only when all pass
+pwsh scripts/verify.ps1                                    # preflight, build, format, tests, kb, workflows; exit 0 only when all pass
 pwsh scripts/verify.ps1 -Filter "FullyQualifiedName~Foo"   # narrow tests while iterating; the verdict is "partial"
 pwsh scripts/verify.ps1 -Skip kb,format                    # leave gates out while iterating; also "partial"
 ```
 
-- Gates run in order: preflight (no running process holds the `bin/Release` output), Release build of `Pointframe.Tests`, `dotnet format --verify-no-changes` on the main project, the unit lane (`Category!=Integration`), and `scripts/kb.ps1 check -NoFix`. Tests are skipped when the build fails; the other gates always run, so one pass reports every problem.
+- Gates run in order: preflight (no running process holds the `bin/Release` output), Release build of `Pointframe.Tests`, `dotnet format --verify-no-changes` on the main project, the unit lane (`Category!=Integration`), `scripts/kb.ps1 check -NoFix`, and the workflows gate (`scripts/check-workflow-scripts.ps1`: its `-SelfTest` against `scripts/tests/workflow-scripts/`, then a parse of every `shell: pwsh` or `powershell` `run:` block in `.github/workflows/*.yml` after replacing each `${{ ... }}` with a placeholder; CI runs the same two commands in the "Workflow script check" step). It catches syntax errors only, such as `"$tag:"`; a runtime mistake such as a tolerated native failure with no `exit 0` still needs review. Tests are skipped when the build fails; the other gates always run, so one pass reports every problem.
 - It builds Release, like CI, so the editor's MCP connector holding the Debug output does not block it.
 - It writes verdict.json and one log per gate into the gitignored artifacts/verify folder. The verdict holds each gate's status and failure details (compiler errors, format diffs, failed test names with their assert message, kb errors) and `treeHash`, the git tree of the working tree it verified, so a verdict from before a later edit is detectable as stale.
 - Only `status: pass` (`complete: true`) is a final verdict. `partial` means gates were skipped or tests filtered.
@@ -433,7 +434,7 @@ The format gate covers the main project only. Do not run `dotnet format` on `Poi
 - CD publishes both immutable versioned CLI/MCP assets and stable aliases (`Pointframe.Cli-win-x64.zip`, `Pointframe.Mcp-win-x64.mcpb`, and matching `.sha256` files). Use the aliases for `releases/latest/download` links and Shields.io badges; they prevent release-version changes from breaking those links.
 - Renaming anything in the delivery path (exe name, installer name, package id) touches the workflows, the installer, the winget manifests, and the updater's asset-name expectation together.
 
-**Files.** `.github/workflows/ci.yml`, `.github/workflows/cd.yml`, `.github/workflows/desktop-automation.yml`, `.github/workflows/winget-release.yml`, `scripts/verify.ps1`, `version.json`, `dotnet-tools.json`, `installer/Pointframe.iss`. See [Update flow](features/updates.md#update-flow) and [Telemetry](features/telemetry.md#telemetry-pipeline).
+**Files.** `.github/workflows/ci.yml`, `.github/workflows/cd.yml`, `.github/workflows/desktop-automation.yml`, `.github/workflows/winget-release.yml`, `scripts/verify.ps1`, `scripts/check-workflow-scripts.ps1`, `version.json`, `dotnet-tools.json`, `installer/Pointframe.iss`. See [Update flow](features/updates.md#update-flow) and [Telemetry](features/telemetry.md#telemetry-pipeline).
 
 **Lessons.**
 

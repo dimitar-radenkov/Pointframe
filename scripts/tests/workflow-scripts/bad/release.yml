@@ -1,0 +1,16 @@
+name: Bad release
+on: push
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Check existing release
+        shell: pwsh
+        run: |
+          $tag = 'v${{ github.run_number }}'
+          $errorText = ''
+          throw "Could not check release $tag: $errorText"
+
+      - name: Bash step with the same text is fine
+        shell: bash
+        run: echo "Could not check release $tag: $errorText"
