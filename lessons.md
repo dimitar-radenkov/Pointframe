@@ -1142,6 +1142,29 @@ When you redirect a child process's stderr, read it concurrently, or do not redi
 for diagnostics instead of the whole log.
 
 
+## Writing to a child's stdin throws when the child exits without reading it
+
+### Problem
+
+`AgentRunnerTests.Command_AnswerOnStdout_IsRead` failed in one CI run and passed in another on the same
+commit with `IOException: The pipe is being closed`. The command agent was `cmd /c type {input_file}`: it
+reads its prompt from a file, so it never reads stdin and can exit before the runner writes to it.
+
+### Root cause
+
+`AgentProcess` wrote the prompt to stdin unconditionally. When the child had already exited, the write or
+the close failed and the exception replaced the agent's real answer. Whether the child exits first is a race.
+
+### What fixed it
+
+The stdin write and close in `Pointframe.Cli/Verification/AgentRunners.cs` catch `IOException`; the output
+and exit code decide the answer.
+
+### Takeaway
+
+When stdin is optional for the child, treat a closed stdin pipe as normal, not as a failure. A test that
+passes and fails on the same commit points at process timing.
+
 ## Closing an app through its own UI returns before the process exits
 
 ### Problem
