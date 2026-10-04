@@ -202,6 +202,21 @@ public sealed class VerificationInitTests
     }
 
     [Fact]
+    public async Task RunAsync_ExistingVerifyHookCommandIsPreservedWithoutDuplication()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("package.json", "{ \"scripts\": { \"test\": \"vitest\" } }");
+        const string existingHook = "pointframe verify hook stop --spec .pointframe/custom.json";
+        var settings = $$"""{ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "{{existingHook}}" }] }] } }""";
+        fixture.Write(".claude/settings.json", settings);
+
+        Assert.Equal(0, await fixture.RunAsync(Command(hooks: "claude")));
+
+        Assert.Equal(settings, fixture.Read(".claude/settings.json"));
+        Assert.Equal(1, Count(fixture.Read(".claude/settings.json"), "verify hook stop"));
+    }
+
+    [Fact]
     public async Task RunAsync_ExploreWithMissingExplicitMcpWritesSpecAndWarns()
     {
         using var fixture = new InitFixture();
@@ -310,6 +325,11 @@ public sealed class VerificationInitTests
         Assert.Contains("Keep before.", instructions, StringComparison.Ordinal);
         Assert.Contains("Keep after.", instructions, StringComparison.Ordinal);
         Assert.DoesNotContain("old", instructions, StringComparison.Ordinal);
+        Assert.Contains("Run `pointframe verify run` and check `pointframe verify status` shows pass and fresh before saying the task is done.", instructions, StringComparison.Ordinal);
+        Assert.Contains("Read the failure details and fix the cause.", instructions, StringComparison.Ordinal);
+        Assert.Contains("Never edit `.pointframe/verify.json` or a frozen task to make a check pass.", instructions, StringComparison.Ordinal);
+        Assert.Contains("For desktop work with a task file, `pointframe verify task start <task-file>` freezes its criteria first.", instructions, StringComparison.Ordinal);
+        Assert.DoesNotContain("Run `pointframe verify task start <task-file>` to freeze criteria for a new task.", instructions, StringComparison.Ordinal);
         Assert.Equal(1, Count(instructions, "pointframe-verify:start"));
         Assert.Equal(1, Count(instructions, "pointframe-verify:end"));
     }

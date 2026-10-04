@@ -54,6 +54,7 @@ Rules to keep in every change. The why, the flows, and the recipes are in the kn
 - **Settings.** Read `IUserSettingsService.Current` at the point of use; never cache it in a field. A new setting changes `UserSettings.cs` and `SettingsViewModel.Save()` together. See [Add a user setting](docs/knowledge-base/knowledge-base.md#add-a-user-setting).
 - **Undo.** The undo stack grows only in `AnnotationViewModel.CommitGroup()`; shape handlers track elements only in `Commit`, never drafts. See [Undo groups](docs/knowledge-base/features/annotation.md#undo-groups-are-added-only-on-commit).
 - **DPI.** WPF works in DIPs, screen and GDI in physical pixels, per monitor; `RecordingSessionGeometry.cs` is canonical, and recording width and height are even. See [DIPs and physical pixels](docs/knowledge-base/knowledge-base.md#dips-and-physical-pixels-are-converted-explicitly-per-monitor).
+- **`pointframe verify` is not `scripts/verify.ps1`.** The product feature (F-39 in `docs/knowledge-base/features/cli-mcp.md`) lives in `Pointframe.Cli/Verification/` with tests in `Pointframe.Tests/Cli/`; `pwsh scripts/verify.ps1` is only this repo's done-gate. For manual trials use an installed or copied CLI, never `Pointframe.Cli/bin`.
 - **New annotation tool.** Follow [Add an annotation tool](docs/knowledge-base/features/annotation.md#add-an-annotation-tool); it includes the automation ids and smoke tests.
 
 ## Code Style

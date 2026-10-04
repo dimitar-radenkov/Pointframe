@@ -112,7 +112,7 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 | `.github/**`, `winget/**`, `website/**` | Workflows, Dependabot, release drafter, winget manifests, the GitHub Pages site | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `installer/**`, `Pointframe/Properties/**` | Inno Setup script, installer build and smoke scripts, publish profile | [D-004](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them), [Installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list), [D-005](features/transcription.md#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app) |
 | `Directory.Packages.props`, `Pointframe/Pointframe.csproj` | Package versions and app project references; a package that ships a native binary changes the installer file list | [D-004](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them), [Installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list) |
-| `packaging/**` | CLI and MCP zip packaging, scoop manifest, MCP stdio smoke script | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation), [MCP command list](features/cli-mcp.md#the-mcp-command-list-resource-must-name-every-registered-tool) |
+| `packaging/**` | CLI and MCP zip packaging, MCP stdio smoke script | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation), [MCP command list](features/cli-mcp.md#the-mcp-command-list-resource-must-name-every-registered-tool) |
 
 **WPF app: `Pointframe/`**
 
@@ -236,6 +236,7 @@ A decision records why a choice was made over the obvious alternative, so nobody
 - [D-009 An approver agent behind fixed rules approves verify commands](features/cli-mcp.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands)
 - [D-010 Verify's agent roles run on any agent](features/cli-mcp.md#d-010-verifys-agent-roles-run-on-any-agent)
 - [D-011 Standard commands are approved by policy](features/cli-mcp.md#d-011-standard-commands-are-approved-by-policy)
+- [D-012 Version compatibility](features/cli-mcp.md#d-012-version-compatibility)
 
 <!-- /decisions -->
 
@@ -426,7 +427,7 @@ The format gate covers the main project only. Do not run `dotnet format` on `Poi
 **Installer and packaging.**
 
 - `installer/Pointframe.iss` is the Inno Setup script; `installer/build-installer.ps1` and `installer/test-installer.ps1` build and check it locally. Its ARP `AppPublisher` is the source of truth that the winget manifests must mirror.
-- `winget/` holds the first manifest of each winget package (`DimitarRadenkov.Pointframe`, `DimitarRadenkov.Pointframe.Cli`); `packaging/scoop/` holds the scoop manifest, for the app only. The MCP server is listed in the official MCP Registry, published by CD; see [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation).
+- `winget/` holds the first manifest of each winget package (`DimitarRadenkov.Pointframe`, `DimitarRadenkov.Pointframe.Cli`). The MCP server is listed in the official MCP Registry, published by CD; see [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation).
 - CD publishes both immutable versioned CLI/MCP assets and stable aliases (`Pointframe.Cli-win-x64.zip`, `Pointframe.Mcp-win-x64.mcpb`, and matching `.sha256` files). Use the aliases for `releases/latest/download` links and Shields.io badges; they prevent release-version changes from breaking those links.
 - Renaming anything in the delivery path (exe name, installer name, package id) touches the workflows, the installer, the winget manifests, and the updater's asset-name expectation together.
 

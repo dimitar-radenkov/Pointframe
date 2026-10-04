@@ -466,7 +466,7 @@ internal sealed class VerificationInit(
 
     private void MergeAgents(string rootDirectory, List<string> written, List<string> untouched)
     {
-        const string Section = "Run `pointframe verify run` before saying the task is done. Read the verdict's failure details and fix the cause. Never edit `.pointframe/verify.json` or a frozen task to make a check pass. Run `pointframe verify task start <task-file>` to freeze criteria for a new task.";
+        const string Section = "Run `pointframe verify run` and check `pointframe verify status` shows pass and fresh before saying the task is done. Read the failure details and fix the cause. Never edit `.pointframe/verify.json` or a frozen task to make a check pass. For desktop work with a task file, `pointframe verify task start <task-file>` freezes its criteria first.";
         var path = Path.Combine(rootDirectory, "AGENTS.md");
         var original = fileSystem.FileExists(path) ? fileSystem.ReadAllText(path) : string.Empty;
         var start = original.IndexOf(AgentsStart, StringComparison.Ordinal);

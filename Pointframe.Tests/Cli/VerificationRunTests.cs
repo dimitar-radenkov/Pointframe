@@ -38,6 +38,27 @@ public sealed class VerificationRunTests : IDisposable
     }
 
     [Fact]
+    public async Task Run_UnknownSchemaVersion_RejectsBeforeStartingAnyGate()
+    {
+        var specPath = _fixture.WriteSpecWith(
+            app: null,
+            gates: """[ { "id": "build", "run": "dotnet build" } ]""");
+        File.WriteAllText(specPath, File.ReadAllText(specPath).Replace("\"schemaVersion\": 1", "\"schemaVersion\": 2", StringComparison.Ordinal));
+        var services = new VerificationFixture.Services();
+        var output = new StringWriter();
+
+        var exitCode = await services.Application(_fixture.Store, output).RunAsync(Run(specPath), CancellationToken.None);
+
+        Assert.Equal(2, exitCode);
+        using var verdict = JsonDocument.Parse(output.ToString());
+        Assert.Equal("spec_invalid", verdict.RootElement.GetProperty("errorCode").GetString());
+        Assert.Empty(services.Launches);
+        services.Commands.Verify(
+            item => item.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task Run_AppNotBuilt_ExitsOneAndWritesVerdict()
     {
         var specPath = _fixture.WriteSpec(VerificationFixture.ValidScenario);

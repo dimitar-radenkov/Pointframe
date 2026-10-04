@@ -107,7 +107,7 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
         {
             return await AllowAsync(
                 outputDirectory, state with { Blocks = 0 },
-                $"Pointframe verify still fails after {maxBlocks} blocked attempts; the agent was allowed to stop. {summary}");
+                $"Pointframe verify still fails after {maxBlocks} blocked attempts, so the agent was allowed to stop and this work was NOT verified. Run `pointframe verify status` before trusting a done message. {summary}");
         }
 
         WriteState(outputDirectory, state with { Blocks = blocks });

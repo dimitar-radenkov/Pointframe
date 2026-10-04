@@ -1,0 +1,270 @@
+# Make your agent finish only on a passing check
+
+`pointframe verify` runs your project's own build and test commands and writes a
+verdict. A Stop hook then keeps your coding agent (Claude Code or Codex) working
+until the last verdict is a fresh pass. This page shows how to set it up in your
+own project. The full reference is in the [CLI README](README.md#verify-a-desktop-app-from-a-spec).
+
+## What it does, and what it does not
+
+- It runs the commands in `.pointframe/verify.json`, called gates. For a .NET
+  solution these are `dotnet build` and `dotnet test`. For a Node project they
+  are your `npm` scripts.
+- A pass is tied to the exact files in your working tree. Change a file and the
+  pass is no longer fresh.
+- When the agent tries to stop without a fresh pass, the hook runs the checks. If
+  they fail, it blocks the stop and tells the agent what failed.
+- It does not prove your code is correct. It proves that your own checks pass.
+- It runs on Windows x64. The toolchain your gates call (the .NET SDK, Node, and
+  so on) must already be installed.
+- Desktop scenarios, which drive a running Windows app, are optional and not needed
+  here. See [Advanced](#advanced-desktop-scenarios-and-tasks).
+
+## Install
+
+Use the release ZIP:
+
+1. Download `Pointframe.Cli-<version>-win-x64.zip` and its `.sha256` file from the
+   [latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest).
+2. Check the hash. The two values must match:
+
+   ```powershell
+   (Get-FileHash .\Pointframe.Cli-<version>-win-x64.zip -Algorithm SHA256).Hash
+   Get-Content .\Pointframe.Cli-<version>-win-x64.zip.sha256
+   ```
+
+3. Extract the ZIP, and from that folder run:
+
+   ```powershell
+   .\Pointframe.Cli.exe install
+   ```
+
+   This copies the CLI to `%LOCALAPPDATA%\Programs\Pointframe.Cli` and adds that
+   folder to your user `Path`.
+4. Open a new terminal, and restart your agent so it sees the new `Path`.
+5. Check the install:
+
+   ```powershell
+   pointframe --version
+   where.exe pointframe
+   ```
+
+   `where.exe` should list `%LOCALAPPDATA%\Programs\Pointframe.Cli\pointframe.exe`
+   first.
+
+When the package is available, `winget install DimitarRadenkov.Pointframe.Cli`
+does the same. Scoop is not supported.
+
+## Set up a project
+
+Run this from the project root:
+
+```powershell
+pointframe verify init
+```
+
+By default it configures both agents. You can choose:
+
+```powershell
+pointframe verify init --hooks claude --agents-md
+pointframe verify init --hooks codex
+pointframe verify init --hooks both
+```
+
+`--hooks` takes `claude`, `codex`, `both`, or `none`. `--agents-md` also adds a
+short section to `AGENTS.md` that tells agents to run verification before they
+say they are done.
+
+What init writes:
+
+- `.pointframe/verify.json`: the spec, with the detected gates.
+- `.claude/settings.json` and/or `.codex/hooks.json`: a Stop hook that runs
+  `pointframe verify hook stop --review`. Existing settings are kept.
+- `AGENTS.md`: a marked section, only with `--agents-md`.
+- `.gitignore`: `artifacts/pointframe-verify/` is added when the file exists and
+  does not already cover it.
+
+Init prints one line of JSON with `status`, the files it wrote, the files it left
+alone, the gates, `warnings`, and `nextSteps`. Running it again is safe: the hook
+and the `AGENTS.md` section are not duplicated, and an existing spec is left alone
+unless you pass `--force`. If nothing changed, `status` is `unchanged`.
+
+Commit `.pointframe/verify.json` and the hook files so the whole team gets them.
+
+### Recipe: a .NET solution with tests
+
+With `MyApp.slnx` or `MyApp.sln` in the project root and a test project that
+references xUnit, NUnit, MSTest, or `Microsoft.NET.Test.Sdk`, init writes:
+
+```json
+"gates": [
+  { "id": "build", "run": "dotnet build MyApp.slnx -c Release" },
+  { "id": "tests", "run": "dotnet test MyApp.slnx -c Release --no-build" }
+]
+```
+
+Without a test project, only the `build` gate is written.
+
+### Recipe: Node with an npm test script
+
+With a `package.json` in the root (and no solution file), init writes one gate for
+each of the `build`, `lint`, and `test` scripts that exist:
+
+```json
+"gates": [
+  { "id": "build", "run": "npm run build" },
+  { "id": "lint", "run": "npm run lint" },
+  { "id": "test", "run": "npm test" }
+]
+```
+
+If init finds no gate, it writes nothing and says what is missing.
+
+### Approval of the commands
+
+Gate commands run with your permissions, so the CLI approves them before the first
+run. Standard commands such as `dotnet build`, `dotnet test`, `npm test`, and
+`npm run <script>` are approved automatically by policy, offline. A nonstandard
+command goes to the approver agent. If that agent refuses or is not available, you
+approve it yourself:
+
+```powershell
+pointframe verify trust
+```
+
+It shows the commands and asks you to type `yes`. The details are in
+[Gates](README.md#gates).
+
+## Run and read results
+
+```powershell
+pointframe verify run
+pointframe verify status
+```
+
+`verify run` runs every gate, writes the verdict, and prints it as JSON. Its exit
+code is `0` for `pass` or `partial`, `1` for `fail`, and `2` when the spec or the
+arguments are wrong. Read `status` in the output, not only the exit code.
+
+`verify status` answers one question: is the last verdict a pass for the files as
+they are now? It prints:
+
+- `status`: `pass`, `fail`, `partial`, or `none` when there is no verdict yet.
+- `fresh`: `true` only for a `pass` made on the current files. The exit code is
+  `0` when `fresh` is true and `1` otherwise.
+- `hookCommand`: where `pointframe` resolves to on `PATH`. `hookCommand.ok` should
+  be `true`.
+- `review`: `status` is `none`, `reviewed`, or `failed`.
+
+Files are written under the project folder:
+
+- `artifacts\pointframe-verify\verdict.json`: the last verdict.
+- `artifacts\pointframe-verify\runs\<time>\`: one log per gate.
+- `artifacts\pointframe-verify\review.json`: the reviewer's result, if a review ran.
+
+A failed gate lists compiler errors, failed tests, or the end of its log in
+`details`.
+
+Do not use `--only gates` or `--scenario` when you check completion. A filtered
+run is `partial`, and it is never `fresh`.
+
+## See it work
+
+1. In a test project, add a test that fails on purpose.
+2. Ask your agent for a small change in the code.
+3. When the agent tries to finish, the hook runs the gates and blocks the stop.
+   The agent sees the failing gate and the test errors.
+4. The agent fixes the cause. You can fix the test yourself if you meant it to
+   pass.
+5. The agent finishes again. The hook runs the gates, they pass, and the stop is
+   allowed. `pointframe verify status` now shows `"status": "pass"` and
+   `"fresh": true`.
+
+## Stopped is not verified
+
+The hook blocks a failing stop at most five times in a session (`--max-blocks`
+changes this). After that the agent is allowed to stop, and the message says the
+work was not verified.
+
+The agent is also allowed to stop, with a message that the work was not verified,
+when only a person can fix the problem. These are an untrusted spec, no available
+approver, an invalid spec, a missing MCP server, a busy desktop, or a broken task.
+Blocking would only loop.
+
+So "the agent stopped" does not mean "the work is verified". Before you trust
+"done", run:
+
+```powershell
+pointframe verify status
+```
+
+You want `status` to be `pass` and `fresh` to be `true`. For a project that
+matters, also require a pass in CI.
+
+## Agents
+
+**Claude Code** reads the hook from `.claude/settings.json`. The hook has a
+timeout of 1800 seconds, because Claude Code stops a hook after 30 seconds by
+default.
+
+**Codex** reads the hook from `.codex/hooks.json`. Codex runs project hooks only
+when the project folder and the hook are both trusted, which you do once in Codex.
+Keep `pointframe` on `PATH`: on Windows, Codex skips a hook command written as a
+quoted path followed by arguments. A .NET project in Codex's `workspace-write`
+sandbox also needs `-c sandbox_workspace_write.network_access=true`, or
+`dotnet build` cannot restore packages.
+
+**Other agents** (Cursor, Copilot, and others) have no Stop hook that can hold
+them back. Use `pointframe verify init --agents-md` so their instructions say to
+run `pointframe verify run`, and require a pass in CI.
+
+The `--review` flag in the hook starts a reviewer agent after the first pass on a
+new tree. It flags weakened tests and edits to the spec or hooks, and its flags
+never block. Choose which agent plays the reviewer and the approver:
+
+```powershell
+pointframe verify agent
+pointframe verify agent --use codex
+pointframe verify agent --use claude
+pointframe verify agent --use auto
+```
+
+## Troubleshooting
+
+Init and `verify status` check which command the hook will run. Fix any of these,
+then restart the agent:
+
+- **`pointframe.exe` was not found on PATH.** The hook cannot run, so the agent
+  can stop without a check. Run the install steps above.
+- **The command is not the Pointframe CLI** (`hookCommand.ok` is `false`). Another
+  program named `pointframe` is earlier on `PATH`, for example an old shim. Remove
+  it or move it later on `PATH`.
+- **The version differs from the CLI you ran.** This is a warning only. The hook
+  command stays the same across CLI versions.
+- **The review failed.** `review.json` has `"failed": true` and the error. The
+  checks still passed, but the work was not reviewed. Run `verify status` and read
+  `review.error`.
+- **`spec_untrusted` or `approver_unavailable`.** Run `pointframe verify trust`.
+- **A build gate fails because `Pointframe.Cli.exe` is locked.** Use the installed
+  `pointframe` in the hook, not a build output that your own gates rebuild.
+
+## Remove
+
+To stop verifying a project:
+
+1. Delete the hook entry that runs `verify hook stop` from `.claude/settings.json`
+   and `.codex/hooks.json`.
+2. Delete the `.pointframe/` folder and, if you want, `artifacts/pointframe-verify/`.
+3. Delete the marked section (`<!-- pointframe-verify:start -->` to
+   `<!-- pointframe-verify:end -->`) from `AGENTS.md`.
+
+To uninstall the CLI, delete `%LOCALAPPDATA%\Programs\Pointframe.Cli` and remove
+that folder from your user `Path`.
+
+## Advanced: desktop scenarios and tasks
+
+If your project is a Windows desktop app, the spec can also hold scenarios that
+drive the running app, and `pointframe verify task start` can freeze a task's
+criteria before work begins. These need the Pointframe MCP server and take over the
+mouse and keyboard while they run. See
+[Verify a desktop app from a spec](README.md#verify-a-desktop-app-from-a-spec).

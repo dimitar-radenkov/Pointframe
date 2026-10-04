@@ -7,6 +7,9 @@ recording a whole monitor to MP4. It uses
 `Pointframe.Engine` directly and does not start the Pointframe tray
 application or any WPF window.
 
+To make an agent finish only on a passing check in your own .NET or Node project,
+see [Make your agent finish only on a passing check](verify.md).
+
 ## Requirements
 
 - Windows x64
@@ -254,6 +257,8 @@ missing `ffmpeg.exe`), the command writes a JSON response with
 code `1`.
 
 ## Verify a desktop app from a spec
+
+To adopt verify in another project, start with the [verify guide](verify.md).
 
 `verify run` checks a project against a verification spec that the project keeps
 in git. It runs the spec's gates (build, test, or any command), then launches the

@@ -19,7 +19,6 @@
 !CONTRIBUTING.md
 !SECURITY.md
 !CHANGELOG.md
-!packaging/scoop/README.md
 !docs/knowledge-base/*.md
 !docs/knowledge-base/features/*.md
 !.claude/skills/kb-*/SKILL.md
@@ -28,6 +27,7 @@
 !CLAUDE.md
 !lessons.md
 !docs/developer-guide.md
+!docs/cli/verify.md
 !Pointframe.Mcp/Guides/*.md
 
 # Claude Code per-user settings
