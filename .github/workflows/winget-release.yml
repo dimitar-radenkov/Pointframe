@@ -31,6 +31,7 @@ jobs:
       }}
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       # Both packages push branches to the same fork; one at a time avoids racing the sync.
@@ -53,6 +54,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Download CD release version
+        id: release_version
+        if: github.event_name == 'workflow_run'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP 'release-version'
+          New-Item -ItemType Directory -Path $destination -Force | Out-Null
+          gh run download '${{ github.event.workflow_run.id }}' --name release-version --dir $destination
+          if ($LASTEXITCODE -ne 0) {
+            throw "CD run ${{ github.event.workflow_run.id }} is missing its release-version artifact; cannot submit to winget."
+          }
+          $versionFile = Join-Path $destination 'release-version.txt'
+          if (-not (Test-Path $versionFile)) {
+            throw "CD run ${{ github.event.workflow_run.id }} did not provide release-version.txt; cannot submit to winget."
+          }
+          $display = (Get-Content $versionFile -Raw).Trim()
+          if ([string]::IsNullOrWhiteSpace($display)) {
+            throw "CD run ${{ github.event.workflow_run.id }} provided an empty release version; cannot submit to winget."
+          }
+          "display=$display" >> $env:GITHUB_OUTPUT
+
       - name: Restore tools
         run: dotnet tool restore
 
@@ -60,10 +84,15 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $display = "${{ inputs.version }}"
-          if ([string]::IsNullOrWhiteSpace($display)) {
-            $json = dotnet nbgv get-version --format json | ConvertFrom-Json
-            $display = $json.NuGetPackageVersion
+          if ('${{ github.event_name }}' -eq 'workflow_run') {
+            $display = '${{ steps.release_version.outputs.display }}'
+          }
+          else {
+            $display = "${{ inputs.version }}"
+            if ([string]::IsNullOrWhiteSpace($display)) {
+              $json = dotnet nbgv get-version --format json | ConvertFrom-Json
+              $display = $json.NuGetPackageVersion
+            }
           }
 
           $tag = "${{ inputs.release_tag }}"

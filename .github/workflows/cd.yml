@@ -7,10 +7,14 @@ on:
     branches:
       - master
 
+concurrency:
+  group: cd-publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: windows-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
     permissions:
       contents: write
       id-token: write # GitHub OIDC login to the MCP Registry
@@ -21,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Setup .NET
@@ -48,7 +53,48 @@ jobs:
           $display = $json.NuGetPackageVersion   # e.g. "1.2.5"
           echo "display=$display" >> $env:GITHUB_OUTPUT
 
+      - name: Check existing release
+        id: existing
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v${{ steps.version.outputs.display }}"
+          $releaseJson = gh release view $tag --json isDraft,assets 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            $errorText = $releaseJson -join "`n"
+            if ($errorText -match '(?i)release not found|HTTP 404') {
+              "skip=false" >> $env:GITHUB_OUTPUT
+              exit 0
+            }
+            throw "Could not check release $tag: $errorText"
+          }
+
+          $release = $releaseJson | ConvertFrom-Json
+          $expectedAssets = @(
+            "Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe",
+            "Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip",
+            "Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip.sha256",
+            'Pointframe.Cli-win-x64.zip',
+            'Pointframe.Cli-win-x64.zip.sha256',
+            "Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb",
+            "Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb.sha256",
+            "Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.server.json",
+            'Pointframe.Mcp-win-x64.mcpb',
+            'Pointframe.Mcp-win-x64.mcpb.sha256'
+          )
+          $assetNames = @($release.assets | ForEach-Object { $_.name })
+          $complete = -not $release.isDraft -and @($expectedAssets | Where-Object { $_ -notin $assetNames }).Count -eq 0
+          if ($complete) {
+            Write-Host "Release $tag is already published with all expected assets; skipping build and release steps."
+            "skip=true" >> $env:GITHUB_OUTPUT
+          }
+          else {
+            "skip=false" >> $env:GITHUB_OUTPUT
+          }
+
       - name: Inject Application Insights connection string
+        if: steps.existing.outputs.skip != 'true'
         shell: pwsh
         run: |
           $file = 'Pointframe/appsettings.json'
@@ -57,6 +103,7 @@ jobs:
           $json | ConvertTo-Json -Depth 10 | Set-Content $file
 
       - name: Verify connection string was injected
+        if: steps.existing.outputs.skip != 'true'
         shell: pwsh
         run: |
           $len = ((Get-Content 'Pointframe/appsettings.json' | ConvertFrom-Json).ApplicationInsights.ConnectionString).Length
@@ -64,12 +111,14 @@ jobs:
           Write-Host "Connection string length: $len (secret injected successfully)"
 
       - name: Publish (self-contained single-file)
+        if: steps.existing.outputs.skip != 'true'
         run: >-
           dotnet publish Pointframe/Pointframe.csproj
           /p:PublishProfile=win-x64
           --nologo
 
       - name: Download ffmpeg for MCP package
+        if: steps.existing.outputs.skip != 'true'
         shell: pwsh
         run: |
           $zipPath = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
@@ -83,6 +132,7 @@ jobs:
           "FFMPEG_PATH=$($ffmpeg.FullName)" >> $env:GITHUB_ENV
 
       - name: Build MCP release package
+        if: steps.existing.outputs.skip != 'true'
         shell: pwsh
         run: |
           ./packaging/build-mcp-package.ps1 `
@@ -90,12 +140,14 @@ jobs:
             -FfmpegPath $env:FFMPEG_PATH
 
       - name: Build CLI release package
+        if: steps.existing.outputs.skip != 'true'
         shell: pwsh
         run: |
           ./packaging/build-cli-package.ps1 `
             -Version '${{ steps.version.outputs.display }}'
 
       - name: Create stable CLI and MCP package aliases
+        if: steps.existing.outputs.skip != 'true'
         shell: pwsh
         run: |
           $outputDirectory = 'packaging/output'
@@ -122,7 +174,7 @@ jobs:
       # Store your PFX as a base64 secret: SIGNING_CERT_B64
       # Store the PFX password as:          SIGNING_CERT_PASSWORD
       - name: Sign executable
-        if: ${{ env.SIGNING_CERT_B64 != '' }}
+        if: ${{ steps.existing.outputs.skip != 'true' && env.SIGNING_CERT_B64 != '' }}
         env:
           SIGNING_CERT_B64: ${{ env.SIGNING_CERT_B64 }}
           SIGNING_CERT_PASSWORD: ${{ env.SIGNING_CERT_PASSWORD }}
@@ -142,9 +194,11 @@ jobs:
           }
 
       - name: Install Inno Setup 6
+        if: steps.existing.outputs.skip != 'true'
         run: choco install innosetup --yes --no-progress
 
       - name: Build installer
+        if: steps.existing.outputs.skip != 'true'
         shell: pwsh
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
@@ -155,7 +209,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Sign installer
-        if: ${{ env.SIGNING_CERT_B64 != '' }}
+        if: ${{ steps.existing.outputs.skip != 'true' && env.SIGNING_CERT_B64 != '' }}
         env:
           SIGNING_CERT_B64: ${{ env.SIGNING_CERT_B64 }}
           SIGNING_CERT_PASSWORD: ${{ env.SIGNING_CERT_PASSWORD }}
@@ -175,15 +229,18 @@ jobs:
           }
 
       - name: Upload installer artifact
+        if: steps.existing.outputs.skip != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: Pointframe-${{ steps.version.outputs.display }}-x64-Setup
           path: installer/output/Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe
 
       - name: Create GitHub Release
+        if: steps.existing.outputs.skip != 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.version.outputs.display }}
+          target_commitish: ${{ github.event.workflow_run.head_sha }}
           files: |
             installer/output/Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe
             packaging/output/Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip
@@ -206,7 +263,10 @@ jobs:
       # Runs after the release exists because server.json pins the MCPB release URL and SHA-256.
       # OIDC proves ownership of the io.github.dimitar-radenkov/* namespace; no secret is needed.
       - name: Publish MCP server to the MCP Registry
+        if: ${{ steps.existing.outputs.skip == 'true' || success() }}
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $publisherVersion = 'v1.8.1'
           $publisherArchive = Join-Path $env:RUNNER_TEMP 'mcp-publisher.tar.gz'
@@ -218,9 +278,35 @@ jobs:
           $publisher = Join-Path $env:RUNNER_TEMP 'mcp-publisher.exe'
 
           $serverJson = 'packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.server.json'
+          if ('${{ steps.existing.outputs.skip }}' -eq 'true') {
+            gh release download "v${{ steps.version.outputs.display }}" --pattern '*server.json' --dir packaging/output --clobber
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (-not (Test-Path $serverJson)) { throw "Release server metadata was not found: $serverJson" }
           & $publisher validate $serverJson
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $publisher login github-oidc
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & $publisher publish $serverJson
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $publishOutput = & $publisher publish $serverJson 2>&1
+          $publishExitCode = $LASTEXITCODE
+          $publishOutput | ForEach-Object { Write-Host $_ }
+          if ($publishExitCode -ne 0) {
+            $publishText = $publishOutput -join "`n"
+            if ($publishText -match '(?i)cannot publish duplicate version') {
+              Write-Host '::notice::MCP Registry already has this version; treating the duplicate publish as success.'
+            }
+            else {
+              exit $publishExitCode
+            }
+          }
+
+      - name: Upload release version artifact
+        shell: pwsh
+        run: |
+          '${{ steps.version.outputs.display }}' | Set-Content release-version.txt -NoNewline -Encoding utf8
+
+      - name: Publish release version artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-version
+          path: release-version.txt

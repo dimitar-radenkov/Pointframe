@@ -68,20 +68,30 @@ monitor, a sub-region, or a single window, on-screen text extraction via OCR, an
 whole-monitor MP4 recordings. The Pointframe desktop app, the .NET runtime, and the
 .NET SDK are not required.
 
+Download `Pointframe.Cli-<version>-win-x64.zip` from the
+[latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest),
+extract it, and from that folder run:
+
 ```powershell
-winget install DimitarRadenkov.Pointframe.Cli
-pointframe displays
+.\Pointframe.Cli.exe install
 ```
 
-winget adds a `pointframe` command to `PATH`. Each GitHub Release also includes
-`Pointframe.Cli-<version>-win-x64.zip` for a manual install: extract it and run
-`Pointframe.Cli.exe`.
+This copies the CLI to `%LOCALAPPDATA%\Programs\Pointframe.Cli` and adds it to your
+user `Path`. Open a new terminal, then run `pointframe displays`. The
+[CLI README](docs/cli/README.md#install) and the
+[verify guide](docs/cli/verify.md#install) have the checksum step.
+
+The winget package `DimitarRadenkov.Pointframe.Cli` is awaiting acceptance in
+winget-pkgs. Once `winget search DimitarRadenkov.Pointframe.Cli` finds it,
+`winget install DimitarRadenkov.Pointframe.Cli` replaces the manual steps above.
 
 To make an agent finish only on a passing build and test run in your own project,
-see the [verify guide](docs/cli/verify.md).
+see the [verify guide](docs/cli/verify.md). `verify` gates run headless, including
+in CI.
 
-The CLI requires an interactive Windows desktop session. It cannot capture a user's
-desktop from a Windows service (session 0).
+Capture, OCR, recording, and desktop verification scenarios require an interactive
+Windows desktop session. They cannot capture a user's desktop from a Windows service
+(session 0).
 
 ```powershell
 .\Pointframe.Cli.exe displays
@@ -550,12 +560,6 @@ Open **Settings** from the tray icon to configure:
 - Standalone MCP recording additionally requires `ffmpeg.exe`; the published MCP package builder places it next to `Pointframe.Mcp.exe`
 
 ## Installation
-
-**Via Scoop**
-
-```powershell
-scoop install pointframe
-```
 
 **Via winget (recommended)**
 

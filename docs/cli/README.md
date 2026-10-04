@@ -13,37 +13,36 @@ see [Make your agent finish only on a passing check](verify.md).
 ## Requirements
 
 - Windows x64
-- An interactive, unlocked Windows desktop session
+- An interactive, unlocked Windows desktop session for `capture`, `ocr`,
+  `record`, and desktop verification scenarios. `verify` gates run headless,
+  including in CI; see [the verify guide](verify.md)
 - No .NET runtime or .NET SDK when using the published ZIP
 - `ffmpeg.exe` on `PATH`, set via `POINTFRAME_FFMPEG_PATH`, or bundled next to
   `Pointframe.Cli.exe` — required only for the `record` command
 
-The CLI cannot capture a user's desktop from a Windows service or session 0.
-Run it as the same interactive user who owns the desktop being inspected.
+The desktop commands cannot capture a user's desktop from a Windows service or
+session 0. Run them as the same interactive user who owns the desktop being
+inspected.
 
 ## Install
 
-Install with the Windows Package Manager:
-
-```powershell
-winget install DimitarRadenkov.Pointframe.Cli
-pointframe --version
-```
-
-winget extracts the release ZIP and adds a `pointframe` command to `PATH`; open
-a new terminal after the first install. Update it with
-`winget upgrade DimitarRadenkov.Pointframe.Cli`. This package is the CLI only;
-the desktop app is the separate `DimitarRadenkov.Pointframe` package.
-
-To install manually instead, download `Pointframe.Cli-<version>-win-x64.zip` from the
+Download `Pointframe.Cli-<version>-win-x64.zip` from the
 [latest Pointframe release](https://github.com/dimitar-radenkov/Pointframe/releases/latest)
 and extract it to a directory. The ZIP is self-contained and includes the
 single-file executable and its native dependencies. From the extracted ZIP
 folder, run `.\Pointframe.Cli.exe install` once to copy it to
 `%LOCALAPPDATA%\Programs\Pointframe.Cli` and add that directory to your user
-`Path`. Open a new terminal or restart your agent afterwards. winget users do
-not need this step. Scoop is not a supported install channel. The examples
-below call `.\Pointframe.Cli.exe`; with either install, call `pointframe`.
+`Path`. Open a new terminal or restart your agent afterwards, then check with
+`pointframe --version`. The [verify guide](verify.md#install) lists the checksum
+step in full. Scoop is not a supported install channel. The examples below call
+`.\Pointframe.Cli.exe`; after the install, call `pointframe`.
+
+The winget package `DimitarRadenkov.Pointframe.Cli` is awaiting acceptance in
+winget-pkgs. Once `winget search DimitarRadenkov.Pointframe.Cli` finds it,
+`winget install DimitarRadenkov.Pointframe.Cli` replaces the manual steps above
+(winget adds the `pointframe` command to `PATH` itself) and
+`winget upgrade DimitarRadenkov.Pointframe.Cli` updates it. That package is the CLI
+only; the desktop app is the separate `DimitarRadenkov.Pointframe` package.
 
 For source builds, use:
 
