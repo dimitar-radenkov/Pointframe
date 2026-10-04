@@ -294,6 +294,7 @@ jobs:
             $publishText = $publishOutput -join "`n"
             if ($publishText -match '(?i)cannot publish duplicate version') {
               Write-Host '::notice::MCP Registry already has this version; treating the duplicate publish as success.'
+              exit 0
             }
             else {
               exit $publishExitCode

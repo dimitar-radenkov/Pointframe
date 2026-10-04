@@ -1,5 +1,23 @@
 # Lessons Learned
 
+## A pwsh step fails with the last native exit code unless the script exits 0
+
+### Problem
+
+A manual rerun of CD correctly skipped the build and treated the MCP Registry's `cannot publish duplicate version` as success (it logged the notice), but the step still failed with exit code 1.
+
+### Root cause
+
+GitHub Actions runs `shell: pwsh` steps so that the step's result follows `$LASTEXITCODE` when the script ends. Handling a native command's failure in an `if` does not reset it.
+
+### What fixed it
+
+End the tolerated branch with an explicit `exit 0`.
+
+### Takeaway
+
+Whenever a workflow script deliberately tolerates a failing native command, exit 0 explicitly on that path, and prove it with a real rerun.
+
 ## PowerShell reads "$name:" inside a string as a scoped variable
 
 ### Problem

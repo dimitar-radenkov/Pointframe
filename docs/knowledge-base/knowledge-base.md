@@ -445,3 +445,4 @@ The format gate covers the main project only. Do not run `dotnet format` on `Poi
 - Lesson: CI publish of a self-contained exe needs `<RuntimeIdentifiers>` even with `--runtime win-x64` on the command line
 - Lesson: workflow_run checks out the default branch HEAD, not the commit that triggered it
 - Lesson: PowerShell reads "$name:" inside a string as a scoped variable
+- Lesson: A pwsh step fails with the last native exit code unless the script exits 0
