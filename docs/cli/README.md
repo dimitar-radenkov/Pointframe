@@ -307,8 +307,8 @@ init does not duplicate the hook or the `AGENTS.md` section. The initializer add
 or explored scenario can be created, it reports what is missing and writes nothing. An existing spec
 is left untouched unless `--force` is supplied.
 
-After initialization, run `pointframe verify run`; run `pointframe verify trust` only if the approver
-refuses the detected commands.
+After initialization, run `pointframe verify run`; standard commands are approved by policy offline. Use
+`pointframe verify trust` if the approver refuses nonstandard commands or no approver is available.
 
 A minimal spec:
 
@@ -354,9 +354,10 @@ scenarios are reported `skipped` and not run.
 Gate commands and the app run with your permissions, so a spec runs only after
 what it starts is approved: every gate command and the app's executable,
 arguments, working folder, and isolation. Scenario steps and criteria are not
-commands and need no approval. When the commands are new or changed (including a
-removed gate), `verify run` and `verify task start` approve them in this order,
-so normal work never waits for you:
+commands and need no approval. Approval covers the command text; it does not
+approve or assess what the project's code does when that command runs it. When
+the commands are new or changed (including a removed gate), `verify run` and
+`verify task start` approve them in this order:
 
 1. **Fixed rules, no agent.** The app must be a program inside the project folder,
    not a shell or interpreter (`cmd.exe`, `powershell.exe`, `python.exe`, ...);
@@ -366,7 +367,18 @@ so normal work never waits for you:
    payload (`-EncodedCommand`, `iex`, `base64`), a system change (`reg`,
    `schtasks`, `sc`, `net`, ...), or `$env:` and profile variables. A violation is
    refused at once.
-2. **The approver agent.** A separate run of the configured agent (see
+2. **Policy for standard commands.** These command forms are approved offline,
+   with `provenance.commandsApprovedBy` set to `policy`:
+
+   | Program | Standard form |
+   |---|---|
+   | `dotnet` | `build`, `test`, `format`, or `restore`, an optional relative `.sln`, `.slnx`, `.csproj`, or `.fsproj` path, and the supported configuration, verbosity, build, restore, nologo, format, framework, or filter options |
+   | `npm`, `pnpm`, `yarn` | `<manager> test`, `npm ci`, frozen-lockfile install for pnpm/yarn, or `<manager> run <script>` |
+   | `pwsh`, `powershell` | optional `-NoProfile`/`-NonInteractive`, then `-File <relative-project-script.ps1>` and safe arguments |
+
+   Commands must parse exactly into these forms; shell metacharacters, absolute
+   or parent paths, unknown options, and other command shapes are not standard.
+3. **The approver agent.** A separate run of the configured agent (see
    [Choose the agent](#choose-the-agent-claude-code-codex-or-your-own); up to USD
    0.5 on Claude Code) with no MCP tools and no project settings, started by the CLI, sees only the commands and
    the previously approved ones. It approves ordinary build, test, format, and
@@ -375,16 +387,19 @@ so normal work never waits for you:
    is asked once per change of the commands. The verdict's
    `provenance.commandsApprovedBy` says who approved (`agent:claude-code` or
    `person`).
-3. **A person**, only when the rules or the agent refused:
+4. **A person**, when fixed rules refuse, the agent refuses, or the approver is
+   unavailable:
 
 ```powershell
 pointframe verify trust            # shows the commands and asks you to type yes
 pointframe verify trust --revoke   # withdraws the approval
 ```
 
-Until one of these approves, `verify run` and `verify task start` fail with
-`errorCode` `spec_untrusted` and say why, even with `--only`. Approval is stored
-per project under `%LOCALAPPDATA%\Pointframe\verify`, outside the repository.
+If fixed rules or the agent refuse, `verify run` and `verify task start` fail
+with `errorCode` `spec_untrusted`. If commands are nonstandard and the approver
+has no runner or cannot run, they fail with `approver_unavailable`, including
+the cause and next steps. Both codes are person-only in the Stop hook. Approval
+is stored per project under `%LOCALAPPDATA%\Pointframe\verify`, outside the repository.
 `verify trust` asks at an interactive terminal only, with no flag that skips the
 question. This is a consent check, not a sandbox: the approver agent can be
 wrong, and the fixed rules are its backstop.
@@ -445,7 +460,7 @@ spec file's hash.
 |---|---|---:|
 | `pass` | Every gate and every scenario passed | `0` |
 | `partial` | Everything that ran passed, but `--scenario` or `--only` left something out | `0` |
-| `fail` | A gate or a scenario failed, or the run could not start (`errorCode` says why: `spec_untrusted`, `app_not_found`, `mcp_not_found`, `desktop_busy`) | `1` |
+| `fail` | A gate or a scenario failed, or the run could not start (`errorCode` says why: `spec_untrusted`, `approver_unavailable`, `app_not_found`, `mcp_not_found`, `desktop_busy`) | `1` |
 | `fail` with `errorCode` `spec_invalid`, `scenario_not_found`, `task_not_found`, or `task_invalid` | The spec or the arguments are wrong; no verdict file is written | `2` |
 
 Read `status`, not only the exit code: `partial` exits `0` but is not a final
@@ -525,7 +540,7 @@ When the agent tries to finish, the hook decides:
 | Anything changed | Runs `verify run` (with the active task), then decides on the new verdict |
 | `pass` | Lets the agent stop and tells you, with the reviewer's flags when `--review` is set |
 | A gate, a scenario, or the task fails | Blocks the stop and tells the agent what failed (gate errors, `Expected ..., found ...`) |
-| Only a person can fix it (`spec_untrusted`, `spec_invalid`, `mcp_not_found`, `desktop_busy`, a broken task) | Lets the agent stop and tells you that the work was not verified and why, because blocking would only loop |
+| Only a person can fix it (`spec_untrusted`, `approver_unavailable`, `spec_invalid`, `mcp_not_found`, `desktop_busy`, a broken task) | Lets the agent stop and tells you that the work was not verified and why, because blocking would only loop |
 | The agent was blocked `--max-blocks` times in this session (default 5) | Lets it stop and tells you it still fails |
 
 With `--review`, the first pass on a tree the reviewer has not seen (whether the hook or the agent ran it) is followed by a reviewer agent: a separate run of the configured agent

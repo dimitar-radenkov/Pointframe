@@ -8,7 +8,7 @@ namespace Pointframe.Tests.Cli;
 
 public sealed class VerificationRunTests : IDisposable
 {
-    private const string Gates = """[ { "id": "build", "run": "dotnet build" }, { "id": "tests", "run": "dotnet test" } ]""";
+    private const string Gates = """[ { "id": "build", "run": "dotnet build" }, { "id": "tests", "run": "dotnet test" }, { "id": "extra", "run": "cargo test --workspace" } ]""";
 
     private const string TaskScenarioSteps = """
         [
@@ -115,7 +115,7 @@ public sealed class VerificationRunTests : IDisposable
 
         Assert.Equal(1, exitCode);
         var verdict = _fixture.ReadVerdict();
-        Assert.Equal("spec_untrusted", verdict.GetProperty("errorCode").GetString());
+        Assert.Equal("approver_unavailable", verdict.GetProperty("errorCode").GetString());
         Assert.Contains(verdict.GetProperty("details").EnumerateArray(), line => line.GetString()!.StartsWith("gate build: dotnet build", StringComparison.Ordinal));
         services.Commands.Verify(
             item => item.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
@@ -153,22 +153,23 @@ public sealed class VerificationRunTests : IDisposable
         File.WriteAllText(specPath, File.ReadAllText(specPath).Replace("dotnet test", "dotnet test --no-build", StringComparison.Ordinal));
         Assert.Equal(1, await application.RunAsync(Run(specPath), CancellationToken.None));
         var verdict = _fixture.ReadVerdict();
-        Assert.Equal("spec_untrusted", verdict.GetProperty("errorCode").GetString());
-        Assert.Contains("changed since they were approved", verdict.GetProperty("details")[0].GetString(), StringComparison.Ordinal);
+        Assert.Equal("approver_unavailable", verdict.GetProperty("errorCode").GetString());
+        Assert.Contains("outside the standard set", verdict.GetProperty("details")[1].GetString(), StringComparison.Ordinal);
     }
 
     [Theory]
     [InlineData("[ ]")]
     [InlineData("""[ { "id": "build", "run": "dotnet build" } ]""")]
-    public async Task Run_GatesRemovedAfterApproval_NeedApprovalAgain(string fewerGates)
+    public async Task Run_GatesRemovedAfterApproval_StandardRemainingCommandsUsePolicy(string fewerGates)
     {
         _fixture.WriteSpecWith(VerificationFixture.DefaultApp, Gates, VerificationFixture.ValidScenario);
         var specPath = _fixture.WriteUntrustedSpec(VerificationFixture.DefaultApp, fewerGates.Replace("\"\"", "\"", StringComparison.Ordinal), VerificationFixture.ValidScenario);
 
-        var exitCode = await new VerificationFixture.Services().Application(_fixture.Store, new StringWriter()).RunAsync(Run(specPath), CancellationToken.None);
+        var exitCode = await new VerificationFixture.Services().Application(_fixture.Store, new StringWriter()).RunAsync(Run(specPath) with { Only = "gates" }, CancellationToken.None);
 
-        Assert.Equal(1, exitCode);
-        Assert.Equal("spec_untrusted", _fixture.ReadVerdict().GetProperty("errorCode").GetString());
+        Assert.Equal(0, exitCode);
+        Assert.Equal("policy", _fixture.ReadVerdict().GetProperty("provenance").GetProperty("commandsApprovedBy").GetString());
+        Assert.Equal("policy", _fixture.Store.ReadTrust(_fixture.Root)!.ApprovedBy);
     }
 
     [Fact]
@@ -190,7 +191,7 @@ public sealed class VerificationRunTests : IDisposable
     [Fact]
     public async Task TaskStart_UntrustedSpec_LaunchesNothing()
     {
-        var specPath = _fixture.WriteUntrustedSpec(VerificationFixture.DefaultApp, null, VerificationFixture.ValidScenario);
+        var specPath = _fixture.WriteUntrustedSpec(VerificationFixture.DefaultApp, """[ { "id": "extra", "run": "cargo test --workspace" } ]""", VerificationFixture.ValidScenario);
         _fixture.CreateAppAndMcp();
         var services = new VerificationFixture.Services();
         var output = new StringWriter();
@@ -198,7 +199,7 @@ public sealed class VerificationRunTests : IDisposable
         var exitCode = await services.Application(_fixture.Store, output).RunAsync(TaskStart(specPath, WriteTask("Something.")), CancellationToken.None);
 
         Assert.Equal(1, exitCode);
-        Assert.Contains("spec_untrusted", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("approver_unavailable", output.ToString(), StringComparison.Ordinal);
         services.Examiner.Verify(item => item.ProposeAsync(It.IsAny<ExaminerRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
     [Fact]

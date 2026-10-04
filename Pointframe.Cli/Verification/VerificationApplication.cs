@@ -121,12 +121,14 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
         // The whole spec's commands, not only the ones this run starts: removing or editing a gate, or pointing
         // the app at another program, must be approved again, or emptying the gates would pass unapproved.
-        var (approvedBy, untrusted) = await EnsureTrustedAsync(spec, cancellationToken);
+        var (approvedBy, untrusted, trustErrorCode) = await EnsureTrustedAsync(spec, cancellationToken);
         if (untrusted is not null)
         {
             return await ErrorAsync(
-                context, 1, "spec_untrusted",
-                "The spec's commands (gates and app) run with your permissions and were not approved.",
+                context, 1, trustErrorCode ?? "spec_untrusted",
+                trustErrorCode == "approver_unavailable"
+                    ? "The spec's commands are outside the standard set, and no approver agent was available."
+                    : "The spec's commands (gates and app) run with your permissions and were not approved.",
                 writeFile: true, details: untrusted);
         }
 
@@ -349,9 +351,10 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             return await TaskErrorAsync(taskId, 2, "spec_invalid", "spec.app is required for a task: the examiner explores that app.");
         }
 
-        if ((await EnsureTrustedAsync(spec, cancellationToken)).Untrusted is { } untrusted)
+        var trustResult = await EnsureTrustedAsync(spec, cancellationToken);
+        if (trustResult.Untrusted is { } untrusted)
         {
-            return await TaskErrorAsync(taskId, 1, "spec_untrusted", string.Join(" ", untrusted));
+            return await TaskErrorAsync(taskId, 1, trustResult.ErrorCode ?? "spec_untrusted", string.Join(" ", untrusted));
         }
 
         if (services.Store.ReadTask(spec.RootDirectory, taskId) is not null)
@@ -585,17 +588,14 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             taskId, sha256, snapshot.CreatedUtc, snapshot.TreeHashAtStart, changes.Count > 0, changes, snapshot.RequiredAutomationIds), null);
     }
 
-    // Approval of the spec's commands, in order: an existing approval of exactly these commands; the fixed
-    // rules of CommandPolicy, which refuse without asking anyone; then the approver agent. Its "yes" is stored
-    // like a person's, with its reason, so it is asked once per change of the commands. A refusal from the
-    // rules or the agent is the only case that needs a person (`verify trust`).
-    private async Task<(string? ApprovedBy, IReadOnlyList<string>? Untrusted)> EnsureTrustedAsync(VerificationSpec spec, CancellationToken cancellationToken)
+    // Approval order: exact existing approval; fixed rules; standard command policy; approver agent; person.
+    private async Task<(string? ApprovedBy, IReadOnlyList<string>? Untrusted, string? ErrorCode)> EnsureTrustedAsync(VerificationSpec spec, CancellationToken cancellationToken)
     {
         var commandsSha256 = SpecDigests.CommandsSha256(spec);
         var trust = services.Store.ReadTrust(spec.RootDirectory);
         if (trust?.CommandsSha256 == commandsSha256)
         {
-            return (trust.ApprovedBy, null);
+            return (trust.ApprovedBy, null, null);
         }
 
         var commands = SpecDigests.Commands(spec);
@@ -606,35 +606,49 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
                 .Prepend("The spec's commands break the fixed safety rules, so no agent was asked:")
                 .Concat(commands.Prepend("The commands:"))
                 .Append("Fix the spec, or a person approves it by running 'Pointframe.Cli.exe verify trust' in a terminal.")
-                .ToArray());
+                .ToArray(), "spec_untrusted");
+        }
+
+        if (CommandPolicy.IsStandard(spec))
+        {
+            const string Reason = "Standard verification commands approved by policy.";
+            services.Store.WriteTrust(new SpecTrust(SchemaVersion, spec.RootDirectory, commandsSha256, commands, DateTimeOffset.UtcNow, "policy", Reason));
+            await standardError.WriteLineAsync($"Pointframe verify: the spec's standard commands were approved by policy: {Reason}");
+            return ("policy", null, null);
         }
 
         if (services.Approver is null)
         {
-            return (null, commands
-                .Prepend(trust is null
-                    ? "The spec's commands have not been approved for this project:"
-                    : "The spec's commands changed since they were approved:")
-                .Append("A person approves them by running 'Pointframe.Cli.exe verify trust' in a terminal.")
-                .ToArray());
+            return (null, UnavailableDetails(commands, "No approver agent is configured."), "approver_unavailable");
         }
 
         await standardError.WriteLineAsync("Pointframe verify: the spec's commands are new or changed; the approver agent is reviewing them.");
         var decision = await services.Approver.ReviewAsync(spec.RootDirectory, commands, trust?.Commands ?? [], cancellationToken);
         if (!decision.Approve)
         {
+            if (decision.Unavailable)
+            {
+                return (null, UnavailableDetails(commands, decision.Reason), "approver_unavailable");
+            }
+
             return (null, commands
                 .Prepend($"The approver agent refused the spec's commands: {decision.Reason}")
                 .Concat(decision.Concerns.Select(concern => $"Concern: {concern}"))
                 .Append("Fix the spec, or a person approves it by running 'Pointframe.Cli.exe verify trust' in a terminal.")
-                .ToArray());
+                .ToArray(), "spec_untrusted");
         }
 
         var approvedBy = $"agent:{decision.Approver}";
         services.Store.WriteTrust(new SpecTrust(SchemaVersion, spec.RootDirectory, commandsSha256, commands, DateTimeOffset.UtcNow, approvedBy, decision.Reason));
         await standardError.WriteLineAsync($"Pointframe verify: the approver agent approved the commands: {decision.Reason}");
-        return (approvedBy, null);
+        return (approvedBy, null, null);
     }
+
+    private static IReadOnlyList<string> UnavailableDetails(IReadOnlyList<string> commands, string cause) => commands
+        .Prepend("The spec's commands are outside the standard set and could not be approved automatically.")
+        .Prepend($"Approver unavailable: {cause}")
+        .Append("Use an approver agent with network access, or a person can approve them by running 'Pointframe.Cli.exe verify trust' in a terminal.")
+        .ToArray();
 
     private string SpecPathOf(CliCommand command) => Path.GetFullPath(command.SpecPath ?? VerificationSpecLoader.DefaultSpecRelativePath);
 

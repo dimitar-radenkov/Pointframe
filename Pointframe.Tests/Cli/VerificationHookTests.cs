@@ -8,7 +8,7 @@ namespace Pointframe.Tests.Cli;
 
 public sealed class VerificationHookTests : IDisposable
 {
-    private const string Gates = """[ { "id": "build", "run": "dotnet build" } ]""";
+    private const string Gates = """[ { "id": "build", "run": "dotnet build" }, { "id": "extra", "run": "cargo test --workspace" } ]""";
 
     private readonly VerificationFixture _fixture = new();
 
@@ -98,12 +98,29 @@ public sealed class VerificationHookTests : IDisposable
     public async Task Stop_GatesNotApproved_LetsTheAgentStopAndTellsThePerson()
     {
         _fixture.WriteUntrustedSpec(VerificationFixture.DefaultApp, Gates);
-        var services = new VerificationFixture.Services();
+        var services = new VerificationFixture.Services
+        {
+            Approver = new Mock<ICommandApprover>(),
+        };
+        services.Approver.Setup(item => item.ReviewAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApprovalDecision(false, "Unclear command.", [], "fake"));
 
         var result = await StopAsync(services, "s1");
 
         Assert.False(result.TryGetProperty("decision", out _));
         Assert.Contains("needs you (spec_untrusted)", result.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Stop_ApproverUnavailable_LetsTheAgentStopAndTellsThePerson()
+    {
+        _fixture.WriteUntrustedSpec(VerificationFixture.DefaultApp, Gates);
+
+        var result = await StopAsync(new VerificationFixture.Services(), "s1");
+
+        Assert.False(result.TryGetProperty("decision", out _));
+        Assert.Contains("needs you (approver_unavailable)", result.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
+        Assert.Contains("outside the standard set", result.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]

@@ -235,6 +235,7 @@ A decision records why a choice was made over the obvious alternative, so nobody
 - [D-008 Verify approvals need a person at a terminal and live outside the repository](features/cli-mcp.md#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository) (superseded)
 - [D-009 An approver agent behind fixed rules approves verify commands](features/cli-mcp.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands)
 - [D-010 Verify's agent roles run on any agent](features/cli-mcp.md#d-010-verifys-agent-roles-run-on-any-agent)
+- [D-011 Standard commands are approved by policy](features/cli-mcp.md#d-011-standard-commands-are-approved-by-policy)
 
 <!-- /decisions -->
 
