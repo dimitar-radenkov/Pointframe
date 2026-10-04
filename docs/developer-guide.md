@@ -111,7 +111,7 @@ Pointframe.AutomationTests/        UI automation smoke tests (Smoke/, Support/)
 Pointframe.DesktopTestFixture/     External black-box desktop-test fixture
 Pointframe.Benchmarks/             BenchmarkDotNet projects
 installer/                         Inno Setup script plus build and test scripts
-winget/, packaging/scoop/          Package manifests
+winget/                             Package manifests
 website/                           GitHub Pages site
 .github/workflows/                 CI, CD, desktop automation, winget, CodeQL, pages
 ```

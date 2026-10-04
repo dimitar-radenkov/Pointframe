@@ -61,7 +61,10 @@ public sealed class VerificationHookTests : IDisposable
         Assert.Contains("Expected 'hello', found 'hullo'", reason, StringComparison.Ordinal);
         Assert.Equal("block", second.GetProperty("decision").GetString());
         Assert.False(third.TryGetProperty("decision", out _));
-        Assert.Contains("still fails after 2 blocked attempts", third.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
+        var stoppedMessage = third.GetProperty("systemMessage").GetString()!;
+        Assert.Contains("still fails after 2 blocked attempts", stoppedMessage, StringComparison.Ordinal);
+        Assert.Contains("this work was NOT verified", stoppedMessage, StringComparison.Ordinal);
+        Assert.Contains("pointframe verify status", stoppedMessage, StringComparison.Ordinal);
         Assert.Single(services.Launches);
     }
 

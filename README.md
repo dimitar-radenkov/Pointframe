@@ -77,6 +77,9 @@ winget adds a `pointframe` command to `PATH`. Each GitHub Release also includes
 `Pointframe.Cli-<version>-win-x64.zip` for a manual install: extract it and run
 `Pointframe.Cli.exe`.
 
+To make an agent finish only on a passing build and test run in your own project,
+see the [verify guide](docs/cli/verify.md).
+
 The CLI requires an interactive Windows desktop session. It cannot capture a user's
 desktop from a Windows service (session 0).
 

@@ -196,6 +196,17 @@ public sealed class VerificationTests : IDisposable
         Assert.Equal("review unavailable", result.RootElement.GetProperty("review").GetProperty("error").GetString());
     }
 
+    [Fact]
+    public void Parser_VerifyHookStopEntryPointRemainsStable()
+    {
+        var parsed = CliCommandParser.TryParse(["verify", "hook", "stop", "--review"], out var command, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("hook-stop", command.VerifyAction);
+        Assert.True(command.Review);
+    }
+
     [Theory]
     [InlineData(new[] { "verify" }, "The verify command requires an action: init, run, status, trust, task start, hook stop, or agent.")]
     [InlineData(new[] { "verify", "start" }, "The verify command requires an action: init, run, status, trust, task start, hook stop, or agent.")]
