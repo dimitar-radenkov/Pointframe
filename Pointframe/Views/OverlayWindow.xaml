@@ -573,6 +573,20 @@
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
 
         <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding UploadAndCopyLinkCommand}"
+                ToolTip="Upload capture and copy link"
+                Visibility="{Binding IsShareDestinationConfigured, Converter={StaticResource BoolToVisibility}}"
+                AutomationProperties.AutomationId="OverlayWindow.UploadAndCopyLink">
+          <StackPanel>
+            <TextBlock Text="{Binding ShareButtonIcon}" Style="{StaticResource FluentActionIconText}"/>
+            <TextBlock Text="{Binding ShareButtonLabel}" FontSize="8" Foreground="{DynamicResource SubLabelText}" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"
+                   Visibility="{Binding IsShareDestinationConfigured, Converter={StaticResource BoolToVisibility}}"/>
+
+        <Button Style="{StaticResource ActionBtn}"
           Command="{Binding CopyCommand}" ToolTip="{Binding CopyToolTip}"
           AutomationProperties.AutomationId="OverlayWindow.Copy">
           <StackPanel>
@@ -686,6 +700,17 @@
         </Button>
 
         <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"/>
+
+        <Button Style="{StaticResource ActionBtn}"
+                Command="{Binding UploadAndCopyLinkCommand}"
+                ToolTip="Upload capture and copy link"
+                Visibility="{Binding IsShareDestinationConfigured, Converter={StaticResource BoolToVisibility}}"
+                AutomationProperties.AutomationId="OverlayWindow.CompactUploadAndCopyLink">
+          <TextBlock Text="{Binding ShareButtonIcon}" Style="{StaticResource FluentActionIconText}"/>
+        </Button>
+
+        <Rectangle Width="1" Fill="{DynamicResource DividerColor}" Margin="3,7" VerticalAlignment="Stretch"
+                   Visibility="{Binding IsShareDestinationConfigured, Converter={StaticResource BoolToVisibility}}"/>
 
         <Button Style="{StaticResource ActionBtn}"
           Command="{Binding CopyCommand}" ToolTip="{Binding CopyToolTip}"

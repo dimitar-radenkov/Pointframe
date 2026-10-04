@@ -13,6 +13,7 @@ public partial class OverlayViewModel : AnnotationViewModel
     private readonly IEventAggregator _eventAggregator;
     private readonly ITelemetryService _telemetry;
     private readonly IScreenshotWatermarkService _watermarkService;
+    private readonly IShareService? _shareService;
     private IOverlayBitmapCapture? _bitmapCapture;
 
     public OverlayViewModel(
@@ -24,7 +25,8 @@ public partial class OverlayViewModel : AnnotationViewModel
         IFileSystemService fileSystemService,
         IEventAggregator eventAggregator,
         ITelemetryService telemetry,
-        IScreenshotWatermarkService watermarkService)
+        IScreenshotWatermarkService watermarkService,
+        IShareService? shareService = null)
         : base(geometry, logger, settings, eventAggregator, telemetry)
     {
         _clipboardService = clipboardService;
@@ -34,6 +36,7 @@ public partial class OverlayViewModel : AnnotationViewModel
         _eventAggregator = eventAggregator;
         _telemetry = telemetry;
         _watermarkService = watermarkService;
+        _shareService = shareService;
     }
 
     public enum Phase { Selecting, Annotating }
@@ -54,6 +57,18 @@ public partial class OverlayViewModel : AnnotationViewModel
 
     [ObservableProperty]
     private bool _isTextLassoActive;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShareButtonLabel))]
+    [NotifyPropertyChangedFor(nameof(ShareButtonIcon))]
+    [NotifyCanExecuteChangedFor(nameof(UploadAndCopyLinkCommand))]
+    private bool _isSharing;
+
+    public bool IsShareDestinationConfigured => !string.IsNullOrWhiteSpace(_settings.Current.ShareDestinationUrl);
+
+    public string ShareButtonLabel => IsSharing ? "Uploading…" : "Upload & copy link";
+
+    public string ShareButtonIcon => IsSharing ? "…" : "\uE72A";
 
     public string OverlayCopyHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlayCopyHotkey, _settings.Current.OverlayCopyHotkeyModifiers).DisplayName;
     public string OverlaySaveAsHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlaySaveAsHotkey, _settings.Current.OverlaySaveAsHotkeyModifiers).DisplayName;
@@ -108,6 +123,7 @@ public partial class OverlayViewModel : AnnotationViewModel
     public event Action? CloseRequested;
     public event Action<BitmapSource>? PinRequested;
     public event Action<BitmapSource>? BeautifyRequested;
+    public event Action<string>? ToastRequested;
 
     internal void SetBitmapCapture(IOverlayBitmapCapture bitmapCapture)
     {
@@ -175,6 +191,62 @@ public partial class OverlayViewModel : AnnotationViewModel
         SaveBitmapToPath(ApplyWatermarkForSave(finalBitmap), savePath, "save_as");
         CloseRequested?.Invoke();
     }
+
+    private bool CanUploadAndCopyLink() => IsShareDestinationConfigured && !IsSharing;
+
+    [RelayCommand(CanExecute = nameof(CanUploadAndCopyLink))]
+    private async Task UploadAndCopyLink()
+    {
+        var bitmapCapture = _bitmapCapture;
+        if (bitmapCapture is null)
+        {
+            ToastRequested?.Invoke("Could not upload this capture.");
+            return;
+        }
+
+        IsSharing = true;
+        try
+        {
+            var finalBitmap = ApplyWatermarkForCopy(bitmapCapture.ComposeBitmap());
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(finalBitmap));
+            using var stream = new MemoryStream();
+            encoder.Save(stream);
+
+            var result = _shareService is null
+                ? ShareResult.Failed(ShareFailure.NotConfigured)
+                : await _shareService.UploadAsync(stream.ToArray());
+            if (!result.IsSuccess || result.Link is null)
+            {
+                ToastRequested?.Invoke(GetShareFailureMessage(result));
+                return;
+            }
+
+            _clipboardService.SetText(result.Link);
+            ToastRequested?.Invoke("Link copied to clipboard");
+        }
+        catch (Exception)
+        {
+            _logger.LogWarning("Could not upload capture or copy its link");
+            ToastRequested?.Invoke("Could not upload or copy the link.");
+        }
+        finally
+        {
+            IsSharing = false;
+        }
+    }
+
+    private static string GetShareFailureMessage(ShareResult result) => result.Failure switch
+    {
+        ShareFailure.NotConfigured => "Set a share destination in Settings first.",
+        ShareFailure.InvalidUrl => "The share destination URL is invalid.",
+        ShareFailure.HttpStatus when result.StatusCode.HasValue => $"Upload failed (HTTP {result.StatusCode.Value}).",
+        ShareFailure.Timeout => "Upload timed out.",
+        ShareFailure.Cancelled => "Upload cancelled.",
+        ShareFailure.UnparseableResponse => "The server response did not contain a link.",
+        ShareFailure.LinkNotHttps => "The server returned a link that is not HTTPS.",
+        _ => "Upload failed. Check the destination settings and try again.",
+    };
 
     private BitmapSource ApplyWatermarkForCopy(BitmapSource bitmap)
     {

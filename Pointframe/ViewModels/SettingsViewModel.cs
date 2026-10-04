@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Security.Cryptography;
 using System.Windows.Media;
 using Pointframe.Services;
 
@@ -13,6 +14,7 @@ public partial class SettingsViewModel : ObservableObject
         new(SettingsSection.Capture, "Capture", "Screenshot folders, timing, and the capture shortcut."),
         new(SettingsSection.Recording, "Recording", "Output options, cursor effects, and advanced recording defaults."),
         new(SettingsSection.Annotation, "Annotation", "Default annotation appearance and preview."),
+        new(SettingsSection.Sharing, "Sharing", "Upload captures to your configured destination."),
         new(SettingsSection.Shortcuts, "Shortcuts", "See all capture, recording, and overlay keyboard shortcuts."),
         new(SettingsSection.App, "App", "Appearance, update checks, and reset actions."),
     ];
@@ -116,6 +118,21 @@ public partial class SettingsViewModel : ObservableObject
         _recordingClickRippleEnabled = s.RecordingClickRippleEnabled;
         _recordingCursorHighlightSize = ClampRecordingCursorHighlightSize(s.RecordingCursorHighlightSize);
         _captureDelaySeconds = s.CaptureDelaySeconds;
+        _shareDestinationUrl = s.ShareDestinationUrl ?? string.Empty;
+        _shareFileFieldName = s.ShareFileFieldName ?? string.Empty;
+        _shareResponseLinkPath = s.ShareResponseLinkPath ?? string.Empty;
+        _shareTimeoutSeconds = s.ShareTimeoutSeconds;
+        foreach (var header in s.ShareHeaders ?? [])
+        {
+            try
+            {
+                ShareHeaders.Add(new ShareHeaderEditor(header.Name, ShareHeaderProtection.Unprotect(header), header));
+            }
+            catch (Exception ex) when (ex is FormatException or CryptographicException)
+            {
+                ShareHeaders.Add(new ShareHeaderEditor(header.Name, string.Empty));
+            }
+        }
         _defaultStrokeThickness = s.DefaultStrokeThickness;
         _regionCaptureHotkey = s.RegionCaptureHotkey;
         _regionCaptureHotkeyModifiers = s.RegionCaptureHotkeyModifiers;
@@ -218,6 +235,96 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private int _captureDelaySeconds;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShareValidationMessage))]
+    [NotifyPropertyChangedFor(nameof(IsShareSettingsValid))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    private string _shareDestinationUrl = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShareValidationMessage))]
+    [NotifyPropertyChangedFor(nameof(IsShareSettingsValid))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    private string _shareFileFieldName = "file";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShareValidationMessage))]
+    [NotifyPropertyChangedFor(nameof(IsShareSettingsValid))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    private string _shareResponseLinkPath = "url";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShareValidationMessage))]
+    [NotifyPropertyChangedFor(nameof(IsShareSettingsValid))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    private int _shareTimeoutSeconds = 30;
+
+    public ObservableCollection<ShareHeaderEditor> ShareHeaders { get; } = [];
+
+    public bool IsShareSettingsValid => GetShareValidationMessage() is null;
+
+    public string ShareValidationMessage => GetShareValidationMessage() ?? string.Empty;
+
+    private string? GetShareValidationMessage()
+    {
+        var destination = (ShareDestinationUrl ?? string.Empty).Trim();
+        if (destination.Length > 0)
+        {
+            if (!Uri.TryCreate(destination, UriKind.Absolute, out var uri)
+                || !string.IsNullOrEmpty(uri.UserInfo)
+                || !(uri.Scheme == Uri.UriSchemeHttps || (uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)))
+            {
+                return "Enter an HTTPS URL. HTTP is allowed only for localhost or loopback addresses.";
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(ShareFileFieldName))
+        {
+            return "Enter the multipart file field name.";
+        }
+
+        if (string.IsNullOrWhiteSpace(ShareResponseLinkPath))
+        {
+            return "Enter the JSON path that contains the returned link.";
+        }
+
+        if (ShareTimeoutSeconds is < 1 or > 300)
+        {
+            return "Timeout must be between 1 and 300 seconds.";
+        }
+
+        return null;
+    }
+
+    public sealed partial class ShareHeaderEditor : ObservableObject
+    {
+        private readonly ProtectedShareHeader? _original;
+
+        public ShareHeaderEditor(string name = "", string value = "", ProtectedShareHeader? original = null)
+        {
+            _name = name;
+            _value = value;
+            _original = original;
+        }
+
+        public ProtectedShareHeader ToProtectedModel() =>
+            _original is not null && _original.Name == Name.Trim() && ShareHeaderProtection.Unprotect(_original) == Value
+                ? _original
+                : ShareHeaderProtection.Protect(Name.Trim(), Value);
+
+        [ObservableProperty]
+        private string _name;
+
+        [ObservableProperty]
+        private string _value;
+    }
+
+    [RelayCommand]
+    private void AddShareHeader() => ShareHeaders.Add(new ShareHeaderEditor());
+
+    [RelayCommand]
+    private void RemoveShareHeader(ShareHeaderEditor header) => ShareHeaders.Remove(header);
 
     [ObservableProperty]
     private bool _watermarkEnabled;
@@ -355,6 +462,7 @@ public partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsCaptureSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsRecordingSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsAnnotationSectionSelected))]
+    [NotifyPropertyChangedFor(nameof(IsShareSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsShortcutsSectionSelected))]
     [NotifyPropertyChangedFor(nameof(IsAppSectionSelected))]
     private SettingsSection _selectedSection = SettingsSection.Capture;
@@ -379,6 +487,7 @@ public partial class SettingsViewModel : ObservableObject
     public bool IsCaptureSectionSelected => SelectedSection == SettingsSection.Capture;
     public bool IsRecordingSectionSelected => SelectedSection == SettingsSection.Recording;
     public bool IsAnnotationSectionSelected => SelectedSection == SettingsSection.Annotation;
+    public bool IsShareSectionSelected => SelectedSection == SettingsSection.Sharing;
     public bool IsShortcutsSectionSelected => SelectedSection == SettingsSection.Shortcuts;
     public bool IsAppSectionSelected => SelectedSection == SettingsSection.App;
 
@@ -458,9 +567,15 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsShareSettingsValid))]
     private void Save()
     {
+        OnPropertyChanged(nameof(IsShareSettingsValid));
+        if (!IsShareSettingsValid)
+        {
+            return;
+        }
+
         var clampedRecordingCursorHighlightSize = ClampRecordingCursorHighlightSize(RecordingCursorHighlightSize);
         var currentSettings = _settingsService.Current;
         RecordingCursorHighlightSize = clampedRecordingCursorHighlightSize;
@@ -479,6 +594,11 @@ public partial class SettingsViewModel : ObservableObject
             RecordingClickRippleEnabled = RecordingClickRippleEnabled,
             RecordingCursorHighlightSize = clampedRecordingCursorHighlightSize,
             CaptureDelaySeconds = CaptureDelaySeconds,
+            ShareDestinationUrl = (ShareDestinationUrl ?? string.Empty).Trim(),
+            ShareFileFieldName = (ShareFileFieldName ?? string.Empty).Trim(),
+            ShareHeaders = [.. ShareHeaders.Select(header => header.ToProtectedModel())],
+            ShareResponseLinkPath = (ShareResponseLinkPath ?? string.Empty).Trim(),
+            ShareTimeoutSeconds = ShareTimeoutSeconds,
             HudGapPixels = _hudGapPixels,
             ScreenshotWatermark = BuildWatermark<ScreenshotWatermarkSettings>(),
             VideoWatermark = BuildWatermark<VideoWatermarkSettings>(),
@@ -641,6 +761,9 @@ public partial class SettingsViewModel : ObservableObject
             case SettingsSection.Annotation:
                 ResetAnnotationSection(defaults);
                 break;
+            case SettingsSection.Sharing:
+                ResetShareSettings(defaults);
+                break;
             case SettingsSection.App:
                 ResetAppSection(defaults);
                 break;
@@ -662,6 +785,7 @@ public partial class SettingsViewModel : ObservableObject
         _hudGapPixels = defaults.HudGapPixels;
         _lastAutoUpdateCheckUtc = defaults.LastAutoUpdateCheckUtc;
         ResetCaptureSection(defaults);
+        ResetShareSettings(defaults);
         ResetRecordingSection(defaults);
         ResetAnnotationSection(defaults);
         ResetShortcutsSection(defaults);
@@ -708,6 +832,15 @@ public partial class SettingsViewModel : ObservableObject
         DefaultAnnotationColor = ParseAnnotationColorOrFallback(defaults.DefaultAnnotationColor);
         DefaultStrokeThickness = defaults.DefaultStrokeThickness;
         ResetStylePresets(defaults.StylePresets);
+    }
+
+    private void ResetShareSettings(UserSettings defaults)
+    {
+        ShareDestinationUrl = defaults.ShareDestinationUrl;
+        ShareFileFieldName = defaults.ShareFileFieldName;
+        ShareResponseLinkPath = defaults.ShareResponseLinkPath;
+        ShareTimeoutSeconds = defaults.ShareTimeoutSeconds;
+        ShareHeaders.Clear();
     }
 
     private void ResetShortcutsSection(UserSettings defaults)

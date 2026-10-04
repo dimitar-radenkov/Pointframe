@@ -11,6 +11,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 | F-29 | Settings window | Tray "Settings" | `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml.cs` | `settings_opened`, `settings_saved`, `settings_canceled`, `settings_section_changed`, `settings_section_reset`, `settings_defaults_restored` | `Pointframe.Tests/ViewModels/SettingsViewModelTests.cs`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs`, `Pointframe.Tests/SettingsWindowTests.cs`, `Pointframe.AutomationTests/Smoke/SettingsWindowSmokeTests.cs`, `Pointframe.AutomationTests/Smoke/SettingsSectionNavigationTests.cs`, `Pointframe.AutomationTests/Smoke/McpSettingsPersistenceTests.cs` | [User settings](#user-settings), [Settings invariant](../knowledge-base.md#settings-are-read-at-the-point-of-use-and-persisted-through-three-files), [Add a user setting](../knowledge-base.md#add-a-user-setting) |
 | F-30 | Custom global hotkeys | Settings, Capture and Shortcuts sections | `Pointframe/Services/Infrastructure/GlobalHotkeyService.cs`, `Pointframe/Models/HotkeyBinding.cs` | — | `Pointframe.Tests/Models/HotkeyBindingTests.cs`, `Pointframe.Tests/Services/GlobalHotkeyServiceTests.cs` | [User settings](#user-settings), [App bootstrap](../knowledge-base.md#app-bootstrap-di-and-messaging) |
 | F-31 | Light and dark theme | Settings, App section | `Pointframe/Services/Infrastructure/ThemeService.cs` | — | `Pointframe.Tests/Services/ThemeServiceTests.cs` | [User settings](#user-settings) |
+| F-42 | Share destination settings | Settings, Sharing section | `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml` | `settings_saved`, `settings_section_changed`, `settings_section_reset`, `settings_defaults_restored` | `Pointframe.Tests/ViewModels/SettingsViewModelTests.cs`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs` | [User settings](#user-settings), [Add a user setting](../knowledge-base.md#add-a-user-setting) |
 
 ## User settings
 
@@ -28,6 +29,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 | `HotkeyBinding`, `HotkeyModifiers` | Persisted hotkey model consumed by `GlobalHotkeyService` |
 | `IThemeService`, `AppTheme` | Applies the light, dark, or system theme from settings |
 | `ScreenshotWatermarkSettings`, `VideoWatermarkSettings` | Separate watermark settings; on load a missing video watermark is cloned from the screenshot one |
+| `ProtectedShareHeader` | Stores a header name and a Windows DPAPI CurrentUser protected value; plaintext exists only in the settings editor and request construction |
 
 **Storage.** `settings.json` in the Pointframe local app data folder. Automation can redirect `SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH` to a file path (existing behavior) or an existing directory, in which case the service uses `settings.json` inside it. Verification's real-app spec uses directory isolation so it does not touch owner settings. See [Runtime paths](../knowledge-base.md#runtime-paths-and-external-binaries).
 
@@ -36,10 +38,15 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 - A new setting touches three files together or it is silently dropped on save. See [Settings persistence](../knowledge-base.md#settings-are-read-at-the-point-of-use-and-persisted-through-three-files) and [Add a user setting](../knowledge-base.md#add-a-user-setting).
 - Restore Defaults writes hidden persisted values directly; a mode flag that defers the write leaves stale values behind.
 - Consumers read `IUserSettingsService.Current` at the point of use.
+- Share request header values are protected with Windows DPAPI before `UserSettings.Save`; never write them as plaintext or include them in logs.
+
+## Share destination settings
+
+The Sharing section configures one upload URL, multipart field name, additional headers, response JSON dot path, and timeout. Empty URL disables the overlay action. HTTPS is required, except HTTP is accepted for loopback destinations used by local servers. Header values are protected with `ProtectedData` using `DataProtectionScope.CurrentUser`; the share service decrypts them only while building the request. See [F-41 Upload a capture and copy its link](capture.md#features).
 
 **Tests.** `Pointframe.Tests/Services/UserSettingsServiceTests.cs`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs` (reflection over every `UserSettings` property through save, load, `Update`, and `SettingsViewModel.Save`), `Pointframe.Tests/ViewModels/SettingsViewModelTests.cs`, `Pointframe.Tests/ViewModels/SettingsViewModelCharacterizationTests.cs` (which persisted properties each section reset and Restore Defaults change; which capture modes each hotkey capture command clears), `Pointframe.Tests/SettingsWindowTests.cs`, `Pointframe.Tests/Services/ThemeServiceTests.cs`, `Pointframe.Tests/Models/HotkeyBindingTests.cs`. Automation: `Pointframe.AutomationTests/Smoke/SettingsWindowSmokeTests.cs`, `Pointframe.AutomationTests/Smoke/SettingsSectionNavigationTests.cs`.
 
-**Files.** `Pointframe/Models/UserSettings.cs`, `Pointframe/Services/Infrastructure/IUserSettingsService.cs`, `Pointframe/Services/Infrastructure/UserSettingsService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml`, `Pointframe/Models/SettingsSection.cs`, `Pointframe/Models/SettingsSectionItem.cs`, `Pointframe/Models/HotkeyBinding.cs`, `Pointframe/Models/HotkeyModifiers.cs`, `Pointframe/Models/AppTheme.cs`, `Pointframe/Services/Infrastructure/ThemeService.cs`, `Pointframe/Models/WatermarkSettings.cs`, `Pointframe/Models/ScreenshotWatermarkSettings.cs`, `Pointframe/Models/VideoWatermarkSettings.cs`.
+**Files.** `Pointframe/Models/UserSettings.cs`, `Pointframe/Models/ProtectedShareHeader.cs`, `Pointframe/Services/Share/ShareHeaderProtection.cs`, `Pointframe/Services/Infrastructure/IUserSettingsService.cs`, `Pointframe/Services/Infrastructure/UserSettingsService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml`, `Pointframe/Models/SettingsSection.cs`, `Pointframe/Models/SettingsSectionItem.cs`, `Pointframe/Models/HotkeyBinding.cs`, `Pointframe/Models/HotkeyModifiers.cs`, `Pointframe/Models/AppTheme.cs`, `Pointframe/Services/Infrastructure/ThemeService.cs`, `Pointframe/Models/WatermarkSettings.cs`, `Pointframe/Models/ScreenshotWatermarkSettings.cs`, `Pointframe/Models/VideoWatermarkSettings.cs`.
 
 **Lessons.**
 
