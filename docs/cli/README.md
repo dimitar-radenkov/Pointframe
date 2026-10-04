@@ -273,6 +273,43 @@ pointframe verify run --task keep-text
 | `--only <gates\|scenarios>` | Run only the gates, or only the scenarios | both |
 | `--task <id>` | Also run the frozen criteria of a task (see [Freeze a task's criteria](#freeze-a-tasks-criteria-before-work-starts)) | none |
 
+### Initialize verification for a project
+
+Run `pointframe verify init` from the project root. It detects root .NET solutions and test projects, or
+the `build`, `lint`, and `test` scripts in a root `package.json`, then writes a loader-validated
+`.pointframe/verify.json`. A single .NET `WinExe` project is used as the app candidate; pass `--app`
+when there are multiple candidates or the executable lives elsewhere. Without `--explore`, add a
+scenario after the app is built, or run init again with `--explore` to inspect it once through the
+Pointframe MCP server and seed an `app-starts` check.
+
+```powershell
+pointframe verify init
+pointframe verify init --app bin\Release\net10.0-windows\MyApp.exe --explore --agents-md
+pointframe verify init --app bin\Release\net10.0-windows\MyApp.exe --explore --mcp path\to\Pointframe.Mcp.exe
+pointframe verify init --hooks claude
+pointframe verify init --hooks none
+pointframe verify init --force
+```
+
+| Flag | Meaning | Default |
+|---|---|---|
+| `--app <path>` | App executable relative to the project root | detected when exactly one .NET `WinExe` project exists |
+| `--hooks <claude\|codex\|both\|none>` | Merge Stop hooks into `.claude/settings.json` and/or `.codex/hooks.json` | `both` |
+| `--agents-md` | Add instructions telling agents to run verification and preserve frozen criteria | off |
+| `--explore` | Launch the built app once and create a starter scenario from its first automation id | off |
+| `--mcp <file>` | Pointframe MCP server executable to use for `--explore` | `POINTFRAME_MCP_EXECUTABLE`, then the CLI-installed server |
+| `--force` | Replace an existing `.pointframe/verify.json` | off |
+
+The generated hook runs `pointframe verify hook stop --review`; keep `pointframe` on `PATH` so
+Codex on Windows can launch the unquoted command. Existing hook settings are retained, and repeating
+init does not duplicate the hook or the `AGENTS.md` section. The initializer adds
+`artifacts/pointframe-verify/` to an existing `.gitignore` when it is not already covered. If no gates
+or explored scenario can be created, it reports what is missing and writes nothing. An existing spec
+is left untouched unless `--force` is supplied.
+
+After initialization, run `pointframe verify run`; run `pointframe verify trust` only if the approver
+refuses the detected commands.
+
 A minimal spec:
 
 ```json

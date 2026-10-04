@@ -25,4 +25,9 @@ internal sealed record CliCommand(
     bool Replace = false,
     bool Review = false,
     int? MaxBlocks = null,
-    string? UseAgent = null);
+    string? UseAgent = null,
+    string? AppPath = null,
+    string? Hooks = null,
+    bool AgentsMd = false,
+    bool Explore = false,
+    bool Force = false);
