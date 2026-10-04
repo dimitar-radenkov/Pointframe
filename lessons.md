@@ -1165,3 +1165,26 @@ the app shuts down, so the same scenario passes or fails by timing.
 
 After closing an app through its own UI, wait for the process to exit before relaunching. An agent
 driving the MCP tools by hand needs the same wait.
+
+## A new file passes the File map check locally and fails it in CI
+
+### Problem
+
+`pwsh scripts/verify.ps1` passed locally, but CI's "Knowledge base check" failed on the pull request
+with `tracked file matches no File map row: .pointframe/verify.json`.
+
+### Root cause
+
+`scripts/kb.ps1 check` matches File map rows against tracked files (`git ls-files`). Before the commit,
+the new `.pointframe/verify.json` was untracked, so the local check never saw it. After the commit, CI
+did.
+
+### What fixed it
+
+A File map row for `.pointframe/**` in `docs/knowledge-base/knowledge-base.md`.
+
+### Takeaway
+
+When a change adds a file in a folder that no File map row covers, add the row in the same change; do
+not rely on a local check of untracked files. `git add -N <path>` makes a new file visible to the check
+before committing.

@@ -111,6 +111,7 @@ CI publishes the CLI and MCP executables and runs `packaging/test-mcp-stdio.ps1`
 - Lesson: A named Mutex cannot guard work that awaits
 - Lesson: A stdio client must drain the MCP server's stderr
 - Lesson: Closing an app through its own UI returns before the process exits
+- Lesson: A new file passes the File map check locally and fails it in CI
 
 ## D-007 `verify run` drives the MCP server instead of sharing an Engine service
 
