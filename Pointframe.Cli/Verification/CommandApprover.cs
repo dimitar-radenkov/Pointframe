@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace Pointframe.Cli;
 
-internal sealed record ApprovalDecision(bool Approve, string Reason, IReadOnlyList<string> Concerns, string Approver);
+internal sealed record ApprovalDecision(bool Approve, string Reason, IReadOnlyList<string> Concerns, string Approver, bool Unavailable = false);
 
 internal interface ICommandApprover
 {
@@ -20,6 +20,10 @@ internal interface ICommandApprover
 // the system. A violation is refused without asking the approver agent.
 internal static partial class CommandPolicy
 {
+    private const string ShellMetacharacters = "&|><;`$%^()";
+    private static readonly Regex SafeArgument = new(@"\A[A-Za-z0-9._:/=-]+\z", RegexOptions.CultureInvariant);
+    private static readonly Regex SafeScriptName = new(@"\A[A-Za-z0-9:_-]+\z", RegexOptions.CultureInvariant);
+    private static readonly Regex SafeFilter = new(@"\A[A-Za-z0-9._=!~:-]+\z", RegexOptions.CultureInvariant);
     private static readonly string[] SystemPrograms =
     [
         "cmd.exe", "powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe",
@@ -63,6 +67,230 @@ internal static partial class CommandPolicy
         return violations;
     }
 
+    internal static bool IsStandard(VerificationSpec spec)
+    {
+        if (Violations(spec).Count != 0 || spec.Gates.Any(gate => !IsStandardCommand(gate.Run, spec.RootDirectory)))
+        {
+            return false;
+        }
+
+        return spec.App is not { } app || !ContainsShellMetacharacters(string.Join(" ", app.Arguments));
+    }
+
+    private static bool IsStandardCommand(string command, string projectRoot)
+    {
+        if (ContainsShellMetacharacters(command) || !TryTokenize(command, out var tokens) || tokens.Count == 0)
+        {
+            return false;
+        }
+
+        var program = tokens[0];
+        if (program.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+        {
+            return IsStandardDotnet(tokens, projectRoot);
+        }
+
+        if (program.Equals("npm", StringComparison.OrdinalIgnoreCase)
+            || program.Equals("pnpm", StringComparison.OrdinalIgnoreCase)
+            || program.Equals("yarn", StringComparison.OrdinalIgnoreCase))
+        {
+            return IsStandardNode(tokens);
+        }
+
+        if (program.Equals("pwsh", StringComparison.OrdinalIgnoreCase)
+            || program.Equals("powershell", StringComparison.OrdinalIgnoreCase))
+        {
+            return IsStandardPowerShell(tokens, projectRoot);
+        }
+
+        return false;
+    }
+
+    private static bool IsStandardDotnet(IReadOnlyList<string> tokens, string projectRoot)
+    {
+        if (tokens.Count < 2 || tokens[1] is not ("build" or "test" or "format" or "restore"))
+        {
+            return false;
+        }
+
+        var index = 2;
+        if (index < tokens.Count && IsProjectPath(tokens[index]))
+        {
+            if (!IsRelativeProjectPath(tokens[index], projectRoot))
+            {
+                return false;
+            }
+
+            index++;
+        }
+
+        while (index < tokens.Count)
+        {
+            var option = tokens[index++];
+            if (option is "--no-build" or "--no-restore" or "--nologo" or "--verify-no-changes")
+            {
+                continue;
+            }
+
+            if (option is "-c" or "--configuration" or "-v" or "--verbosity" or "-f" or "--framework" or "--filter")
+            {
+                if (index >= tokens.Count)
+                {
+                    return false;
+                }
+
+                var value = tokens[index++];
+                if (option is "-c" or "--configuration")
+                {
+                    if (value is not ("Release" or "Debug"))
+                    {
+                        return false;
+                    }
+                }
+                else if (option is "-v" or "--verbosity")
+                {
+                    if (value is not ("q" or "quiet" or "m" or "minimal" or "n" or "normal"))
+                    {
+                        return false;
+                    }
+                }
+                else if (option == "--filter" ? !SafeFilter.IsMatch(value) : !Regex.IsMatch(value, @"\A[A-Za-z0-9._-]+\z", RegexOptions.CultureInvariant))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsStandardNode(IReadOnlyList<string> tokens)
+    {
+        if (tokens.Count == 2 && tokens[1] == "test")
+        {
+            return true;
+        }
+
+        if (tokens.Count == 2 && tokens[0] == "npm" && tokens[1] == "ci")
+        {
+            return true;
+        }
+
+        if (tokens.Count == 3 && tokens[1] == "install" && tokens[2] == "--frozen-lockfile" && tokens[0] is "pnpm" or "yarn")
+        {
+            return true;
+        }
+
+        return tokens.Count == 3 && tokens[1] == "run" && SafeScriptName.IsMatch(tokens[2]);
+    }
+
+    private static bool IsStandardPowerShell(IReadOnlyList<string> tokens, string projectRoot)
+    {
+        var index = 1;
+        while (index < tokens.Count && tokens[index] is "-NoProfile" or "-NonInteractive")
+        {
+            index++;
+        }
+
+        if (index + 1 >= tokens.Count || tokens[index++] != "-File" || !IsRelativeScriptPath(tokens[index++], projectRoot))
+        {
+            return false;
+        }
+
+        return tokens.Skip(index).All(argument => SafeArgument.IsMatch(argument));
+    }
+
+    private static bool IsProjectPath(string token) =>
+        token.EndsWith(".sln", StringComparison.OrdinalIgnoreCase)
+        || token.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase)
+        || token.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+        || token.EndsWith(".fsproj", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsRelativeProjectPath(string path, string projectRoot) =>
+        IsRelativeInsideProject(path, projectRoot) && IsProjectPath(path);
+
+    private static bool IsRelativeScriptPath(string path, string projectRoot) =>
+        path.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase) && IsRelativeInsideProject(path, projectRoot);
+
+    private static bool IsRelativeInsideProject(string path, string projectRoot)
+    {
+        if (Path.IsPathRooted(path) || path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries).Any(segment => segment == ".."))
+        {
+            return false;
+        }
+
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(projectRoot)) + Path.DirectorySeparatorChar;
+        var fullPath = Path.GetFullPath(Path.Combine(projectRoot, path));
+        return fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ContainsShellMetacharacters(string value) =>
+        value.IndexOfAny(ShellMetacharacters.Append('\r').Append('\n').ToArray()) >= 0;
+
+    private static bool TryTokenize(string command, out List<string> tokens)
+    {
+        tokens = [];
+        var token = new System.Text.StringBuilder();
+        var quoted = false;
+        var started = false;
+        for (var index = 0; index < command.Length; index++)
+        {
+            var character = command[index];
+            if (character == '"')
+            {
+                if (!quoted)
+                {
+                    if (started)
+                    {
+                        return false;
+                    }
+
+                    quoted = true;
+                    started = true;
+                }
+                else
+                {
+                    if (!token.ToString().Contains(' ') || (index + 1 < command.Length && command[index + 1] != ' '))
+                    {
+                        return false;
+                    }
+
+                    quoted = false;
+                }
+            }
+            else if (character == ' ' && !quoted)
+            {
+                if (started)
+                {
+                    tokens.Add(token.ToString());
+                    token.Clear();
+                    started = false;
+                }
+            }
+            else
+            {
+                token.Append(character);
+                started = true;
+            }
+        }
+
+        if (quoted)
+        {
+            return false;
+        }
+
+        if (started)
+        {
+            tokens.Add(token.ToString());
+        }
+
+        return true;
+    }
+
     private static bool Inside(string path, string root) =>
         Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase)
         || string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)) + Path.DirectorySeparatorChar, root, StringComparison.OrdinalIgnoreCase);
@@ -86,7 +314,7 @@ internal static partial class CommandPolicy
 // Approves a spec's commands without a person, so an agent's work does not wait on a terminal. It runs after
 // CommandPolicy, on whichever agent the person chose (see AgentSelection), started by the CLI (never by the
 // worker), with no MCP tools, and sees only the commands and how they changed. Anything but a clear
-// "approve" is a refusal, and a refusal is the only case that needs a person (`verify trust`).
+// "approve" is a refusal; a refusal or an unavailable runner needs a person (`verify trust`).
 internal sealed class AgentApprover(IAgentRunner? runner, decimal maxBudgetUsd = 0.5m) : ICommandApprover
 {
     internal const string OutputSchema = """
@@ -133,7 +361,7 @@ internal sealed class AgentApprover(IAgentRunner? runner, decimal maxBudgetUsd =
     {
         if (runner is null)
         {
-            return new ApprovalDecision(false, "No agent is available to review the commands.", [], "none");
+            return new ApprovalDecision(false, "No agent runner is available.", [], "none", Unavailable: true);
         }
 
         var input = $"""
@@ -153,9 +381,9 @@ internal sealed class AgentApprover(IAgentRunner? runner, decimal maxBudgetUsd =
                 cancellationToken);
             return ParseDecision(answer, runner.Name);
         }
-        catch (Exception exception) when (exception is AgentException or IOException or System.ComponentModel.Win32Exception)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            return new ApprovalDecision(false, $"The approver agent failed: {exception.Message}", [], runner.Name);
+            return new ApprovalDecision(false, $"The approver agent failed: {exception.Message}", [], runner.Name, Unavailable: true);
         }
     }
 

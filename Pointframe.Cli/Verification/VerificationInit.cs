@@ -180,7 +180,7 @@ internal sealed class VerificationInit(
         var status = hadSpec ? (filesWritten.Count == 0 ? "unchanged" : "updated") : "created";
 
         await WriteAsync(new VerificationInitResponse(status, filesWritten, filesLeftAlone, preserveExistingSpec ? [] : gates.Select(DescribeGate).ToArray(), preserveExistingSpec ? null : appRelative, warnings,
-            ["pointframe verify run", "pointframe verify trust only if the approver refuses"]));
+            ["pointframe verify run", "pointframe verify trust if a nonstandard command is refused or the approver is unavailable"]));
         return 0;
     }
 

@@ -73,6 +73,7 @@ public sealed class VerificationInitTests
         Assert.Equal(["build", "tests"], gates.Select(item => item.Id));
         Assert.Contains("z.slnx", gates[0].Run);
         Assert.Contains("--no-build", gates[1].Run);
+        Assert.All(gates, gate => Assert.True(IsStandardGate(fixture.Root, gate)));
     }
 
     [Fact]
@@ -112,6 +113,7 @@ public sealed class VerificationInitTests
 
         Assert.Equal(["build", "test"], gates.Select(item => item.Id));
         Assert.Equal("npm test", gates[1].Run);
+        Assert.All(gates, gate => Assert.True(IsStandardGate(fixture.Root, gate)));
     }
 
     [Fact]
@@ -301,6 +303,9 @@ public sealed class VerificationInitTests
         new("verify", VerifyAction: "init", AppPath: appPath, McpExecutablePath: mcpPath, Hooks: hooks, AgentsMd: agentsMd, Explore: explore, Force: force);
 
     private static int Count(string value, string pattern) => value.Split(pattern).Length - 1;
+
+    private static bool IsStandardGate(string root, VerificationGate gate) => CommandPolicy.IsStandard(
+        new VerificationSpec(1, Path.Combine(root, ".pointframe", "verify.json"), root, null, [gate], []));
 
     private sealed class InitFixture : IDisposable
     {

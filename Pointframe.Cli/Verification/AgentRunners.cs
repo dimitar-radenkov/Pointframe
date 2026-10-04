@@ -63,8 +63,17 @@ internal static class AgentProcess
             ?? throw new AgentException($"{executable.FileName} could not be started.");
         var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
         var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        await process.StandardInput.WriteAsync(input.AsMemory(), cancellationToken);
-        process.StandardInput.Close();
+        try
+        {
+            await process.StandardInput.WriteAsync(input.AsMemory(), cancellationToken);
+            process.StandardInput.Close();
+        }
+        catch (IOException)
+        {
+            // An agent that reads {input_file} instead of stdin may exit before the prompt is written;
+            // its output and exit code still decide the answer.
+        }
+
         var output = await outputTask;
         await process.WaitForExitAsync(cancellationToken);
         return (process.ExitCode, output, await errorTask);
