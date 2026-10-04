@@ -29,7 +29,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 | `IThemeService`, `AppTheme` | Applies the light, dark, or system theme from settings |
 | `ScreenshotWatermarkSettings`, `VideoWatermarkSettings` | Separate watermark settings; on load a missing video watermark is cloned from the screenshot one |
 
-**Storage.** `settings.json` in the Pointframe local app data folder. Automation tests redirect it with the `SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH` environment variable. See [Runtime paths](../knowledge-base.md#runtime-paths-and-external-binaries).
+**Storage.** `settings.json` in the Pointframe local app data folder. Automation can redirect `SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH` to a file path (existing behavior) or an existing directory, in which case the service uses `settings.json` inside it. Verification's real-app spec uses directory isolation so it does not touch owner settings. See [Runtime paths](../knowledge-base.md#runtime-paths-and-external-binaries).
 
 **Invariants.**
 

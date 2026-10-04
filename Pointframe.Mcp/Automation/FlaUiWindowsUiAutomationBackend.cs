@@ -152,9 +152,39 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
 
     public bool TryInvoke(string elementRef)
     {
-        return _elements.TryGetValue(elementRef, out var element)
-            && element.Patterns.Invoke.Pattern is IInvokePattern invoke
-            && Try(invoke.Invoke);
+        if (!_elements.TryGetValue(elementRef, out var element))
+        {
+            return false;
+        }
+
+        try
+        {
+            var invoke = element.Patterns.Invoke.PatternOrDefault as IInvokePattern;
+            var toggle = element.Patterns.Toggle.PatternOrDefault as ITogglePattern;
+            return TryInvokeOrToggle(
+                invoke is not null,
+                () => invoke?.Invoke(),
+                toggle is not null,
+                () => toggle?.Toggle());
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    internal static bool TryInvokeOrToggle(
+        bool hasInvokePattern,
+        Action invoke,
+        bool hasTogglePattern,
+        Action toggle)
+    {
+        if (hasInvokePattern)
+        {
+            return Try(invoke);
+        }
+
+        return hasTogglePattern && Try(toggle);
     }
 
     public bool TrySetValue(string elementRef, string value)

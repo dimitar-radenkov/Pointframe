@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "app": {
+    "id": "pointframe",
+    "executable": "Pointframe/bin/Release/net10.0-windows10.0.18362.0/Pointframe.exe",
+    "arguments": ["--automation-open-settings"],
+    "isolation": {
+      "environmentVariable": "SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH"
+    }
+  },
+  "gates": [
+    {
+      "id": "build-app",
+      "run": "dotnet build Pointframe/Pointframe.csproj --configuration Release --nologo -v q"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "settings-persist-after-restart",
+      "criteria": [
+        "The auto-save screenshots setting retains its saved value after the app restarts."
+      ],
+      "steps": [
+        { "invoke": { "automationId": "SettingsWindow.AutoSaveScreenshots" } },
+        { "invoke": { "automationId": "SettingsWindow.Save" } },
+        { "restart": {} },
+        {
+          "check": {
+            "kind": "toggleEquals",
+            "automationId": "SettingsWindow.AutoSaveScreenshots",
+            "expected": false,
+            "criterion": "C1"
+          }
+        },
+        {
+          "check": {
+            "kind": "toggleEquals",
+            "automationId": "SettingsWindow.AutoSaveScreenshots",
+            "expected": true,
+            "expectFailure": true,
+            "timeoutSeconds": 1
+          }
+        }
+      ]
+    }
+  ]
+}

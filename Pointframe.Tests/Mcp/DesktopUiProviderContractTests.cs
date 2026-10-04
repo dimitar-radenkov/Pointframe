@@ -43,6 +43,23 @@ public sealed class DesktopUiProviderContractTests
     }
 
     [Fact]
+    public void FlaUiBackend_InvokeFallsBackToTogglePattern()
+    {
+        var invoked = false;
+        var toggled = false;
+
+        var result = FlaUiWindowsUiAutomationBackend.TryInvokeOrToggle(
+            hasInvokePattern: false,
+            invoke: () => invoked = true,
+            hasTogglePattern: true,
+            toggle: () => toggled = true);
+
+        Assert.True(result);
+        Assert.False(invoked);
+        Assert.True(toggled);
+    }
+
+    [Fact]
     public void ShellProvider_RejectsUnsupportedSurface()
     {
         var exception = Assert.Throws<DesktopOperationException>(() =>
