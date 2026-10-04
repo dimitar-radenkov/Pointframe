@@ -21,7 +21,9 @@ public sealed class UserSettingsService : IUserSettingsService
     internal UserSettingsService(ILogger<UserSettingsService> logger, string settingsPath)
     {
         _logger = logger;
-        _settingsPath = settingsPath;
+        _settingsPath = Directory.Exists(settingsPath)
+            ? Path.Combine(settingsPath, "settings.json")
+            : settingsPath;
 
         Current = Load();
     }

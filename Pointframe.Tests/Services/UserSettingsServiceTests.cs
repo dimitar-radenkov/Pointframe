@@ -191,6 +191,24 @@ public sealed class UserSettingsServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public void Constructor_WhenSettingsPathIsDirectory_StoresSettingsJsonInsideIt()
+    {
+        Directory.CreateDirectory(_tempDirectory);
+        var sut = new UserSettingsService(NullLogger<UserSettingsService>.Instance, _tempDirectory);
+        sut.Save(new UserSettings
+        {
+            AutoSaveScreenshots = false,
+        });
+
+        var settingsPath = Path.Combine(_tempDirectory, "settings.json");
+
+        Assert.True(File.Exists(settingsPath));
+        var persisted = JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(settingsPath));
+        Assert.NotNull(persisted);
+        Assert.False(persisted!.AutoSaveScreenshots);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDirectory))

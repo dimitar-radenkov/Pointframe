@@ -273,6 +273,20 @@ pointframe verify run --only gates
 pointframe verify run --task keep-text
 ```
 
+### Verify Pointframe's real settings window
+
+This repository also keeps `.pointframe/verify-app.json` for the WPF app. Build the app and MCP server
+in Release, then run the spec with an installed or copied `pointframe` CLI and that MCP executable:
+
+```powershell
+pointframe verify run --spec .pointframe\verify-app.json --mcp .\Pointframe.Mcp\bin\Release\net10.0-windows10.0.18362.0\Pointframe.Mcp.exe
+```
+
+The scenario toggles auto-save screenshots, saves, restarts Pointframe, and checks that the value
+persisted. Verification gives the app a fresh settings directory and removes it after the scenario,
+so it does not read or change the user's normal settings. A desktop run takes over the mouse and
+keyboard until it finishes; close editor-started `Pointframe.Mcp.exe` processes first.
+
 | Flag | Meaning | Default |
 |---|---|---|
 | `--spec <file>` | The verification spec | `.pointframe\verify.json` in the current folder |
