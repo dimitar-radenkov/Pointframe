@@ -94,6 +94,15 @@ jobs:
         shell: pwsh
         run: ./scripts/kb.ps1 check -NoFix
 
+      - name: Workflow script check
+        # Fails when a pwsh run: block in .github/workflows does not parse as PowerShell.
+        shell: pwsh
+        run: |
+          ./scripts/check-workflow-scripts.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/check-workflow-scripts.ps1
+          exit $LASTEXITCODE
+
       - name: Test with coverage
         # Hosted CI stays on the unit-test lane only.
         # DesktopAutomation and InstallerSmoke run outside this workflow.

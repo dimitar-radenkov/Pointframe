@@ -32,7 +32,7 @@ dotnet format Pointframe/Pointframe.csproj
 # Verify format without changes
 dotnet format Pointframe/Pointframe.csproj --verify-no-changes
 
-# Verify everything CI's unit job checks (build, format, tests, kb); writes artifacts/verify/verdict.json
+# Verify everything CI's unit job checks (build, format, tests, kb, workflows); writes artifacts/verify/verdict.json
 pwsh scripts/verify.ps1
 ```
 

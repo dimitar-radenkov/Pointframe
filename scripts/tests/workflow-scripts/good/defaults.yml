@@ -1,0 +1,11 @@
+name: Good workflow defaults
+on: push
+defaults:
+  run:
+    shell: powershell
+jobs:
+  one:
+    runs-on: ubuntu-latest
+    steps:
+      - run: Write-Host "${{ github.sha }}"
+        name: Run before name
