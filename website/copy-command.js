@@ -1,5 +1,5 @@
-// UI module: handles install command copy interactions, the winget/scoop
-// package-manager toggle, and related tracking events.
+// UI module: handles install command copy interactions, the
+// install command copy button and related tracking events.
 export function initCopyCommand(trackEvent) {
     const copyButton = document.getElementById("copy-command-button");
     const copyStatus = document.getElementById("copy-command-status");
