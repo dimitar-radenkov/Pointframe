@@ -6,6 +6,7 @@ using System.Windows;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Pointframe.Engine;
 using Pointframe.Services;
 using Xunit;
 
@@ -68,6 +69,52 @@ public sealed class ScreenRecordingServiceTests
         }
     }
 
+    private sealed class BlockingVideoWriter : IVideoWriter
+    {
+        private readonly ManualResetEventSlim _releaseWrites = new();
+
+        public ManualResetEventSlim FirstWriteStarted { get; } = new();
+
+        public void WriteFrame(byte[] frameData)
+        {
+            FirstWriteStarted.Set();
+            _releaseWrites.Wait();
+        }
+
+        public void ReleaseWrites()
+        {
+            _releaseWrites.Set();
+        }
+
+        public void Dispose()
+        {
+            _releaseWrites.Set();
+            _releaseWrites.Dispose();
+            FirstWriteStarted.Dispose();
+        }
+    }
+
+    private sealed class SignalingFrameCapture : IRawFrameCapture
+    {
+        private int _captureCount;
+
+        public ManualResetEventSlim SecondFrameCaptured { get; } = new();
+
+        public void Capture(byte[] frameData)
+        {
+            Array.Clear(frameData);
+            if (Interlocked.Increment(ref _captureCount) == 2)
+            {
+                SecondFrameCaptured.Set();
+            }
+        }
+
+        public void Dispose()
+        {
+            SecondFrameCaptured.Dispose();
+        }
+    }
+
     private sealed class FrameCollectingVideoWriter : IVideoWriter
     {
         public List<byte[]> Frames { get; } = [];
@@ -92,11 +139,13 @@ public sealed class ScreenRecordingServiceTests
         IVideoWriterFactory factory,
         IMicrophoneDeviceService? microphoneDeviceService = null,
         UserSettings? settings = null,
-        ILogger<ScreenRecordingService>? logger = null) =>
+        ILogger<ScreenRecordingService>? logger = null,
+        IRawFrameCapture? frameCapture = null) =>
         new(logger ?? NullLogger<ScreenRecordingService>.Instance,
             microphoneDeviceService ?? Mock.Of<IMicrophoneDeviceService>(),
             Mock.Of<IUserSettingsService>(s => s.Current == (settings ?? new UserSettings())),
-            factory);
+            factory,
+            frameCapture);
 
     [Fact]
     public void IsRecording_IsFalse_BeforeStart()
@@ -643,7 +692,8 @@ public sealed class ScreenRecordingServiceTests
     [Fact]
     public void Stop_WhenWriterBackpressureOccurs_LogsZeroDroppedFrames()
     {
-        var writer = new TestVideoWriter(TimeSpan.FromMilliseconds(180));
+        var writer = new BlockingVideoWriter();
+        var capture = new SignalingFrameCapture();
         var mockFactory = new Mock<IVideoWriterFactory>();
         mockFactory
             .Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()))
@@ -651,10 +701,12 @@ public sealed class ScreenRecordingServiceTests
         var logger = new ListLogger<ScreenRecordingService>();
         var settings = new UserSettings { RecordingFps = 10 };
 
-        using var svc = CreateSut(mockFactory.Object, settings: settings, logger: logger);
+        using var svc = CreateSut(mockFactory.Object, settings: settings, logger: logger, frameCapture: capture);
 
         svc.Start(0, 0, 100, 100, "test.mp4");
-        Thread.Sleep(650);
+        Assert.True(writer.FirstWriteStarted.Wait(TimeSpan.FromSeconds(10)), "The first frame write did not start.");
+        Assert.True(capture.SecondFrameCaptured.Wait(TimeSpan.FromSeconds(10)), "The second frame was not captured while the writer was blocked.");
+        writer.ReleaseWrites();
         svc.Stop();
 
         var statsMessage = logger.Messages.Last(message => message.StartsWith("Recording session stats:", StringComparison.Ordinal));
@@ -666,17 +718,20 @@ public sealed class ScreenRecordingServiceTests
     public void Stop_WhenWriterBackpressureOccurs_LogsZeroDroppedDuration()
     {
         var logger = new ListLogger<ScreenRecordingService>();
-        var writer = new TestVideoWriter(TimeSpan.FromMilliseconds(180));
+        var writer = new BlockingVideoWriter();
+        var capture = new SignalingFrameCapture();
         var mockFactory = new Mock<IVideoWriterFactory>();
         mockFactory
             .Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()))
             .Returns(writer);
         var settings = new UserSettings { RecordingFps = 10 };
 
-        using var svc = CreateSut(mockFactory.Object, settings: settings, logger: logger);
+        using var svc = CreateSut(mockFactory.Object, settings: settings, logger: logger, frameCapture: capture);
 
         svc.Start(0, 0, 100, 100, "test.mp4");
-        Thread.Sleep(650);
+        Assert.True(writer.FirstWriteStarted.Wait(TimeSpan.FromSeconds(10)), "The first frame write did not start.");
+        Assert.True(capture.SecondFrameCaptured.Wait(TimeSpan.FromSeconds(10)), "The second frame was not captured while the writer was blocked.");
+        writer.ReleaseWrites();
         svc.Stop();
 
         var sessionStats = logger.Messages.Last(message => message.StartsWith("Recording session stats:", StringComparison.Ordinal));
