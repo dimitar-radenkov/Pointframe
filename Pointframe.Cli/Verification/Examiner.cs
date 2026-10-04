@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace Pointframe.Cli;
@@ -24,32 +23,35 @@ internal interface IExaminer
     Task<ExaminerProposal> ProposeAsync(ExaminerRequest request, CancellationToken cancellationToken);
 }
 
-internal sealed class ExaminerException(string message) : Exception(message);
-
-// The examiner is a separate Claude Code process that sees only the task text and the running app. It runs
-// in an empty folder outside the repository with every built-in tool disabled (it cannot read the code)
-// and with only the Pointframe MCP server, and it loads no project settings, so the worker's hooks never
-// run inside it. Its proposal is checked by the CLI, never trusted: see FailBefore.
-internal sealed class ClaudeCodeExaminer(Func<string?> resolveExecutable, decimal maxBudgetUsd = 3m) : IExaminer
+// The examiner sees only the task text and the running app. Whichever agent plays it (see AgentSelection)
+// runs in an empty folder outside the repository with only the Pointframe MCP server, so it cannot read
+// the code and the worker's hooks never run inside it. Its proposal is checked by the CLI, never trusted:
+// see FailBefore.
+internal sealed class AgentExaminer(IAgentRunner? runner, decimal maxBudgetUsd = 3m) : IExaminer
 {
     internal const string ServerName = "pointframe";
 
+    // Strict structured-output form, which Codex requires and Claude Code accepts: every object closed and
+    // every property required. Steps are different kinds of objects, which a strict schema cannot describe, so
+    // each step comes back as JSON text and ParseProposal turns it into an object; the spec loader then checks
+    // it like any other step.
     internal const string OutputSchema = """
         {
           "type": "object",
           "properties": {
-            "criteria": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 5 },
-            "steps": { "type": "array", "items": { "type": "object" }, "minItems": 1 },
+            "criteria": { "type": "array", "items": { "type": "string" } },
+            "steps": { "type": "array", "items": { "type": "string" } },
             "requiredAutomationIds": { "type": "array", "items": { "type": "string" } },
             "notes": { "type": "string" }
           },
-          "required": ["criteria", "steps", "requiredAutomationIds", "notes"]
+          "required": ["criteria", "steps", "requiredAutomationIds", "notes"],
+          "additionalProperties": false
         }
         """;
 
-    public string Name => "claude-code";
+    public string Name => runner?.Name ?? "none";
 
-    internal static string SystemPrompt(string profileId) => $$$"""
+    internal static string Instructions(string profileId) => $$$"""
         You are the examiner for a change to a Windows desktop app. Another agent will implement the change.
         You write the acceptance test it is graded by, before any code exists. You never see the code.
 
@@ -67,7 +69,8 @@ internal sealed class ClaudeCodeExaminer(Func<string?> resolveExecutable, decima
         3. Use the automation ids you observed. Where the task needs an element that does not exist yet, name
            the automation id it must have (camelCase, like the existing ones) and list it in
            requiredAutomationIds, so the implementer knows the contract.
-        4. Write the steps. Each step is an object with exactly one property:
+        4. Write the steps. Each item of "steps" is the JSON text of one step, an object with exactly one
+           property:
            {"enterText": {"automationId": "...", "text": "..."}}
            {"invoke": {"automationId": "..."}}          (buttons, menu items; use the app's own Close or Exit to close it)
            {"pressKeys": {"keys": [17, 83]}}            (Windows virtual-key codes, modifiers first)
@@ -77,11 +80,14 @@ internal sealed class ClaudeCodeExaminer(Func<string?> resolveExecutable, decima
            absent, enabled (expected true/false), toggleEquals (expected on/off), selectionEquals (expected
            selected/notSelected), textEquals. Optional "timeoutSeconds" from 1 to 30.
            Criteria are numbered C1, C2, ... in your order. Every criterion needs a check naming it. Add at
-           least one negative control: a check with "expectFailure": true and a deliberately wrong expected
-           value, and no "criterion".
+           least one negative control: a check with "expectFailure": true and no "criterion", whose expected
+           value is deliberately wrong both before and after the change (for example textEquals with text the
+           field will never hold). It proves the check can tell states apart. Never use a real requirement of
+           the task as a negative control.
         5. Your criteria will be run on the current, unchanged app. Each criterion check must fail there,
            because the behaviour does not exist yet; a criterion that already holds does not test the change
-           and makes your proposal rejected. Negative controls must pass there.
+           and makes your proposal rejected. If part of the task already holds in the current app, leave it
+           out of the criteria and say so in notes. Negative controls must pass there.
         6. Do not write criteria to be easy or hard to pass. Do not guess the implementation.
         7. In notes, say in two or three sentences what each criterion checks and what is out of scope.
 
@@ -90,160 +96,45 @@ internal sealed class ClaudeCodeExaminer(Func<string?> resolveExecutable, decima
 
     public async Task<ExaminerProposal> ProposeAsync(ExaminerRequest request, CancellationToken cancellationToken)
     {
-        var executable = resolveExecutable()
-            ?? throw new ExaminerException("Claude Code was not found. Install it (npm install -g @anthropic-ai/claude-code) or put claude.exe on the PATH.");
-        Directory.CreateDirectory(request.WorkDirectory);
-        var mcpConfigPath = Path.Combine(request.WorkDirectory, "examiner-mcp.json");
-        await File.WriteAllTextAsync(mcpConfigPath, JsonSerializer.Serialize(new
+        if (runner is null)
         {
-            mcpServers = new Dictionary<string, object>
-            {
-                [ServerName] = new { command = request.McpExecutablePath, args = new[] { "--desktop-testing", "--desktop-policy", request.PolicyPath }, env = request.Environment },
-            },
-        }), cancellationToken);
-
-        var (exitCode, output, error) = await RunClaudeAsync(
-            executable, Arguments(request.ProfileId, mcpConfigPath, maxBudgetUsd), $"The task:\n\n{request.TaskText}", request.WorkDirectory, cancellationToken);
-        await File.WriteAllTextAsync(Path.Combine(request.WorkDirectory, "examiner-output.json"), output, cancellationToken);
-        if (exitCode != 0)
-        {
-            throw new ExaminerException($"The examiner exited with {exitCode}: {Last(error.Length > 0 ? error : output)}");
+            throw new AgentException("No agent is available to act as the examiner. Install Claude Code or Codex, or configure one with 'Pointframe.Cli.exe verify agent'.");
         }
 
-        return ParseOutput(output);
+        var answer = await runner.RunAsync(
+            new AgentRequest(
+                "examiner",
+                Instructions(request.ProfileId),
+                $"The task:{Environment.NewLine}{Environment.NewLine}{request.TaskText}",
+                OutputSchema,
+                request.WorkDirectory,
+                new AgentMcpServer(ServerName, request.McpExecutablePath, ["--desktop-testing", "--desktop-policy", request.PolicyPath], request.Environment),
+                maxBudgetUsd),
+            cancellationToken);
+        return ParseProposal(answer);
     }
 
-    // One `claude -p` run: the prompt goes in on stdin, the json result comes back on stdout. Claude Code reads
-    // and writes UTF-8; the console code page would garble non-ASCII text in both directions.
-    internal static async Task<(int ExitCode, string Output, string Error)> RunClaudeAsync(
-        string executable,
-        IReadOnlyList<string> arguments,
-        string input,
-        string workDirectory,
-        CancellationToken cancellationToken)
-    {
-        var startInfo = new ProcessStartInfo(executable)
-        {
-            WorkingDirectory = workDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardInputEncoding = new System.Text.UTF8Encoding(false),
-            StandardOutputEncoding = System.Text.Encoding.UTF8,
-            StandardErrorEncoding = System.Text.Encoding.UTF8,
-        };
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        using var process = Process.Start(startInfo)
-            ?? throw new ExaminerException("Claude Code could not be started.");
-        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        await process.StandardInput.WriteAsync(input.AsMemory(), cancellationToken);
-        process.StandardInput.Close();
-        var output = await outputTask;
-        await process.WaitForExitAsync(cancellationToken);
-        return (process.ExitCode, output, await errorTask);
-    }
-
-    internal static IReadOnlyList<string> Arguments(string profileId, string mcpConfigPath, decimal maxBudgetUsd) =>
-    [
-        "-p",
-        "--output-format", "json",
-        "--json-schema", OutputSchema,
-        "--system-prompt", SystemPrompt(profileId),
-        "--mcp-config", mcpConfigPath,
-        "--strict-mcp-config",
-        "--tools", string.Empty,
-        "--allowedTools", $"mcp__{ServerName}",
-        "--permission-mode", "dontAsk",
-        "--setting-sources", "user",
-        "--no-session-persistence",
-        "--max-budget-usd", maxBudgetUsd.ToString(System.Globalization.CultureInfo.InvariantCulture),
-    ];
-
-    // Claude Code's json output carries the schema-validated object in structured_output; older builds put
-    // it as JSON text in result.
-    internal static ExaminerProposal ParseOutput(string output)
+    internal static ExaminerProposal ParseProposal(JsonElement proposal)
     {
         try
         {
-            using var document = JsonDocument.Parse(output);
-            var root = document.RootElement;
-            if (root.TryGetProperty("is_error", out var isError) && isError.ValueKind == JsonValueKind.True)
-            {
-                throw new ExaminerException($"The examiner reported an error: {Last(root.TryGetProperty("result", out var message) ? message.ToString() : output)}");
-            }
-
-            JsonElement proposal;
-            if (root.TryGetProperty("structured_output", out var structured) && structured.ValueKind == JsonValueKind.Object)
-            {
-                proposal = structured;
-            }
-            else if (root.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.String)
-            {
-                using var inner = JsonDocument.Parse(StripFence(result.GetString()!));
-                return FromProposal(inner.RootElement);
-            }
-            else
-            {
-                throw new ExaminerException("The examiner returned no structured output.");
-            }
-
-            return FromProposal(proposal);
+            // A step is JSON text (the strict schema) or, from older answers, already an object.
+            var steps = proposal.GetProperty("steps").EnumerateArray()
+                .Select(step => step.ValueKind == JsonValueKind.String
+                    ? AgentProcess.ParseJson(step.GetString()!, "An examiner step")
+                    : step.Clone())
+                .ToArray();
+            return new ExaminerProposal(
+                proposal.GetProperty("criteria").EnumerateArray().Select(item => item.GetString() ?? string.Empty).ToArray(),
+                JsonSerializer.SerializeToElement(steps),
+                proposal.TryGetProperty("requiredAutomationIds", out var ids) ? ids.EnumerateArray().Select(item => item.GetString() ?? string.Empty).ToArray() : [],
+                proposal.TryGetProperty("notes", out var notes) ? notes.GetString() : null);
         }
-        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException)
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException)
         {
-            throw new ExaminerException($"The examiner's output is not the expected JSON: {exception.Message}");
+            throw new AgentException($"The examiner's answer is not the expected JSON: {exception.Message}");
         }
     }
-
-    internal static string? ResolveDefaultExecutable()
-    {
-        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-        {
-            var exe = Path.Combine(directory, "claude.exe");
-            if (File.Exists(exe))
-            {
-                return exe;
-            }
-
-            // The npm shim (claude.cmd) only forwards to this exe. Starting the exe directly keeps the JSON
-            // schema and prompt arguments intact; cmd.exe would re-parse their quotes.
-            var npmExe = Path.Combine(directory, "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe");
-            if (File.Exists(Path.Combine(directory, "claude.cmd")) && File.Exists(npmExe))
-            {
-                return npmExe;
-            }
-        }
-
-        return null;
-    }
-
-    private static ExaminerProposal FromProposal(JsonElement proposal) => new(
-        proposal.GetProperty("criteria").EnumerateArray().Select(item => item.GetString() ?? string.Empty).ToArray(),
-        proposal.GetProperty("steps").Clone(),
-        proposal.TryGetProperty("requiredAutomationIds", out var ids) ? ids.EnumerateArray().Select(item => item.GetString() ?? string.Empty).ToArray() : [],
-        proposal.TryGetProperty("notes", out var notes) ? notes.GetString() : null);
-
-    private static string StripFence(string text)
-    {
-        var trimmed = text.Trim();
-        if (!trimmed.StartsWith("```", StringComparison.Ordinal))
-        {
-            return trimmed;
-        }
-
-        var firstLine = trimmed.IndexOf('\n');
-        var closing = trimmed.LastIndexOf("```", StringComparison.Ordinal);
-        return firstLine > 0 && closing > firstLine ? trimmed[(firstLine + 1)..closing] : trimmed;
-    }
-
-    private static string Last(string text) => text.Length <= 600 ? text.Trim() : text[^600..].Trim();
 }
 
 internal static class FailBefore

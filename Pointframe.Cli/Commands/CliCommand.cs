@@ -24,4 +24,5 @@ internal sealed record CliCommand(
     bool Revoke = false,
     bool Replace = false,
     bool Review = false,
-    int? MaxBlocks = null);
+    int? MaxBlocks = null,
+    string? UseAgent = null);

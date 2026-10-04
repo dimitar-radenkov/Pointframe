@@ -82,7 +82,7 @@ Generated from the area files under `docs/knowledge-base/features/`. Each featur
 - [Settings](features/settings.md): F-29 Settings window; F-30 Custom global hotkeys; F-31 Light and dark theme
 - [Updates and About](features/updates.md): F-32 Update check and install; F-33 About window
 - [Telemetry](features/telemetry.md): F-34 App lifecycle and usage telemetry
-- [CLI and MCP](features/cli-mcp.md): F-35 CLI: capture/OCR/recording plus managed MCP install, status, and doctor for VS Code; F-36 MCP capture, OCR, recording, and library tools; F-37 MCP desktop testing tools; F-39 CLI: spec-driven verification (`verify run`, `status`, `trust`, `task start`, `hook stop`): gates, desktop scenarios, frozen task criteria
+- [CLI and MCP](features/cli-mcp.md): F-35 CLI: capture/OCR/recording plus managed MCP install, status, and doctor for VS Code; F-36 MCP capture, OCR, recording, and library tools; F-37 MCP desktop testing tools; F-39 CLI: spec-driven verification (`verify run`, `status`, `trust`, `task start`, `hook stop`, `agent`): gates, desktop scenarios, frozen task criteria
 
 <!-- /features -->
 
@@ -234,6 +234,7 @@ A decision records why a choice was made over the obvious alternative, so nobody
 - [D-007 `verify run` drives the MCP server instead of sharing an Engine service](features/cli-mcp.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service)
 - [D-008 Verify approvals need a person at a terminal and live outside the repository](features/cli-mcp.md#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository) (superseded)
 - [D-009 An approver agent behind fixed rules approves verify commands](features/cli-mcp.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands)
+- [D-010 Verify's agent roles run on any agent](features/cli-mcp.md#d-010-verifys-agent-roles-run-on-any-agent)
 
 <!-- /decisions -->
 

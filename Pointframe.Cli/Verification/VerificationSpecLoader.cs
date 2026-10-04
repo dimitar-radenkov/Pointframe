@@ -317,7 +317,18 @@ internal static class VerificationSpecLoader
         var kind = RequireString(body, "kind", path);
         var normalizedKind = SupportedCheckKinds.FirstOrDefault(item => string.Equals(item, kind, StringComparison.OrdinalIgnoreCase))
             ?? throw new VerificationSpecException($"{path}.kind '{kind}' is not supported. Expected {string.Join(", ", SupportedCheckKinds)}.");
-        var expected = body.TryGetProperty("expected", out _) ? RequireString(body, "expected", path, allowEmpty: true) : null;
+        // "expected": false and "expected": 3 are as natural to write as their text forms, for a person and for
+        // an agent alike, and the condition compares text anyway.
+        var expected = body.TryGetProperty("expected", out var expectedElement)
+            ? expectedElement.ValueKind switch
+            {
+                JsonValueKind.String => expectedElement.GetString(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                JsonValueKind.Number => expectedElement.GetRawText(),
+                _ => throw new VerificationSpecException($"{path}.expected must be a string, true or false, or a number."),
+            }
+            : null;
         if (expected is null && normalizedKind is "toggleEquals" or "selectionEquals" or "textEquals")
         {
             throw new VerificationSpecException($"{path}: a {normalizedKind} check needs \"expected\".");

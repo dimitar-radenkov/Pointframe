@@ -329,8 +329,9 @@ so normal work never waits for you:
    payload (`-EncodedCommand`, `iex`, `base64`), a system change (`reg`,
    `schtasks`, `sc`, `net`, ...), or `$env:` and profile variables. A violation is
    refused at once.
-2. **The approver agent.** A separate Claude Code process (up to USD 0.5) with no
-   tools and no project settings, started by the CLI, sees only the commands and
+2. **The approver agent.** A separate run of the configured agent (see
+   [Choose the agent](#choose-the-agent-claude-code-codex-or-your-own); up to USD
+   0.5 on Claude Code) with no MCP tools and no project settings, started by the CLI, sees only the commands and
    the previously approved ones. It approves ordinary build, test, format, and
    check commands and the project's own app, treats the commands as untrusted
    data, and refuses when in doubt. Its approval is stored with its reason, so it
@@ -430,10 +431,11 @@ pointframe verify run --task keep-text
 ```
 
 `verify task start <task-file>` gives the task to an examiner agent before any
-code is written. The examiner is a separate Claude Code process (`claude -p`, up
-to USD 3) that sees only the task text and the running app: it runs in an empty
-folder outside the repository, with every built-in tool disabled, with only the
-Pointframe MCP server, and without the project's settings or hooks. It explores
+code is written. The examiner is a separate run of the configured agent (see
+[Choose the agent](#choose-the-agent-claude-code-codex-or-your-own); up to USD 3 on
+Claude Code) that sees only the task text and the running app: it runs in an
+empty folder outside the repository, with only the Pointframe MCP server, and
+without the project's settings or hooks. It explores
 the app and proposes criteria, a scenario with a negative control, and the
 automation ids that new elements must have (`requiredAutomationIds`).
 
@@ -489,15 +491,70 @@ When the agent tries to finish, the hook decides:
 | Only a person can fix it (`spec_untrusted`, `spec_invalid`, `mcp_not_found`, `desktop_busy`, a broken task) | Lets the agent stop and tells you that the work was not verified and why, because blocking would only loop |
 | The agent was blocked `--max-blocks` times in this session (default 5) | Lets it stop and tells you it still fails |
 
-With `--review`, the first pass on a tree the reviewer has not seen (whether the hook or the agent ran it) is followed by a reviewer agent: a separate Claude Code
-process (up to USD 1) with no tools, which reads the task, the diff since the
+With `--review`, the first pass on a tree the reviewer has not seen (whether the hook or the agent ran it) is followed by a reviewer agent: a separate run of the configured agent
+(up to USD 1 on Claude Code) with no MCP tools, which reads the task, the diff since the
 task started, and the verdict, and flags weakened tests, edits to the spec or
 hooks, and work outside the task. Its flags are written to
 `artifacts\pointframe-verify\review.json` and shown to you; they never block.
 
+**Codex** uses the same hook: put the same `Stop` entry in the project's
+`.codex\hooks.json`. Codex sends the same `session_id` and `cwd` and accepts the
+same `decision: block` answer, so `verify hook stop` works unchanged. Codex runs
+project hooks only when the project folder is trusted and the hook is trusted
+(both once, in Codex). On Windows, Codex silently skips a hook command written as
+a quoted path followed by arguments; use `pointframe verify hook stop` with
+`pointframe` on the PATH, or point the command at a small `.cmd` script that
+runs the CLI. A .NET worker in Codex's `workspace-write` sandbox also needs
+`-c sandbox_workspace_write.network_access=true`, or `dotnet build` cannot
+restore packages. An agent
+without Stop hooks (Cursor, Copilot, and others) cannot be held back: tell it in
+its instructions (`AGENTS.md`) to run `pointframe verify run` and fix failures
+before it says it is done, and require a `pass` in CI.
+
 Use an installed `pointframe` (or a copy of the CLI) in the hook, not a build
 output the project's own gates rebuild: a running `Pointframe.Cli.exe` locks its
 files, and the build gate then fails.
+
+### Choose the agent: Claude Code, Codex, or your own
+
+The examiner, the reviewer, and the approver are roles that any agent can play.
+The choice is yours, stored in your profile
+(`%LOCALAPPDATA%\Pointframe\verify\agent.json`), not in the project, so an agent
+working in the project cannot pick its own judge.
+
+```powershell
+pointframe verify agent                 # which agent is used, and is it installed?
+pointframe verify agent --use codex     # always use Codex
+pointframe verify agent --use claude    # always use Claude Code
+pointframe verify agent --use auto      # back to detection: Claude Code, else Codex
+```
+
+| Agent | How it runs | Limits |
+|---|---|---|
+| Claude Code | `claude -p` with the role's instructions as the system prompt, built-in tools off, only the Pointframe MCP server for the examiner, a JSON schema for the answer, and a budget cap | none |
+| Codex | `codex --ask-for-approval never exec -` with the instructions leading the prompt, `--output-schema` for the answer, `--sandbox read-only`, `--ephemeral`, and the Pointframe MCP server through `-c mcp_servers...` with its tools approved (`default_tools_approval_mode`) | Codex has no budget flag, and its read-only shell stays available |
+| Your own command | Any program that reads a prompt and writes a JSON answer | Its own |
+
+Your own command is set in `agent.json`. The CLI fills in the placeholders, sends
+the prompt on stdin as well, and reads the answer from `{output_file}`, or from
+standard output when that file stays empty:
+
+```json
+{
+  "agent": "command",
+  "command": "C:\\tools\\my-agent.exe",
+  "arguments": ["--prompt-file", "{prompt_file}", "--schema", "{schema_file}", "--out", "{output_file}", "--mcp", "{mcp_config_file}"]
+}
+```
+
+| Placeholder | Holds |
+|---|---|
+| `{prompt_file}` | The role's instructions, then the input |
+| `{instructions_file}`, `{input_file}` | The two parts on their own |
+| `{schema_file}` | The JSON schema the answer must follow |
+| `{output_file}` | Where to write the answer |
+| `{mcp_config_file}` | An MCP config (`mcpServers` JSON) with the Pointframe desktop tools; only the examiner needs it |
+| `{work_dir}` | An empty folder outside the repository |
 
 `verify run` takes over the mouse and keyboard while it runs, and only one run
 can use the desktop at a time. Stop the VS Code Pointframe MCP connector first

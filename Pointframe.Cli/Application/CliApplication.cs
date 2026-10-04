@@ -57,6 +57,7 @@ internal sealed class CliApplication
             {
                 using var httpClient = new HttpClient();
                 var installer = new McpPackageInstaller(new GitHubMcpPackageSource(httpClient), McpInstallRoot());
+                var (agent, _) = AgentSelection.Create(AgentSelection.Read(VerificationStore.Default));
                 var verifyApplication = new VerificationApplication(
                     new VerificationServices(
                         new McpStdioToolClientFactory(),
@@ -65,11 +66,11 @@ internal sealed class CliApplication
                         new GitWorkingTreeReader(),
                         VerificationStore.Default,
                         new ConsoleConfirmation(standardError),
-                        new ClaudeCodeExaminer(ClaudeCodeExaminer.ResolveDefaultExecutable),
+                        new AgentExaminer(agent),
                         VerifierVersion: GetVersion(),
-                        Reviewer: new ClaudeCodeReviewer(ClaudeCodeExaminer.ResolveDefaultExecutable),
+                        Reviewer: new AgentReviewer(agent),
                         HookInput: Console.IsInputRedirected ? Console.In : null,
-                        Approver: new ClaudeCodeApprover(ClaudeCodeExaminer.ResolveDefaultExecutable)),
+                        Approver: new AgentApprover(agent)),
                     standardOutput,
                     standardError);
                 return await verifyApplication.RunAsync(command, cancellationToken);

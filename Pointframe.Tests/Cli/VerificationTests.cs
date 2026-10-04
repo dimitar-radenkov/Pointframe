@@ -56,6 +56,20 @@ public sealed class VerificationTests : IDisposable
         Assert.StartsWith("scenarios[0]", exception.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("false", "false")]
+    [InlineData("true", "true")]
+    [InlineData("3", "3")]
+    [InlineData("\"on\"", "on")]
+    public void Load_ExpectedAsBooleanOrNumber_IsReadAsText(string expectedJson, string expected)
+    {
+        var specPath = _fixture.WriteSpec($$"""{ "id": "s", "steps": [ { "check": { "kind": "enabled", "automationId": "saveButton", "expected": {{expectedJson}} } } ] }""");
+
+        var check = Assert.IsType<VerificationStep.Check>(VerificationSpecLoader.Load(specPath).Scenarios[0].Steps[0]);
+
+        Assert.Equal(expected, check.Expected);
+    }
+
     [Fact]
     public void Load_DuplicateScenarioIds_AreRejected()
     {
@@ -164,8 +178,8 @@ public sealed class VerificationTests : IDisposable
     }
 
     [Theory]
-    [InlineData(new[] { "verify" }, "The verify command requires an action: run, status, trust, task start, or hook stop.")]
-    [InlineData(new[] { "verify", "start" }, "The verify command requires an action: run, status, trust, task start, or hook stop.")]
+    [InlineData(new[] { "verify" }, "The verify command requires an action: run, status, trust, task start, hook stop, or agent.")]
+    [InlineData(new[] { "verify", "start" }, "The verify command requires an action: run, status, trust, task start, hook stop, or agent.")]
     [InlineData(new[] { "verify", "task", "start" }, "The verify task command requires: task start <task-file>.")]
     [InlineData(new[] { "verify", "run", "--fast" }, "Unrecognized verify run option '--fast'.")]
     [InlineData(new[] { "verify", "status", "--mcp", "x" }, "Unrecognized verify status option '--mcp'.")]
@@ -344,11 +358,11 @@ public sealed class VerificationTests : IDisposable
     }
 
     [Fact]
-    public void ExaminerOutput_StructuredOutputIsUsed()
+    public void ExaminerAnswer_IsReadIntoAProposal()
     {
-        const string output = """{ "type": "result", "is_error": false, "structured_output": { "criteria": ["A"], "steps": [ { "restart": {} } ], "requiredAutomationIds": ["saveButton"], "notes": "n" } }""";
+        using var document = JsonDocument.Parse("""{ "criteria": ["A"], "steps": [ { "restart": {} } ], "requiredAutomationIds": ["saveButton"], "notes": "n" }""");
 
-        var proposal = ClaudeCodeExaminer.ParseOutput(output);
+        var proposal = AgentExaminer.ParseProposal(document.RootElement);
 
         Assert.Equal(["A"], proposal.Criteria);
         Assert.Equal(["saveButton"], proposal.RequiredAutomationIds);
@@ -357,34 +371,83 @@ public sealed class VerificationTests : IDisposable
     }
 
     [Fact]
-    public void ExaminerOutput_JsonInResultTextIsAccepted()
+    public void ExaminerAnswer_StepsAsJsonText_AreTurnedIntoObjects()
     {
-        const string output = """{ "type": "result", "result": "```json\n{ \"criteria\": [\"A\"], \"steps\": [], \"requiredAutomationIds\": [], \"notes\": \"\" }\n```" }""";
+        using var document = JsonDocument.Parse("""{ "criteria": ["A"], "steps": [ "{\"restart\": {}}", "{\"invoke\": {\"automationId\": \"saveButton\"}}" ], "requiredAutomationIds": [], "notes": "" }""");
 
-        var proposal = ClaudeCodeExaminer.ParseOutput(output);
+        var proposal = AgentExaminer.ParseProposal(document.RootElement);
 
-        Assert.Equal(["A"], proposal.Criteria);
+        Assert.Equal(JsonValueKind.Object, proposal.Steps[0].ValueKind);
+        Assert.Equal("saveButton", proposal.Steps[1].GetProperty("invoke").GetProperty("automationId").GetString());
+    }
+
+    [Theory]
+    [InlineData(typeof(AgentExaminer))]
+    [InlineData(typeof(AgentReviewer))]
+    [InlineData(typeof(AgentApprover))]
+    public void Schemas_AreInTheStrictFormCodexRequires(Type role)
+    {
+        var schema = (string)role.GetField("OutputSchema", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;
+        using var document = JsonDocument.Parse(schema);
+
+        AssertStrict(document.RootElement);
+    }
+
+    private static void AssertStrict(JsonElement schema)
+    {
+        if (schema.TryGetProperty("properties", out var properties))
+        {
+            Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
+            var required = schema.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToHashSet();
+            foreach (var property in properties.EnumerateObject())
+            {
+                Assert.Contains(property.Name, required);
+                AssertStrict(property.Value);
+            }
+        }
+
+        if (schema.TryGetProperty("items", out var items))
+        {
+            AssertStrict(items);
+        }
     }
 
     [Fact]
-    public void ExaminerOutput_ErrorResultThrows()
+    public void ExaminerAnswer_WithoutSteps_IsAnAgentError()
     {
-        var exception = Assert.Throws<ExaminerException>(() => ClaudeCodeExaminer.ParseOutput("""{ "is_error": true, "result": "budget exceeded" }"""));
+        using var document = JsonDocument.Parse("""{ "criteria": ["A"] }""");
 
-        Assert.Contains("budget exceeded", exception.Message, StringComparison.Ordinal);
+        Assert.Throws<AgentException>(() => AgentExaminer.ParseProposal(document.RootElement));
     }
 
     [Fact]
-    public void ExaminerArguments_DisableBuiltInToolsAndProjectSettings()
+    public async Task Examiner_GivesTheAgentTheDesktopToolsAndTheTask()
     {
-        var arguments = ClaudeCodeExaminer.Arguments("fixture", "C:\\tmp\\mcp.json", 3m);
+        var runner = new Mock<IAgentRunner>();
+        AgentRequest? sent = null;
+        using var answer = JsonDocument.Parse("""{ "criteria": ["A"], "steps": [ { "restart": {} } ], "requiredAutomationIds": [], "notes": "" }""");
+        runner.Setup(item => item.RunAsync(It.IsAny<AgentRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AgentRequest, CancellationToken>((request, _) => sent = request)
+            .ReturnsAsync(answer.RootElement.Clone());
 
-        Assert.Equal(string.Empty, arguments[arguments.ToList().IndexOf("--tools") + 1]);
-        Assert.Contains("--strict-mcp-config", arguments);
-        Assert.Equal("user", arguments[arguments.ToList().IndexOf("--setting-sources") + 1]);
-        Assert.Equal("mcp__pointframe", arguments[arguments.ToList().IndexOf("--allowedTools") + 1]);
-        Assert.Equal("3", arguments[arguments.ToList().IndexOf("--max-budget-usd") + 1]);
-        Assert.Contains("profile id is 'fixture'", arguments[arguments.ToList().IndexOf("--system-prompt") + 1], StringComparison.Ordinal);
+        await new AgentExaminer(runner.Object).ProposeAsync(
+            new ExaminerRequest("Keep the text.", "fixture", "C:/mcp/Pointframe.Mcp.exe", "C:/tmp/policy.json", "C:/tmp/work", new Dictionary<string, string>()),
+            CancellationToken.None);
+
+        Assert.Equal("examiner", sent!.Role);
+        Assert.Contains("profile id is 'fixture'", sent.Instructions, StringComparison.Ordinal);
+        Assert.Contains("Keep the text.", sent.Input, StringComparison.Ordinal);
+        Assert.Equal(["--desktop-testing", "--desktop-policy", "C:/tmp/policy.json"], sent.McpServer!.Arguments);
+        Assert.Equal(3m, sent.MaxBudgetUsd);
+    }
+
+    [Fact]
+    public async Task Examiner_WithoutAnAgent_SaysHowToGetOne()
+    {
+        var exception = await Assert.ThrowsAsync<AgentException>(() => new AgentExaminer(null).ProposeAsync(
+            new ExaminerRequest("t", "fixture", "m", "p", "w", new Dictionary<string, string>()), CancellationToken.None));
+
+        Assert.Contains("verify agent", exception.Message, StringComparison.Ordinal);
     }
 
     private static DesktopScenarioRunner Runner(IMcpToolClient client) =>

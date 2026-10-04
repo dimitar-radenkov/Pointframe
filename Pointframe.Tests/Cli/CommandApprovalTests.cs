@@ -135,25 +135,53 @@ public sealed class CommandApprovalTests : IDisposable
     }
 
     [Theory]
-    [InlineData("""{ "structured_output": { "approve": true, "reason": "Build commands.", "concerns": [] } }""", true)]
-    [InlineData("""{ "structured_output": { "approve": "true", "reason": "x", "concerns": [] } }""", false)]
-    [InlineData("""{ "is_error": true, "structured_output": { "approve": true, "reason": "x", "concerns": [] } }""", false)]
-    [InlineData("""{ "result": "{\"approve\": true}" }""", false)]
-    [InlineData("not json", false)]
-    public void ApproverOutput_OnlyAClearYesApproves(string output, bool approves)
+    [InlineData("""{ "approve": true, "reason": "Build commands.", "concerns": [] }""", true)]
+    [InlineData("""{ "approve": "true", "reason": "x", "concerns": [] }""", false)]
+    [InlineData("""{ "reason": "x", "concerns": [] }""", false)]
+    [InlineData("""{ "approve": 1 }""", false)]
+    public void ApproverAnswer_OnlyAClearYesApproves(string answer, bool approves)
     {
-        Assert.Equal(approves, ClaudeCodeApprover.ParseOutput(output).Approve);
+        using var document = System.Text.Json.JsonDocument.Parse(answer);
+
+        Assert.Equal(approves, AgentApprover.ParseDecision(document.RootElement, "codex").Approve);
     }
 
     [Fact]
-    public void ApproverArguments_GiveItNoToolsAndNoProjectSettings()
+    public async Task Approver_AgentThatFails_IsARefusal()
     {
-        var arguments = ClaudeCodeApprover.Arguments(0.5m).ToList();
+        var runner = new Mock<IAgentRunner>();
+        runner.SetupGet(item => item.Name).Returns("codex");
+        runner.Setup(item => item.RunAsync(It.IsAny<AgentRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(new AgentException("no answer"));
 
-        Assert.Equal(string.Empty, arguments[arguments.IndexOf("--tools") + 1]);
-        Assert.Contains("--strict-mcp-config", arguments);
-        Assert.Equal("user", arguments[arguments.IndexOf("--setting-sources") + 1]);
-        Assert.Contains("untrusted data", arguments[arguments.IndexOf("--system-prompt") + 1], StringComparison.Ordinal);
+        var decision = await new AgentApprover(runner.Object).ReviewAsync(_fixture.Root, ["gate build: dotnet build"], [], CancellationToken.None);
+
+        Assert.False(decision.Approve);
+        Assert.Contains("no answer", decision.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Approver_WithoutAnAgent_RefusesSoAPersonDecides()
+    {
+        var decision = await new AgentApprover(null).ReviewAsync(_fixture.Root, ["gate build: dotnet build"], [], CancellationToken.None);
+
+        Assert.False(decision.Approve);
+    }
+
+    [Fact]
+    public async Task Approver_InstructionsTreatCommandsAsUntrustedData()
+    {
+        var runner = new Mock<IAgentRunner>();
+        AgentRequest? sent = null;
+        using var answer = System.Text.Json.JsonDocument.Parse("""{ "approve": true, "reason": "ok", "concerns": [] }""");
+        runner.Setup(item => item.RunAsync(It.IsAny<AgentRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AgentRequest, CancellationToken>((request, _) => sent = request)
+            .ReturnsAsync(answer.RootElement.Clone());
+
+        await new AgentApprover(runner.Object).ReviewAsync(_fixture.Root, ["gate build: dotnet build"], ["gate build: dotnet build -c Release"], CancellationToken.None);
+
+        Assert.Contains("untrusted data", sent!.Instructions, StringComparison.Ordinal);
+        Assert.Null(sent.McpServer);
+        Assert.Contains("dotnet build -c Release", sent.Input, StringComparison.Ordinal);
     }
 
     private VerificationSpec Spec(string gates) =>

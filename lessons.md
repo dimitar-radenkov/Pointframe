@@ -1188,3 +1188,81 @@ A File map row for `.pointframe/**` in `docs/knowledge-base/knowledge-base.md`. 
 
 A local check must see what CI will see after the commit: include new, not-ignored files whenever a
 check walks the repository's files.
+
+## An agent that cannot use its tools still answers confidently
+
+### Problem
+
+The first Codex examiner run returned a complete, well-formed proposal: criteria, steps, and automation
+ids. It had never seen the app. Only its notes said so: "I could not inspect the app: the fixture session
+launch was rejected because approval is unavailable, so these automation IDs are proposed contracts".
+
+### Root cause
+
+`codex --ask-for-approval never` rejects every MCP tool call that would need approval, and Codex treats
+MCP tools as needing it by default. Codex then answered from the task text alone, in the requested schema,
+so the output looked like a normal proposal.
+
+### What fixed it
+
+`CodexAgentRunner` passes `-c mcp_servers.pointframe.default_tools_approval_mode='approve'`, which
+approves only the Pointframe server's tools while everything else keeps the never-ask policy. The next run
+opened the app three times and proposed an observed scenario. The fail-before check is the backstop: a
+guessed scenario that does not match the app is rejected rather than frozen.
+
+### Takeaway
+
+A schema-valid answer does not mean the agent did the work. When a role depends on tools, check that the
+tools were actually called (the agent's log) on the first run with a new agent, and keep a mechanical check
+of the result, such as fail-before, behind it.
+
+## Codex on Windows skips a hook command that is a quoted path with arguments
+
+### Problem
+
+A Codex worker finished a task without any verification. The project's `.codex/hooks.json` held the same
+Stop hook that works in Claude Code, and the project was trusted, but `verify hook stop` never ran: no hook
+state, no verdict, and nothing in Codex's log.
+
+### Root cause
+
+The hook command was `"C:\...\Pointframe.Cli.exe" verify hook stop --review --mcp "C:\...\Pointframe.Mcp.exe"`.
+Codex 0.160 on Windows did not start that command and reported nothing. The same hook pointed at a plain
+path to a `.cmd` script ran on every stop.
+
+### What fixed it
+
+A `.cmd` wrapper that runs the CLI with its arguments, with the hook command set to the wrapper's plain
+path. `docs/cli/README.md` tells Codex users to use `pointframe` on the PATH or such a script.
+
+### Takeaway
+
+Prove a hook fires with a probe that leaves a trace (a line appended to a file) before trusting it with a
+real run, for every agent and platform. A hook that silently does not run looks exactly like a hook that
+passed.
+
+## An exclude pathspec makes git add fail when the excluded folder is ignored
+
+### Problem
+
+In a project with `artifacts/` in `.gitignore`, `verify` reported the working tree as "unknown" on every
+run. Verdicts were never reused, `verify status` was never fresh, and the reviewer saw "no changes" while
+the change was right there.
+
+### Root cause
+
+`GitWorkingTreeReader` staged with `git add -A -- . ":(exclude)artifacts/pointframe-verify"`. When the
+excluded folder is itself ignored, git refuses the pathspec ("The following paths are ignored by one of
+your .gitignore files") and exits 1, so the hash and the diff were null. The unit test used a repository
+without a `.gitignore` and passed.
+
+### What fixed it
+
+`git add -A`, then `git rm -r --cached --ignore-unmatch -- artifacts/pointframe-verify` on the throwaway
+index. `GitWorkingTree_OwnOutputDoesNotChangeTheHashButOtherFilesDo` now runs with and without the
+folder in `.gitignore`.
+
+### Takeaway
+
+Test git plumbing against a repository that looks like a real one, with a `.gitignore` that covers the
+paths you touch; an explicit pathspec behaves differently for ignored paths.
