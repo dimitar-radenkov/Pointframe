@@ -31,12 +31,17 @@ public partial class Form1 : Form
     private nint _lastWheelMessageForegroundWindow;
     private nint _lastWheelMessageWindow;
     private bool _lastWheelMessageWasOverScrollSurface;
+    private bool _scrollingFixture;
     private int _formWheelMessageCount;
     private string _lastEvent = "none";
 
-    public Form1()
+    public Form1(bool scrollingFixture = false)
     {
         InitializeComponent();
+        if (scrollingFixture)
+        {
+            ConfigureScrollingFixture();
+        }
         StartPosition = FormStartPosition.Manual;
         _wheelMessageFilter = new WheelMessageFilter(RecordWheelMessage);
         Application.AddMessageFilter(_wheelMessageFilter);
@@ -50,6 +55,90 @@ public partial class Form1 : Form
             _lastEvent = "text";
             WriteState();
         };
+    }
+
+    private void ConfigureScrollingFixture()
+    {
+        _scrollingFixture = true;
+        foreach (var control in Controls.Cast<Control>().ToArray())
+        {
+            if (control != _scrollSurface)
+            {
+                Controls.Remove(control);
+                control.Visible = false;
+            }
+        }
+
+        Text = "Pointframe Scrolling Capture Fixture";
+        ClientSize = new Size(900, 510);
+        _scrollSurface.Location = new Point(24, 24);
+        _scrollSurface.Size = new Size(840, 450);
+        _scrollSurface.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        _scrollSurface.AutoScroll = true;
+        _scrollSurface.BackColor = Color.White;
+        const int rowCount = 40;
+        const int rowHeight = 90;
+        for (var index = 0; index < rowCount; index++)
+        {
+            var color = GetScrollRowColor(index);
+            var row = new ScrollFixtureRow(index, rowHeight)
+            {
+                BackColor = color,
+                Location = new Point(0, index * rowHeight),
+                Name = $"scrollRow{index:D2}",
+            };
+            var label = new Label
+            {
+                AutoSize = true,
+                BackColor = Color.Transparent,
+                ForeColor = Color.Black,
+                Font = new Font(Font.FontFamily, 18, FontStyle.Bold),
+                Location = new Point(12, 28),
+                Text = index.ToString(CultureInfo.InvariantCulture),
+            };
+            row.Controls.Add(label);
+            _scrollSurface.Controls.Add(row);
+        }
+
+        _scrollSurface.AutoScrollMinSize = new Size(820, rowCount * rowHeight);
+    }
+
+    private static Color GetScrollRowColor(int index) =>
+        Color.FromArgb((index * 37) % 256, (index * 71) % 256, (index * 113) % 256);
+
+    private sealed class ScrollFixtureRow : Panel
+    {
+        private readonly Bitmap _rowPattern;
+
+        public ScrollFixtureRow(int index, int height)
+        {
+            Size = new Size(820, height);
+            _rowPattern = new Bitmap(8, height);
+            for (var y = 0; y < height; y++)
+            {
+                var lineColor = Color.FromArgb((index * 37 + y * 3) % 256, (index * 71 + y * 7) % 256, (index * 113 + y * 11) % 256);
+                for (var x = 0; x < _rowPattern.Width; x++)
+                {
+                    _rowPattern.SetPixel(x, y, lineColor);
+                }
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            e.Graphics.DrawImage(_rowPattern, Math.Min(600, ClientSize.Width - _rowPattern.Width - 4), 0);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _rowPattern.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 
     private const int WmMouseWheel = 0x020A;
@@ -219,7 +308,7 @@ public partial class Form1 : Form
         WriteState();
     }
 
-    private void RecordWheelMessage(Message message)
+    private bool RecordWheelMessage(Message message)
     {
         var delta = (short)((ulong)message.WParam >> 16);
         var cursor = Cursor.Position;
@@ -235,6 +324,13 @@ public partial class Form1 : Form
             _wheelDeltaTotal += delta;
             _lastWheelPoint = _scrollSurface.PointToClient(cursor);
             _lastEvent = "wheel";
+            if (_scrollingFixture)
+            {
+                var currentOffset = -_scrollSurface.AutoScrollPosition.Y;
+                var maximumOffset = Math.Max(0, _scrollSurface.AutoScrollMinSize.Height - _scrollSurface.ClientSize.Height);
+                var requestedOffset = currentOffset - ((delta / 120) * 75);
+                _scrollSurface.AutoScrollPosition = new Point(0, Math.Clamp(requestedOffset, 0, maximumOffset));
+            }
         }
         else
         {
@@ -242,6 +338,7 @@ public partial class Form1 : Form
         }
 
         WriteState();
+        return _scrollingFixture && overScrollSurface;
     }
 
     private void WriteState()
@@ -352,13 +449,13 @@ public partial class Form1 : Form
         internal static extern bool AttachThreadInput(uint attachTo, uint attachFrom, bool attach);
     }
 
-    private sealed class WheelMessageFilter(Action<Message> onWheelMessage) : IMessageFilter
+    private sealed class WheelMessageFilter(Func<Message, bool> onWheelMessage) : IMessageFilter
     {
         public bool PreFilterMessage(ref Message m)
         {
             if (m.Msg == WmMouseWheel)
             {
-                onWheelMessage(m);
+                return onWheelMessage(m);
             }
 
             return false;

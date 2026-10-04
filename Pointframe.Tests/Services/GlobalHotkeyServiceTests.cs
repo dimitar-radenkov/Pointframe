@@ -44,6 +44,40 @@ public sealed class GlobalHotkeyServiceTests
     }
 
     [Fact]
+    public void EscapeCancellationMode_CallsCallbackAndUnregistersAfterCancellation()
+    {
+        var service = CreateService();
+        using var cancellation = new CancellationTokenSource();
+        var registration = service.BeginEscapeCancellationMode(cancellation.Cancel);
+
+        Assert.True(service.IsEscapeCancellationModeActive);
+        Assert.Null(service.GetEscapeCancellationCallback(0x41));
+        var escapeCallback = service.GetEscapeCancellationCallback(NativeMethods.VK_ESCAPE);
+        Assert.NotNull(escapeCallback);
+        escapeCallback();
+        registration.Dispose();
+
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.False(service.IsEscapeCancellationModeActive);
+    }
+
+    [Fact]
+    public void EscapeCancellationMode_UnregistersWhenCaptureThrows()
+    {
+        var service = CreateService();
+
+        Action capture = () =>
+        {
+            using var registration = service.BeginEscapeCancellationMode(() => { });
+            throw new InvalidOperationException("capture failed");
+        };
+        var exception = Record.Exception(capture);
+
+        Assert.IsType<InvalidOperationException>(exception);
+        Assert.False(service.IsEscapeCancellationModeActive);
+    }
+
+    [Fact]
     public void Dispose_CanBeCalledMultipleTimes_DoesNotThrow()
     {
         var svc = CreateService();

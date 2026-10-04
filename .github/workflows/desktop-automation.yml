@@ -61,6 +61,9 @@ jobs:
       - name: Build desktop automation tests
         run: dotnet build Pointframe.AutomationTests/Pointframe.AutomationTests.csproj --no-restore --configuration Release
 
+      - name: Build WinForms scrolling fixture
+        run: dotnet build Pointframe.DesktopTestFixture/Pointframe.DesktopTestFixture.csproj --no-restore --configuration Release
+
       - name: Validate desktop prerequisites before input
         shell: pwsh
         env:

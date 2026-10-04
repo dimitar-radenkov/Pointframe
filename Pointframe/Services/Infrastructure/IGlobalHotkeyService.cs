@@ -21,4 +21,6 @@ public interface IGlobalHotkeyService : IDisposable
     void BeginKeyCaptureMode(Action<uint, HotkeyModifiers> onKeyPressed);
 
     void EndKeyCaptureMode();
+
+    IDisposable BeginEscapeCancellationMode(Action onEscape);
 }

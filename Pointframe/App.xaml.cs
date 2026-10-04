@@ -151,6 +151,13 @@ public partial class App : Application
         if (automationLaunchOptions.IsAutomationMode)
         {
             _logger.LogInformation("Pointframe automation mode enabled");
+            if (automationLaunchOptions.ScrollingCaptureRegionPixels is { } regionPixels)
+            {
+                _globalHotkey.Register();
+                _captureLaunch.StartAutomationScrollingSnip(regionPixels);
+                return;
+            }
+
             ShowAutomationWindow(automationLaunchOptions);
             return;
         }

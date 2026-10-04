@@ -30,6 +30,8 @@ public sealed class AppTests
         Assert.IsType<MessageBoxService>(provider.GetRequiredService<IMessageBoxService>());
         Assert.IsType<TrayIconManager>(provider.GetRequiredService<ITrayIconManager>());
         Assert.NotNull(provider.GetRequiredService<Func<IScreenRecordingService, string, RecordingHudViewModel>>());
+        Assert.NotNull(provider.GetRequiredService<Func<CancellationTokenSource, ScrollingCaptureProgressViewModel>>());
+        Assert.NotNull(provider.GetRequiredService<Func<ScrollingCaptureProgressViewModel, Int32Rect, ScrollingCaptureProgressWindow>>());
         Assert.IsType<CaptureIndexWorker>(provider.GetRequiredService<ICaptureIndexWorker>());
         Assert.IsType<ScrollingCaptureService>(provider.GetRequiredService<IScrollingCaptureService>());
     }

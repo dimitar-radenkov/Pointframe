@@ -756,6 +756,7 @@
             Background="#DD333333" CornerRadius="6"
             Padding="12,6" Visibility="Collapsed">
       <TextBlock x:Name="OcrToastText"
+                 AutomationProperties.AutomationId="OverlayWindow.CaptureNotice"
                  Foreground="White" FontSize="12"
                  FontFamily="Segoe UI" FontWeight="SemiBold"/>
     </Border>
