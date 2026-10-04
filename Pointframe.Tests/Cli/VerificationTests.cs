@@ -63,7 +63,7 @@ public sealed class VerificationTests : IDisposable
     [InlineData("\"on\"", "on")]
     public void Load_ExpectedAsBooleanOrNumber_IsReadAsText(string expectedJson, string expected)
     {
-        var specPath = _fixture.WriteSpec($$"""{ "id": "s", "steps": [ { "check": { "kind": "enabled", "automationId": "saveButton", "expected": {{expectedJson}} } } ] }""");
+        var specPath = _fixture.WriteSpec($$"""{ "id": "s", "steps": [ { "check": { "kind": "textEquals", "automationId": "saveButton", "expected": {{expectedJson}} } } ] }""");
 
         var check = Assert.IsType<VerificationStep.Check>(VerificationSpecLoader.Load(specPath).Scenarios[0].Steps[0]);
 

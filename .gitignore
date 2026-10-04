@@ -28,6 +28,7 @@
 !lessons.md
 !docs/developer-guide.md
 !docs/cli/verify.md
+!docs/cli/verify-spec.md
 !Pointframe.Mcp/Guides/*.md
 
 # Claude Code per-user settings

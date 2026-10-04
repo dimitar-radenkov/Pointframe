@@ -238,6 +238,7 @@ A decision records why a choice was made over the obvious alternative, so nobody
 - [D-010 Verify's agent roles run on any agent](features/cli-mcp.md#d-010-verifys-agent-roles-run-on-any-agent)
 - [D-011 Standard commands are approved by policy](features/cli-mcp.md#d-011-standard-commands-are-approved-by-policy)
 - [D-012 Version compatibility](features/cli-mcp.md#d-012-version-compatibility)
+- [D-013 Verification spec v1 is frozen](features/cli-mcp.md#d-013-verification-spec-v1-is-frozen)
 
 <!-- /decisions -->
 
