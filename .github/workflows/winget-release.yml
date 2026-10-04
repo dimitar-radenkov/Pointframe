@@ -61,19 +61,42 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $runId = '${{ github.event.workflow_run.id }}'
+          $triggerAttempt = '${{ github.event.workflow_run.run_attempt }}'
           $destination = Join-Path $env:RUNNER_TEMP 'release-version'
           New-Item -ItemType Directory -Path $destination -Force | Out-Null
-          gh run download '${{ github.event.workflow_run.id }}' --name release-version --dir $destination
+
+          # Artifacts belong to the run, not to an attempt (the API exposes no attempt on them), so
+          # a manual rerun of CD races with this workflow: attempt 1 triggers us while attempt 2 is
+          # still running and its artifacts are not there yet. Wait until the run is no longer in
+          # progress, then judge the run's latest attempt.
+          $deadline = (Get-Date).AddMinutes(15)
+          while ($true) {
+            $run = gh api "repos/${{ github.repository }}/actions/runs/$runId" | ConvertFrom-Json
+            if ($run.status -eq 'completed') {
+              break
+            }
+            if ((Get-Date) -gt $deadline) {
+              throw "CD run $runId (triggered at attempt $triggerAttempt) was still $($run.status) at attempt $($run.run_attempt) after 15 minutes; cannot read its release-version artifact."
+            }
+            Write-Output "CD run $runId is $($run.status) (attempt $($run.run_attempt)); waiting for it to finish."
+            Start-Sleep -Seconds 20
+          }
+          if ($run.conclusion -ne 'success') {
+            throw "CD run $runId finished attempt $($run.run_attempt) as $($run.conclusion); not submitting to winget."
+          }
+
+          gh run download $runId --name release-version --dir $destination
           if ($LASTEXITCODE -ne 0) {
-            throw "CD run ${{ github.event.workflow_run.id }} is missing its release-version artifact; cannot submit to winget."
+            throw "CD run $runId is missing its release-version artifact; cannot submit to winget."
           }
           $versionFile = Join-Path $destination 'release-version.txt'
           if (-not (Test-Path $versionFile)) {
-            throw "CD run ${{ github.event.workflow_run.id }} did not provide release-version.txt; cannot submit to winget."
+            throw "CD run $runId did not provide release-version.txt; cannot submit to winget."
           }
           $display = (Get-Content $versionFile -Raw).Trim()
           if ([string]::IsNullOrWhiteSpace($display)) {
-            throw "CD run ${{ github.event.workflow_run.id }} provided an empty release version; cannot submit to winget."
+            throw "CD run $runId provided an empty release version; cannot submit to winget."
           }
           "display=$display" >> $env:GITHUB_OUTPUT
 
