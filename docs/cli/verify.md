@@ -26,6 +26,8 @@ Use the release ZIP:
 
 1. Download `Pointframe.Cli-<version>-win-x64.zip` and its `.sha256` file from the
    [latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest).
+   Use the file with the version in its name; `Pointframe.Cli-win-x64.zip` is the
+   same build under a stable name for scripts.
 2. Check the hash. The two values must match:
 
    ```powershell
@@ -41,7 +43,10 @@ Use the release ZIP:
 
    This copies the CLI to `%LOCALAPPDATA%\Programs\Pointframe.Cli` and adds that
    folder to your user `Path`.
-4. Open a new terminal, and restart your agent so it sees the new `Path`.
+4. Open a new terminal, and restart your agent so it sees the new `Path`. A
+   terminal or agent that was already running keeps its old `Path`: there,
+   `pointframe` is not found and `verify init` warns that `pointframe.exe` was not
+   found on PATH. That warning is expected until the restart; the install worked.
 5. Check the install:
 
    ```powershell
@@ -52,8 +57,9 @@ Use the release ZIP:
    `where.exe` should list `%LOCALAPPDATA%\Programs\Pointframe.Cli\pointframe.exe`
    first.
 
-When the package is available, `winget install DimitarRadenkov.Pointframe.Cli`
-does the same. Scoop is not supported.
+The winget package `DimitarRadenkov.Pointframe.Cli` is awaiting acceptance in the
+winget repository; until `winget search DimitarRadenkov.Pointframe.Cli` finds it,
+use the ZIP. Scoop is not supported.
 
 ## Set up a project
 
@@ -235,7 +241,9 @@ Init and `verify status` check which command the hook will run. Fix any of these
 then restart the agent:
 
 - **`pointframe.exe` was not found on PATH.** The hook cannot run, so the agent
-  can stop without a check. Run the install steps above.
+  can stop without a check. Run the install steps above. Right after `install`, in
+  the same terminal or agent session, this warning only means that session has
+  the old `Path`; restart it and run `pointframe verify status` again.
 - **The command is not the Pointframe CLI** (`hookCommand.ok` is `false`). Another
   program named `pointframe` is earlier on `PATH`, for example an old shim. Remove
   it or move it later on `PATH`.
