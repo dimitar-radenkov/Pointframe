@@ -77,6 +77,10 @@ internal static class AppServiceRegistration
         services.AddSingleton<IAnnotationGeometryService, AnnotationGeometryService>();
         services.AddSingleton<IOcrService, WindowsOcrService>();
         services.AddTransient<OverlayViewModel>();
+        services.AddTransient<Func<CancellationTokenSource, ScrollingCaptureProgressViewModel>>(sp => cancellationTokenSource =>
+            new ScrollingCaptureProgressViewModel(cancellationTokenSource));
+        services.AddTransient<Func<ScrollingCaptureProgressViewModel, System.Windows.Int32Rect, ScrollingCaptureProgressWindow>>(sp =>
+            (viewModel, regionPixels) => new ScrollingCaptureProgressWindow(viewModel, regionPixels));
         services.AddTransient<LibraryViewModel>();
         services.AddTransient<RecordingAnnotationViewModel>();
         services.AddTransient<OverlayWindow>(CreateOverlayWindow);

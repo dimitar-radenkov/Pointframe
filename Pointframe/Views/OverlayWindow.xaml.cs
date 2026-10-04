@@ -143,6 +143,11 @@ public partial class OverlayWindow : Window
         _selectionSessionMode = sessionMode;
     }
 
+    internal void ShowCaptureNotice(string message)
+    {
+        ShowOcrToast(message);
+    }
+
     internal void InitializeFromSelectionSession(SelectionSessionResult selectionSession)
     {
         ArgumentNullException.ThrowIfNull(selectionSession);

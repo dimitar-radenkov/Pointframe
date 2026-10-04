@@ -13,6 +13,7 @@ internal sealed class GlobalHotkeyService : IGlobalHotkeyService
     private bool _disposed;
 
     private volatile Action<uint, HotkeyModifiers>? _keyCaptureCallback;
+    private volatile Action? _escapeCancellationCallback;
 
     public event Action? RegionSnipRequested;
     public event Action? WholeScreenSnipRequested;
@@ -84,6 +85,17 @@ internal sealed class GlobalHotkeyService : IGlobalHotkeyService
         if (wParam == (IntPtr)NativeMethods.WM_KEYDOWN || wParam == (IntPtr)NativeMethods.WM_SYSKEYDOWN)
         {
             var kb = Marshal.PtrToStructure<NativeMethods.KBDLLHOOKSTRUCT>(lParam);
+            var escapeCallback = GetEscapeCancellationCallback(kb.vkCode);
+            if (escapeCallback is not null)
+            {
+                WpfApplication.Current.Dispatcher.InvokeAsync(escapeCallback);
+                return (IntPtr)1;
+            }
+        }
+
+        if (wParam == (IntPtr)NativeMethods.WM_KEYDOWN || wParam == (IntPtr)NativeMethods.WM_SYSKEYDOWN)
+        {
+            var kb = Marshal.PtrToStructure<NativeMethods.KBDLLHOOKSTRUCT>(lParam);
             var shiftHeld = NativeMethods.GetAsyncKeyState(NativeMethods.VK_SHIFT) < 0;
             var ctrlHeld = NativeMethods.GetAsyncKeyState(NativeMethods.VK_CONTROL) < 0;
             var altHeld = NativeMethods.GetAsyncKeyState(NativeMethods.VK_MENU) < 0;
@@ -138,6 +150,32 @@ internal sealed class GlobalHotkeyService : IGlobalHotkeyService
     public void BeginKeyCaptureMode(Action<uint, HotkeyModifiers> onKeyPressed) => _keyCaptureCallback = onKeyPressed;
 
     public void EndKeyCaptureMode() => _keyCaptureCallback = null;
+
+    public IDisposable BeginEscapeCancellationMode(Action onEscape)
+    {
+        ArgumentNullException.ThrowIfNull(onEscape);
+        _escapeCancellationCallback = onEscape;
+        return new EscapeCancellationRegistration(this, onEscape);
+    }
+
+    internal bool IsEscapeCancellationModeActive => _escapeCancellationCallback is not null;
+
+    internal Action? GetEscapeCancellationCallback(uint virtualKeyCode) =>
+        virtualKeyCode == NativeMethods.VK_ESCAPE ? _escapeCancellationCallback : null;
+
+    private sealed class EscapeCancellationRegistration(GlobalHotkeyService owner, Action callback) : IDisposable
+    {
+        private GlobalHotkeyService? _owner = owner;
+
+        public void Dispose()
+        {
+            var currentOwner = Interlocked.Exchange(ref _owner, null);
+            if (currentOwner is not null && currentOwner._escapeCancellationCallback == callback)
+            {
+                currentOwner._escapeCancellationCallback = null;
+            }
+        }
+    }
 
     public void Dispose()
     {

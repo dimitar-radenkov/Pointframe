@@ -63,4 +63,13 @@ public sealed class AutomationLaunchOptionsTests
         Assert.False(options.OpenTraySampleOverlayWindow);
         Assert.False(options.IsAutomationMode);
     }
+
+    [Fact]
+    public void Parse_ScrollingCaptureAutomationArgument_UsesPhysicalPixelRegion()
+    {
+        var options = AutomationLaunchOptions.Parse(["--automation-start-scrolling-snip=-1920,80,810,420"]);
+
+        Assert.True(options.IsAutomationMode);
+        Assert.Equal(new System.Windows.Int32Rect(-1920, 80, 810, 420), options.ScrollingCaptureRegionPixels);
+    }
 }

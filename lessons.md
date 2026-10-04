@@ -785,6 +785,26 @@ The HUD duplicated a partial tool list instead of treating `AnnotationTool` as t
 
 When a viewmodel command already works from an enum, avoid a second name allowlist unless it is enforcing a real security or validation boundary. Duplicated tool lists drift as soon as the app grows another annotation mode.
 
+## XAML-generated WPF window partials must match the generated accessibility
+
+### Problem
+
+A new WPF window failed to compile because its code-behind declared an `internal partial class` while the XAML compiler generated a public partial declaration. Making the window public then exposed internal view-model and observer types through public members.
+
+### Root cause
+
+The XAML compiler generates the other half of the window class with public accessibility. The handwritten partial must agree, and public members on that class cannot expose less accessible types.
+
+### What fixed it
+
+- declare the code-behind partial as public
+- keep the window constructor internal when only the app composition needs to create it
+- implement internal observer contracts explicitly so their internal parameter types do not become public API
+
+### Takeaway
+
+For XAML-backed WPF windows, match the generated class accessibility and narrow construction or interface implementation at the member level when the implementation types should stay internal.
+
 ## Window-local WPF resources must stay self-contained when tests instantiate windows directly
 
 ### Problem
@@ -1365,3 +1385,42 @@ folder in `.gitignore`.
 
 Test git plumbing against a repository that looks like a real one, with a `.gitignore` that covers the
 paths you touch; an explicit pathspec behaves differently for ignored paths.
+
+## A progress window over scrolling content must never activate and should hide only when physical-pixel bounds overlap the capture
+
+### Problem
+
+A scrolling capture progress window was shown and activated after every frame. Apps that only scroll
+while focused could stop responding to wheel input, and a visible window over the selected area could
+be stitched into the result. Hiding it for every frame also caused flicker when the window was outside
+the capture region.
+
+### What fixed it
+
+The progress window uses `ShowActivated=false` and `WS_EX_NOACTIVATE`; it is hidden only when its native
+physical-pixel bounds intersect the physical-pixel capture rectangle. Escape is a scoped callback on
+the app's existing low-level keyboard hook, released with a disposable on all capture exits.
+
+### Takeaway
+
+For an overlay shown during keyboard or wheel interaction, verify activation and z-order against the
+target app and compare screen regions in physical pixels.
+
+## Pixel-match desktop fixtures need unique scanlines inside each color band so overlap matching can find a shift
+
+### Problem
+
+A desktop fixture made of solid color rows looked distinctive to a person, but every scanline inside a
+row was identical. The scrolling stitcher votes on unique pixel rows, so it could not infer how far the
+fixture had moved and returned only the first frame.
+
+### What fixed it
+
+Keep the human-visible indexed color bands and row labels, and add a small scanline pattern that changes
+with both row index and position within the row. The saved PNG can then be checked for ordered row
+colors while the production matcher can identify exact overlap.
+
+### Takeaway
+
+Build pixel fixtures around the same uniqueness and sampling rules used by the code under test; a
+visually distinct block may still repeat at the matcher’s comparison granularity.

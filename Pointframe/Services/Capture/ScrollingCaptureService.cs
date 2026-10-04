@@ -31,7 +31,10 @@ internal sealed class ScrollingCaptureService : IScrollingCaptureService
 
     internal ScrollingCaptureOptions Options { get; init; } = ScrollingCaptureOptions.Default;
 
-    public async Task<ScrollingCaptureResult> CaptureAsync(Int32Rect regionPixels, CancellationToken cancellationToken = default)
+    public async Task<ScrollingCaptureResult> CaptureAsync(
+        Int32Rect regionPixels,
+        CancellationToken cancellationToken = default,
+        IScrollingCaptureObserver? observer = null)
     {
         if (regionPixels.Width <= 0 || regionPixels.Height <= 0)
         {
@@ -40,42 +43,52 @@ internal sealed class ScrollingCaptureService : IScrollingCaptureService
 
         // Let the selection windows disappear before the first frame, or they land in it.
         await DelayAsync(cancellationToken);
-        var stitcher = new ScrollingCaptureStitcher(CaptureFrame(regionPixels));
+        var firstFrame = await CaptureFrameAsync(regionPixels, observer, cancellationToken);
+        var stitcher = new ScrollingCaptureStitcher(firstFrame);
         var frameCount = 1;
         var wheelNotches = Options.InitialWheelNotches;
         var stopReason = ScrollingCaptureStopReason.FrameLimit;
+        await ReportProgressAsync(observer, frameCount, stitcher.Height, cancellationToken);
 
         using (_scrollInput.BeginScrolling(
             regionPixels.X + (regionPixels.Width / 2),
             regionPixels.Y + (regionPixels.Height / 2)))
         {
-            while (frameCount < Options.MaxFrames)
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                _scrollInput.ScrollDown(wheelNotches);
-                await DelayAsync(cancellationToken);
-                var step = stitcher.Append(CaptureFrame(regionPixels));
-                frameCount++;
-
-                if (step.Outcome == ScrollStepOutcome.NoMovement)
+                while (frameCount < Options.MaxFrames)
                 {
-                    stopReason = ScrollingCaptureStopReason.EndOfContent;
-                    break;
-                }
+                    cancellationToken.ThrowIfCancellationRequested();
+                    _scrollInput.ScrollDown(wheelNotches);
+                    await DelayAsync(cancellationToken);
+                    var step = stitcher.Append(await CaptureFrameAsync(regionPixels, observer, cancellationToken));
+                    frameCount++;
+                    await ReportProgressAsync(observer, frameCount, stitcher.Height, cancellationToken);
 
-                if (step.Outcome == ScrollStepOutcome.NoOverlap)
-                {
-                    stopReason = ScrollingCaptureStopReason.NoOverlap;
-                    break;
-                }
+                    if (step.Outcome == ScrollStepOutcome.NoMovement)
+                    {
+                        stopReason = ScrollingCaptureStopReason.EndOfContent;
+                        break;
+                    }
 
-                if (stitcher.Height >= Options.MaxHeightPixels)
-                {
-                    stopReason = ScrollingCaptureStopReason.HeightLimit;
-                    break;
-                }
+                    if (step.Outcome == ScrollStepOutcome.NoOverlap)
+                    {
+                        stopReason = ScrollingCaptureStopReason.NoOverlap;
+                        break;
+                    }
 
-                wheelNotches = NextWheelNotches(step.Shift, wheelNotches, stitcher.BodyHeight);
+                    if (stitcher.Height >= Options.MaxHeightPixels)
+                    {
+                        stopReason = ScrollingCaptureStopReason.HeightLimit;
+                        break;
+                    }
+
+                    wheelNotches = NextWheelNotches(step.Shift, wheelNotches, stitcher.BodyHeight);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                stopReason = ScrollingCaptureStopReason.Cancelled;
             }
         }
 
@@ -84,7 +97,39 @@ internal sealed class ScrollingCaptureService : IScrollingCaptureService
             frameCount,
             stitcher.Height,
             stopReason);
-        return new ScrollingCaptureResult(stitcher.Build().ToBitmap(), frameCount, stopReason);
+        int? stopLimit = stopReason switch
+        {
+            ScrollingCaptureStopReason.FrameLimit => Options.MaxFrames,
+            ScrollingCaptureStopReason.HeightLimit => Options.MaxHeightPixels,
+            _ => null,
+        };
+        return new ScrollingCaptureResult(stitcher.Build().ToBitmap(), frameCount, stopReason, stopLimit);
+    }
+
+    private async Task<PixelFrame> CaptureFrameAsync(
+        Int32Rect region,
+        IScrollingCaptureObserver? observer,
+        CancellationToken cancellationToken)
+    {
+        if (observer is not null)
+        {
+            await observer.HideForCaptureAsync(cancellationToken);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var frame = CaptureFrame(region);
+        cancellationToken.ThrowIfCancellationRequested();
+        return frame;
+    }
+
+    private static Task ReportProgressAsync(
+        IScrollingCaptureObserver? observer,
+        int frameCount,
+        int heightPixels,
+        CancellationToken cancellationToken)
+    {
+        return observer?.ReportProgressAsync(new ScrollingCaptureProgress(frameCount, heightPixels), cancellationToken)
+            ?? Task.CompletedTask;
     }
 
     internal static int NextWheelNotches(int shift, int wheelNotches, int bodyHeight)

@@ -17,6 +17,7 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
     private readonly ITelemetryService _telemetry;
     private readonly IWindowCaptureService _windowCaptureService;
     private readonly BeautifierRenderService _beautifierRenderService;
+    private readonly IGlobalHotkeyService _globalHotkey;
 
     public CaptureLaunchService(
         IServiceProvider services,
@@ -27,7 +28,8 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         ILogger<CaptureLaunchService> logger,
         ITelemetryService telemetry,
         IWindowCaptureService windowCaptureService,
-        BeautifierRenderService beautifierRenderService)
+        BeautifierRenderService beautifierRenderService,
+        IGlobalHotkeyService globalHotkey)
     {
         _services = services;
         _userSettings = userSettings;
@@ -38,6 +40,7 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         _telemetry = telemetry;
         _windowCaptureService = windowCaptureService;
         _beautifierRenderService = beautifierRenderService;
+        _globalHotkey = globalHotkey;
     }
 
     public void StartRegionSnip(string source = "tray")
@@ -101,31 +104,61 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
             {
                 [TelemetryPropertyKeys.DelaySeconds] = delay.ToString(),
             });
-            new CountdownWindow(delay, () => ExecuteScrollingSnip()).Show();
+            new CountdownWindow(delay, () => ExecuteScrollingSnip(null)).Show();
             return;
         }
 
-        ExecuteScrollingSnip();
+        ExecuteScrollingSnip(null);
     }
 
-    private async void ExecuteScrollingSnip()
+    public void StartAutomationScrollingSnip(Int32Rect regionPixels) => ExecuteScrollingSnip(regionPixels);
+
+    private async void ExecuteScrollingSnip(Int32Rect? automationRegionPixels)
     {
-        var screenCapture = _services.GetRequiredService<IScreenCaptureService>();
-        var selection = await SelectionSession.SelectAsync(screenCapture, _loggerFactory);
-        if (selection is null)
+        Int32Rect regionPixels;
+        if (automationRegionPixels is { } selectedRegion)
+        {
+            regionPixels = selectedRegion;
+        }
+        else
+        {
+            var screenCapture = _services.GetRequiredService<IScreenCaptureService>();
+            var selection = await SelectionSession.SelectAsync(screenCapture, _loggerFactory);
+            if (selection is null)
+            {
+                _telemetry.TrackEvent(TelemetryEvents.SnipCancelled, new Dictionary<string, string>
+                {
+                    [TelemetryPropertyKeys.Type] = "scrolling",
+                });
+                return;
+            }
+
+            regionPixels = selection.SelectionBoundsPixels;
+        }
+
+        ScrollingCaptureResult result;
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var progressViewModel = _services
+            .GetRequiredService<Func<CancellationTokenSource, ScrollingCaptureProgressViewModel>>()(cancellationTokenSource);
+        var progressWindow = _services
+            .GetRequiredService<Func<ScrollingCaptureProgressViewModel, Int32Rect, ScrollingCaptureProgressWindow>>()(progressViewModel, regionPixels);
+        DpiAwarenessScope.RunPerMonitorV2(progressWindow.Show);
+        using var escapeRegistration = _globalHotkey.BeginEscapeCancellationMode(cancellationTokenSource.Cancel);
+        try
+        {
+            var scrollingCapture = _services.GetRequiredService<IScrollingCaptureService>();
+            result = await scrollingCapture.CaptureAsync(
+                regionPixels,
+                cancellationTokenSource.Token,
+                progressWindow);
+        }
+        catch (OperationCanceledException) when (cancellationTokenSource.IsCancellationRequested)
         {
             _telemetry.TrackEvent(TelemetryEvents.SnipCancelled, new Dictionary<string, string>
             {
                 [TelemetryPropertyKeys.Type] = "scrolling",
             });
             return;
-        }
-
-        ScrollingCaptureResult result;
-        try
-        {
-            var scrollingCapture = _services.GetRequiredService<IScrollingCaptureService>();
-            result = await scrollingCapture.CaptureAsync(selection.SelectionBoundsPixels);
         }
         catch (Exception ex)
         {
@@ -134,6 +167,10 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
                 "The scrolling capture failed. Select a region inside scrollable content and try again.",
                 "Scrolling snip");
             return;
+        }
+        finally
+        {
+            progressWindow.Close();
         }
 
         _telemetry.TrackEvent(TelemetryEvents.ScrollingCaptureCompleted, new Dictionary<string, string>
@@ -145,6 +182,24 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         var overlay = _services.GetRequiredService<OverlayWindow>();
         overlay.InitializeFromImage(result.Image, "scrolling-capture://region", SelectionSessionMode.OpenedImage);
         DpiAwarenessScope.RunPerMonitorV2(() => overlay.Show());
+        var notice = ToScrollingCaptureNotice(result);
+        if (notice is not null)
+        {
+            overlay.ShowCaptureNotice(notice);
+        }
+    }
+
+    internal static string? ToScrollingCaptureNotice(ScrollingCaptureResult result)
+    {
+        return result.StopReason switch
+        {
+            ScrollingCaptureStopReason.EndOfContent => null,
+            ScrollingCaptureStopReason.NoOverlap => "Stopped: no matching overlap. Showing partial capture.",
+            ScrollingCaptureStopReason.FrameLimit => $"Stopped at the {result.StopLimit ?? result.FrameCount}-frame limit.",
+            ScrollingCaptureStopReason.HeightLimit => $"Stopped at the {result.StopLimit ?? result.Image.PixelHeight:N0} px limit.",
+            ScrollingCaptureStopReason.Cancelled => $"Capture canceled. Showing {result.FrameCount} frames.",
+            _ => "Scrolling capture stopped. Showing partial capture.",
+        };
     }
 
     internal static string ToTelemetryValue(ScrollingCaptureStopReason stopReason)
@@ -155,6 +210,7 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
             ScrollingCaptureStopReason.NoOverlap => "no_overlap",
             ScrollingCaptureStopReason.FrameLimit => "frame_limit",
             ScrollingCaptureStopReason.HeightLimit => "height_limit",
+            ScrollingCaptureStopReason.Cancelled => "cancelled",
             _ => "unknown",
         };
     }

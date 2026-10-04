@@ -36,6 +36,7 @@ public sealed class ScrollingCaptureServiceTests
 
         Assert.Equal(ScrollingCaptureStopReason.FrameLimit, result.StopReason);
         Assert.Equal(3, result.FrameCount);
+        Assert.Equal(3, result.StopLimit);
         AssertSamePixels(Crop(page, 0, result.Image.PixelHeight), PixelFrame.FromBitmap(result.Image));
     }
 
@@ -49,6 +50,7 @@ public sealed class ScrollingCaptureServiceTests
         var result = await service.CaptureAsync(Region);
 
         Assert.Equal(ScrollingCaptureStopReason.HeightLimit, result.StopReason);
+        Assert.Equal(250, result.StopLimit);
         Assert.True(result.Image.PixelHeight >= 250);
         AssertSamePixels(Crop(page, 0, result.Image.PixelHeight), PixelFrame.FromBitmap(result.Image));
     }
@@ -77,6 +79,81 @@ public sealed class ScrollingCaptureServiceTests
         Assert.Equal(ScrollingCaptureStopReason.EndOfContent, result.StopReason);
         Assert.Equal(2, result.FrameCount);
         AssertSamePixels(page, PixelFrame.FromBitmap(result.Image));
+    }
+
+    [Fact]
+    public async Task CaptureAsync_ReportsFrameAndHeightProgress()
+    {
+        var page = CreatePage(Region.Width, 300, seed: 27);
+        var fake = new FakeScrollingPage(page, Region, pixelsPerNotch: 10);
+        var observer = new Mock<IScrollingCaptureObserver>();
+        var progress = new List<ScrollingCaptureProgress>();
+        observer.Setup(item => item.HideForCaptureAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        observer
+            .Setup(item => item.ReportProgressAsync(It.IsAny<ScrollingCaptureProgress>(), It.IsAny<CancellationToken>()))
+            .Callback<ScrollingCaptureProgress, CancellationToken>((value, _) => progress.Add(value))
+            .Returns(Task.CompletedTask);
+
+        var result = await fake.CreateService().CaptureAsync(Region, observer: observer.Object);
+
+        Assert.Equal(result.FrameCount, progress[^1].FrameCount);
+        Assert.Equal(result.Image.PixelHeight, progress[^1].HeightPixels);
+        Assert.Equal(1, progress[0].FrameCount);
+        Assert.Equal(Region.Height, progress[0].HeightPixels);
+        observer.Verify(item => item.HideForCaptureAsync(It.IsAny<CancellationToken>()), Times.Exactly(result.FrameCount));
+    }
+
+    [Fact]
+    public async Task CaptureAsync_StitchesNumberedRowsInSourceOrder()
+    {
+        const int pageHeight = 700;
+        var rowNumbers = Enumerable.Range(0, pageHeight)
+            .SelectMany(row => Enumerable.Repeat(unchecked((int)0xFF000000) | row, Region.Width))
+            .ToArray();
+        var page = new PixelFrame(Region.Width, pageHeight, rowNumbers);
+        var fake = new FakeScrollingPage(page, Region, pixelsPerNotch: 10);
+
+        var result = await fake.CreateService().CaptureAsync(Region);
+        var stitched = PixelFrame.FromBitmap(result.Image);
+
+        Assert.Equal(ScrollingCaptureStopReason.EndOfContent, result.StopReason);
+        Assert.Equal(pageHeight, stitched.Height);
+        for (var row = 0; row < pageHeight; row++)
+        {
+            Assert.All(stitched.Row(row).ToArray(), pixel => Assert.Equal(unchecked((int)0xFF000000) | row, pixel));
+        }
+    }
+
+    [Fact]
+    public async Task CaptureAsync_CancellationAfterFirstFrame_ReturnsPartialImageAndRestoresCursor()
+    {
+        var page = CreatePage(Region.Width, 2000, seed: 28);
+        var fake = new FakeScrollingPage(page, Region, pixelsPerNotch: 10);
+        using var cancellation = new CancellationTokenSource();
+        fake.ScrollInput
+            .Setup(input => input.ScrollDown(It.IsAny<int>()))
+            .Callback(() => cancellation.Cancel());
+
+        var result = await fake.CreateService().CaptureAsync(Region, cancellation.Token);
+
+        Assert.Equal(ScrollingCaptureStopReason.Cancelled, result.StopReason);
+        Assert.Equal(1, result.FrameCount);
+        AssertSamePixels(Crop(page, 0, Region.Height), PixelFrame.FromBitmap(result.Image));
+        fake.ScreenCapture.Verify(capture => capture.Capture(Region.X, Region.Y, Region.Width, Region.Height), Times.Once);
+        fake.CursorRestore.Verify(restore => restore.Dispose(), Times.Once);
+    }
+
+    [Fact]
+    public async Task CaptureAsync_CancellationBeforeFirstFrameReturnsNoImageAndDoesNotStartCursorTracking()
+    {
+        var fake = new FakeScrollingPage(CreatePage(Region.Width, 2000, seed: 30), Region, pixelsPerNotch: 10);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fake.CreateService().CaptureAsync(Region, cancellation.Token));
+
+        fake.ScreenCapture.Verify(capture => capture.Capture(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Never);
+        fake.ScrollInput.Verify(input => input.BeginScrolling(It.IsAny<int>(), It.IsAny<int>()), Times.Never);
     }
 
     [Fact]
@@ -116,6 +193,29 @@ public sealed class ScrollingCaptureServiceTests
             stopReason => Assert.NotEqual("unknown", CaptureLaunchService.ToTelemetryValue(stopReason)));
     }
 
+    [Theory]
+    [InlineData(nameof(ScrollingCaptureStopReason.EndOfContent), null)]
+    [InlineData(nameof(ScrollingCaptureStopReason.NoOverlap), "Stopped: no matching overlap. Showing partial capture.")]
+    [InlineData(nameof(ScrollingCaptureStopReason.FrameLimit), "Stopped at the 40-frame limit.")]
+    [InlineData(nameof(ScrollingCaptureStopReason.HeightLimit), "Stopped at the 20,000 px limit.")]
+    [InlineData(nameof(ScrollingCaptureStopReason.Cancelled), "Capture canceled. Showing 3 frames.")]
+    public void ToScrollingCaptureNotice_ExplainsEveryStopOutcome(string stopReason, string? expected)
+    {
+        var reason = Enum.Parse<ScrollingCaptureStopReason>(stopReason);
+        var result = new ScrollingCaptureResult(
+            CreatePage(Region.Width, 100, seed: 29).ToBitmap(),
+            reason == ScrollingCaptureStopReason.Cancelled ? 3 : 40,
+            reason,
+            reason switch
+            {
+                ScrollingCaptureStopReason.FrameLimit => 40,
+                ScrollingCaptureStopReason.HeightLimit => 20000,
+                _ => null,
+            });
+
+        Assert.Equal(expected, CaptureLaunchService.ToScrollingCaptureNotice(result));
+    }
+
     private sealed class FakeScrollingPage
     {
         private readonly PixelFrame _page;
@@ -150,5 +250,6 @@ public sealed class ScrollingCaptureServiceTests
                 Options = new ScrollingCaptureOptions(TimeSpan.Zero, 3, maxFrames, maxHeight),
             };
         }
+
     }
 }
