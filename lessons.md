@@ -1181,10 +1181,10 @@ did.
 
 ### What fixed it
 
-A File map row for `.pointframe/**` in `docs/knowledge-base/knowledge-base.md`.
+A File map row for `.pointframe/**` in `docs/knowledge-base/knowledge-base.md`. `kb.ps1` now lists files with
+`git ls-files --cached --others --exclude-standard`, so new, not-ignored files are checked locally too.
 
 ### Takeaway
 
-When a change adds a file in a folder that no File map row covers, add the row in the same change; do
-not rely on a local check of untracked files. `git add -N <path>` makes a new file visible to the check
-before committing.
+A local check must see what CI will see after the commit: include new, not-ignored files whenever a
+check walks the repository's files.
