@@ -37,6 +37,10 @@ internal static class AppServiceRegistration
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<IAppVersionService, AppVersionService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
+        services.AddSingleton<IShareService>(sp => new ShareService(
+            ShareService.SharedHttpClient,
+            sp.GetRequiredService<IUserSettingsService>(),
+            sp.GetRequiredService<ILogger<ShareService>>()));
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<IImageFileService, ImageFileService>();
         services.AddSingleton<IEventAggregator, DefaultEventAggregator>();

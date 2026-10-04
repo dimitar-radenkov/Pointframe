@@ -28,6 +28,16 @@ public sealed class UserSettings
     public double DefaultStrokeThickness { get; set; } = 2.5;
     public int CaptureDelaySeconds { get; set; } = 0;
 
+    public string ShareDestinationUrl { get; set; } = string.Empty;
+
+    public string ShareFileFieldName { get; set; } = "file";
+
+    public List<ProtectedShareHeader> ShareHeaders { get; set; } = [];
+
+    public string ShareResponseLinkPath { get; set; } = "url";
+
+    public int ShareTimeoutSeconds { get; set; } = 30;
+
     public uint RegionCaptureHotkey { get; set; } = 0x2C; // VK_SNAPSHOT (Print Screen)
 
     public HotkeyModifiers RegionCaptureHotkeyModifiers { get; set; } = HotkeyModifiers.None;

@@ -22,7 +22,12 @@ public sealed class OverlayViewModelTests
         new byte[] { 0, 0, 0, 255 },
         4);
 
-    private static OverlayViewModel Vm(UserSettings? settings = null, IDialogService? dialogService = null)
+    private static OverlayViewModel Vm(
+        UserSettings? settings = null,
+        IDialogService? dialogService = null,
+        Mock<IClipboardService>? clipboardMock = null,
+        Mock<IFileSystemService>? fileSystemMock = null,
+        Mock<IShareService>? shareServiceMock = null)
     {
         var settingsMock = new Mock<IUserSettingsService>();
         settingsMock.SetupGet(s => s.Current).Returns(settings ?? new UserSettings());
@@ -31,18 +36,20 @@ public sealed class OverlayViewModelTests
             NullLogger<OverlayViewModel>.Instance,
             settingsMock.Object,
             dialogService ?? Mock.Of<IDialogService>(),
-            Mock.Of<IClipboardService>(),
-            Mock.Of<IFileSystemService>(),
+            clipboardMock?.Object ?? Mock.Of<IClipboardService>(),
+            fileSystemMock?.Object ?? Mock.Of<IFileSystemService>(),
             Mock.Of<IEventAggregator>(),
             Mock.Of<ITelemetryService>(),
-            Mock.Of<IScreenshotWatermarkService>());
+            Mock.Of<IScreenshotWatermarkService>(),
+            shareServiceMock?.Object);
     }
 
     private static OverlayViewModel Vm(
         Mock<IUserSettingsService> settingsMock,
         Mock<IDialogService>? dialogMock = null,
         Mock<IClipboardService>? clipboardMock = null,
-        Mock<IFileSystemService>? fileSystemMock = null)
+        Mock<IFileSystemService>? fileSystemMock = null,
+        Mock<IShareService>? shareServiceMock = null)
     {
         return new OverlayViewModel(
             new AnnotationGeometryService(),
@@ -53,7 +60,8 @@ public sealed class OverlayViewModelTests
             fileSystemMock?.Object ?? Mock.Of<IFileSystemService>(),
             Mock.Of<IEventAggregator>(),
             Mock.Of<ITelemetryService>(),
-            Mock.Of<IScreenshotWatermarkService>());
+            Mock.Of<IScreenshotWatermarkService>(),
+            shareServiceMock?.Object);
     }
 
     [Fact]
@@ -363,7 +371,8 @@ public sealed class OverlayViewModelTests
         UserSettings settings,
         Mock<IScreenshotWatermarkService> watermarkMock,
         Mock<IClipboardService>? clipboardMock = null,
-        Mock<IFileSystemService>? fileSystemMock = null)
+        Mock<IFileSystemService>? fileSystemMock = null,
+        Mock<IShareService>? shareServiceMock = null)
     {
         var settingsMock = new Mock<IUserSettingsService>();
         settingsMock.SetupGet(s => s.Current).Returns(settings);
@@ -376,7 +385,61 @@ public sealed class OverlayViewModelTests
             fileSystemMock?.Object ?? Mock.Of<IFileSystemService>(),
             Mock.Of<IEventAggregator>(),
             Mock.Of<ITelemetryService>(),
-            watermarkMock.Object);
+            watermarkMock.Object,
+            shareServiceMock?.Object);
+    }
+
+    [Fact]
+    public void UploadAndCopyLinkCommand_IsAvailableOnlyWhenDestinationIsConfigured()
+    {
+        var unavailable = Vm();
+        var configured = Vm(new UserSettings { ShareDestinationUrl = "https://upload.example" });
+
+        Assert.False(unavailable.UploadAndCopyLinkCommand.CanExecute(null));
+        Assert.True(configured.UploadAndCopyLinkCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task UploadAndCopyLinkCommand_OnSuccess_CopiesLinkAndShowsToast()
+    {
+        var bitmap = CreateBitmap();
+        var capture = new Mock<IOverlayBitmapCapture>();
+        capture.Setup(service => service.ComposeBitmap()).Returns(bitmap);
+        var share = new Mock<IShareService>();
+        share.Setup(service => service.UploadAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ShareResult.Success("https://share.example/1"));
+        var clipboard = new Mock<IClipboardService>();
+        var vm = Vm(new UserSettings { ShareDestinationUrl = "https://upload.example" }, clipboardMock: clipboard, shareServiceMock: share);
+        var toasts = new List<string>();
+        vm.ToastRequested += toasts.Add;
+        vm.SetBitmapCapture(capture.Object);
+
+        await vm.UploadAndCopyLinkCommand.ExecuteAsync(null);
+
+        clipboard.Verify(service => service.SetText("https://share.example/1"), Times.Once);
+        Assert.Contains("Link copied", Assert.Single(toasts));
+        Assert.False(vm.IsSharing);
+    }
+
+    [Fact]
+    public async Task UploadAndCopyLinkCommand_OnFailure_ShowsErrorToastAndDoesNotCopy()
+    {
+        var capture = new Mock<IOverlayBitmapCapture>();
+        capture.Setup(service => service.ComposeBitmap()).Returns(CreateBitmap());
+        var share = new Mock<IShareService>();
+        share.Setup(service => service.UploadAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ShareResult.Failed(ShareFailure.HttpStatus, 503));
+        var clipboard = new Mock<IClipboardService>();
+        var vm = Vm(new UserSettings { ShareDestinationUrl = "https://upload.example" }, clipboardMock: clipboard, shareServiceMock: share);
+        var toasts = new List<string>();
+        vm.ToastRequested += toasts.Add;
+        vm.SetBitmapCapture(capture.Object);
+
+        await vm.UploadAndCopyLinkCommand.ExecuteAsync(null);
+
+        clipboard.Verify(service => service.SetText(It.IsAny<string>()), Times.Never);
+        Assert.Equal("Upload failed (HTTP 503).", Assert.Single(toasts));
+        Assert.False(vm.IsSharing);
     }
 
     [Fact]

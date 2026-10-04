@@ -52,6 +52,14 @@ public sealed class SettingsViewModelCharacterizationTests
             ]
         },
         {
+            SettingsSection.Sharing,
+            [
+                nameof(UserSettings.ShareDestinationUrl), nameof(UserSettings.ShareFileFieldName),
+                nameof(UserSettings.ShareHeaders), nameof(UserSettings.ShareResponseLinkPath),
+                nameof(UserSettings.ShareTimeoutSeconds),
+            ]
+        },
+        {
             SettingsSection.App,
             [nameof(UserSettings.AutoUpdateCheckInterval), nameof(UserSettings.Theme)]
         },

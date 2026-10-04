@@ -182,6 +182,9 @@
                                 <DataTrigger Binding="{Binding Section}" Value="{x:Static models:SettingsSection.Annotation}">
                                     <Setter Property="AutomationProperties.AutomationId" Value="SettingsWindow.Section.Annotation"/>
                                 </DataTrigger>
+                                <DataTrigger Binding="{Binding Section}" Value="{x:Static models:SettingsSection.Sharing}">
+                                    <Setter Property="AutomationProperties.AutomationId" Value="SettingsWindow.Section.Sharing"/>
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding Section}" Value="{x:Static models:SettingsSection.Shortcuts}">
                                     <Setter Property="AutomationProperties.AutomationId" Value="SettingsWindow.Section.Shortcuts"/>
                                 </DataTrigger>
@@ -403,6 +406,96 @@
                         </StackPanel>
                     </Border>
 
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding IsShareSectionSelected, Converter={StaticResource BoolToVis}}">
+                    <Border Style="{StaticResource GroupCard}">
+                        <StackPanel>
+                            <TextBlock Text="Upload destination" Style="{StaticResource GroupTitle}"/>
+                            <TextBlock Text="Uploads the final annotated PNG as multipart/form-data. Leave the URL empty to hide sharing in the capture overlay."
+                                       Style="{StaticResource GroupDescription}"/>
+
+                            <TextBlock Text="Destination URL" Style="{StaticResource RowTitle}" Margin="0,16,0,4"/>
+                            <TextBox Text="{Binding ShareDestinationUrl, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.AutomationId="SettingsWindow.ShareDestinationUrl"/>
+                            <TextBlock Text="{Binding ShareValidationMessage}"
+                                       Foreground="#FFD45454"
+                                       TextWrapping="Wrap"
+                                       Margin="0,5,0,0"
+                                       AutomationProperties.AutomationId="SettingsWindow.ShareValidationMessage"/>
+
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="120"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Multipart file field" Style="{StaticResource RowTitle}" Margin="0,0,0,4"/>
+                                    <TextBox Text="{Binding ShareFileFieldName, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.AutomationId="SettingsWindow.ShareFileFieldName"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Response JSON path" Style="{StaticResource RowTitle}" Margin="0,0,0,4"/>
+                                    <TextBox Text="{Binding ShareResponseLinkPath, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.AutomationId="SettingsWindow.ShareResponseLinkPath"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="4">
+                                    <TextBlock Text="Timeout (seconds)" Style="{StaticResource RowTitle}" Margin="0,0,0,4"/>
+                                    <TextBox Text="{Binding ShareTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.AutomationId="SettingsWindow.ShareTimeoutSeconds"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource GroupCard}">
+                        <StackPanel>
+                            <DockPanel LastChildFill="False">
+                                <Button DockPanel.Dock="Right"
+                                        Content="Add header"
+                                        Style="{StaticResource SecondaryBtn}"
+                                        Command="{Binding AddShareHeaderCommand}"
+                                        AutomationProperties.AutomationId="SettingsWindow.AddShareHeader"/>
+                                <StackPanel>
+                                    <TextBlock Text="Extra request headers" Style="{StaticResource GroupTitle}"/>
+                                    <TextBlock Text="Header values are protected with Windows DPAPI for your account."
+                                               Style="{StaticResource GroupDescription}"/>
+                                </StackPanel>
+                            </DockPanel>
+                            <ItemsControl ItemsSource="{Binding ShareHeaders}" Margin="0,12,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="220"/>
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0"
+                                                     Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="Header name"
+                                                     AutomationProperties.AutomationId="SettingsWindow.ShareHeaderName"/>
+                                            <TextBox Grid.Column="2"
+                                                     Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="Header value"
+                                                     AutomationProperties.AutomationId="SettingsWindow.ShareHeaderValue"/>
+                                            <Button Grid.Column="4"
+                                                    Content="Remove"
+                                                    Style="{StaticResource SecondaryBtn}"
+                                                    Command="{Binding DataContext.RemoveShareHeaderCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    AutomationProperties.AutomationId="SettingsWindow.RemoveShareHeader"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <StackPanel Visibility="{Binding IsRecordingSectionSelected, Converter={StaticResource BoolToVis}}">

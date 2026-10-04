@@ -116,6 +116,7 @@ public partial class OverlayWindow : Window
         _vm.CloseRequested += Close;
         _vm.PinRequested += DoPin;
         _vm.BeautifyRequested += DoBeautify;
+        _vm.ToastRequested += ShowOcrToast;
 
         KeyDown += Window_KeyDown;
 

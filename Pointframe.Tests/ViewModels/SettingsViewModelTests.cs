@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using Moq;
 using Pointframe.Services;
 using Pointframe.ViewModels;
@@ -65,6 +66,49 @@ public sealed class SettingsViewModelTests
         Assert.Equal(HotkeyModifiers.Alt, saved.OverlayCopyHotkeyModifiers);
         Assert.Equal(0x41u, saved.OverlaySaveAsHotkey);
         Assert.Equal(HotkeyModifiers.Ctrl, saved.OverlaySaveAsHotkeyModifiers);
+    }
+
+    [Fact]
+    public void ShareDestinationValidation_AllowsHttpsAndLoopbackHttpOnly()
+    {
+        var vm = CreateVm();
+
+        vm.ShareDestinationUrl = "https://uploads.example/share";
+        Assert.True(vm.IsShareSettingsValid);
+
+        vm.ShareDestinationUrl = "http://localhost:5050/share";
+        Assert.True(vm.IsShareSettingsValid);
+
+        vm.ShareDestinationUrl = "http://127.0.0.1:5050/share";
+        Assert.True(vm.IsShareSettingsValid);
+
+        vm.ShareDestinationUrl = "http://[::1]:5050/share";
+        Assert.True(vm.IsShareSettingsValid);
+
+        vm.ShareDestinationUrl = "http://uploads.example/share";
+        Assert.False(vm.IsShareSettingsValid);
+        Assert.Contains("HTTPS", vm.ShareValidationMessage);
+    }
+
+    [Fact]
+    public void Save_ProtectsShareHeaderValuesWithCurrentUserDpapi()
+    {
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(service => service.Current).Returns(new UserSettings());
+        UserSettings? saved = null;
+        mock.Setup(service => service.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(settings => saved = settings);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>(), CreateMicrophoneDeviceService());
+        vm.ShareDestinationUrl = "https://uploads.example/share";
+        vm.ShareHeaders.Add(new SettingsViewModel.ShareHeaderEditor("Authorization", "Bearer plaintext-secret"));
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.NotNull(saved);
+        Assert.Single(saved!.ShareHeaders);
+        Assert.NotEqual("Bearer plaintext-secret", saved.ShareHeaders[0].ProtectedValue);
+        Assert.Equal("Bearer plaintext-secret", ShareHeaderProtection.Unprotect(saved.ShareHeaders[0]));
+        var serialized = JsonSerializer.Serialize(saved);
+        Assert.DoesNotContain("Bearer plaintext-secret", serialized);
     }
 
     [Fact]

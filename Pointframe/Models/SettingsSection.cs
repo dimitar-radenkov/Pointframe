@@ -7,4 +7,5 @@ public enum SettingsSection
     Annotation,
     Shortcuts,
     App,
+    Sharing,
 }
