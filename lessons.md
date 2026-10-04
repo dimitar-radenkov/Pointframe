@@ -1,5 +1,23 @@
 # Lessons Learned
 
+## workflow_run checks out the default branch HEAD, not the commit that triggered it
+
+### Problem
+
+A downstream `workflow_run` release workflow can publish a version built from a different commit than the CI run that triggered it, especially when several commits merge close together.
+
+### Root cause
+
+`actions/checkout` without an explicit `ref` checks out the default branch HEAD for `workflow_run` events. By the time the downstream workflow starts, that HEAD may have advanced past the triggering run's commit.
+
+### What fixed it
+
+Check out `${{ github.event.workflow_run.head_sha }}` and keep `fetch-depth: 0` when versioning depends on commit height. Serialize publishing, and make reruns check the existing release before rebuilding or replacing its assets.
+
+### Takeaway
+
+For workflows triggered by `workflow_run`, use the triggering run's `head_sha` whenever the result must correspond to the commit CI validated. Pass that same SHA as the new release tag's target.
+
 ## A Stop hook whose command is missing fails open
 
 ### Problem
