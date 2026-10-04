@@ -119,10 +119,6 @@
                 </a>
 
                 <div class="command-group">
-                    <div class="install-tabs" role="group" aria-label="Choose a package manager">
-                        <button type="button" class="install-tab is-active" data-manager="winget" data-command="winget install DimitarRadenkov.Pointframe" aria-pressed="true">winget</button>
-                        <button type="button" class="install-tab" data-manager="scoop" data-command="scoop install pointframe" aria-pressed="false">scoop</button>
-                    </div>
                     <button id="copy-command-button" type="button" class="command-button" aria-describedby="copy-command-status">
                         <span class="command-content">
                             <span class="command-text"><span class="command-prefix">$</span> <span id="copy-command-text">winget install DimitarRadenkov.Pointframe</span></span>
@@ -139,7 +135,7 @@
             <div class="trust-strip" aria-label="Trust and setup highlights">
                 <span>Free and open source</span>
                 <span>No account required</span>
-                <span>Install via winget or Scoop</span>
+                <span>Install via winget or the installer</span>
                 <span>Works on Windows 10 and 11</span>
             </div>
 
@@ -332,8 +328,8 @@ stop_recording         → finalized artifact</code></pre>
                         <h3 class="feature-title">Standalone CLI</h3>
                         <span class="chip-new">New</span>
                     </div>
-                    <p class="feature-copy">A self-contained Windows command-line tool for scripts and terminals. Install it with winget and run <code>pointframe</code> — no .NET runtime and no Pointframe app process required. Every command returns single-line JSON on both success and failure, with stable error codes for scripting.</p>
-                    <pre class="code-sample"><code>winget install DimitarRadenkov.Pointframe.Cli
+                    <p class="feature-copy">A self-contained Windows command-line tool for scripts and terminals. Download the release ZIP, run <code>.\Pointframe.Cli.exe install</code>, then run <code>pointframe</code> — no .NET runtime and no Pointframe app process required. Every command returns single-line JSON on both success and failure, with stable error codes for scripting.</p>
+                    <pre class="code-sample"><code>.\Pointframe.Cli.exe install
 pointframe displays
 pointframe windows
 pointframe capture --monitor \\.\DISPLAY1 -o shot.png
@@ -341,6 +337,17 @@ pointframe capture-window --window-id 12345678
 pointframe ocr --monitor \\.\DISPLAY1
 pointframe record --monitor \\.\DISPLAY1 --seconds 10</code></pre>
                     <p class="comparison-links"><a href="https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/README.md" target="_blank" rel="noopener noreferrer" class="workflow-link">Read the CLI docs &rarr;</a></p>
+                </article>
+                <article class="feature-card">
+                    <div class="feature-header">
+                        <h3 class="feature-title">Make your coding agent prove it's done</h3>
+                        <span class="chip-new">New</span>
+                    </div>
+                    <p class="feature-copy"><code>pointframe verify</code> runs your project's own build and test commands. A Stop hook keeps Claude Code or Codex working until the last verdict is a fresh pass on the current files. Windows x64; after five blocks the agent may stop, and the message says the work was not verified.</p>
+                    <pre class="code-sample"><code>pointframe verify init
+pointframe verify run
+pointframe verify status</code></pre>
+                    <p class="comparison-links"><a href="./verify-coding-agents-windows.html" class="workflow-link">See how verification works &rarr;</a></p>
                 </article>
             </div>
 
@@ -434,6 +441,10 @@ pointframe record --monitor \\.\DISPLAY1 --seconds 10</code></pre>
             </div>
 
             <div class="resource-grid">
+                <a href="./verify-coding-agents-windows.html" class="resource-card">
+                    <h3 class="resource-title">Make your coding agent prove it's done</h3>
+                    <p class="resource-copy">Keep Claude Code or Codex working until your own build and tests pass on the current files.</p>
+                </a>
                 <a href="./windows-screenshot-mcp-server.html" class="resource-card">
                     <h3 class="resource-title">Windows screenshot MCP server for AI agents</h3>
                     <p class="resource-copy">Let Claude, Copilot, or Cursor capture, read, and record your Windows screen through a free local MCP server.</p>
