@@ -57,6 +57,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
     internal Task<int> RunAsync(CliCommand command, CancellationToken cancellationToken) => command.VerifyAction switch
     {
+        "init" => InitAsync(command, cancellationToken),
         "status" => StatusAsync(command),
         "trust" => TrustAsync(command),
         "task-start" => TaskStartAsync(command, cancellationToken),
@@ -64,6 +65,10 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         "agent" => AgentAsync(command),
         _ => VerifyAsync(command, cancellationToken),
     };
+
+    private Task<int> InitAsync(CliCommand command, CancellationToken cancellationToken) => new VerificationInit(
+        new PhysicalVerificationInitFileSystem(), standardOutput, standardError)
+        .RunAsync(command, Environment.CurrentDirectory, ResolveMcpExecutable, services.ClientFactory, services.DesktopLockName, cancellationToken);
 
     private async Task<int> VerifyAsync(CliCommand command, CancellationToken cancellationToken)
     {

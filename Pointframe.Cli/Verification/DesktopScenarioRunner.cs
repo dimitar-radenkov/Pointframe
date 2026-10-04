@@ -37,6 +37,71 @@ internal sealed class DesktopScenarioRunner
         _restartWait = restartWait ?? TimeSpan.FromSeconds(10);
     }
 
+    internal async Task<IReadOnlyList<string>> ObserveAutomationIdsAsync(string cancellationActionId, CancellationToken cancellationToken)
+    {
+        var start = Structured(await _client.CallToolAsync(
+            "desktop_start_test_session",
+            new { actionId = NewActionId(), profileId = _profileId, criteria = (string[]?)null },
+            LaunchTimeout,
+            cancellationToken).ConfigureAwait(false));
+        var sessionId = start.TryGetProperty("sessionRef", out var sessionRef) ? sessionRef.GetString() : null;
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            var (code, message) = ErrorOf(start);
+            throw new InvalidOperationException($"The app session did not start: {code ?? "SessionNotStarted"}: {message ?? "No session reference was returned."}");
+        }
+
+        try
+        {
+            var deadline = DateTimeOffset.UtcNow + _elementTimeout;
+            while (true)
+            {
+                var observation = Structured(await _client.CallToolAsync(
+                    "desktop_observe_app",
+                    new
+                    {
+                        sessionId,
+                        captureBoundsPixels = _captureBounds.Select(bounds => new { x = bounds.X, y = bounds.Y, width = bounds.Width, height = bounds.Height }).ToArray(),
+                        includeUiAutomation = true,
+                        includeImages = false,
+                    },
+                    ActionTimeout,
+                    cancellationToken).ConfigureAwait(false));
+                var (code, message) = ErrorOf(observation);
+                if (code is not null)
+                {
+                    throw new InvalidOperationException($"The app could not be observed: {code}: {message}");
+                }
+
+                var ids = observation.GetProperty("elements").EnumerateArray()
+                    .Select(item => item.TryGetProperty("automationId", out var id) ? id.GetString() : null)
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Cast<string>()
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                if (ids.Length > 0)
+                {
+                    return ids;
+                }
+
+                if (DateTimeOffset.UtcNow >= deadline)
+                {
+                    throw new InvalidOperationException($"The app exposed no automation ids within {_elementTimeout.TotalMilliseconds:0} ms.");
+                }
+
+                await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            await _client.CallToolAsync(
+                "desktop_end_test_session",
+                new { actionId = cancellationActionId, sessionId },
+                ActionTimeout,
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     // continueAfterFailedChecks is the fail-before mode of `verify task start`: on unchanged code every
     // criterion is expected to fail, and the negative controls after those failures must still run. A
     // failed action (launch, enterText, invoke, ...) still stops the scenario.

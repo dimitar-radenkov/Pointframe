@@ -216,6 +216,8 @@ internal sealed class FakeMcp
 
     internal Func<int, object> RestartResponse { get; set; } = _ => Done;
 
+    internal Func<int, object>? ObserveResponse { get; set; }
+
     internal static object Passed(string actual) => new { verification = "passed", stateAvailable = true, matches = true, matchCount = 1, actualValue = actual };
 
     internal static object Failed(string actual) => new { verification = "failed", stateAvailable = true, matches = false, matchCount = 1, actualValue = actual };
@@ -229,12 +231,7 @@ internal sealed class FakeMcp
     {
         "list_displays" => new { displays = new[] { new { boundsPixels = new { x = 0, y = 0, width = 1920, height = 1080 } } } },
         "desktop_start_test_session" => StartResponse,
-        "desktop_observe_app" => new
-        {
-            observationRef = "obs-1",
-            images = new[] { new { imageRef = "img-1" } },
-            elements = ElementIds.Select(id => new { elementRef = $"el-{id}", windowRef = "win-1", role = "Edit", automationId = id }).ToArray(),
-        },
+        "desktop_observe_app" => Observe(Count("desktop_observe_app")),
         "desktop_check_ui" => CheckResponse(arguments),
         "desktop_get_test_report" => JsonSerializer.SerializeToElement(
             JsonSerializer.Deserialize<DesktopTestReport>(
@@ -245,6 +242,13 @@ internal sealed class FakeMcp
         "desktop_end_test_session" => EndResponse,
         "desktop_restart_app" => RestartResponse(Count("desktop_restart_app")),
         _ => Done,
+    };
+
+    private object Observe(int observationNumber) => ObserveResponse?.Invoke(observationNumber) ?? new
+    {
+        observationRef = "obs-1",
+        images = new[] { new { imageRef = "img-1" } },
+        elements = ElementIds.Select(id => new { elementRef = $"el-{id}", windowRef = "win-1", role = "Edit", automationId = id }).ToArray(),
     };
 
     private static JsonElement Wrap(object structured) =>

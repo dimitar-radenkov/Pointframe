@@ -4,7 +4,7 @@ namespace Pointframe.Cli;
 
 internal static class CliCommandParser
 {
-    internal const string Usage = "Usage: Pointframe.Cli.exe displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | mcp install|status|doctor --client vscode [--dry-run] | verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios] | verify status|trust [--spec <file>] [--revoke] | verify task start <task-file> [--id <id>] [--replace] | verify hook stop [--review] [--max-blocks <n>] | verify agent [--use claude|codex|auto] | --help | --version";
+    internal const string Usage = "Usage: Pointframe.Cli.exe displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | mcp install|status|doctor --client vscode [--dry-run] | verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios] | verify init [--app <path>] [--mcp <file>] [--hooks claude|codex|both|none] [--agents-md] [--explore] [--force] | verify status|trust [--spec <file>] [--revoke] | verify task start <task-file> [--id <id>] [--replace] | verify hook stop [--review] [--max-blocks <n>] | verify agent [--use claude|codex|auto] | --help | --version";
 
     internal const string HelpText = """
         Pointframe CLI - standalone screen capture, OCR, and recording automation.
@@ -21,6 +21,7 @@ internal static class CliCommandParser
           Pointframe.Cli.exe mcp status --client vscode
           Pointframe.Cli.exe mcp doctor --client vscode
           Pointframe.Cli.exe verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios]
+          Pointframe.Cli.exe verify init [--app <path>] [--mcp <file>] [--hooks claude|codex|both|none] [--agents-md] [--explore] [--force]
           Pointframe.Cli.exe verify status [--spec <file>]
           Pointframe.Cli.exe verify trust [--spec <file>] [--revoke]
           Pointframe.Cli.exe verify task start <task-file> [--spec <file>] [--mcp <file>] [--id <id>] [--replace]
@@ -43,6 +44,7 @@ internal static class CliCommandParser
                           still matches the working tree (status); approve the spec's gate commands (trust);
                           have an examiner agent freeze a task's criteria before work starts (task start);
                           or, as an agent's Stop hook, refuse "done" until the verdict passes (hook stop);
+                          init creates a starter spec and optional Stop hooks for a new project;
                           agent shows or picks the AI (Claude Code, Codex, or a command) for those roles.
 
         Options:
@@ -58,8 +60,8 @@ internal static class CliCommandParser
               --client <name>               MCP client to configure. The first supported client is vscode.
               --dry-run                     Validate and report MCP installation changes without writing them.
               --spec <file>                 verify: the verification spec (default .pointframe\verify.json)
-              --mcp <file>                  verify: the Pointframe.Mcp.exe to drive the app with (default
-                                            POINTFRAME_MCP_EXECUTABLE, then the CLI-installed server)
+              --mcp <file>                  verify run/init: the Pointframe.Mcp.exe to drive the app with
+                                            (default POINTFRAME_MCP_EXECUTABLE, then the CLI-installed server)
               --scenario <id>               verify: run one scenario only; the verdict is then "partial"
               --task <id>                   verify run: also run the frozen criteria of this task
               --only <gates|scenarios>      verify run: run only the gates or only the scenarios ("partial")
@@ -69,6 +71,11 @@ internal static class CliCommandParser
               --review                      verify hook stop: after a pass, have a reviewer agent flag the diff
               --max-blocks <n>              verify hook stop: let the agent stop after n blocked attempts (default 5)
               --use <claude|codex|auto>     verify agent: the AI that plays examiner, reviewer, and approver
+              --app <path>                  verify init: app executable relative to the project root
+              --hooks <claude|codex|both|none> verify init: Stop hooks to configure (default both)
+              --agents-md                   verify init: add verification instructions to AGENTS.md
+              --explore                     verify init: inspect the app once to create a starter scenario
+              --force                       verify init: overwrite an existing verification spec
           -h, --help                        Show this help text and exit
           -v, --version                     Show the CLI version and exit
 
@@ -277,6 +284,10 @@ internal static class CliCommandParser
             action = "hook-stop";
             index = 3;
         }
+        else if (action == "init")
+        {
+            index = 2;
+        }
 
         string[] allowed = action switch
         {
@@ -286,11 +297,12 @@ internal static class CliCommandParser
             "task-start" => ["--spec", "--mcp", "--id", "--replace"],
             "hook-stop" => ["--spec", "--mcp", "--review", "--max-blocks"],
             "agent" => ["--use"],
+            "init" => ["--app", "--mcp", "--hooks", "--agents-md", "--explore", "--force"],
             _ => [],
         };
         if (allowed.Length == 0)
         {
-            error = "The verify command requires an action: run, status, trust, task start, hook stop, or agent.";
+            error = "The verify command requires an action: init, run, status, trust, task start, hook stop, or agent.";
             return false;
         }
 
@@ -304,6 +316,11 @@ internal static class CliCommandParser
         var review = false;
         int? maxBlocks = null;
         string? useAgent = null;
+        string? appPath = null;
+        var hooks = action == "init" ? "both" : null;
+        var agentsMd = false;
+        var explore = false;
+        var force = false;
         while (index < args.Length)
         {
             var flag = args[index].ToLowerInvariant();
@@ -313,11 +330,14 @@ internal static class CliCommandParser
                 return false;
             }
 
-            if (flag is "--revoke" or "--replace" or "--review")
+            if (flag is "--revoke" or "--replace" or "--review" or "--agents-md" or "--explore" or "--force")
             {
                 revoke |= flag == "--revoke";
                 replace |= flag == "--replace";
                 review |= flag == "--review";
+                agentsMd |= flag == "--agents-md";
+                explore |= flag == "--explore";
+                force |= flag == "--force";
                 index++;
                 continue;
             }
@@ -367,6 +387,18 @@ internal static class CliCommandParser
                     }
 
                     break;
+                case "--app":
+                    appPath = value;
+                    break;
+                case "--hooks":
+                    hooks = value.ToLowerInvariant();
+                    if (hooks is not ("claude" or "codex" or "both" or "none"))
+                    {
+                        error = "The verify init option --hooks takes claude, codex, both, or none.";
+                        return false;
+                    }
+
+                    break;
                 default:
                     taskId = value;
                     break;
@@ -388,7 +420,12 @@ internal static class CliCommandParser
             Replace: replace,
             Review: review,
             MaxBlocks: maxBlocks,
-            UseAgent: useAgent);
+            UseAgent: useAgent,
+            AppPath: appPath,
+            Hooks: hooks,
+            AgentsMd: agentsMd,
+            Explore: explore,
+            Force: force);
         error = null;
         return true;
     }

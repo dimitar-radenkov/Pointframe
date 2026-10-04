@@ -178,8 +178,8 @@ public sealed class VerificationTests : IDisposable
     }
 
     [Theory]
-    [InlineData(new[] { "verify" }, "The verify command requires an action: run, status, trust, task start, hook stop, or agent.")]
-    [InlineData(new[] { "verify", "start" }, "The verify command requires an action: run, status, trust, task start, hook stop, or agent.")]
+    [InlineData(new[] { "verify" }, "The verify command requires an action: init, run, status, trust, task start, hook stop, or agent.")]
+    [InlineData(new[] { "verify", "start" }, "The verify command requires an action: init, run, status, trust, task start, hook stop, or agent.")]
     [InlineData(new[] { "verify", "task", "start" }, "The verify task command requires: task start <task-file>.")]
     [InlineData(new[] { "verify", "run", "--fast" }, "Unrecognized verify run option '--fast'.")]
     [InlineData(new[] { "verify", "status", "--mcp", "x" }, "Unrecognized verify status option '--mcp'.")]
@@ -448,6 +448,36 @@ public sealed class VerificationTests : IDisposable
             new ExaminerRequest("t", "fixture", "m", "p", "w", new Dictionary<string, string>()), CancellationToken.None));
 
         Assert.Contains("verify agent", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ObserveAutomationIds_WaitsForAutomationIdsToAppear()
+    {
+        var client = new FakeMcp(Path.Combine(_fixture.Root, "proof"));
+        client.ObserveResponse = call => call == 1
+            ? new { elements = Array.Empty<object>() }
+            : new { elements = new[] { new { automationId = "readyButton" } } };
+
+        var ids = await Runner(client.Mock.Object).ObserveAutomationIdsAsync("cancel", CancellationToken.None);
+
+        Assert.Equal(["readyButton"], ids);
+        Assert.Equal(2, client.Count("desktop_observe_app"));
+        Assert.Equal(1, client.Count("desktop_end_test_session"));
+    }
+
+    [Fact]
+    public async Task ObserveAutomationIds_ReportsTimeoutWhenIdsNeverAppearAndEndsSession()
+    {
+        var client = new FakeMcp(Path.Combine(_fixture.Root, "proof"));
+        client.ObserveResponse = _ => new { elements = Array.Empty<object>() };
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Runner(client.Mock.Object).ObserveAutomationIdsAsync("cancel", CancellationToken.None));
+
+        Assert.Contains("no automation ids", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ms", exception.Message, StringComparison.Ordinal);
+        Assert.True(client.Count("desktop_observe_app") > 1);
+        Assert.Equal(1, client.Count("desktop_end_test_session"));
     }
 
     private static DesktopScenarioRunner Runner(IMcpToolClient client) =>
