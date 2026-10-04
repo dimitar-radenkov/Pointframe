@@ -49,7 +49,9 @@ internal sealed record VerificationInitGate(string Id, string Run);
 internal sealed class VerificationInit(
     IVerificationInitFileSystem fileSystem,
     TextWriter standardOutput,
-    TextWriter standardError)
+    TextWriter standardError,
+    IPointframeCommandResolver? commandResolver = null,
+    string? runningCliVersion = null)
 {
     private const string HookCommand = "pointframe verify hook stop --review";
     private const string AgentsStart = "<!-- pointframe-verify:start -->";
@@ -177,10 +179,29 @@ internal sealed class VerificationInit(
 
         MergeGitIgnore(rootDirectory, filesWritten, filesLeftAlone);
 
+        var nextSteps = new List<string> { "pointframe verify run", "pointframe verify trust if a nonstandard command is refused or the approver is unavailable" };
+        if (command.Hooks is "claude" or "codex" or "both")
+        {
+            var hookCommand = (commandResolver ?? new PointframeCommandResolver()).Resolve();
+            if (hookCommand.Path is null)
+            {
+                warnings.Add("pointframe.exe was not found on PATH. Stop hooks will not run, so the agent can stop unverified. Run Pointframe.Cli.exe install or winget install DimitarRadenkov.Pointframe.Cli, then restart the agent.");
+                nextSteps.Add("Install the Pointframe CLI and restart the agent so the Stop hook can find pointframe.exe.");
+            }
+            else if (!hookCommand.Ok)
+            {
+                warnings.Add($"The command at {hookCommand.Path} is not the Pointframe CLI ({hookCommand.Error}). Remove it or move it later on PATH; a stale scoop shim is one example (scoop is unsupported).");
+                nextSteps.Add($"Remove or move {hookCommand.Path} later on PATH, then restart the agent.");
+            }
+            else if (runningCliVersion is not null && hookCommand.Version != runningCliVersion)
+            {
+                warnings.Add($"The hook resolves {hookCommand.Path} to {hookCommand.Version}, while this init command is {runningCliVersion}.");
+            }
+        }
+
         var status = hadSpec ? (filesWritten.Count == 0 ? "unchanged" : "updated") : "created";
 
-        await WriteAsync(new VerificationInitResponse(status, filesWritten, filesLeftAlone, preserveExistingSpec ? [] : gates.Select(DescribeGate).ToArray(), preserveExistingSpec ? null : appRelative, warnings,
-            ["pointframe verify run", "pointframe verify trust if a nonstandard command is refused or the approver is unavailable"]));
+        await WriteAsync(new VerificationInitResponse(status, filesWritten, filesLeftAlone, preserveExistingSpec ? [] : gates.Select(DescribeGate).ToArray(), preserveExistingSpec ? null : appRelative, warnings, nextSteps));
         return 0;
     }
 

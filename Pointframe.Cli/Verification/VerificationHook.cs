@@ -202,8 +202,17 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
 
         try
         {
-            var review = await services.Reviewer.ReviewAsync(
-                snapshot?.TaskText ?? "No frozen task; review the change on its own.", diff, Summary(verdict) is { Length: > 0 } text ? text : "Every gate and scenario passed.", cancellationToken);
+            Review review;
+            try
+            {
+                review = await services.Reviewer.ReviewAsync(
+                    snapshot?.TaskText ?? "No frozen task; review the change on its own.", diff, Summary(verdict) is { Length: > 0 } text ? text : "Every gate and scenario passed.", cancellationToken);
+            }
+            catch (AgentException)
+            {
+                review = await services.Reviewer.ReviewAsync(
+                    snapshot?.TaskText ?? "No frozen task; review the change on its own.", diff, Summary(verdict) is { Length: > 0 } retryText ? retryText : "Every gate and scenario passed.", cancellationToken);
+            }
             Directory.CreateDirectory(outputDirectory);
             var path = Path.Combine(outputDirectory, ReviewFileName);
             await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { treeHash = tree.TreeHash, baseCommit, review }, VerificationApplication.VerdictJson), cancellationToken);
@@ -214,7 +223,10 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
         }
         catch (Exception exception) when (exception is AgentException or IOException or System.ComponentModel.Win32Exception)
         {
-            return $"Review failed: {exception.Message}";
+            Directory.CreateDirectory(outputDirectory);
+            var path = Path.Combine(outputDirectory, ReviewFileName);
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { treeHash = tree.TreeHash, baseCommit, failed = true, error = exception.Message }, VerificationApplication.VerdictJson), cancellationToken);
+            return $"Review failed: verification passed, but the work was not reviewed. {exception.Message}";
         }
     }
 

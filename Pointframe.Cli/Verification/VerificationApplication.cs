@@ -17,7 +17,8 @@ internal sealed record VerificationServices(
     string? VerifierVersion = null,
     IReviewer? Reviewer = null,
     TextReader? HookInput = null,
-    ICommandApprover? Approver = null);
+    ICommandApprover? Approver = null,
+    IPointframeCommandResolver? CommandResolver = null);
 
 internal sealed record TaskStartResponse(
     int SchemaVersion,
@@ -67,7 +68,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
     };
 
     private Task<int> InitAsync(CliCommand command, CancellationToken cancellationToken) => new VerificationInit(
-        new PhysicalVerificationInitFileSystem(), standardOutput, standardError)
+        new PhysicalVerificationInitFileSystem(), standardOutput, standardError, services.CommandResolver, services.VerifierVersion)
         .RunAsync(command, Environment.CurrentDirectory, ResolveMcpExecutable, services.ClientFactory, services.DesktopLockName, cancellationToken);
 
     private async Task<int> VerifyAsync(CliCommand command, CancellationToken cancellationToken)
@@ -227,6 +228,8 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         }
 
         var fresh = status == VerificationStatus.Pass && verdictTree is not null && verdictTree == current.TreeHash;
+        var hookCommand = (services.CommandResolver ?? new PointframeCommandResolver()).Resolve();
+        var review = ReadReviewStatus(Path.Combine(root, OutputRelativePath, VerificationHook.ReviewFileName), current.TreeHash);
         await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new
         {
             schemaVersion = SchemaVersion,
@@ -236,8 +239,36 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             currentTreeHash = current.TreeHash,
             startedUtc,
             verdictPath,
+            hookCommand = new { path = hookCommand.Path, version = hookCommand.Version, ok = hookCommand.Ok },
+            review,
         }, VerdictJson));
         return fresh ? 0 : 1;
+    }
+
+    private static object ReadReviewStatus(string path, string? treeHash)
+    {
+        if (treeHash is null || !File.Exists(path))
+        {
+            return new { status = "none", error = (string?)null };
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            var record = document.RootElement;
+            if (!record.TryGetProperty("treeHash", out var reviewedTree) || reviewedTree.GetString() != treeHash)
+            {
+                return new { status = "none", error = (string?)null };
+            }
+
+            var failed = record.TryGetProperty("failed", out var failedElement) && failedElement.GetBoolean();
+            var error = failed && record.TryGetProperty("error", out var errorElement) ? errorElement.GetString() : null;
+            return new { status = failed ? "failed" : "reviewed", error };
+        }
+        catch (JsonException)
+        {
+            return new { status = "none", error = (string?)null };
+        }
     }
 
     // `verify agent`: which agent plays the examiner, reviewer, and approver, and whether it is installed.

@@ -53,6 +53,11 @@ internal sealed class CliApplication
                 return 0;
             }
 
+            if (string.Equals(command.Name, "install", StringComparison.Ordinal))
+            {
+                return await new InstallApplication(new PhysicalCliInstallEnvironment(), new PointframeCommandResolver()).RunAsync(standardOutput);
+            }
+
             if (string.Equals(command.Name, "verify", StringComparison.Ordinal))
             {
                 using var httpClient = new HttpClient();
@@ -242,7 +247,7 @@ internal sealed class CliApplication
         "Programs",
         "Pointframe.Mcp");
 
-    private static string GetVersion()
+    internal static string GetVersion()
     {
         // Assembly.Location is empty for single-file publishes; use Environment.ProcessPath instead.
         var location = Environment.ProcessPath ?? Assembly.GetEntryAssembly()?.Location;

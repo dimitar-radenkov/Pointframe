@@ -4,12 +4,13 @@ namespace Pointframe.Cli;
 
 internal static class CliCommandParser
 {
-    internal const string Usage = "Usage: Pointframe.Cli.exe displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | mcp install|status|doctor --client vscode [--dry-run] | verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios] | verify init [--app <path>] [--mcp <file>] [--hooks claude|codex|both|none] [--agents-md] [--explore] [--force] | verify status|trust [--spec <file>] [--revoke] | verify task start <task-file> [--id <id>] [--replace] | verify hook stop [--review] [--max-blocks <n>] | verify agent [--use claude|codex|auto] | --help | --version";
+    internal const string Usage = "Usage: Pointframe.Cli.exe install | displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | mcp install|status|doctor --client vscode [--dry-run] | verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios] | verify init [--app <path>] [--mcp <file>] [--hooks claude|codex|both|none] [--agents-md] [--explore] [--force] | verify status|trust [--spec <file>] [--revoke] | verify task start <task-file> [--id <id>] [--replace] | verify hook stop [--review] [--max-blocks <n>] | verify agent [--use claude|codex|auto] | --help | --version";
 
     internal const string HelpText = """
         Pointframe CLI - standalone screen capture, OCR, and recording automation.
 
         Usage:
+          Pointframe.Cli.exe install
           Pointframe.Cli.exe displays
           Pointframe.Cli.exe windows
           Pointframe.Cli.exe capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>]
@@ -31,6 +32,7 @@ internal static class CliCommandParser
           Pointframe.Cli.exe --version
 
         Commands:
+          install         Install the CLI to %LOCALAPPDATA%\Programs\Pointframe.Cli and add it to the user PATH.
           displays        List every connected monitor as JSON.
           windows         List visible top-level windows as JSON (handle, title, process, bounds).
           capture         Capture one monitor, or a region of it, to a PNG file and report it as JSON.
@@ -136,6 +138,13 @@ internal static class CliCommandParser
         if (args.Length == 1 && string.Equals(args[0], "displays", StringComparison.OrdinalIgnoreCase))
         {
             command = new CliCommand("displays");
+            error = null;
+            return true;
+        }
+
+        if (args.Length == 1 && string.Equals(args[0], "install", StringComparison.OrdinalIgnoreCase))
+        {
+            command = new CliCommand("install");
             error = null;
             return true;
         }

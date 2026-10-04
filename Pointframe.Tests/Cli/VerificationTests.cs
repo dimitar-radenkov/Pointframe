@@ -177,6 +177,25 @@ public sealed class VerificationTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Status_ReportsCurrentHookCommandAndFailedReview()
+    {
+        var outputDirectory = Path.Combine(_fixture.Root, VerificationApplication.OutputRelativePath);
+        Directory.CreateDirectory(outputDirectory);
+        File.WriteAllText(Path.Combine(outputDirectory, VerificationHook.ReviewFileName), """{ "treeHash": "TREE1", "baseCommit": "HEAD1", "failed": true, "error": "review unavailable" }""");
+        var services = new VerificationFixture.Services();
+        services.CommandResolver.Setup(item => item.Resolve(null)).Returns(new PointframeCommandInfo("C:\\tools\\pointframe.exe", null, false, "bad version"));
+        var output = new StringWriter();
+
+        Assert.Equal(1, await services.Application(_fixture.Store, output).RunAsync(new CliCommand("verify", SpecPath: _fixture.SpecPath, VerifyAction: "status"), CancellationToken.None));
+
+        using var result = JsonDocument.Parse(output.ToString());
+        Assert.Equal("C:\\tools\\pointframe.exe", result.RootElement.GetProperty("hookCommand").GetProperty("path").GetString());
+        Assert.False(result.RootElement.GetProperty("hookCommand").GetProperty("ok").GetBoolean());
+        Assert.Equal("failed", result.RootElement.GetProperty("review").GetProperty("status").GetString());
+        Assert.Equal("review unavailable", result.RootElement.GetProperty("review").GetProperty("error").GetString());
+    }
+
     [Theory]
     [InlineData(new[] { "verify" }, "The verify command requires an action: init, run, status, trust, task start, hook stop, or agent.")]
     [InlineData(new[] { "verify", "start" }, "The verify command requires an action: init, run, status, trust, task start, hook stop, or agent.")]

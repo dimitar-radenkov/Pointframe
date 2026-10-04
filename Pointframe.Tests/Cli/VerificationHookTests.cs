@@ -183,6 +183,42 @@ public sealed class VerificationHookTests : IDisposable
     }
 
     [Fact]
+    public async Task Stop_ReviewerRetriesAgentFailureThenSucceeds()
+    {
+        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        _fixture.CreateAppAndMcp();
+        var services = new VerificationFixture.Services(new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true)));
+        services.Reviewer.SetupSequence(item => item.ReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AgentException("invalid structured output"))
+            .ReturnsAsync(new Review("Reviewed after retry.", [], "fake"));
+
+        var result = await StopAsync(services, "s1", review: true);
+
+        Assert.Contains("Reviewed after retry.", result.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
+        services.Reviewer.Verify(item => item.ReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task Stop_TwoReviewerFailuresAreRecordedAndNotRepeatedForTheTree()
+    {
+        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        _fixture.CreateAppAndMcp();
+        var services = new VerificationFixture.Services(new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true)));
+        services.Reviewer.Setup(item => item.ReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AgentException("invalid structured output"));
+
+        var result = await StopAsync(services, "s1", review: true);
+        await StopAsync(services, "s1", review: true);
+
+        Assert.Contains("verification passed, but the work was not reviewed", result.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
+        using var record = JsonDocument.Parse(File.ReadAllText(Path.Combine(_fixture.Root, "artifacts", "pointframe-verify", VerificationHook.ReviewFileName)));
+        Assert.True(record.RootElement.GetProperty("failed").GetBoolean());
+        Assert.Equal("TREE1", record.RootElement.GetProperty("treeHash").GetString());
+        Assert.Equal("HEAD1", record.RootElement.GetProperty("baseCommit").GetString());
+        services.Reviewer.Verify(item => item.ReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
     public async Task Stop_BrokenSpec_LetsTheAgentStopAndTellsThePerson()
     {
         _fixture.WriteSpec("""{ "id": "s", "steps": [] }""");
@@ -265,7 +301,7 @@ public sealed class VerificationHookTests : IDisposable
     [Fact]
     public void ReviewerAnswer_FlagsAreParsed()
     {
-        using var document = JsonDocument.Parse("""{ "summary": "One problem.", "flags": [ { "file": "A.cs", "line": 3, "severity": "high", "message": "Test removed." }, { "file": "B.cs", "severity": "low", "message": "Unused." } ] }""");
+        using var document = JsonDocument.Parse("""{ "summary": "One problem.", "flags": [ { "file": "A.cs", "line": 3, "severity": "high", "message": "Test removed." }, { "file": "B.cs", "line": 0, "severity": "low", "message": "Unused." } ] }""");
 
         var review = AgentReviewer.ParseReview(document.RootElement, "codex");
 

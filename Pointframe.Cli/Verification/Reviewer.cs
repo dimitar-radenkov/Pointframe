@@ -18,7 +18,7 @@ internal sealed class AgentReviewer(IAgentRunner? runner, decimal maxBudgetUsd =
 {
     internal const int MaxDiffCharacters = 150_000;
 
-    // Strict structured-output form (every object closed, every property required, "line" nullable): Codex
+    // Strict structured-output form (every object closed, every property required): Codex
     // rejects any other schema, and Claude Code accepts this one.
     internal const string OutputSchema = """
         {
@@ -31,7 +31,7 @@ internal sealed class AgentReviewer(IAgentRunner? runner, decimal maxBudgetUsd =
                 "type": "object",
                 "properties": {
                   "file": { "type": "string" },
-                  "line": { "type": ["integer", "null"] },
+                  "line": { "type": "integer" },
                   "severity": { "type": "string", "enum": ["high", "medium", "low"] },
                   "message": { "type": "string" }
                 },
@@ -46,11 +46,12 @@ internal sealed class AgentReviewer(IAgentRunner? runner, decimal maxBudgetUsd =
         """;
 
     internal const string Instructions = """
-        You review a change that an AI agent made to a Windows desktop app after its verification passed. You did
+        You review a change an AI agent made to a project after its verification passed. You did
         not write it. You see the task, the full diff, and the verdict. You have no tools: read and judge.
 
         Flag only what the passing verdict cannot show:
         - tests deleted, skipped, or weakened (assertions removed, expected values changed to match the output);
+        - a test that is unchanged still covers behaviour; do not flag behaviour as untested without checking the diff for test files;
         - changes to the verification spec (.pointframe/verify.json), its gates, hooks, or CI configuration;
         - work outside the task, or behaviour the task did not ask for;
         - criteria met only in form, such as a check on a label while the data behind it is not saved;
@@ -103,7 +104,7 @@ internal sealed class AgentReviewer(IAgentRunner? runner, decimal maxBudgetUsd =
         {
             var flags = review.GetProperty("flags").EnumerateArray().Select(flag => new ReviewFlag(
                 flag.GetProperty("file").GetString() ?? string.Empty,
-                flag.TryGetProperty("line", out var line) && line.ValueKind == JsonValueKind.Number && line.TryGetInt32(out var number) ? number : null,
+                flag.TryGetProperty("line", out var line) && line.ValueKind == JsonValueKind.Number && line.TryGetInt32(out var number) && number != 0 ? number : null,
                 flag.GetProperty("severity").GetString() ?? "low",
                 flag.GetProperty("message").GetString() ?? string.Empty)).ToArray();
             return new Review(CleanSummary(review.GetProperty("summary").GetString()), flags, reviewer);
