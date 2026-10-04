@@ -1,5 +1,23 @@
 # Lessons Learned
 
+## PowerShell reads "$name:" inside a string as a scoped variable
+
+### Problem
+
+The CD step "Check existing release" failed on its first real run with `ParserError: Variable reference is not valid. ':' was not followed by a valid variable name character`. Nothing was published. YAML validation and the local done-gate passed, because neither runs the PowerShell inside a workflow `run:` block.
+
+### Root cause
+
+In `throw "Could not check release $tag: $errorText"`, PowerShell parses `$tag:` as a scope- or drive-qualified name (like `C:\Program Files\PowerShell\7;C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin;C:\Python313\Scripts\;C:\Python313\;C:\Program Files\Microsoft\jdk-17.0.15.6-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;C:\Program Files\SafeNet\Authentication\SAC\x64;C:\Program Files\SafeNet\Authentication\SAC\x32;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\WINDOWS\System32\OpenSSH\;C:\Program Files\NVIDIA Corporation\NVIDIA app\NvDLISR;C:\Program Files\Git\cmd;C:\Program Files\Microsoft SQL Server\150\Tools\Binn\;C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\;C:\Program Files (x86)\Microsoft SQL Server\160\DTS\Binn\;C:\Program Files\TortoiseGit\bin;C:\ProgramData\chocolatey\bin;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\;C:\Program Files\Microsoft SQL Server\170\Tools\Binn\;C:\Program Files\dotnet\;C:\Program Files\GitHub CLI\;C:\Users\dimit\AppData\Local\nvm;C:\nvm4w\nodejs;C:\Program Files\nodejs\;C:\Program Files\Docker\Docker\resources\bin;C:\Program Files\PowerShell\7\;C:\Users\dimit\scoop\shims;C:\Users\dimit\AppData\Local\Microsoft\WindowsApps;C:\Users\dimit\AppData\Local\Programs\Microsoft VS Code Insiders\bin;C:\Users\dimit\AppData\Local\Programs\Azure Dev CLI\;C:\Users\dimit\AppData\Local\Microsoft\WinGet\Packages\Schniz.fnm_Microsoft.Winget.Source_8wekyb3d8bbwe;C:\Users\dimit\.dotnet\tools;C:\Users\dimit\.lmstudio\bin;C:\Users\dimit\.dotnet\tools;C:\Users\dimit\AppData\Local\Microsoft\dotnet;C:\Users\dimit\.dotnet\tools;C:\Users\dimit\AppData\Local\Microsoft\WinGet\Packages\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe;C:\Users\dimit\AppData\Local\nvm;C:\nvm4w\nodejs;C:\Users\dimit\AppData\Roaming\npm;C:\Users\dimit\AppData\Local\Microsoft\WinGet\Links;C:\Users\dimit\AppData\Local\PowerToys\DSCModules\;C:\Users\dimit\AppData\Local\Programs\Pointframe.Cli`), so the whole script fails to parse.
+
+### What fixed it
+
+Delimit the name: `${tag}:`. Before merging a workflow change, parse each `shell: pwsh` `run:` block with `[System.Management.Automation.Language.Parser]::ParseInput` after replacing `${{ ... }}` expressions with a placeholder.
+
+### Takeaway
+
+In PowerShell strings, write `` whenever a variable is followed by a colon. Treat workflow scripts as code: parse them locally, since the first real run is on master.
+
 ## workflow_run checks out the default branch HEAD, not the commit that triggered it
 
 ### Problem

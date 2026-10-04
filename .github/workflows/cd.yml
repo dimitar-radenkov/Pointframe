@@ -67,7 +67,7 @@ jobs:
               "skip=false" >> $env:GITHUB_OUTPUT
               exit 0
             }
-            throw "Could not check release $tag: $errorText"
+            throw "Could not check release ${tag}: $errorText"
           }
 
           $release = $releaseJson | ConvertFrom-Json
