@@ -11,6 +11,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 | F-35 | CLI: capture/OCR/recording plus managed MCP install, status, and doctor for VS Code | `pointframe` command line | `Pointframe.Cli/Commands/CliCommandParser.cs`, `Pointframe.Cli/Application/CliApplication.cs`, `Pointframe.Cli/McpManagement/McpManagementApplication.cs` | — | `Pointframe.Tests/Cli/CliApplicationTests.cs`, `Pointframe.Tests/Cli/McpManagementTests.cs`, `Pointframe.Tests/DocsSync/CliDocumentationTests.cs` | [Standalone CLI and MCP automation](#standalone-cli-and-mcp-automation) |
 | F-36 | MCP capture, OCR, recording, and library tools | MCP clients: `capture_monitor`, `read_text_from_window`, `start_recording`, `search_captures`, and the rest of the direct tools | `Pointframe.Mcp/Tools/PointframeMcpTools.cs` | — | `Pointframe.Tests/Mcp/McpToolSurfaceTests.cs`, `Pointframe.Tests/Mcp/DirectCaptureServiceTests.cs`, `Pointframe.Tests/Mcp/DirectRecordingMcpServiceTests.cs`, `Pointframe.Tests/DocsSync/McpToolDocumentationTests.cs`, `Pointframe.AutomationTests/Smoke/McpRecordingWorkflowTests.cs`, `Pointframe.AutomationTests/Smoke/McpMonitorGeometryTests.cs` | [Standalone CLI and MCP automation](#standalone-cli-and-mcp-automation), [MCP command list](#the-mcp-command-list-resource-must-name-every-registered-tool) |
 | F-37 | MCP desktop testing tools | MCP clients: `desktop_*` tools | `Pointframe.Mcp/Tools/DesktopTestingMcpTools.cs`, `Pointframe.Mcp/Automation/WorkerDesktopAutomationService.cs` | — | `Pointframe.Tests/Mcp/DesktopTestingToolContractTests.cs`, `Pointframe.Tests/Mcp/DesktopCheckReportingTests.cs`, `Pointframe.Tests/Engine/DesktopTestReportTests.cs`, `Pointframe.Tests/Engine/DesktopEvidenceRecorderTests.cs`, `Pointframe.Tests/Engine/DesktopProofServiceTests.cs`, `Pointframe.Tests/Engine/DesktopProofBundleTests.cs`, `Pointframe.Tests/Mcp/DesktopReplayTests.cs`, `Pointframe.Tests/Mcp/VerifyDesktopWorkGuideTests.cs`, `Pointframe.Tests/Mcp/DesktopControlGuardTests.cs`, `Pointframe.AutomationTests/Smoke/McpDesktopObserveAndInputTests.cs`, `Pointframe.AutomationTests/Smoke/McpDesktopGuardTests.cs`, `Pointframe.AutomationTests/Smoke/McpNotepadWorkflowTests.cs`, `Pointframe.AutomationTests/Smoke/McpNotepadPlusPlusTextEntryTests.cs`, `Pointframe.AutomationTests/Smoke/McpTextEntryReachesTargetTests.cs`, `Pointframe.AutomationTests/Smoke/McpWpfInputComparisonTests.cs` | [Standalone CLI and MCP automation](#standalone-cli-and-mcp-automation) |
+| F-39 | CLI: spec-driven verification (`verify run`, `status`, `trust`, `task start`, `hook stop`): gates, desktop scenarios, frozen task criteria | `pointframe verify ...`, a hook, or CI | `Pointframe.Cli/Verification/VerificationApplication.cs`, `Pointframe.Cli/Verification/DesktopScenarioRunner.cs` | — | `Pointframe.Tests/Cli/VerificationTests.cs`, `Pointframe.Tests/Cli/VerificationRunTests.cs`, `Pointframe.Tests/Cli/VerificationHookTests.cs`, `Pointframe.Tests/Cli/CommandApprovalTests.cs`, `Pointframe.Tests/DocsSync/CliDocumentationTests.cs` | [Spec-driven verification runs](#spec-driven-verification-runs) |
 
 ## Standalone CLI and MCP automation
 
@@ -83,6 +84,77 @@ CI publishes the CLI and MCP executables and runs `packaging/test-mcp-stdio.ps1`
 - Lesson: Desktop automation test assemblies should disable xUnit parallelization
 - Lesson: GetWindowRect includes the invisible resize border, so window captures leak what lies behind
 - Lesson: Evidence copied from the screen shows whatever covers the target window
+
+## Spec-driven verification runs
+
+**Responsibility.** `verify` checks a project against a spec it keeps in git (`verify.json` in its `.pointframe` folder) with no agent driving the app, and freezes a task's acceptance criteria before work starts. It turns an agent's hand-driven desktop session into a repeatable command with a verdict and an exit code. Pointframe's own spec runs the same gates as `scripts/verify.ps1` plus a fixture scenario.
+
+**Flow of `verify run`.**
+
+1. `VerificationSpecLoader` parses the spec strictly: unknown properties and steps are rejected, every criterion needs a check naming it, and a scenario with criteria needs a negative control (the report's own pass rules, checked before anything launches). Paths resolve from the folder that holds `.pointframe/`.
+2. Trust: nothing runs unless this spec's gates and app (`SpecDigests.CommandsSha256`) are approved, checked on every run and task start, so removing a gate or repointing the app needs approval again. New or changed commands go through `CommandPolicy` (fixed rules, no agent), then `ClaudeCodeApprover`, whose yes is stored with its reason; only a refusal needs `verify trust` (`spec_untrusted`). See [D-009](#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands). Gates: `GateRunner` runs every gate through `cmd.exe` with a log and failure details (compiler errors, failed tests, `ERROR` lines); any failed gate marks the scenarios `skipped`.
+3. Scenarios: under a machine-wide named semaphore, each scenario gets its own `Pointframe.Mcp.exe --desktop-testing` process, a policy written for the spec's `app`, and with `isolation` a fresh data folder passed by environment variable (the server's launched app inherits it) or by argument, deleted afterwards.
+4. `DesktopScenarioRunner` resolves `automationId` (or role and name) to an `element_ref` by polling `desktop_observe_app` for up to 15 seconds and calls the `desktop_*` tools. The first failed step stops the scenario; the report is always fetched and the session always ended. A scenario passes only when every step passed, the report verdict is `passed`, `DesktopProofService.Verify` accepts the bundle from disk, and cleanup succeeded.
+5. The verdict (`verdict.json` in the project's artifacts\pointframe-verify folder, and standard output) carries provenance: git head, the working-tree hash computed like `verify.ps1`, the CLI version, and the MCP server's hash. `pass` exits 0, `partial` (`--scenario` or `--only`) exits 0, `fail` exits 1, a bad spec or arguments exit 2. `verify status` reports `fresh` only for a `pass` on the current tree hash.
+
+**Tasks.** `verify task start <task-file>` runs `ClaudeCodeExaminer`: `claude -p` in an empty temp folder, built-in tools off, only the Pointframe MCP server, user settings only (no project hooks), a budget cap, and a JSON schema for its proposal. The CLI parses the proposal with the spec rules and runs it on the unchanged app in fail-before mode (`continueAfterFailedChecks`); `FailBefore.Evaluate` rejects it when a criterion already holds or a negative control fails. A confirmed snapshot (task text, tree hash, a hash per gate and scenario) is stored by `VerificationStore`; `verify run --task <id>` adds it as scenario `task-<id>` and lists `specChanges` since the task started.
+
+**Stop hook.** `verify hook stop` (`VerificationHook`) answers Claude Code's Stop event on stdout: it reuses the last verdict when the tree hash, spec hash, and active task (id and snapshot hash) are unchanged (a question-only turn costs nothing, an unchanged failure keeps blocking), otherwise runs `verify run` with the active task in-process. A failure the agent can fix returns `decision: block` with the failed gate details or `Expected ..., found ...`; a failure only a person can fix (`spec_untrusted`, `spec_invalid`, `mcp_not_found`, `desktop_busy`, a broken task) and the `--max-blocks` limit (default 5, counted per session in `hook-state.json`) let the agent stop with a `systemMessage`. With `--review`, a pass on a tree not yet in `review.json` is followed by `ClaudeCodeReviewer` (no tools, the diff since the task's commit through a throwaway index), whose flags go to `review.json` and the person, never to the verdict. The hook must run an installed or copied CLI: a running `Pointframe.Cli.exe` locks the output a project's build gate rebuilds.
+**Invariants.**
+
+- Pass or fail comes only from the server's signed report and the CLI's checks; no agent and no CLI code writes a check result.
+- Command approval is fixed rules, then the approver agent, then a person; replacing a task snapshot always needs a person at a terminal. See [D-009](#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands) and [D-008](#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository).
+- A failed check carries the found value (`actual`), so a wrong expectation is visible in one run.
+
+**Files.** `Pointframe.Cli/Verification/VerificationSpec.cs`, `Pointframe.Cli/Verification/VerificationSpecLoader.cs`, `Pointframe.Cli/Verification/VerificationApplication.cs`, `Pointframe.Cli/Verification/DesktopScenarioRunner.cs`, `Pointframe.Cli/Verification/GateRunner.cs`, `Pointframe.Cli/Verification/VerificationStore.cs`, `Pointframe.Cli/Verification/WorkingTree.cs`, `Pointframe.Cli/Verification/Examiner.cs`, `Pointframe.Cli/Verification/Reviewer.cs`, `Pointframe.Cli/Verification/CommandApprover.cs`, `Pointframe.Cli/Verification/VerificationHook.cs`, `Pointframe.Cli/Verification/McpStdioToolClient.cs`, `Pointframe.Cli/Verification/VerificationResults.cs`, `.pointframe/verify.json`, `docs/cli/README.md`. See [D-007](#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service).
+
+- Lesson: A named Mutex cannot guard work that awaits
+- Lesson: A stdio client must drain the MCP server's stderr
+- Lesson: Closing an app through its own UI returns before the process exits
+
+## D-007 `verify run` drives the MCP server instead of sharing an Engine service
+
+**Decided.** 2026-10-03.
+
+**Context.** The plan was to move the act/check/record logic out of `DesktopTestingMcpTools` into `Pointframe.Engine` so the CLI could call it directly. But the UI Automation backend (FlaUI, the worker process, input) lives in `Pointframe.Mcp`, which the CLI does not reference.
+
+**Decision.** The CLI is an MCP client: it starts `Pointframe.Mcp.exe` with a generated policy and calls the same `desktop_*` tools an agent calls.
+
+**Consequences.** One implementation of sessions, checks, evidence, and signing; a CLI run and an agent session produce the same report, and every `verify run` exercises the agent path. The cost is a child process per run and a JSON boundary: a tool's argument or response change must be mirrored in `DesktopScenarioRunner`.
+
+**Alternatives rejected.** Moving the backend and orchestration into the Engine (a large refactor of FlaUI and worker code, with two hosts to keep in step); referencing `Pointframe.Mcp` from the CLI (pulls the MCP host and FlaUI into the CLI package).
+
+**Files.** `Pointframe.Cli/Verification/DesktopScenarioRunner.cs`, `Pointframe.Cli/Verification/McpStdioToolClient.cs`, `Pointframe.Mcp/Tools/DesktopTestingMcpTools.cs`.
+
+## D-008 Verify approvals need a person at a terminal and live outside the repository
+
+Superseded by D-009 for the approval of gate and app commands; it still holds for replacing a task snapshot and for where approvals are stored.
+
+**Decided.** 2026-10-03.
+
+**Context.** Gate commands run with the user's permissions, and a task's frozen criteria are what the worker agent is graded against. The worker runs as the same Windows user with a shell, so any plain approve command or `--yes` flag is one it can use itself.
+
+**Decision.** `verify trust` and `verify task start --replace` approve only after a person types `yes` at an interactive terminal (`ConsoleConfirmation` refuses redirected input), with no flag to skip it. Approvals and task snapshots live under `%LOCALAPPDATA%\Pointframe\verify`, keyed by project folder, not in the repository. New criteria come from the examiner agent, never from the worker.
+
+**Consequences.** An agent cannot approve its own gates or app, remove gates, or replace its own criteria through the CLI, and editing the repository does not change them. This is a consent boundary, not a sandbox: a worker with unrestricted file access could still edit the store, which only a sandbox that limits writes to the workspace prevents. Non-interactive CI needs its own trust mechanism (planned with CI support).
+
+**Alternatives rejected.** An `ask` permission rule on the approve command (only Claude Code honours it); storing approvals in the repository (the worker can edit them); a `--yes` flag (the worker can pass it).
+
+**Files.** `Pointframe.Cli/Verification/VerificationStore.cs`, `Pointframe.Cli/Verification/VerificationApplication.cs`.
+
+## D-009 An approver agent behind fixed rules approves verify commands
+
+**Decided.** 2026-10-04.
+
+**Context.** Under D-008 every new or changed gate or app command waited for a person at a terminal. The owner wants agents to work autonomously and rejected a human step in the normal flow. Claude Code's auto-mode classifier refused to replace the person with an agent until the owner allowed it explicitly in the permission settings.
+
+**Decision.** New or changed commands are checked by `CommandPolicy`, fixed rules that no text can argue with (the app is a program inside the project and not a shell; working folders inside the project; no URLs, network shares, download tools, deletes, encoded or inline payloads, system changes, or environment paths), then by `ClaudeCodeApprover`: a separate Claude Code process started by the CLI, with no tools and no project settings, that sees only the commands and the previously approved ones, treats them as untrusted data, and refuses when in doubt. Its yes is stored like a person's, with `ApprovedBy` and its reason; a person (`verify trust`) is needed only after a refusal.
+
+**Consequences.** Normal work, including a changed build command, never waits for a person. The approver can be talked into a wrong yes by text crafted for it; the fixed rules are the backstop for the dangerous cases, and the verdict's `provenance.commandsApprovedBy` lets a reviewer see an agent approval. The approval check costs one agent call per change of the commands.
+
+**Alternatives rejected.** A person for every change (D-008: blocks autonomy); treating commands committed in HEAD as approved (blocked by the permission layer, and unsafe in cloned repositories and in workflows where agents commit); an approver without fixed rules (one wrong yes could run anything).
+
+**Files.** `Pointframe.Cli/Verification/CommandApprover.cs`, `Pointframe.Cli/Verification/VerificationApplication.cs`, `Pointframe.Cli/Verification/VerificationStore.cs`.
 
 ## The MCP command list resource must name every registered tool
 

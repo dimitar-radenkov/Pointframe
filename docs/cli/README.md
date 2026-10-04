@@ -249,6 +249,260 @@ missing `ffmpeg.exe`), the command writes a JSON response with
 `"Success": false` and an `Error` object to standard output and exits with
 code `1`.
 
+## Verify a desktop app from a spec
+
+`verify run` checks a project against a verification spec that the project keeps
+in git. It runs the spec's gates (build, test, or any command), then launches the
+built app and runs each desktop scenario in the real UI, and writes a verdict with
+a signed proof bundle for each scenario. No agent drives the app: the spec says
+what to do and what must hold.
+
+```powershell
+pointframe verify run
+pointframe verify run --spec .pointframe\verify.json --mcp C:\tools\Pointframe.Mcp.exe
+pointframe verify run --scenario save-text
+pointframe verify run --only gates
+pointframe verify run --task keep-text
+```
+
+| Flag | Meaning | Default |
+|---|---|---|
+| `--spec <file>` | The verification spec | `.pointframe\verify.json` in the current folder |
+| `--mcp <file>` | The `Pointframe.Mcp.exe` that drives the app | `POINTFRAME_MCP_EXECUTABLE`, then the server installed by `mcp install` |
+| `--scenario <id>` | Run one scenario only | every scenario |
+| `--only <gates\|scenarios>` | Run only the gates, or only the scenarios | both |
+| `--task <id>` | Also run the frozen criteria of a task (see [Freeze a task's criteria](#freeze-a-tasks-criteria-before-work-starts)) | none |
+
+A minimal spec:
+
+```json
+{
+  "schemaVersion": 1,
+  "app": { "id": "my-app", "executable": "MyApp/bin/Release/net10.0-windows/MyApp.exe" },
+  "scenarios": [
+    {
+      "id": "save-text",
+      "criteria": ["The text box shows the typed text."],
+      "steps": [
+        { "enterText": { "automationId": "textBox", "text": "hello" } },
+        { "invoke": { "automationId": "saveButton" } },
+        { "check": { "kind": "textEquals", "automationId": "textBox", "expected": "hello", "criterion": "C1" } },
+        { "check": { "kind": "textEquals", "automationId": "textBox", "expected": "not-hello", "expectFailure": true, "timeoutSeconds": 1 } }
+      ]
+    }
+  ]
+}
+```
+
+Paths are relative to the folder that holds `.pointframe\`. `app` also takes
+`arguments` and `workingDirectory` (default: the executable's folder). A spec
+needs at least one gate or one scenario; `app` is required only with scenarios.
+
+### Gates
+
+```json
+"gates": [
+  { "id": "build", "run": "dotnet build -c Release" },
+  { "id": "tests", "run": "dotnet test -c Release --no-build", "timeoutMinutes": 20 }
+]
+```
+
+Each gate is a command line run through `cmd.exe` in the project folder (or its
+`workingDirectory`), with a timeout of `timeoutMinutes` (1-120, default 30). Every
+gate runs, in order, even after one fails, so one run reports every problem. Its
+output goes to a log, and a failed gate's `details` show compiler errors, failed
+tests, and `ERROR` lines, or the end of the log. When any gate fails, the
+scenarios are reported `skipped` and not run.
+
+Gate commands and the app run with your permissions, so a spec runs only after
+what it starts is approved: every gate command and the app's executable,
+arguments, working folder, and isolation. Scenario steps and criteria are not
+commands and need no approval. When the commands are new or changed (including a
+removed gate), `verify run` and `verify task start` approve them in this order,
+so normal work never waits for you:
+
+1. **Fixed rules, no agent.** The app must be a program inside the project folder,
+   not a shell or interpreter (`cmd.exe`, `powershell.exe`, `python.exe`, ...);
+   every working folder must be inside the project; and no command or app
+   argument may contain a URL, a network share, a download tool (`curl`, `wget`,
+   `iwr`, ...), a delete (`del`, `rm`, `Remove-Item`, ...), an encoded or inline
+   payload (`-EncodedCommand`, `iex`, `base64`), a system change (`reg`,
+   `schtasks`, `sc`, `net`, ...), or `$env:` and profile variables. A violation is
+   refused at once.
+2. **The approver agent.** A separate Claude Code process (up to USD 0.5) with no
+   tools and no project settings, started by the CLI, sees only the commands and
+   the previously approved ones. It approves ordinary build, test, format, and
+   check commands and the project's own app, treats the commands as untrusted
+   data, and refuses when in doubt. Its approval is stored with its reason, so it
+   is asked once per change of the commands. The verdict's
+   `provenance.commandsApprovedBy` says who approved (`agent:claude-code` or
+   `person`).
+3. **A person**, only when the rules or the agent refused:
+
+```powershell
+pointframe verify trust            # shows the commands and asks you to type yes
+pointframe verify trust --revoke   # withdraws the approval
+```
+
+Until one of these approves, `verify run` and `verify task start` fail with
+`errorCode` `spec_untrusted` and say why, even with `--only`. Approval is stored
+per project under `%LOCALAPPDATA%\Pointframe\verify`, outside the repository.
+`verify trust` asks at an interactive terminal only, with no flag that skips the
+question. This is a consent check, not a sandbox: the approver agent can be
+wrong, and the fixed rules are its backstop.
+
+### Isolation
+
+```json
+"app": { "id": "my-app", "executable": "...", "isolation": { "environmentVariable": "MYAPP_DATA_DIR" } }
+```
+
+With `isolation`, every scenario gets a fresh, empty data folder, and the app
+learns its path from one environment variable (`environmentVariable`) or from one
+argument added after its other arguments (`"argument": "--data-dir"`). The folder
+stays the same across a `restart` inside the scenario, so you can check what
+survives a restart, and it is deleted when the scenario ends. A folder that
+cannot be deleted fails the scenario. The spec never names the folder.
+
+Steps, each an object with exactly one property:
+
+| Step | Does | Takes |
+|---|---|---|
+| `enterText` | Sets an edit field's value through UI Automation | element, `text` |
+| `invoke` | Activates a button or menu item | element |
+| `pressKeys` | Focuses the app's window and presses a chord | `keys`: 1 to 4 virtual-key codes, modifiers first |
+| `restart` | Relaunches the app in the same session. Close it first with an `invoke` of its own Close or Exit control | nothing |
+| `check` | Waits until a condition holds | `kind`, element, `expected`, `criterion` or `expectFailure`, `timeoutSeconds` (1-30, default 10) |
+
+An element is `automationId`, or both `role` and `name`. Check kinds are
+`exists`, `absent`, `enabled`, `toggleEquals`, `selectionEquals`, and
+`textEquals`. Criteria are numbered `C1`, `C2`, ... in order. The spec is
+rejected before anything runs when a criterion has no check that names it, when
+a scenario with criteria has no negative control (`"expectFailure": true`), or
+when a property or step is unknown.
+
+Each scenario runs in its own MCP server process and desktop test session. Before an action, the runner
+waits up to 15 seconds for the element to appear, so a window that is still
+opening is not a failure. The first failed step stops the scenario and marks the
+rest `skipped`. The session's signed report is always fetched, its proof is
+checked from disk, and the app is closed. A scenario passes only when every step
+passed, the report's verdict is `passed`, the proof verifies, and cleanup
+succeeded.
+
+The verdict is written to `artifacts\pointframe-verify\verdict.json` under the
+project folder and also printed to standard output. Each scenario's proof bundle
+(`report.json`, `evidence\`, `index.html`) and each gate's log are under
+`artifacts\pointframe-verify\runs\<time>\`. A failed check reports what it found:
+
+```json
+{ "index": 2, "kind": "check", "status": "fail", "code": "CheckFailed", "expected": "hello", "actual": "" }
+```
+
+The verdict's `provenance` ties it to its inputs: the git `head`, the working
+`treeHash` (the same hash as `scripts\verify.ps1`, covering uncommitted files),
+the CLI version, and the path and SHA-256 of the MCP server. `specSha256` is the
+spec file's hash.
+
+| `status` | Meaning | Exit code |
+|---|---|---:|
+| `pass` | Every gate and every scenario passed | `0` |
+| `partial` | Everything that ran passed, but `--scenario` or `--only` left something out | `0` |
+| `fail` | A gate or a scenario failed, or the run could not start (`errorCode` says why: `spec_untrusted`, `app_not_found`, `mcp_not_found`, `desktop_busy`) | `1` |
+| `fail` with `errorCode` `spec_invalid`, `scenario_not_found`, `task_not_found`, or `task_invalid` | The spec or the arguments are wrong; no verdict file is written | `2` |
+
+Read `status`, not only the exit code: `partial` exits `0` but is not a final
+verdict. `verify status` answers the question a hook asks, "is the last verdict a
+`pass` for the files as they are now?":
+
+```powershell
+pointframe verify status
+```
+
+It prints the last verdict's `status`, its tree hash and the current one, and
+`fresh`, which is true only for a `pass` whose tree hash equals the current one.
+It exits `0` when `fresh` is true and `1` otherwise.
+
+### Freeze a task's criteria before work starts
+
+```powershell
+pointframe verify task start tasks\keep-text.md
+pointframe verify run --task keep-text
+```
+
+`verify task start <task-file>` gives the task to an examiner agent before any
+code is written. The examiner is a separate Claude Code process (`claude -p`, up
+to USD 3) that sees only the task text and the running app: it runs in an empty
+folder outside the repository, with every built-in tool disabled, with only the
+Pointframe MCP server, and without the project's settings or hooks. It explores
+the app and proposes criteria, a scenario with a negative control, and the
+automation ids that new elements must have (`requiredAutomationIds`).
+
+The CLI does not trust the proposal. It parses it with the same rules as the
+spec, then runs it on the unchanged app: every criterion must fail there or not
+be reachable yet (an element the task adds), no criterion may already hold, and
+every negative control that ran must pass. A proposal that breaks a rule is
+rejected (`examiner_invalid` or `fail_before_rejected`) and nothing is frozen.
+
+A confirmed proposal is frozen as a task snapshot under
+`%LOCALAPPDATA%\Pointframe\verify`, outside the repository, with the task text,
+the tree hash, and a hash of each gate and scenario at that moment. The task id
+is the file name, or `--id <id>`. A task that already has a snapshot is not
+replaced unless you pass `--replace` and approve it at an interactive terminal.
+
+`verify task start` also makes the task the project's active task, which the
+Stop hook below verifies without being told its id.
+
+`verify run --task <id>` runs the frozen scenario as `task-<id>` next to the
+spec's scenarios. The verdict's `task` block names the snapshot's hash and lists
+`specChanges`, such as `scenario 'save-text' changed`, when the spec changed
+since the task started, so a reviewer sees it.
+
+### Make an agent finish only on a pass (Stop hook)
+
+`verify hook stop` is a Claude Code Stop hook. Add it to the project's
+`.claude/settings.json`; give it a long timeout, because Claude Code stops a Stop
+hook after 30 seconds unless you set one:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "pointframe verify hook stop --review", "timeout": 1800, "statusMessage": "Verifying the work..." }
+        ]
+      }
+    ]
+  }
+}
+```
+
+When the agent tries to finish, the hook decides:
+
+| Situation | What the hook does |
+|---|---|
+| The project has no `.pointframe\verify.json` | Nothing; the agent stops |
+| The last verdict is a `pass` for these exact files, spec, and active task | Lets the agent stop without running anything again |
+| Anything changed | Runs `verify run` (with the active task), then decides on the new verdict |
+| `pass` | Lets the agent stop and tells you, with the reviewer's flags when `--review` is set |
+| A gate, a scenario, or the task fails | Blocks the stop and tells the agent what failed (gate errors, `Expected ..., found ...`) |
+| Only a person can fix it (`spec_untrusted`, `spec_invalid`, `mcp_not_found`, `desktop_busy`, a broken task) | Lets the agent stop and tells you that the work was not verified and why, because blocking would only loop |
+| The agent was blocked `--max-blocks` times in this session (default 5) | Lets it stop and tells you it still fails |
+
+With `--review`, the first pass on a tree the reviewer has not seen (whether the hook or the agent ran it) is followed by a reviewer agent: a separate Claude Code
+process (up to USD 1) with no tools, which reads the task, the diff since the
+task started, and the verdict, and flags weakened tests, edits to the spec or
+hooks, and work outside the task. Its flags are written to
+`artifacts\pointframe-verify\review.json` and shown to you; they never block.
+
+Use an installed `pointframe` (or a copy of the CLI) in the hook, not a build
+output the project's own gates rebuild: a running `Pointframe.Cli.exe` locks its
+files, and the build gate then fails.
+
+`verify run` takes over the mouse and keyboard while it runs, and only one run
+can use the desktop at a time. Stop the VS Code Pointframe MCP connector first
+when the app under test is a build it locks.
+
 ## Exit codes and errors
 
 | Exit code | Meaning |
