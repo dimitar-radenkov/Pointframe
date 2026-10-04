@@ -4,6 +4,7 @@
 verdict. A Stop hook then keeps your coding agent (Claude Code or Codex) working
 until the last verdict is a fresh pass. This page shows how to set it up in your
 own project. The full reference is in the [CLI README](README.md#verify-a-desktop-app-from-a-spec).
+The fields of the spec file are in the [spec reference](verify-spec.md).
 
 ## What it does, and what it does not
 

@@ -38,6 +38,7 @@ internal static class VerificationSpecLoader
 
         using (document)
         {
+            RequireUniqueProperties(document.RootElement, "spec");
             return Parse(document.RootElement, fullPath, RootDirectoryFor(fullPath));
         }
     }
@@ -142,7 +143,8 @@ internal static class VerificationSpecLoader
         }
 
         if (variable is not null
-            && (!(char.IsAsciiLetter(variable[0]) || variable[0] == '_')
+            && (string.IsNullOrWhiteSpace(variable)
+                || !(char.IsAsciiLetter(variable[0]) || variable[0] == '_')
                 || !variable.All(character => char.IsAsciiLetterOrDigit(character) || character == '_')
                 || ProtectedVariables.Contains(variable)))
         {
@@ -317,6 +319,10 @@ internal static class VerificationSpecLoader
         var kind = RequireString(body, "kind", path);
         var normalizedKind = SupportedCheckKinds.FirstOrDefault(item => string.Equals(item, kind, StringComparison.OrdinalIgnoreCase))
             ?? throw new VerificationSpecException($"{path}.kind '{kind}' is not supported. Expected {string.Join(", ", SupportedCheckKinds)}.");
+        if (normalizedKind is "exists" or "absent" or "enabled" && body.TryGetProperty("expected", out _))
+        {
+            throw new VerificationSpecException($"{path}.expected is not allowed for a {normalizedKind} check.");
+        }
         // "expected": false and "expected": 3 are as natural to write as their text forms, for a person and for
         // an agent alike, and the condition compares text anyway.
         var expected = body.TryGetProperty("expected", out var expectedElement)
@@ -415,6 +421,32 @@ internal static class VerificationSpecLoader
                 throw new VerificationSpecException(allowed.Length == 0
                     ? $"{path} takes no properties; found '{property.Name}'."
                     : $"{path} has an unknown property '{property.Name}'. Allowed: {string.Join(", ", allowed)}.");
+            }
+        }
+    }
+
+    private static void RequireUniqueProperties(JsonElement element, string path)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var property in element.EnumerateObject())
+            {
+                if (!names.Add(property.Name))
+                {
+                    throw new VerificationSpecException($"{path} has duplicate property '{property.Name}'.");
+                }
+
+                RequireUniqueProperties(property.Value, $"{path}.{property.Name}");
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            var index = 0;
+            foreach (var item in element.EnumerateArray())
+            {
+                RequireUniqueProperties(item, $"{path}[{index}]");
+                index++;
             }
         }
     }
