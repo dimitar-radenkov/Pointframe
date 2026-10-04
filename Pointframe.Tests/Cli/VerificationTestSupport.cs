@@ -151,6 +151,7 @@ internal sealed class VerificationFixture : IDisposable
             WorkingTree.Setup(item => item.Read(It.IsAny<string>())).Returns(() => new WorkingTreeState("HEAD1", CurrentTree));
             WorkingTree.Setup(item => item.Diff(It.IsAny<string>(), It.IsAny<string>())).Returns("diff --git a/Form1.cs b/Form1.cs");
             CurrentTree = treeHash;
+            CommandResolver.Setup(item => item.Resolve(It.IsAny<string?>())).Returns(new PointframeCommandInfo(null, null, false));
             Commands.Setup(item => item.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new CommandResult(0, false, ["ok"]));
             Examiner.SetupGet(item => item.Name).Returns("fake-examiner");
@@ -168,13 +169,15 @@ internal sealed class VerificationFixture : IDisposable
 
         internal Mock<IReviewer> Reviewer { get; } = new();
 
+        internal Mock<IPointframeCommandResolver> CommandResolver { get; } = new();
+
         // Null: no approver agent, so unapproved commands need a person, as in a host without Claude Code.
         internal Mock<ICommandApprover>? Approver { get; set; }
 
         internal VerificationApplication Application(VerificationStore store, TextWriter output, string? hookInput = null) => new(
             new VerificationServices(
                 Factory.Object, () => null, Commands.Object, WorkingTree.Object, store, Confirmation.Object, Examiner.Object, LockName, "test-1.0",
-                Reviewer.Object, hookInput is null ? null : new StringReader(hookInput), Approver?.Object),
+                Reviewer.Object, hookInput is null ? null : new StringReader(hookInput), Approver?.Object, CommandResolver.Object),
             output,
             TextWriter.Null);
     }

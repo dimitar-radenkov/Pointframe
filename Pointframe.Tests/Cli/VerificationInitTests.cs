@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using Moq;
 using Pointframe.Cli;
 using Xunit;
 
@@ -252,6 +253,51 @@ public sealed class VerificationInitTests
     }
 
     [Fact]
+    public async Task RunAsync_HooksWarnWhenPointframeCommandIsMissing()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("package.json", "{ \"scripts\": { \"build\": \"dotnet build\" } }");
+        var resolver = new Mock<IPointframeCommandResolver>();
+        resolver.Setup(item => item.Resolve(null)).Returns(new PointframeCommandInfo(null, null, false));
+
+        Assert.Equal(0, await fixture.RunAsync(Command(hooks: "both"), resolver.Object));
+
+        using var output = JsonDocument.Parse(fixture.Output.ToString());
+        Assert.Contains(output.RootElement.GetProperty("warnings").EnumerateArray(), warning => warning.GetString()!.Contains("Stop hooks will not run", StringComparison.Ordinal));
+        Assert.Contains(output.RootElement.GetProperty("nextSteps").EnumerateArray(), step => step.GetString()!.Contains("restart the agent", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task RunAsync_HooksHaveNoWarningWhenTheInstalledCommandMatchesThisCli()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("package.json", "{ \"scripts\": { \"build\": \"dotnet build\" } }");
+        var resolver = new Mock<IPointframeCommandResolver>();
+        resolver.Setup(item => item.Resolve(null)).Returns(new PointframeCommandInfo("C:\\Programs\\pointframe.exe", "Pointframe CLI 1.0", true));
+
+        Assert.Equal(0, await fixture.RunAsync(Command(hooks: "both"), resolver.Object));
+
+        using var output = JsonDocument.Parse(fixture.Output.ToString());
+        Assert.Empty(output.RootElement.GetProperty("warnings").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task RunAsync_HooksReportVersionMismatch()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("package.json", "{ \"scripts\": { \"build\": \"dotnet build\" } }");
+        var resolver = new Mock<IPointframeCommandResolver>();
+        resolver.Setup(item => item.Resolve(null)).Returns(new PointframeCommandInfo("C:\\Programs\\pointframe.exe", "Pointframe CLI 2.0", true));
+
+        Assert.Equal(0, await fixture.RunAsync(Command(hooks: "both"), resolver.Object));
+
+        using var output = JsonDocument.Parse(fixture.Output.ToString());
+        var warning = Assert.Single(output.RootElement.GetProperty("warnings").EnumerateArray());
+        Assert.Contains("Pointframe CLI 1.0", warning.GetString(), StringComparison.Ordinal);
+        Assert.Contains("Pointframe CLI 2.0", warning.GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RunAsync_ReplacesAgentsSectionBetweenMarkers()
     {
         using var fixture = new InitFixture();
@@ -335,6 +381,11 @@ public sealed class VerificationInitTests
         internal string Read(string relativePath) => File.ReadAllText(Path.Combine(Root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
         internal Task<int> RunAsync(CliCommand command) => RunAsync(command, new VerificationFixture.Services(), null);
+
+        internal Task<int> RunAsync(CliCommand command, IPointframeCommandResolver resolver) => new VerificationInit(
+            new PhysicalVerificationInitFileSystem(), Output, TextWriter.Null, resolver, "Pointframe CLI 1.0").RunAsync(
+                command, Root, path => path is null ? null : File.Exists(path) ? path : null,
+                new VerificationFixture.Services().Factory.Object, "test-init-lock", CancellationToken.None);
 
         internal Task<int> RunAsync(CliCommand command, VerificationFixture.Services services, string? mcpPath) => Init.RunAsync(
             command,

@@ -35,8 +35,12 @@ the desktop app is the separate `DimitarRadenkov.Pointframe` package.
 To install manually instead, download `Pointframe.Cli-<version>-win-x64.zip` from the
 [latest Pointframe release](https://github.com/dimitar-radenkov/Pointframe/releases/latest)
 and extract it to a directory. The ZIP is self-contained and includes the
-single-file executable and its native dependencies. The examples below call
-`.\Pointframe.Cli.exe`; with the winget install, call `pointframe` instead.
+single-file executable and its native dependencies. From the extracted ZIP
+folder, run `.\Pointframe.Cli.exe install` once to copy it to
+`%LOCALAPPDATA%\Programs\Pointframe.Cli` and add that directory to your user
+`Path`. Open a new terminal or restart your agent afterwards. winget users do
+not need this step. Scoop is not a supported install channel. The examples
+below call `.\Pointframe.Cli.exe`; with either install, call `pointframe`.
 
 For source builds, use:
 

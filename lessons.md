@@ -1,5 +1,27 @@
 # Lessons Learned
 
+## A Stop hook whose command is missing fails open
+
+### Problem
+
+A generated verification hook can be present and correct while never running, allowing the agent to stop
+without a verification result.
+
+### Root cause
+
+The hook invokes `pointframe` by name. If the executable is missing from `PATH`, the agent cannot launch
+the hook; hook launch failures do not block the stop.
+
+### What fixed it
+
+The ZIP install now has a self-install command, and `verify init` checks the exact `pointframe.exe` that
+will resolve on `PATH`, reporting missing, incorrect, timed out, and version-mismatched commands.
+
+### Takeaway
+
+Treat hook command discovery as part of onboarding and report it before relying on a hook to enforce a
+verification gate.
+
 ## CI publish of a self-contained exe needs `<RuntimeIdentifiers>` even with `--runtime win-x64` on the command line
 
 ### Problem
