@@ -117,6 +117,58 @@ public sealed class VerificationInitTests
         Assert.All(gates, gate => Assert.True(IsStandardGate(fixture.Root, gate)));
     }
 
+    [Theory]
+    [InlineData("pnpm", "pnpm-lock.yaml")]
+    [InlineData("yarn", "yarn.lock")]
+    public async Task Init_UsesNodeLockfilePackageManagerAndWritesStandardCommands(string manager, string lockfile)
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("package.json", "{ \"scripts\": { \"build\": \"build-tool\", \"test\": \"test-tool\" } }");
+        fixture.Write(lockfile, "");
+
+        Assert.Equal(0, await fixture.RunAsync(Command()));
+
+        using var output = JsonDocument.Parse(fixture.Output.ToString());
+        var gates = output.RootElement.GetProperty("gates").EnumerateArray()
+            .Select(gate => new VerificationGate(gate.GetProperty("id").GetString()!, gate.GetProperty("run").GetString()!, fixture.Root, 30))
+            .ToArray();
+        Assert.Equal($"{manager} run build", gates[0].Run);
+        Assert.Equal($"{manager} test", gates[1].Run);
+        Assert.All(gates, gate => Assert.True(IsStandardGate(fixture.Root, gate)));
+    }
+
+    [Fact]
+    public async Task Init_PackageManagerFieldResolvesMultipleLockfiles()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("package.json", "{ \"packageManager\": \"yarn@4.1.0\", \"scripts\": { \"test\": \"test-tool\" } }");
+        fixture.Write("pnpm-lock.yaml", "");
+        fixture.Write("yarn.lock", "");
+        fixture.Write("package-lock.json", "{}");
+
+        Assert.Equal(0, await fixture.RunAsync(Command()));
+
+        using var output = JsonDocument.Parse(fixture.Output.ToString());
+        Assert.Equal("yarn test", output.RootElement.GetProperty("gates")[0].GetProperty("run").GetString());
+        Assert.Empty(output.RootElement.GetProperty("warnings").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Init_WarnsAndUsesPriorityWhenMultipleLockfilesLackRecognizedPackageManager()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("package.json", "{ \"packageManager\": \"bun@1.0.0\", \"scripts\": { \"test\": \"test-tool\" } }");
+        fixture.Write("pnpm-lock.yaml", "");
+        fixture.Write("yarn.lock", "");
+
+        Assert.Equal(0, await fixture.RunAsync(Command()));
+
+        using var output = JsonDocument.Parse(fixture.Output.ToString());
+        Assert.Equal("pnpm test", output.RootElement.GetProperty("gates")[0].GetProperty("run").GetString());
+        Assert.Contains("pnpm-lock.yaml", output.RootElement.GetProperty("warnings")[0].GetString(), StringComparison.Ordinal);
+        Assert.Contains("yarn.lock", output.RootElement.GetProperty("warnings")[0].GetString(), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void DetectApp_UsesWinExeOutputAndExplicitOverrideWins()
     {
