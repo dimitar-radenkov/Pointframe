@@ -1,0 +1,1 @@
+{"tables":[{"name":"PrimaryResult","columns":[{"name":"sessions","type":"long"},{"name":"ctaClicks","type":"long"},{"name":"ctaSessions","type":"long"}],"rows":[[145,29,26]]}]}

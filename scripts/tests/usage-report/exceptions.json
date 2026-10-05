@@ -1,0 +1,1 @@
+{"tables":[{"name":"PrimaryResult","columns":[{"name":"version","type":"string"},{"name":"exceptionType","type":"string"},{"name":"events","type":"long"},{"name":"installs","type":"long"}],"rows":[["6.7.17.42857","AggregateException",5,1]]}]}
