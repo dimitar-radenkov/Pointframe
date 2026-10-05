@@ -15,6 +15,8 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 
 ## Standalone CLI and MCP automation
 
+`scripts/measure-mcp-payloads.ps1` inventories MCP discovery schemas and tool responses into timestamped JSON, CSV, and Markdown under `artifacts/mcp-payloads/`. Its pinned rough token estimate is UTF-8 text bytes divided by four. The desktop-enabled run uses a per-run policy restricted to `Pointframe.DesktopTestFixture.exe` and an isolated catalog data directory. It calls every advertised tool through a dependency-ordered fixture workflow (displays, a fixture desktop session, captures, the catalog, a 1-2 s recording, then click, drag, scroll, text, hotkey, checks, report, replay, and restart), records text versus structured-content bytes, flags text blocks that duplicate the structured content, and fails on a tool with no measurement and no allowed skip, on any unexpected error, or on failed cleanup. `desktop_press_keys` without a global hotkey id is recorded as an expected error because the tool passes no target to the input service. Run `-SelfTest` for its offline measurement fixtures.
+
 **Responsibility.** Provide agent-facing desktop capture and whole-monitor recording without starting the WPF tray application or creating overlay windows. Both hosts call the shared `Pointframe.Engine` services directly and require an interactive Windows desktop session.
 
 **Entry points.**
