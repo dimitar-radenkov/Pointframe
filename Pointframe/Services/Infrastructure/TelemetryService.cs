@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
+using OpenTelemetry.Resources;
 using Pointframe.Automation;
 
 namespace Pointframe.Services;
@@ -24,7 +25,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
     private readonly IUserSettingsService _userSettings;
     private readonly string _appVersion;
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
-    private readonly string _telemetrySchemaVersion = "1";
+    private readonly string _telemetrySchemaVersion = "2";
     private readonly object _syncRoot = new();
     private readonly bool _isAutomationMode;
     private volatile string? _lastEventName;
@@ -51,6 +52,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
         var exporter = new AzureMonitorLogExporter(new AzureMonitorExporterOptions
         {
             ConnectionString = connectionString,
+            EnableLiveMetrics = false,
         });
 
         var processor = new BatchLogRecordExportProcessor(
@@ -68,6 +70,11 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
                 .AddOpenTelemetry(otel =>
                 {
                     otel.IncludeScopes = true;
+                    // Product telemetry must not inherit host, process, OS, or OTEL_* resource
+                    // attributes. Only this fixed service identity is exported.
+                    otel.SetResourceBuilder(ResourceBuilder.CreateEmpty().AddService(
+                        serviceName: "Pointframe",
+                        serviceInstanceId: "desktop"));
                     otel.AddProcessor(processor);
                 });
         });
@@ -134,7 +141,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
             return;
         }
 
-        var scope = BuildScope(TelemetryChannel.Diagnostic, mergedProperties);
+        var scope = BuildScope(TelemetryChannel.Diagnostic, FilterDeclaredProperties(validation, mergedProperties));
         using (_logger.BeginScope(scope))
         {
             _logger.LogError("{microsoft.custom_event.name}", TelemetryEvents.UnhandledException);
@@ -167,7 +174,7 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
             return;
         }
 
-        var scope = BuildScope(channel, properties);
+        var scope = BuildScope(channel, FilterDeclaredProperties(validation, properties));
         using (_logger.BeginScope(scope))
         {
             _logger.LogInformation("{microsoft.custom_event.name}", name);
@@ -206,6 +213,25 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
         return scope;
     }
 
+    private static IReadOnlyDictionary<string, string>? FilterDeclaredProperties(
+        TelemetrySchemaValidationResult validation,
+        IReadOnlyDictionary<string, string>? properties)
+    {
+        if (properties is null || properties.Count == 0)
+        {
+            return properties;
+        }
+
+        if (validation.Definition is null)
+        {
+            return null;
+        }
+
+        return properties
+            .Where(property => validation.Definition.AllowsProperty(property.Key))
+            .ToDictionary(property => property.Key, property => property.Value);
+    }
+
     // A dimension this long is always a bug (a path or recognised text that slipped through).
     // Truncating caps both the ingestion cost and the blast radius of that bug.
     private static string Clamp(string value)
@@ -215,19 +241,17 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
 
     private void LogSchemaValidationFailure(TelemetrySchemaValidationResult validation)
     {
-        // Always report locally: source builds have no connection string, so the remote
-        // logger is null and a schema mistake would otherwise go unnoticed until production.
+        // Schema warnings stay local: exporting them would create an undocumented event path.
         if (!validation.IsKnownEvent)
         {
             const string UnregisteredTemplate = "Telemetry event {EventName} is not registered in TelemetryEventCatalog";
             _localLogger.LogWarning(UnregisteredTemplate, validation.EventName);
-            _logger?.LogWarning(UnregisteredTemplate, validation.EventName);
             return;
         }
 
         if (validation.MissingProperties.Count > 0)
         {
-            LogWarningToBothSinks(
+            LogWarningLocally(
                 "Telemetry schema mismatch for {EventName}. Missing required properties: {Properties}",
                 validation.EventName,
                 string.Join(",", validation.MissingProperties));
@@ -235,17 +259,16 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
 
         if (validation.UnknownProperties.Count > 0)
         {
-            LogWarningToBothSinks(
+            LogWarningLocally(
                 "Telemetry schema mismatch for {EventName}. Undeclared properties: {Properties}",
                 validation.EventName,
                 string.Join(",", validation.UnknownProperties));
         }
     }
 
-    private void LogWarningToBothSinks(string template, string eventName, string properties)
+    private void LogWarningLocally(string template, string eventName, string properties)
     {
         _localLogger.LogWarning(template, eventName, properties);
-        _logger?.LogWarning(template, eventName, properties);
     }
 
     public void Flush()

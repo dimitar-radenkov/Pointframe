@@ -53,7 +53,7 @@
                     "name": "Is Pointframe really free?",
                     "acceptedAnswer": {
                         "@type": "Answer",
-                        "text": "Yes. It is free and open source, with no trial period, licence key, or paid tier. Official builds include only anonymous, privacy-safe telemetry."
+                        "text": "Yes. It is free and open source, with no trial period, licence key, or paid tier. Official builds send an anonymous install ID (random GUID), per-run session ID, app version, event names, and only properties declared in the telemetry catalog to Azure Application Insights. OS build and screen count are sent with app_started. Export metadata uses service.name=Pointframe and service.instance.id=desktop; no PC name, Windows username or domain, or automatic host, process, or OS details are sent. Azure derives country and city from the connection IP."
                     }
                 },
                 {
@@ -151,7 +151,7 @@
 
                     <div class="cta-panel">
                         <h3>Try a free Snagit alternative</h3>
-                        <p>Pointframe is open-source, free, and ships as a signed Windows installer. No account, no subscription, and only anonymous privacy-safe telemetry in official builds.</p>
+                        <p>Pointframe is open-source, free, and ships as a signed Windows installer. No account or subscription. Official builds send an anonymous install ID (random GUID), per-run session ID, app version, event names, and only properties declared in the telemetry catalog to Azure Application Insights. OS build and screen count are sent with app_started. Export metadata uses service.name=Pointframe and service.instance.id=desktop; no PC name, Windows username or domain, or automatic host, process, or OS details are sent. Azure derives country and city from the connection IP.</p>
                         <div class="hero-actions compact-actions">
                             <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="snagit_alternative" data-utm-medium="cta" data-utm-content="snagit_alternative_article_cta" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="article_cta">Get Pointframe Free</a>
                             <a href="./screen-recorder-with-annotations-windows.html" class="secondary-link">See the recording workflow</a>
@@ -161,7 +161,7 @@
                     <div class="faq-list">
                         <details class="faq-item">
                             <summary>Is Pointframe really free?</summary>
-                            <p>Yes. It is free and open source, with no trial period, licence key, or paid tier. Official builds include only anonymous, privacy-safe telemetry.</p>
+                            <p>Yes. It is free and open source, with no trial period, licence key, or paid tier. Official builds send an anonymous install ID (random GUID), per-run session ID, app version, event names, and only properties declared in the telemetry catalog to Azure Application Insights. OS build and screen count are sent with app_started. Export metadata uses service.name=Pointframe and service.instance.id=desktop; no PC name, Windows username or domain, or automatic host, process, or OS details are sent. Azure derives country and city from the connection IP.</p>
                         </details>
                         <details class="faq-item">
                             <summary>What does Snagit have that Pointframe does not?</summary>

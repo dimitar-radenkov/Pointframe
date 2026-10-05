@@ -30,11 +30,16 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 **Invariants.**
 
 - Define every event in the catalog and emit it by its constant; the catalog is the single source for names and required properties.
+- The product logger uses an empty OpenTelemetry resource with only `service.name=Pointframe` and `service.instance.id=desktop`; do not add environment, host, process, or OS detectors. `OTEL_*` environment overrides are ignored for this channel, Live Metrics is disabled, and the schema version is `2`.
+- Before export, drop event properties not declared by the event definition. Keep schema warnings in the local log only; they report event and property names, never property values. The Azure exporter otherwise uses the machine name as `ai.cloud.roleInstance` when no resource is set explicitly.
+- The outbound payload includes the event name, declared event properties, random install ID when available, per-run session ID, app version, `telemetry_channel`, and `telemetry_schema_version`. Azure derives country and city from the connection IP; the app does not send a machine name, user/domain name, file path, or automatic host details.
 - The README section `### What is collected` lists every catalog event with its required properties and nothing else. `TelemetryDocumentationTests` parses that table and fails the build on drift, so an event change and its README row ship in the same change.
 - Properties are labels (tool, capture type, URL host), never content. Do not add file paths, OCR text, or image data.
 
 **Analysis.** Kusto queries and the workbook template: `docs/appinsights-feature-usage-queries.kql` and `docs/appinsights-pointframe-workbook.all-in-one.template.json`.
 
-**Tests.** `Pointframe.Tests/Services/TelemetryServiceTests.cs`, `Pointframe.Tests/Services/TelemetryEventCatalogTests.cs`, `Pointframe.Tests/Services/TelemetryDocumentationTests.cs`, `Pointframe.Tests/Services/ActivationTelemetryServiceTests.cs`.
+**Tests.** `Pointframe.Tests/Services/TelemetryServiceTests.cs` captures the Azure exporter HTTP payload, including environment override checks; `Pointframe.Tests/Services/TelemetryEventCatalogTests.cs`, `Pointframe.Tests/Services/TelemetryDocumentationTests.cs`, `Pointframe.Tests/Services/ActivationTelemetryServiceTests.cs`.
 
 **Files.** `Pointframe/Services/Infrastructure/ITelemetryService.cs`, `Pointframe/Services/Infrastructure/TelemetryService.cs`, `Pointframe/Services/Infrastructure/NullTelemetryService.cs`, `Pointframe/Services/Infrastructure/TelemetryEventCatalog.cs`, `Pointframe/Services/Infrastructure/TelemetryHeartbeatService.cs`, `Pointframe/Services/Infrastructure/ActivationTelemetryService.cs`, `Pointframe/appsettings.json`.
+
+- Lesson: Azure Monitor's exporter sends the machine name as the role instance unless the resource is set explicitly
