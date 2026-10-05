@@ -486,6 +486,137 @@ public sealed class VerificationTests : IDisposable
             Times.Never);
     }
 
+    private static VerificationScenario InvokeScenario(string locator) =>
+        VerificationSpecLoader.ParseScenario($$"""{ "id": "r", "steps": [ { "invoke": {{locator}} } ] }""", "r");
+
+    private static object WindowWith(params object[] elements) => new
+    {
+        observationRef = "obs-1",
+        images = new[] { new { imageRef = "img-1" } },
+        elements,
+    };
+
+    [Fact]
+    public async Task RunAsync_WindowAppearsAfterTwoEmptyObservations_RunsTheSteps()
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            ObserveResponse = call => call <= 2
+                ? FakeMcp.NoWindow
+                : WindowWith(new { elementRef = "el-1", windowRef = "win-1", role = "Edit", automationId = "textBox" }),
+        };
+
+        var result = await Runner(client.Mock.Object).RunAsync(Scenario(), CancellationToken.None);
+
+        Assert.Equal(VerificationStatus.Pass, result.Steps[0].Status);
+        Assert.True(client.Count("desktop_observe_app") >= 3);
+        Assert.Equal(1, client.Count("desktop_end_test_session"));
+    }
+
+    [Fact]
+    public async Task RunAsync_NoWindowWithinTheWait_FailsTheLaunchStillEndsAndFetchesTheReport()
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true)) { ObserveResponse = _ => FakeMcp.NoWindow };
+
+        var result = await Runner(client.Mock.Object).RunAsync(Scenario(), CancellationToken.None);
+
+        Assert.Equal(VerificationStatus.Fail, result.Status);
+        Assert.Equal("launch", result.Steps[0].Kind);
+        Assert.Equal("NoVisibleWindow", result.Steps[0].Code);
+        Assert.Contains("no visible window", result.Steps[0].Message, StringComparison.Ordinal);
+        Assert.All(result.Steps.Skip(1), step => Assert.Equal(VerificationStatus.Skipped, step.Status));
+        Assert.Equal(0, client.Count("desktop_enter_text"));
+        client.Verify("desktop_get_test_report", _ => true);
+        client.Verify("desktop_end_test_session", _ => true);
+    }
+
+    [Fact]
+    public async Task RunAsync_RestartWithoutAWindow_FailsTheRestartStep()
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            ObserveResponse = _ => _restartDone ? FakeMcp.NoWindow : WindowWith(new { elementRef = "el-1", windowRef = "win-1", role = "Edit", automationId = "saveButton" }),
+        };
+        client.RestartResponse = _ =>
+        {
+            _restartDone = true;
+            return new { operationStatus = "Completed", dispatch = "Complete" };
+        };
+        var scenario = VerificationSpecLoader.ParseScenario(
+            """{ "id": "r", "steps": [ { "restart": {} }, { "check": { "kind": "exists", "automationId": "textBox" } } ] }""",
+            "r");
+
+        var result = await Runner(client.Mock.Object).RunAsync(scenario, CancellationToken.None);
+
+        Assert.Equal("NoVisibleWindow", result.Steps[0].Code);
+        Assert.Equal(VerificationStatus.Skipped, result.Steps[1].Status);
+    }
+
+    private bool _restartDone;
+
+    [Fact]
+    public async Task RunAsync_TwoElementsMatchAnInput_FailsBeforeAnyInputListingCandidates()
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            ObserveResponse = _ => WindowWith(
+                new { elementRef = "el-1", windowRef = "win-1", role = "Button", name = "Save", automationId = "", boundsPixels = new { x = 1, y = 2, width = 3, height = 4 } },
+                new { elementRef = "el-2", windowRef = "win-1", role = "Button", name = "Save", automationId = "second", boundsPixels = new { x = 5, y = 6, width = 7, height = 8 } }),
+        };
+
+        var result = await Runner(client.Mock.Object).RunAsync(InvokeScenario("""{ "role": "Button", "name": "Save" }"""), CancellationToken.None);
+
+        Assert.Equal("AmbiguousLocator", result.Steps[0].Code);
+        Assert.Contains("automationId 'second'", result.Steps[0].Message, StringComparison.Ordinal);
+        Assert.Contains("\"x\":5", result.Steps[0].Message, StringComparison.Ordinal);
+        Assert.Equal(0, client.Count("desktop_invoke"));
+    }
+
+    [Fact]
+    public async Task RunAsync_OneElementMatchesAnInput_Invokes()
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            ObserveResponse = _ => WindowWith(
+                new { elementRef = "el-1", windowRef = "win-1", role = "Button", name = "Save" },
+                new { elementRef = "el-2", windowRef = "win-1", role = "Button", name = "Cancel" }),
+        };
+
+        var result = await Runner(client.Mock.Object).RunAsync(InvokeScenario("""{ "role": "Button", "name": "Save" }"""), CancellationToken.None);
+
+        Assert.Equal(VerificationStatus.Pass, result.Steps[0].Status);
+        client.Verify("desktop_invoke", args => args.GetProperty("elementRef").GetString() == "el-1");
+    }
+
+    [Fact]
+    public async Task RunAsync_StartToolReturnsOnlyAnErrorText_CarriesTheTextAsToolError()
+    {
+        const string text = "An error occurred invoking 'desktop_start_test_session'.";
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            RawStartResult = JsonSerializer.SerializeToElement(new { content = new[] { new { type = "text", text = $"  {text}  " } }, isError = true }),
+        };
+
+        var result = await Runner(client.Mock.Object).RunAsync(Scenario(), CancellationToken.None);
+
+        Assert.Equal("ToolError", result.Steps[0].Code);
+        Assert.Contains(text, result.Steps[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_AutomationIdMissingButNameExists_HintsAtRoleAndName()
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            ObserveResponse = _ => WindowWith(new { elementRef = "el-1", windowRef = "win-1", role = "menu item", name = "Options" }),
+        };
+
+        var result = await Runner(client.Mock.Object).RunAsync(InvokeScenario("""{ "automationId": "Menu_Options" }"""), CancellationToken.None);
+
+        Assert.Equal("ElementNotFound", result.Steps[0].Code);
+        Assert.Contains("\"role\": \"menu item\", \"name\": \"Options\"", result.Steps[0].Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void FailureDetails_PrefersCompilerErrorsFailedTestsAndErrorLines()
     {

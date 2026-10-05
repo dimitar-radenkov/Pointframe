@@ -12,6 +12,7 @@ internal sealed record CaptureRectangle(int X, int Y, int Width, int Height);
 internal sealed class DesktopScenarioRunner
 {
     private static readonly TimeSpan ActionTimeout = TimeSpan.FromSeconds(60);
+    private const int MaxCandidates = 5;
     private static readonly TimeSpan LaunchTimeout = TimeSpan.FromSeconds(90);
 
     private readonly IMcpToolClient _client;
@@ -39,16 +40,17 @@ internal sealed class DesktopScenarioRunner
 
     internal async Task<IReadOnlyList<string>> ObserveAutomationIdsAsync(string cancellationActionId, CancellationToken cancellationToken)
     {
-        var start = Structured(await _client.CallToolAsync(
+        var startResult = await _client.CallToolAsync(
             "desktop_start_test_session",
             new { actionId = NewActionId(), profileId = _profileId, criteria = (string[]?)null },
             LaunchTimeout,
-            cancellationToken).ConfigureAwait(false));
+            cancellationToken).ConfigureAwait(false);
+        var start = Structured(startResult);
         var sessionId = start.TryGetProperty("sessionRef", out var sessionRef) ? sessionRef.GetString() : null;
         if (string.IsNullOrWhiteSpace(sessionId))
         {
-            var (code, message) = ErrorOf(start);
-            throw new InvalidOperationException($"The app session did not start: {code ?? "SessionNotStarted"}: {message ?? "No session reference was returned."}");
+            var (code, message) = ErrorOf(startResult);
+            throw new InvalidOperationException($"The app session did not start: {code ?? "SessionNotStarted"}: {message ?? ToolText(startResult) ?? "No session reference was returned."}");
         }
 
         try
@@ -56,18 +58,9 @@ internal sealed class DesktopScenarioRunner
             var deadline = DateTimeOffset.UtcNow + _elementTimeout;
             while (true)
             {
-                var observation = Structured(await _client.CallToolAsync(
-                    "desktop_observe_app",
-                    new
-                    {
-                        sessionId,
-                        captureBoundsPixels = _captureBounds.Select(bounds => new { x = bounds.X, y = bounds.Y, width = bounds.Width, height = bounds.Height }).ToArray(),
-                        includeUiAutomation = true,
-                        includeImages = false,
-                    },
-                    ActionTimeout,
-                    cancellationToken).ConfigureAwait(false));
-                var (code, message) = ErrorOf(observation);
+                var observationResult = await ObserveAsync(sessionId, cancellationToken).ConfigureAwait(false);
+                var observation = Structured(observationResult);
+                var (code, message) = ErrorOf(observationResult);
                 if (code is not null)
                 {
                     throw new InvalidOperationException($"The app could not be observed: {code}: {message}");
@@ -111,15 +104,17 @@ internal sealed class DesktopScenarioRunner
         bool continueAfterFailedChecks = false)
     {
         var problems = new List<string>();
-        var start = Structured(await _client.CallToolAsync(
+        var startResult = await _client.CallToolAsync(
             "desktop_start_test_session",
             new { actionId = NewActionId(), profileId = _profileId, criteria = scenario.Criteria.Count == 0 ? null : scenario.Criteria },
             LaunchTimeout,
-            cancellationToken).ConfigureAwait(false));
+            cancellationToken).ConfigureAwait(false);
+        var start = Structured(startResult);
         var sessionId = start.TryGetProperty("sessionRef", out var sessionRef) ? sessionRef.GetString() : null;
         if (string.IsNullOrWhiteSpace(sessionId))
         {
-            var (code, message) = ErrorOf(start);
+            var (code, startMessage) = ErrorOf(startResult);
+            var message = startMessage ?? ToolText(startResult);
             var launch = new VerificationStepResult(-1, "launch", VerificationStatus.Fail, $"launch app profile '{_profileId}'", code ?? "SessionNotStarted", message);
             return new VerificationScenarioResult(
                 scenario.Id, VerificationStatus.Fail, null, [], [launch, .. Skipped(scenario, 0)], null, false, null, ["The app session did not start."]);
@@ -127,7 +122,14 @@ internal sealed class DesktopScenarioRunner
 
         var steps = new List<VerificationStepResult>();
         var stopped = false;
-        for (var index = 0; index < scenario.Steps.Count; index++)
+        var notReady = await WaitForReadyAsync(sessionId, "launch", cancellationToken).ConfigureAwait(false);
+        if (notReady is not null)
+        {
+            steps.Add(new VerificationStepResult(-1, "launch", VerificationStatus.Fail, $"launch app profile '{_profileId}'", notReady.Value.Code, notReady.Value.Message));
+            steps.AddRange(Skipped(scenario, 0));
+        }
+
+        for (var index = 0; index < scenario.Steps.Count && notReady is null; index++)
         {
             var step = scenario.Steps[index];
             if (stopped)
@@ -179,8 +181,8 @@ internal sealed class DesktopScenarioRunner
 
         try
         {
-            var end = Structured(await _client.CallToolAsync(
-                "desktop_end_test_session", new { sessionId, actionId = NewActionId() }, ActionTimeout, cancellationToken).ConfigureAwait(false));
+            var end = await _client.CallToolAsync(
+                "desktop_end_test_session", new { sessionId, actionId = NewActionId() }, ActionTimeout, cancellationToken).ConfigureAwait(false);
             var (code, message) = ErrorOf(end);
             if (code is not null)
             {
@@ -308,12 +310,21 @@ internal sealed class DesktopScenarioRunner
                             new { sessionId, actionId = NewActionId() },
                             LaunchTimeout,
                             cancellationToken).ConfigureAwait(false));
-                        if (restart.Code != "TargetStillRunning" || DateTimeOffset.UtcNow >= deadline)
+                        if (restart.Code == "TargetStillRunning" && DateTimeOffset.UtcNow < deadline)
+                        {
+                            await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+                            continue;
+                        }
+
+                        if (restart.Status != VerificationStatus.Pass)
                         {
                             return restart;
                         }
 
-                        await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+                        var notReady = await WaitForReadyAsync(sessionId, "restart", cancellationToken).ConfigureAwait(false);
+                        return notReady is null
+                            ? restart
+                            : new VerificationStepResult(index, step.Kind, VerificationStatus.Fail, description, notReady.Value.Code, notReady.Value.Message);
                     }
                 }
 
@@ -321,7 +332,7 @@ internal sealed class DesktopScenarioRunner
                 {
                     // A check right after a launch or restart waits for its element through the server's own
                     // polling, so a window that is still opening is not a failure.
-                    var response = Structured(await _client.CallToolAsync(
+                    var checkResult = await _client.CallToolAsync(
                         "desktop_check_ui",
                         new
                         {
@@ -336,12 +347,13 @@ internal sealed class DesktopScenarioRunner
                             expectFailure = check.ExpectFailure,
                         },
                         TimeSpan.FromSeconds(check.TimeoutSeconds) + ActionTimeout,
-                        cancellationToken).ConfigureAwait(false));
+                        cancellationToken).ConfigureAwait(false);
+                    var response = Structured(checkResult);
                     var verification = response.TryGetProperty("verification", out var value) ? value.GetString() : null;
                     var actual = response.TryGetProperty("actualValue", out var actualValue) && actualValue.ValueKind == JsonValueKind.String
                         ? actualValue.GetString()
                         : null;
-                    var (code, message) = ErrorOf(response);
+                    var (code, message) = ErrorOf(checkResult);
                     return new VerificationStepResult(
                         index,
                         step.Kind,
@@ -362,20 +374,12 @@ internal sealed class DesktopScenarioRunner
     {
         var deadline = DateTimeOffset.UtcNow + _elementTimeout;
         IReadOnlyList<string> seen = [];
+        IReadOnlyList<JsonElement> observed = [];
         while (true)
         {
-            var observation = Structured(await _client.CallToolAsync(
-                "desktop_observe_app",
-                new
-                {
-                    sessionId,
-                    captureBoundsPixels = _captureBounds.Select(bounds => new { x = bounds.X, y = bounds.Y, width = bounds.Width, height = bounds.Height }).ToArray(),
-                    includeUiAutomation = true,
-                    includeImages = false,
-                },
-                ActionTimeout,
-                cancellationToken).ConfigureAwait(false));
-            var (code, message) = ErrorOf(observation);
+            var observationResult = await ObserveAsync(sessionId, cancellationToken).ConfigureAwait(false);
+            var observation = Structured(observationResult);
+            var (code, message) = ErrorOf(observationResult);
             if (code == "SessionNotFound")
             {
                 return ResolvedElement.Failed(code, message ?? "The desktop test session was not found.");
@@ -384,9 +388,18 @@ internal sealed class DesktopScenarioRunner
             if (code is null && observation.TryGetProperty("elements", out var elements))
             {
                 var all = elements.EnumerateArray().ToArray();
-                var match = locator is null ? all.FirstOrDefault() : all.FirstOrDefault(element => Matches(element, locator));
-                if (match.ValueKind == JsonValueKind.Object)
+                var matches = locator is null ? all.Take(1).ToArray() : all.Where(element => Matches(element, locator)).ToArray();
+                if (matches.Length > 1)
                 {
+                    var candidates = matches.Take(MaxCandidates).Select(Candidate);
+                    return ResolvedElement.Failed(
+                        "AmbiguousLocator",
+                        $"{matches.Length} elements matched {locator}, and an input needs exactly one. No input was sent. Candidates: {string.Join("; ", candidates)}. Narrow the locator (a different role or name, or an automationId).");
+                }
+
+                if (matches.Length == 1)
+                {
+                    var match = matches[0];
                     return new ResolvedElement(
                         observation.GetProperty("observationRef").GetString()!,
                         observation.GetProperty("images")[0].GetProperty("imageRef").GetString()!,
@@ -395,6 +408,7 @@ internal sealed class DesktopScenarioRunner
                         null);
                 }
 
+                observed = all;
                 seen = all
                     .Select(element => element.TryGetProperty("automationId", out var id) ? id.GetString() : null)
                     .Where(id => !string.IsNullOrEmpty(id))
@@ -408,11 +422,126 @@ internal sealed class DesktopScenarioRunner
             {
                 var target = locator?.ToString() ?? "any element of the app";
                 var hint = seen.Count == 0 ? "The app exposed no automation ids." : $"Automation ids seen: {string.Join(", ", seen)}.";
-                return ResolvedElement.Failed("ElementNotFound", $"No element matched {target} within {_elementTimeout.TotalSeconds:0} seconds. {hint}");
+                return ResolvedElement.Failed(
+                    "ElementNotFound",
+                    $"No element matched {target} within {_elementTimeout.TotalSeconds:0} seconds. {hint}{NameHint(locator, observed)}");
             }
 
             await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private async Task<JsonElement> ObserveAsync(string sessionId, CancellationToken cancellationToken) =>
+        await _client.CallToolAsync(
+            "desktop_observe_app",
+            new
+            {
+                sessionId,
+                captureBoundsPixels = _captureBounds.Select(bounds => new { x = bounds.X, y = bounds.Y, width = bounds.Width, height = bounds.Height }).ToArray(),
+                includeUiAutomation = true,
+                includeImages = false,
+            },
+            ActionTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+    // A launch or restart returns while the app's window is still opening, so the first observation can see
+    // no window at all. Wait for a visible window with UI elements before the first step runs.
+    private async Task<(string Code, string Message)?> WaitForReadyAsync(string sessionId, string phase, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + _elementTimeout;
+        while (true)
+        {
+            var result = await ObserveAsync(sessionId, cancellationToken).ConfigureAwait(false);
+            var (code, message) = ErrorOf(result);
+            if (code == "SessionNotFound")
+            {
+                return (code, message ?? "The desktop test session was not found.");
+            }
+
+            if (code is null
+                && Structured(result).TryGetProperty("elements", out var elements)
+                && elements.ValueKind == JsonValueKind.Array
+                && elements.GetArrayLength() > 0)
+            {
+                return null;
+            }
+
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                var reason = code is null ? string.Empty : $" The last observation returned {code}{(message is null ? string.Empty : $": {message}")}.";
+                return ("NoVisibleWindow", $"The app showed no visible window with UI elements within {_elementTimeout.TotalSeconds:0} seconds after the {phase}.{reason}");
+            }
+
+            await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static string Candidate(JsonElement element)
+    {
+        static string Text(JsonElement item, string property) =>
+            item.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : string.Empty;
+
+        var bounds = element.TryGetProperty("boundsPixels", out var value) ? value.GetRawText() : "unknown";
+        return $"role '{Text(element, "role")}', name '{Text(element, "name")}', automationId '{Text(element, "automationId")}', bounds {bounds}";
+    }
+
+    private static string NameHint(ElementLocator? locator, IReadOnlyList<JsonElement> observed)
+    {
+        if (locator?.AutomationId is not { Length: > 0 } automationId)
+        {
+            return string.Empty;
+        }
+
+        var wanted = StripPrefix(automationId);
+        foreach (var element in observed)
+        {
+            var name = element.TryGetProperty("name", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+            if (string.IsNullOrEmpty(name) || !string.Equals(name, wanted, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var role = element.TryGetProperty("role", out var roleValue) ? roleValue.GetString() : null;
+            return $" Hint: WinForms menu items and many controls expose no AutomationId; use role + name, e.g. {{ \"role\": \"{role}\", \"name\": \"{name}\" }}.";
+        }
+
+        return string.Empty;
+    }
+
+    private static string StripPrefix(string automationId)
+    {
+        foreach (var prefix in new[] { "Menu_", "menu", "btn", "BT_", "bt", "txt", "lbl" })
+        {
+            if (automationId.Length > prefix.Length && automationId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return automationId[prefix.Length..].TrimStart('_');
+            }
+        }
+
+        return automationId;
+    }
+
+    private static string? ToolText(JsonElement result)
+    {
+        if (!result.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var block in content.EnumerateArray())
+        {
+            if (block.TryGetProperty("type", out var type) && type.GetString() == "text"
+                && block.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String)
+            {
+                var value = text.GetString()?.Trim();
+                if (!string.IsNullOrEmpty(value))
+                {
+                    return value.Length > 500 ? value[..500] : value;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static bool Matches(JsonElement element, ElementLocator locator)
@@ -432,7 +561,7 @@ internal sealed class DesktopScenarioRunner
     private static VerificationStepResult ActionResult(int index, VerificationStep step, string description, JsonElement result)
     {
         var response = Structured(result);
-        var (code, message) = ErrorOf(response);
+        var (code, message) = ErrorOf(result);
         var dispatch = response.TryGetProperty("dispatch", out var value) ? value.GetString() : null;
         return code is null && dispatch == "Complete"
             ? new VerificationStepResult(index, step.Kind, VerificationStatus.Pass, description)
@@ -465,11 +594,15 @@ internal sealed class DesktopScenarioRunner
     private static JsonElement Structured(JsonElement result) =>
         result.TryGetProperty("structuredContent", out var structured) ? structured : result;
 
-    private static (string? Code, string? Message) ErrorOf(JsonElement response)
+    // Takes the raw tool result: a failure that carries only isError and a text block still keeps the server's words.
+    private static (string? Code, string? Message) ErrorOf(JsonElement result)
     {
+        var response = Structured(result);
         if (!response.TryGetProperty("error", out var error) || error.ValueKind != JsonValueKind.Object)
         {
-            return (null, null);
+            return result.TryGetProperty("isError", out var isError) && isError.ValueKind == JsonValueKind.True
+                ? ("ToolError", ToolText(result) ?? "The tool reported an error without a message.")
+                : (null, null);
         }
 
         return (

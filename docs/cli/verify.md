@@ -389,6 +389,18 @@ then restart the agent:
   checks still passed, but the work was not reviewed. Run `verify status` and read
   `review.error`.
 - **`spec_untrusted` or `approver_unavailable`.** Run `pointframe verify trust`.
+- **A scenario step fails with `NoVisibleWindow`.** After the launch and after a
+  `restart`, the runner waits up to 15 seconds for a visible window with UI
+  elements. The app showed none in that time; check that it starts on this
+  machine and is not hidden behind a splash or login dialog.
+- **A step fails with `AmbiguousLocator`.** More than one element matched an
+  input step's locator, and nothing was clicked. The message lists up to five
+  candidates with role, name, automationId, and bounds; narrow the locator.
+- **A step fails with `ToolError`.** The desktop tool returned an error with only
+  a text message; the message carries that text.
+- **`ElementNotFound` for an `automationId`.** WinForms menu items and many
+  controls expose no AutomationId. When an observed element has that name, the
+  message suggests `{ "role": "menu item", "name": "Options" }` instead.
 - **A build gate fails because `Pointframe.Cli.exe` is locked.** Use the installed
   `pointframe` in the hook, not a build output that your own gates rebuild.
 
