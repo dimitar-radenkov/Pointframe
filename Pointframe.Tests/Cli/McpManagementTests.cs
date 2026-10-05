@@ -66,6 +66,22 @@ public sealed class McpManagementTests : IDisposable
     }
 
     [Fact]
+    public async Task InstallLatestAsync_RepeatedVersion_ReusesExistingInstallWithoutFailing()
+    {
+        var package = CreatePackage("7.0.0");
+        var source = new Mock<IMcpPackageSource>();
+        source.Setup(item => item.DownloadLatestAsync(It.IsAny<CancellationToken>())).ReturnsAsync(package);
+        var installer = new McpPackageInstaller(source.Object, _root);
+
+        var first = await installer.InstallLatestAsync(dryRun: false, CancellationToken.None);
+        var second = await installer.InstallLatestAsync(dryRun: false, CancellationToken.None);
+
+        Assert.Equal(first, second);
+        Assert.True(File.Exists(second.ExecutablePath));
+        Assert.Equal(second, installer.GetCurrent());
+    }
+
+    [Fact]
     public async Task InstallLatestAsync_ChecksumMismatch_RejectsPackageWithoutPersistentFiles()
     {
         var package = CreatePackage("7.0.0") with { ChecksumText = new string('0', 64) };

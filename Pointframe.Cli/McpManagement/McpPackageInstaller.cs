@@ -68,6 +68,11 @@ internal sealed class McpPackageInstaller : IMcpPackageInstaller
             }
 
             Directory.CreateDirectory(_rootDirectory);
+            if (Directory.Exists(installDirectory) && !File.Exists(installation.ExecutablePath))
+            {
+                Directory.Delete(installDirectory, recursive: true);
+            }
+
             if (!Directory.Exists(installDirectory))
             {
                 Directory.Move(stagingDirectory, installDirectory);

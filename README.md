@@ -256,16 +256,22 @@ self-contained `win-x64` server, `ffmpeg.exe` for recording, and an MCPB
 
 **Claude Desktop.** Download
 [`Pointframe.Mcp-win-x64.mcpb`](https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb)
-and open it; Claude Desktop installs it as an extension.
+and open it; Claude Desktop installs it as an extension. For local validation,
+check the MCPB checksum and `manifest.json`; registration is completed in the
+Claude Desktop Extensions UI.
 
-**Every other client** runs the server from a folder on disk. Download and unpack
-the latest bundle once (a `.mcpb` is a ZIP archive), and run the same lines again
-to update:
+**Claude Code, Codex, Cursor, and VS Code** run the server from a folder on
+disk. Download and verify the latest bundle once (a `.mcpb` is a ZIP archive):
 
 ```powershell
 $dir = "$env:LOCALAPPDATA\Programs\Pointframe.Mcp"
 $mcpb = "$env:TEMP\Pointframe.Mcp-win-x64.mcpb"
-Invoke-WebRequest https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb -OutFile $mcpb
+$release = 'https://github.com/dimitar-radenkov/Pointframe/releases/latest/download'
+Invoke-WebRequest "$release/Pointframe.Mcp-win-x64.mcpb" -OutFile $mcpb
+Invoke-WebRequest "$release/Pointframe.Mcp-win-x64.mcpb.sha256" -OutFile "$mcpb.sha256"
+$expected = ((Get-Content "$mcpb.sha256" -Raw).Trim() -split '\s+')[0]
+$actual = (Get-FileHash $mcpb -Algorithm SHA256).Hash
+if ($actual -ne $expected) { throw 'MCPB SHA-256 verification failed.' }
 New-Item -ItemType Directory -Force $dir | Out-Null
 tar -xf $mcpb -C $dir
 ```
@@ -279,6 +285,15 @@ Stop the server in your client before updating, because Windows locks a running
   claude mcp add --scope user pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
   ```
 
+  `claude mcp add` refuses a name that already exists; to change the path, run
+  `claude mcp remove --scope user pointframe` first.
+
+- **Codex** (native user registration; running it again is safe)
+
+  ```powershell
+  codex mcp add pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
+  ```
+
 - **VS Code**: run **MCP: Add Server** from the Command Palette, choose
   **Command (stdio)**, and enter the path to `Pointframe.Mcp.exe`. Or add it to
   `.vscode/mcp.json` or your user MCP configuration, using your own user name in
@@ -289,20 +304,33 @@ Stop the server in your client before updating, because Windows locks a running
     "servers": {
       "pointframe": {
         "type": "stdio",
-        "command": "C:\Users\<you>\AppData\Local\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
+        "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\Pointframe.Mcp\\Pointframe.Mcp.exe"
       }
     }
   }
   ```
 
-- **Cursor, Windsurf, and other clients** that use the `mcpServers` format, such as
+- **Cursor** uses the `mcpServers` format. Cursor also supports Stop hooks for
+  `pointframe verify hook stop`:
+
+  ```json
+  {
+    "mcpServers": {
+      "pointframe": {
+        "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\Pointframe.Mcp\\Pointframe.Mcp.exe"
+      }
+    }
+  }
+  ```
+
+- **Other clients** that use the `mcpServers` format, such as
   `%USERPROFILE%\.cursor\mcp.json`:
 
   ```json
   {
     "mcpServers": {
       "pointframe": {
-        "command": "C:\Users\<you>\AppData\Local\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
+        "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\Pointframe.Mcp\\Pointframe.Mcp.exe"
       }
     }
   }
@@ -321,8 +349,8 @@ installation when your client does not verify the bundle itself.
 
 For the opt-in black-box desktop-testing driver, including policy validation,
 worker behavior, gate procedures, and evidence limits, see the dedicated
-[desktop-testing MCP README](docs/mcp-desktop-testing/README.md). Detailed
-operator notes remain in [MCP desktop testing](docs/mcp-desktop-testing.md).
+[desktop-testing MCP README](docs/mcp-desktop-testing/README.md), which includes
+the operator workflow and evidence limits.
 
 ### Build the MCP package locally
 

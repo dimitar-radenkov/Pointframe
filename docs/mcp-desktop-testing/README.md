@@ -128,7 +128,7 @@ the caller with two indistinguishable `click` tools.
 | `desktop_get_action_result` | Read an action result |
 | `desktop_get_test_report` | Finalize the signed session report and write its proof bundle |
 | `desktop_replay_checks` | Re-run a signed report's checks in a fresh session and compare verdicts |
-| `desktop_end_test_session` | Release the driver session without force-killing targets |
+| `desktop_end_test_session` | Ask the target to close normally, then terminate its session-launched process tree if it does not exit |
 
 ### For agents: verify your own work
 

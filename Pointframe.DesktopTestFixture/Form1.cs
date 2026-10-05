@@ -76,6 +76,14 @@ public partial class Form1 : Form
         _scrollSurface.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         _scrollSurface.AutoScroll = true;
         _scrollSurface.BackColor = Color.White;
+        var captureProofPatch = new Panel
+        {
+            BackColor = Color.FromArgb(255, 0, 255),
+            Location = new Point(760, 8),
+            Name = "captureProofMagentaPatch",
+            Size = new Size(48, 48),
+        };
+        _scrollSurface.Controls.Add(captureProofPatch);
         const int rowCount = 40;
         const int rowHeight = 90;
         for (var index = 0; index < rowCount; index++)
