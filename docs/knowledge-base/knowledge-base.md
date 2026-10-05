@@ -109,6 +109,7 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 | `docs/cli/**`, `docs/mcp-desktop-testing/**`, `README.md` | CLI and MCP user docs; the DocsSync tests fail when they drift from the code | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
 | `docs/appinsights*` | Kusto queries and the workbook template | [Telemetry](features/telemetry.md#telemetry-pipeline) |
 | `scripts/usage-report.ps1`, `scripts/tests/usage-report/**` | Usage report from Application Insights (activation, cohorts, retention, onboarding, failures, website) and the offline fixtures its `-SelfTest` shapes | [Telemetry](features/telemetry.md#telemetry-pipeline) |
+| `scripts/measure-mcp-payloads.ps1` | Offline self-test and MCP stdio payload inventory with a per-run fixture desktop policy | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
 | `scripts/merge-pr.ps1`, `scripts/tests/merge-pr/**` | Agent merge tool: waits for required checks, merges the checked head, cleans up; fixtures for its self-test | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/check-workflow-scripts.ps1`, `scripts/tests/workflow-scripts/**` | Parses the PowerShell in workflow `run:` blocks, and the good and bad fixtures its self-test runs | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/verify.ps1` | The one local verify command: build, format, unit tests, kb check, workflow script check, and a JSON verdict | [CI, CD, and versioning](#ci-cd-and-versioning) |
