@@ -1,0 +1,1 @@
+{"tables":[{"name":"PrimaryResult","columns":[{"name":"active1d","type":"long"},{"name":"active7d","type":"long"},{"name":"active30d","type":"long"}],"rows":[[13,33,54]]}]}

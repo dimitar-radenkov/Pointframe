@@ -1,0 +1,1 @@
+{"tables":[{"name":"PrimaryResult","columns":[{"name":"weekIndex","type":"long"},{"name":"size","type":"long"},{"name":"sandboxLike","type":"long"},{"name":"sandboxActivated24h","type":"long"},{"name":"activated24h","type":"long"},{"name":"activated7d","type":"long"}],"rows":[[0,100,10,0,12,20],[1,90,5,0,10,15],[7,40,2,0,2,3]]}]}

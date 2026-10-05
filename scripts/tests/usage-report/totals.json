@@ -1,0 +1,1 @@
+{"tables":[{"name":"PrimaryResult","columns":[{"name":"installs","type":"long"},{"name":"activated","type":"long"},{"name":"sandboxLike","type":"long"}],"rows":[[706,116,50]]}]}

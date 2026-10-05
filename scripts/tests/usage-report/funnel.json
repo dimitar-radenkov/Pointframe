@@ -1,0 +1,1 @@
+{"tables":[{"name":"PrimaryResult","columns":[{"name":"never","type":"long"},{"name":"startedOnce","type":"long"},{"name":"startedTwicePlus","type":"long"},{"name":"ranOver10Min","type":"long"},{"name":"startedSnip","type":"long"},{"name":"allSnipsCancelled","type":"long"},{"name":"sandboxLike","type":"long"}],"rows":[[590,590,200,150,40,12,50]]}]}
