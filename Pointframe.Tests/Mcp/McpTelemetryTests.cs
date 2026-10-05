@@ -191,7 +191,10 @@ public sealed class McpTelemetryTests
         await process.StandardInput.WriteLineAsync("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
         await process.StandardInput.WriteLineAsync("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"get_recording_status\",\"arguments\":{}}}");
         await process.StandardInput.FlushAsync();
-        await Task.Delay(TimeSpan.FromSeconds(3));
+
+        // Wait for the scheduled export while the server is still running. Closing stdin first made the export happen
+        // during shutdown, whose flush is capped at 2 s, and a slow runner aborted the request mid-body.
+        var payload = await payloadTask.WaitAsync(TimeSpan.FromSeconds(30));
         process.StandardInput.Close();
         await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
 
@@ -200,7 +203,6 @@ public sealed class McpTelemetryTests
         AssertEveryLineIsJsonRpc(output);
         Assert.Contains("\"id\":2", output, StringComparison.Ordinal);
         Assert.Contains("POINTFRAME_TELEMETRY_OPTOUT", error, StringComparison.Ordinal);
-        var payload = await payloadTask.WaitAsync(TimeSpan.FromSeconds(20));
         Assert.Contains("agent_operation", payload, StringComparison.Ordinal);
         Assert.Contains("get_recording_status", payload, StringComparison.Ordinal);
         Assert.Contains("claude-code", payload, StringComparison.Ordinal);
