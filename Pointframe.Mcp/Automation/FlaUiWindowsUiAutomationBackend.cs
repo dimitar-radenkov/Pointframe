@@ -234,6 +234,14 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
                 var raw = value.Value.ValueOrDefault;
                 text = raw is { Length: > 256 } ? raw[..256] : raw;
             }
+            else if (!isSensitive && element.Properties.ControlType.ValueOrDefault == FlaUI.Core.Definitions.ControlType.Text)
+            {
+                // A text control (a WPF TextBlock, a WinForms Label, an HTML heading in Chromium) has no Value
+                // pattern; what it displays is its Name. Without this, textEquals on a status bar or a heading
+                // always read null.
+                var raw = element.Properties.Name.ValueOrDefault;
+                text = raw is { Length: > 256 } ? raw[..256] : raw;
+            }
         }
         catch (Exception exception) when (exception is FlaUI.Core.Exceptions.ElementNotAvailableException
             or FlaUI.Core.Exceptions.PropertyNotSupportedException

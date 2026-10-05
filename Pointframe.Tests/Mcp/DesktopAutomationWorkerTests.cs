@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using Pointframe.Engine;
 using Pointframe.Engine.Automation.Models;
+using Pointframe.Engine.Automation.Services;
 using Pointframe.Mcp.Automation;
 using Pointframe.Mcp.Configuration;
 using Xunit;
@@ -206,6 +207,62 @@ public sealed class DesktopAutomationWorkerTests
         }
 
         public bool TryReleaseOwnedInput() => ReleaseResult;
+    }
+
+    [Fact]
+    public async Task InspectOfAFullSizedWindowCrossesTheWorkerBoundary()
+    {
+        // 193 elements of an ordinary WPF window (dnGrep) exceeded the old 64 KiB limit; the worker then
+        // closed the pipe and every observation came back ProviderUnavailable.
+        var elements = Enumerable.Range(0, DesktopTestingLimits.MaxUiAutomationElements)
+            .Select(index => new DesktopUiElementSnapshot(
+                $"el-1-{index}", "window-process-1-1234", "Button", $"Button number {index} with a long name", $"button{index}",
+                new PixelBounds(index, index, 120, 24), true, Text: new string('t', 200)))
+            .ToArray();
+        var provider = new DesktopAutomationWorkerProvider(new RecordingInputService(), new SnapshotUiProvider(elements));
+
+        var response = await provider.HandleAsync(InspectRequest(), CancellationToken.None);
+        var roundTrip = DesktopAutomationWorkerProtocol.Deserialize<DesktopAutomationWorkerResponse>(DesktopAutomationWorkerProtocol.Serialize(response));
+
+        Assert.True(roundTrip.Succeeded);
+        var snapshot = JsonSerializer.Deserialize<DesktopUiSnapshot>(roundTrip.Payload!);
+        Assert.Equal(DesktopTestingLimits.MaxUiAutomationElements, snapshot!.Elements.Count);
+    }
+
+    [Fact]
+    public async Task InspectTooLargeForTheProtocolFailsWithoutBreakingTheWorker()
+    {
+        var huge = new string('x', DesktopAutomationWorkerProtocol.MaxMessageBytes / 4);
+        var elements = Enumerable.Range(0, 4)
+            .Select(index => new DesktopUiElementSnapshot($"el-1-{index}", "window-process-1-1234", "Document", "doc", null, new PixelBounds(0, 0, 10, 10), true, Text: huge))
+            .ToArray();
+        var provider = new DesktopAutomationWorkerProvider(new RecordingInputService(), new SnapshotUiProvider(elements));
+
+        var response = await provider.HandleAsync(InspectRequest(), CancellationToken.None);
+
+        Assert.False(response.Succeeded);
+        Assert.Equal("SnapshotTooLarge", response.Code);
+        DesktopAutomationWorkerProtocol.Serialize(response);
+    }
+
+    private static DesktopAutomationWorkerRequest InspectRequest()
+    {
+        var process = new DesktopProcessIdentity("process-1", 1, DateTimeOffset.UtcNow, "target.exe", "hash");
+        return new DesktopAutomationWorkerRequest(
+            1,
+            "request-inspect",
+            DesktopAutomationWorkerProtocol.Operations.Inspect,
+            JsonSerializer.Serialize(new DesktopObservationRequest(process, [new PixelBounds(0, 0, 100, 100)])));
+    }
+
+    private sealed class SnapshotUiProvider(IReadOnlyList<DesktopUiElementSnapshot> elements) : IWindowsUiAutomationActionProvider, IDesktopUiObservationProvider
+    {
+        public bool TryInvoke(string elementRef) => true;
+
+        public bool TrySetValue(string elementRef, string value) => true;
+
+        public DesktopUiSnapshot Inspect(DesktopObservationRequest request) =>
+            new(DesktopUiAutomationStatus.Available, elements, DateTimeOffset.UtcNow);
     }
 
     private sealed class RecordingUiProvider : IWindowsUiAutomationActionProvider

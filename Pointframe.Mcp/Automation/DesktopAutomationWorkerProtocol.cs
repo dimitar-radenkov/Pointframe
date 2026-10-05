@@ -14,7 +14,9 @@ public static class DesktopAutomationWorkerProtocol
     };
 
     public const int Version = 1;
-    public const int MaxMessageBytes = 64 * 1024;
+    // A UI snapshot of up to MaxUiAutomationElements elements travels as one message, escaped inside the
+    // response; 64 KiB failed on an ordinary WPF window (dnGrep, 193 elements).
+    public const int MaxMessageBytes = 8 * 1024 * 1024;
 
     public static class Operations
     {
