@@ -56,6 +56,27 @@ dotnet test Pointframe.Tests/Pointframe.Tests.csproj -v normal
 
 The test project (`Pointframe.Tests`) does not start the application. Tests target ViewModels and services (plus a few window-layout tests); xUnit is the only test framework, with Moq for mocking. UI automation lives in `Pointframe.AutomationTests` and runs separately (see §14).
 
+### 4.1 Desktop regression tests
+
+On a signed-in Windows desktop, run the required desktop selection with:
+
+```powershell
+pwsh scripts/desktop-tests.ps1
+pwsh scripts/desktop-tests.ps1 -Repeat 10 -IncludeVerifyApp
+```
+
+The script checks that it is in an interactive session and that no repository
+`Pointframe.Mcp.exe` is still running, builds the current Release app/MCP/CLI,
+automation tests, and fixture, then records one TRX file per run under
+`artifacts/desktop-tests/<timestamp>/`. It fails if a required test is missing,
+not executed, skipped, or failed. The required selection and expected counts
+are printed at startup. `-IncludeVerifyApp` copies the Release CLI output into
+the evidence directory and runs `.pointframe/verify-app.json` against the
+Release MCP server.
+
+These tests take over the interactive desktop. Close editor-started Pointframe
+MCP servers and avoid using the desktop while they run.
+
 ---
 
 ## 5. Code Formatting
@@ -346,7 +367,7 @@ The process is PerMonitorV2 (`app.manifest`), so every monitor has its own scale
 - Steps: compute the version with `nbgv` → inject the Application Insights connection string and verify it → publish self-contained single-file → sign the exe when a signing certificate secret exists → build the installer → sign it → upload `Pointframe-<version>-x64-Setup` → create a GitHub Release tagged `v<version>`.
 
 ### Other workflows
-- `desktop-automation.yml` — runs `Pointframe.AutomationTests` on a Windows runner; manual trigger.
+- `desktop-automation.yml` — manually runs the required `scripts/desktop-tests.ps1` selection on a Windows runner.
 - `winget-release.yml` — submits the winget manifest after CD completes on `master`, or manually with a version.
 - `codeql.yml`, `release-drafter.yml`, `dependabot-auto-merge.yml`, and `pages.yml` (deploys `website/`).
 

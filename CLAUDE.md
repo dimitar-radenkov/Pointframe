@@ -26,6 +26,12 @@ dotnet test Pointframe.Tests/Pointframe.Tests.csproj
 # Single test class
 dotnet test --filter "FullyQualifiedName~AnnotationViewModelTests"
 
+# Required interactive desktop regression selection (Windows signed-in session)
+pwsh scripts/desktop-tests.ps1
+
+# Repeat the required selection and run the real-app persistence verifier
+pwsh scripts/desktop-tests.ps1 -Repeat 10 -IncludeVerifyApp
+
 # Format (required before committing — CI fails without it)
 dotnet format Pointframe/Pointframe.csproj
 
