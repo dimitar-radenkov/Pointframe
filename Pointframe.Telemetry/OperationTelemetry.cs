@@ -16,7 +16,9 @@ internal sealed class OperationTelemetry : IOperationTelemetry, IDisposable
     internal const string ClientKey = "client";
     internal const string VersionKey = "version";
 
-    private const int FlushTimeoutMilliseconds = 2000;
+    // Short in production so exiting never waits long for telemetry; the test assembly raises it because the first
+    // emit builds the OpenTelemetry pipeline, which can take seconds on a loaded CI runner.
+    internal static int FlushTimeoutMilliseconds { get; set; } = 2000;
     private const int MaxQueueSize = 512;
     private const int ScheduledDelayMilliseconds = 5000;
     private const int ExporterTimeoutMilliseconds = 10000;

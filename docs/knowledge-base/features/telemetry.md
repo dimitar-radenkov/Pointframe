@@ -44,6 +44,7 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 **Files.** `Pointframe.Telemetry/**`, `Pointframe.Mcp/McpTelemetryFilter.cs`, `website/privacy.html`.
 
 - Lesson: A stdio MCP server must send nothing to standard output except protocol messages
+- Lesson: A best-effort flush timeout makes export assertions flaky on CI
 
 ## Telemetry pipeline
 

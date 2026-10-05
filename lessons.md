@@ -1,5 +1,19 @@
 # Lessons Learned
 
+## A best-effort flush timeout makes export assertions flaky on CI
+
+### Problem
+
+`OperationTelemetryTests.McpEvent_ExportsExactlyTheAllowlistedProperties` failed on a hosted runner (PR #199) with an empty export list. `Flush` waits at most 2 s for queued emits, and the first emit in a process builds the OpenTelemetry pipeline, which took longer on a loaded runner, so `Flush` returned before anything was exported.
+
+### What fixed it
+
+`OperationTelemetry.FlushTimeoutMilliseconds` became an internal settable property (2 s in production) and a `[ModuleInitializer]` in the test assembly raises it to 30 s.
+
+### Takeaway
+
+When production code gives up early on purpose (telemetry, best-effort cleanup), tests that assert the outcome need a longer bound than production, set once for the test assembly, not a sleep.
+
 ## PowerShell variable names are case-insensitive, so a local can collide with a switch parameter
 
 ### Problem
