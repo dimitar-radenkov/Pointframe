@@ -82,13 +82,14 @@ user `Path`. Open a new terminal, then run `pointframe displays`. The
 [CLI README](docs/cli/README.md#install) and the
 [verify guide](docs/cli/verify.md#install) have the checksum step.
 
-The winget package `DimitarRadenkov.Pointframe.Cli` is awaiting acceptance in
-winget-pkgs. Once `winget search DimitarRadenkov.Pointframe.Cli` finds it,
-`winget install DimitarRadenkov.Pointframe.Cli` replaces the manual steps above.
+The CLI winget package is pending acceptance in winget-pkgs. The package
+`DimitarRadenkov.Pointframe` installs the desktop app, not the CLI.
 
 To make an agent finish only on a passing build and test run in your own project,
 see the [verify guide](docs/cli/verify.md). `verify` gates run headless, including
 in CI.
+
+For a short setup path, see [Coding agents: start here](docs/cli/verify.md#coding-agents-start-here).
 
 Capture, OCR, recording, and desktop verification scenarios require an interactive
 Windows desktop session. They cannot capture a user's desktop from a Windows service

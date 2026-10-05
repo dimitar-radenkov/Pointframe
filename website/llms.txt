@@ -8,6 +8,7 @@ Install the MCP server for Claude Desktop (open the .mcpb bundle), Claude Code (
 
 - [Windows screenshot MCP server for AI agents](https://dimitar-radenkov.github.io/Pointframe/windows-screenshot-mcp-server.html): what the server does, install steps per client, the eleven tools, and the privacy model
 - [Make your coding agent prove it's done](https://dimitar-radenkov.github.io/Pointframe/verify-coding-agents-windows.html): keep Claude Code or Codex working until your own build and tests pass
+- [Coding agents: verify a Windows desktop app in six steps](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify.md#coding-agents-start-here)
 
 ## Documentation
 
