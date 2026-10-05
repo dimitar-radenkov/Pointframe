@@ -10,7 +10,7 @@ Waits for a pull request's checks, squash-merges the exact head that was checked
   pwsh scripts/merge-pr.ps1 -SelfTest                        # offline: decision logic on scripts/tests/merge-pr fixtures
 
 Rules, each from a past incident:
-  - Every name in -Required (default unit-tests, CodeQL, Analyze (csharp)) must be PRESENT in `gh pr checks`, and no
+  - Every name in -Required (default unit-tests, package-checks, CodeQL, Analyze (csharp)) must be PRESENT in `gh pr checks`, and no
     check may be pending. A branch deleted while only unit-tests had reported made GitHub close the PR.
   - A CONFLICTING or DIRTY pull request never gets pull_request checks, so it stops at once with exit 3.
   - The merge passes --match-head-commit with the headRefOid read when the checks were evaluated, so a push after the
@@ -31,7 +31,7 @@ complete, 2 gh missing or not authenticated or bad arguments, 3 merge conflict, 
 param(
     [string]$Pr,
     [string]$Worktree,
-    [string[]]$Required = @('unit-tests', 'CodeQL', 'Analyze (csharp)'),
+    [string[]]$Required = @('unit-tests', 'package-checks', 'CodeQL', 'Analyze (csharp)'),
     [int]$TimeoutMinutes = 40,
     [int]$PollSeconds = 30,
     [switch]$DryRun,

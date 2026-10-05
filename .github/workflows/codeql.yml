@@ -26,7 +26,8 @@ jobs:
       - uses: actions/checkout@v7
 
       # build-mode none: CodeQL extracts the C# sources without compiling, so there is no restore or
-      # build step. The SDK is still needed for its dependency resolution.
+      # build step. The SDK is still needed for its dependency resolution. The job stays on windows-latest:
+      # the projects target net10.0-windows, whose dependency resolution on Linux needs EnableWindowsTargeting.
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
@@ -37,6 +38,7 @@ jobs:
         with:
           languages: csharp
           build-mode: none
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
