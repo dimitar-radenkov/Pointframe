@@ -209,6 +209,11 @@ internal sealed class FakeMcp
             {
                 var json = JsonSerializer.SerializeToElement(arguments);
                 _calls.Add((name, json));
+                if (name == "desktop_start_test_session" && RawStartResult is not null)
+                {
+                    return Task.FromResult(RawStartResult.Value);
+                }
+
                 return Task.FromResult(Wrap(Respond(name, json, bundleDirectory)));
             });
         Mock.As<IAsyncDisposable>().Setup(item => item.DisposeAsync()).Returns(ValueTask.CompletedTask);
@@ -217,6 +222,10 @@ internal sealed class FakeMcp
     internal Mock<IMcpToolClient> Mock { get; } = new();
 
     internal object StartResponse { get; set; } = new { operationStatus = "Completed", dispatch = "Complete", sessionRef = "session-1", targetRef = "target-1" };
+
+    internal JsonElement? RawStartResult { get; set; }
+
+    internal static object NoWindow => new { observationRef = "obs-0", images = Array.Empty<object>(), elements = Array.Empty<object>() };
 
     internal object EndResponse { get; set; } = Done;
 
