@@ -291,7 +291,7 @@ internal sealed class DesktopScenarioRunner
 
                     return ActionResult(index, step, description, await _client.CallToolAsync(
                         "desktop_press_keys",
-                        new { sessionId, actionId = NewActionId(), virtualKeys = pressKeys.VirtualKeys },
+                        new { sessionId, actionId = NewActionId(), virtualKeys = pressKeys.VirtualKeys, windowRef = element.WindowRef },
                         ActionTimeout,
                         cancellationToken).ConfigureAwait(false));
                 }

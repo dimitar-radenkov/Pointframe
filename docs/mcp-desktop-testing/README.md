@@ -119,7 +119,7 @@ the caller with two indistinguishable `click` tools.
 | `desktop_observe_app` | Capture bounded images and optional UIA data |
 | `desktop_focus_window` | Focus a verified target window |
 | `desktop_click` | Send a bounded physical click from an observation point |
-| `desktop_press_keys` | Send bounded physical keys or an approved global hotkey |
+| `desktop_press_keys` | Send bounded physical keys to an observed foreground window (`windowRef` and/or `observationRef`, consumed) or an approved global hotkey |
 | `desktop_drag` | Send a bounded drag |
 | `desktop_enter_text` | Send physical Unicode text or verified ValuePattern text |
 | `desktop_invoke` | Invoke a verified UI Automation element |

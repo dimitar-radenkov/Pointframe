@@ -1,5 +1,19 @@
 # Lessons Learned
 
+## A best-effort flush timeout makes export assertions flaky on CI
+
+### Problem
+
+`OperationTelemetryTests.McpEvent_ExportsExactlyTheAllowlistedProperties` failed on a hosted runner (PR #199) with an empty export list. `Flush` waits at most 2 s for queued emits, and the first emit in a process builds the OpenTelemetry pipeline, which took longer on a loaded runner, so `Flush` returned before anything was exported.
+
+### What fixed it
+
+`OperationTelemetry.FlushTimeoutMilliseconds` became an internal settable property (2 s in production) and a `[ModuleInitializer]` in the test assembly raises it to 30 s.
+
+### Takeaway
+
+When production code gives up early on purpose (telemetry, best-effort cleanup), tests that assert the outcome need a longer bound than production, set once for the test assembly, not a sleep.
+
 ## PowerShell variable names are case-insensitive, so a local can collide with a switch parameter
 
 ### Problem
@@ -1521,3 +1535,17 @@ once, and publish saved/completed UI only after successful finalization.
 
 Treat worker completion and output finalization as part of the recording service boundary. UI stop paths
 must receive an explicit success/failure state rather than a worker exception.
+
+## A physical key press needs the observed target, not a null one
+
+### Problem
+
+`PressKeysCoreAsync` built its `DesktopKeyPressRequest` with a null target. For a physical press `WindowsDesktopInputService.ValidateTarget` rejects a target with no window, surface or bounds, so every physical `desktop_press_keys` returned `TargetUnavailable` and only policy-approved global hotkeys (which skip validation) could work. Nothing noticed because no test exercised the tool-level path and the hotkey path passed; the payload script recorded the failure as an expected error.
+
+### What fixed it
+
+The tool takes optional `windowRef` and `observationRef` like the other input tools, resolves them from the observation, and passes a real target; the observation is consumed.
+
+### Takeaway
+
+When an input path is gated by a validator, test the tool-to-service wiring for every method, not only the service. A recorded "expected error" in a measurement script is a bug report, not a fixture.
