@@ -259,6 +259,22 @@ function Update-PluginPin
         Write-Host 'ERROR pushing the plugin pin failed; not enabling auto-merge.'
         exit 1
     }
+
+    # GitHub needs a moment to move the pull request's head to the pushed commit; auto-merge is enabled for the
+    # head we read next, so wait until it is the pin commit.
+    $pushed = (git -C $root rev-parse HEAD).Trim()
+    for ($attempt = 0; $attempt -lt 30; $attempt++)
+    {
+        if ((gh pr view $Pr --json headRefOid -q .headRefOid) -eq $pushed)
+        {
+            return
+        }
+
+        Start-Sleep -Seconds 2
+    }
+
+    Write-Host "ERROR the pull request head did not reach the pushed pin commit $pushed; not enabling auto-merge."
+    exit 1
 }
 
 function Get-PrJson
