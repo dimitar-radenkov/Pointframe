@@ -430,6 +430,8 @@ pwsh scripts/verify.ps1 -Skip kb,format                    # leave gates out whi
 
 **Merging a pull request.** `pwsh scripts/merge-pr.ps1 -Pr <number|branch> [-Worktree <path>] [-DryRun] [-Auto]` waits until every required check (`unit-tests`, `CodeQL`, `Analyze (csharp)`) is present and none is pending, then squash-merges with `--match-head-commit` set to the head it checked, and deletes the remote branch, local branch and worktree only once `gh pr view` says MERGED. Exit 1: failed or cancelled check, timeout, or not merged after the merge; 2: gh missing or unauthenticated; 3: conflicting PR (such a PR never gets checks); 4: `git pull --ff-only` failed after the merge, with recovery steps printed. It does not repair blank git refs. `-Auto` does not wait: it refuses a conflicting, closed or failing PR, otherwise runs `gh pr merge --auto --squash --delete-branch` and exits 0 (also when the PR is already merged), leaving the worktree and local branch for you to remove after GitHub merges. The repository ruleset requires `unit-tests`, `Analyze (csharp)` and `CodeQL`, so auto-merge waits for them. `-SelfTest` checks the decision logic, including the `-Auto` decision, on `scripts/tests/merge-pr/`.
 
+- Lesson: PowerShell variable names are case-insensitive, so a local can collide with a switch parameter
+
 The format gate covers the main project only. Do not run `dotnet format` on `Pointframe.Tests`; it would rewrite many unrelated files.
 
 **Versioning.**

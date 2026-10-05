@@ -244,26 +244,26 @@ if ($Auto)
 {
     $prInfo = Get-PrJson
     $checks = if ($prInfo.state -eq 'OPEN') { Get-ChecksJson } else { @() }
-    $auto = Get-AutoDecision $prInfo $checks $Required
-    Write-Host "PR #$($prInfo.number) $($prInfo.headRefName) @ $($auto.Head): $($auto.Action) - $($auto.Reason)"
-    if ($auto.Action -eq 'Merged')
+    $decision = Get-AutoDecision $prInfo $checks $Required
+    Write-Host "PR #$($prInfo.number) $($prInfo.headRefName) @ $($decision.Head): $($decision.Action) - $($decision.Reason)"
+    if ($decision.Action -eq 'Merged')
     {
         Write-Host 'Already merged; nothing to enable.'
         exit 0
     }
-    if ($auto.Action -eq 'Conflict')
+    if ($decision.Action -eq 'Conflict')
     {
         exit 3
     }
-    if ($auto.Action -in 'Fail', 'Closed')
+    if ($decision.Action -in 'Fail', 'Closed')
     {
         Write-Host 'NOT ENABLING AUTO-MERGE.'
         exit 1
     }
     $mergeArgs = @('pr', 'merge', [string]$prInfo.number, '--auto', '--squash', '--delete-branch')
-    if ($auto.Head)
+    if ($decision.Head)
     {
-        $mergeArgs += @('--match-head-commit', $auto.Head)
+        $mergeArgs += @('--match-head-commit', $decision.Head)
     }
     if ($DryRun)
     {
