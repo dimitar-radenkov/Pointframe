@@ -441,3 +441,5 @@ drive the running app, and `pointframe verify task start` can freeze a task's
 criteria before work begins. These need the Pointframe MCP server and take over the
 mouse and keyboard while they run. See
 [Verify a desktop app from a spec](README.md#verify-a-desktop-app-from-a-spec).
+
+When the CLI-installed MCP server is older than the CLI, verification updates it to the latest release; if that fails, install it with `pointframe mcp install --client vscode` or pass `--mcp <path>`. A newer installed server is used with a warning.

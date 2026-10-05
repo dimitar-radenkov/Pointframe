@@ -21,7 +21,7 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
 
     private static readonly HashSet<string> NeedsAPerson = new(StringComparer.Ordinal)
     {
-        "spec_untrusted", "approver_unavailable", "spec_invalid", "mcp_not_found", "desktop_busy", "task_not_found", "task_invalid",
+        "spec_untrusted", "approver_unavailable", "spec_invalid", "mcp_not_found", "mcp_version_mismatch", "desktop_busy", "task_not_found", "task_invalid",
     };
 
     internal async Task<int> StopAsync(CliCommand command, CancellationToken cancellationToken)

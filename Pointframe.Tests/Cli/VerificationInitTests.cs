@@ -486,7 +486,7 @@ public sealed class VerificationInitTests
 
         internal Task<int> RunAsync(CliCommand command, IPointframeCommandResolver resolver) => new VerificationInit(
             new PhysicalVerificationInitFileSystem(), Output, TextWriter.Null, resolver, "Pointframe CLI 1.0").RunAsync(
-                command, Root, path => path is null ? null : File.Exists(path) ? path : null,
+                command, Root, (path, _) => Task.FromResult(new McpResolution(path is null ? null : File.Exists(path) ? path : null)),
                 new VerificationFixture.Services().Factory.Object, "test-init-lock", Trusted, CancellationToken.None);
 
         internal Task<int> RunAsync(CliCommand command, VerificationFixture.Services services, string? mcpPath) =>
@@ -499,7 +499,7 @@ public sealed class VerificationInitTests
             Func<VerificationSpec, CancellationToken, Task<string?>> trustFailureCode) => Init.RunAsync(
             command,
             Root,
-            path => path is null ? mcpPath : File.Exists(path) ? path : null,
+            (path, _) => Task.FromResult(new McpResolution(path is null ? mcpPath : File.Exists(path) ? path : null)),
             services.Factory.Object,
             services.LockName,
             trustFailureCode,

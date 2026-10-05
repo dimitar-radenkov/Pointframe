@@ -219,7 +219,7 @@ Partly superseded by D-011 for standard commands.
 
 **Decided.** 2026-10-04.
 
-**Decision.** CLI release numbers, the spec's `schemaVersion`, and the hook command are independent. An unknown `schemaVersion` is rejected as `spec_invalid`; the CLI never silently migrates an unknown schema. The hook command `pointframe verify hook stop [--review]` is a stable contract across CLI upgrades. A CLI/hook version mismatch produces a warning only. Desktop scenarios assume the CLI and MCP server come from the same release.
+**Decision.** CLI release numbers, the spec's `schemaVersion`, and the hook command are independent. An unknown `schemaVersion` is rejected as `spec_invalid`; the CLI never silently migrates an unknown schema. The hook command `pointframe verify hook stop [--review]` is a stable contract across CLI upgrades. A CLI/hook version mismatch produces a warning only. For the CLI-installed fallback, a server older than the CLI is updated to the latest release or refused with `mcp_version_mismatch`; a newer server is used with a warning. Explicit server paths and `POINTFRAME_MCP_EXECUTABLE` are honored as chosen.
 
 **Alternatives rejected.** Lockstep numbering; silent acceptance of unknown fields; automatic migrations; a version negotiation protocol.
 
