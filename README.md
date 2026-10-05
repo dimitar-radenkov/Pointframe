@@ -758,7 +758,7 @@ Properties are allow-listed per event in the catalog: anything a caller passes t
 
 The `last_action` value attached to `unhandled_exception` is the name of the most recent **product** event — background diagnostic events such as `app_heartbeat` never overwrite it.
 
-**Nothing leaves your machine except these anonymised events.** Screenshots, recordings, OCR output, file names, and file paths are never transmitted. Local diagnostic logs are stored under `%LOCALAPPDATA%\Pointframe\logs\` and may include local paths to help troubleshoot issues; they are not uploaded automatically.
+**Apart from these anonymised events, nothing leaves your machine unless you set up an upload destination yourself** (Settings → Sharing). Screenshots, recordings, OCR output, file names, and file paths are never sent as telemetry. Captures stay local until you use Upload & copy link; then only the capture you choose to upload is sent, to the one HTTPS destination you configured. Local diagnostic logs are stored under `%LOCALAPPDATA%\Pointframe\logs\` and may include local paths to help troubleshoot issues; they are not uploaded automatically.
 
 ### Source builds
 

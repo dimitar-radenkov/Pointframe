@@ -69,7 +69,7 @@
                     "name": "Does Pointframe upload screenshots to Imgur or a custom server?",
                     "acceptedAnswer": {
                         "@type": "Answer",
-                        "text": "No. Pointframe copies to the clipboard or saves locally. If you rely on ShareX custom uploaders and its many destination integrations, ShareX remains the stronger choice for that part of your workflow."
+                        "text": "Only to one destination you set up yourself. Pointframe copies to the clipboard or saves locally by default, and Upload and copy link sends a capture to a single HTTPS endpoint you configure and copies the returned link. If you rely on ShareX custom uploaders and its many destination integrations, ShareX remains the stronger choice for that part of your workflow."
                     }
                 },
                 {
@@ -181,12 +181,12 @@
                                 </tr>
                                 <tr>
                                     <th scope="row">Scrolling capture</th>
-                                    <td class="col-us">Not available</td>
+                                    <td class="col-us">Yes, vertical (Scrolling Snip)</td>
                                     <td>Yes</td>
                                 </tr>
                                 <tr>
                                     <th scope="row">Upload destinations</th>
-                                    <td class="col-us">Clipboard and local save</td>
+                                    <td class="col-us">One HTTPS destination you configure, plus clipboard and local save</td>
                                     <td>Many services and custom uploaders</td>
                                 </tr>
                                 <tr>
@@ -214,16 +214,16 @@
                     </ul>
 
                     <h2>What ShareX still does better</h2>
-                    <p>Be honest about the trade. If your workflow depends on scrolling capture for long pages, on uploading straight to an image host or a self-hosted endpoint, or on custom task chains that fire automatically after each capture, ShareX is the stronger tool and switching will cost you those features. Pointframe deliberately does not try to match that surface area.</p>
+                    <p>Be honest about the trade. If your workflow depends on uploading to many image hosts and services (Pointframe supports one configured HTTPS destination), or on custom task chains that fire automatically after each capture, ShareX is the stronger tool and switching will cost you those features. Pointframe deliberately does not try to match that surface area.</p>
 
                     <h2>Who should choose which</h2>
-                    <p>Pick ShareX if you are a power user who wants advanced automation and extensive custom routing, or if scrolling capture and upload destinations are central to how you work. Pick Pointframe if your priority is a smooth, team-friendly workflow for capture, annotation, redaction, and short recorded explainers — and you would rather not maintain a configuration to get it.</p>
+                    <p>Pick ShareX if you are a power user who wants advanced automation and extensive custom routing, or if many upload destinations are central to how you work. Pick Pointframe if your priority is a smooth, team-friendly workflow for capture, annotation, redaction, and short recorded explainers — and you would rather not maintain a configuration to get it.</p>
 
                     <h2>Switching from ShareX</h2>
                     <ol>
                         <li><strong>Install Pointframe</strong> with <code>winget install DimitarRadenkov.Pointframe</code> or the installer from the releases page.</li>
                         <li><strong>Resolve the hotkey conflict.</strong> Both tools claim <kbd>Print Screen</kbd> by default, so change it in one of them under Settings.</li>
-                        <li><strong>Run them side by side for a week.</strong> Keep ShareX for uploads and scrolling capture while you test the everyday flow in Pointframe.</li>
+                        <li><strong>Run them side by side for a week.</strong> Keep ShareX for uploads while you test the everyday flow in Pointframe.</li>
                         <li><strong>Decide per task, not per tool.</strong> Many people keep both: Pointframe for explaining, ShareX for automation.</li>
                     </ol>
 
@@ -248,7 +248,7 @@
                         </details>
                         <details class="faq-item">
                             <summary>Does Pointframe upload screenshots to an image host?</summary>
-                            <p>No. Pointframe copies to the clipboard or saves locally. If you rely on ShareX custom uploaders and its many destination integrations, ShareX remains the stronger choice for that part of your workflow.</p>
+                            <p>Only to one destination you set up yourself. Pointframe copies to the clipboard or saves locally by default, and Upload and copy link sends a capture to a single HTTPS endpoint you configure and copies the returned link. If you rely on ShareX custom uploaders and its many destination integrations, ShareX remains the stronger choice for that part of your workflow.</p>
                         </details>
                         <details class="faq-item">
                             <summary>Can I run Pointframe and ShareX at the same time?</summary>
