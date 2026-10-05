@@ -109,6 +109,7 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 | `docs/cli/**`, `docs/mcp-desktop-testing/**`, `README.md` | CLI and MCP user docs; the DocsSync tests fail when they drift from the code | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
 | `docs/appinsights*` | Kusto queries and the workbook template | [Telemetry](features/telemetry.md#telemetry-pipeline) |
 | `scripts/usage-report.ps1`, `scripts/tests/usage-report/**` | Usage report from Application Insights (activation, cohorts, retention, onboarding, failures, website) and the offline fixtures its `-SelfTest` shapes | [Telemetry](features/telemetry.md#telemetry-pipeline) |
+| `scripts/merge-pr.ps1`, `scripts/tests/merge-pr/**` | Agent merge tool: waits for required checks, merges the checked head, cleans up; fixtures for its self-test | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/check-workflow-scripts.ps1`, `scripts/tests/workflow-scripts/**` | Parses the PowerShell in workflow `run:` blocks, and the good and bad fixtures its self-test runs | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/verify.ps1` | The one local verify command: build, format, unit tests, kb check, workflow script check, and a JSON verdict | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/desktop-tests.ps1` | Interactive Windows Release desktop regression selection, repeated TRX evidence, and optional real-app verification | [CI, CD, and versioning](#ci-cd-and-versioning) |
@@ -421,6 +422,8 @@ pwsh scripts/verify.ps1 -Skip kb,format                    # leave gates out whi
 - It builds Release, like CI, so the editor's MCP connector holding the Debug output does not block it.
 - It writes verdict.json and one log per gate into the gitignored artifacts/verify folder. The verdict holds each gate's status and failure details (compiler errors, format diffs, failed test names with their assert message, kb errors) and `treeHash`, the git tree of the working tree it verified, so a verdict from before a later edit is detectable as stale.
 - Only `status: pass` (`complete: true`) is a final verdict. `partial` means gates were skipped or tests filtered.
+
+**Merging a pull request.** `pwsh scripts/merge-pr.ps1 -Pr <number|branch> [-Worktree <path>] [-DryRun]` waits until every required check (`unit-tests`, `CodeQL`, `Analyze (csharp)`) is present and none is pending, then squash-merges with `--match-head-commit` set to the head it checked, and deletes the remote branch, local branch and worktree only once `gh pr view` says MERGED. Exit 1: failed or cancelled check, timeout, or not merged after the merge; 2: gh missing or unauthenticated; 3: conflicting PR (such a PR never gets checks); 4: `git pull --ff-only` failed after the merge, with recovery steps printed. It does not repair blank git refs. `-SelfTest` checks the decision logic on `scripts/tests/merge-pr/`.
 
 The format gate covers the main project only. Do not run `dotnet format` on `Pointframe.Tests`; it would rewrite many unrelated files.
 

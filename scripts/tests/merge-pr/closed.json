@@ -1,0 +1,12 @@
+{
+  "pr": {
+    "state": "CLOSED",
+    "mergeable": "UNKNOWN",
+    "mergeStateStatus": "UNKNOWN",
+    "headRefOid": "aaa111"
+  },
+  "checks": [],
+  "expect": {
+    "action": "Closed"
+  }
+}

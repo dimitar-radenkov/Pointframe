@@ -1,0 +1,18 @@
+{
+  "pr": {
+    "state": "OPEN",
+    "mergeable": "CONFLICTING",
+    "mergeStateStatus": "DIRTY",
+    "headRefOid": "aaa111"
+  },
+  "checks": [
+    {
+      "name": "unit-tests",
+      "bucket": "pass"
+    }
+  ],
+  "expect": {
+    "reasonContains": "conflicts",
+    "action": "Conflict"
+  }
+}
