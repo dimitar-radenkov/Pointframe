@@ -4,6 +4,11 @@ on:
   push:
     branches: ["master", "main"]
   workflow_dispatch:
+  release:
+    types: [published]
+  # Daily refresh of the download-count badges.
+  schedule:
+    - cron: '17 3 * * *'
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -29,6 +34,17 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v6
         
+      - name: Build download badges
+        # The stock shields badges count only the newest 100 releases (total) or the newest release (latest/<asset>).
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./scripts/update-download-badges.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/update-download-badges.ps1 -Repository ${{ github.repository }}
+          exit $LASTEXITCODE
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
