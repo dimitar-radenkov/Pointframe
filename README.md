@@ -24,9 +24,9 @@
   <a href="https://codecov.io/gh/dimitar-radenkov/Pointframe"><img src="https://codecov.io/gh/dimitar-radenkov/Pointframe/branch/master/graph/badge.svg" alt="codecov"></a>
   <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest"><img src="https://img.shields.io/github/v/release/dimitar-radenkov/Pointframe?color=success" alt="Latest release"></a>
   <a href="https://github.com/microsoft/winget-pkgs/tree/master/manifests/d/DimitarRadenkov/Pointframe"><img src="https://img.shields.io/winget/v/DimitarRadenkov.Pointframe?label=winget&color=blue" alt="winget"></a>
-  <a href="https://github.com/dimitar-radenkov/Pointframe/releases"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/total?label=downloads&color=purple" alt="Downloads"></a>
-  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Cli-win-x64.zip"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/latest/Pointframe.Cli-win-x64.zip?label=cli%20downloads&color=orange" alt="CLI downloads"></a>
-  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb"><img src="https://img.shields.io/github/downloads/dimitar-radenkov/Pointframe/latest/Pointframe.Mcp-win-x64.mcpb?label=mcp%20downloads&color=orange" alt="MCP downloads"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdimitar-radenkov.github.io%2FPointframe%2Fbadges%2Fdownloads-total.json&color=purple" alt="Downloads"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Cli-win-x64.zip"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdimitar-radenkov.github.io%2FPointframe%2Fbadges%2Fdownloads-cli.json&color=orange" alt="CLI downloads"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdimitar-radenkov.github.io%2FPointframe%2Fbadges%2Fdownloads-mcp.json&color=orange" alt="MCP downloads"></a>
 </p>
 
 <p align="center">
