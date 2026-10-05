@@ -258,6 +258,14 @@ structured artifact metadata, so a client that cannot read the server's
 filesystem can still see the screenshot. Pass `includeImage: false` for
 metadata only; the full-resolution PNG is saved to disk either way.
 
+### App frameworks
+
+Checked with fresh agents on WinForms (PKHeX), WPF (dnGrep), and Electron apps.
+
+- **WinForms:** menu items (`ToolStripMenuItem`) and many controls expose no AutomationId; locate them by role and name (`{ "role": "menu item", "name": "Options" }`).
+- **WPF and WinForms text:** `textEquals` reads a Value pattern, or the Name of a text control (TextBlock, Label), which is what it displays.
+- **Electron and other Chromium apps:** launch with `--force-renderer-accessibility` (put it before the app path in the profile's arguments) so the page's elements reach UI Automation; an HTML `id` becomes the AutomationId. `ELECTRON_RUN_AS_NODE`, which VS Code sets for agents it hosts, is removed for launched apps, because Electron would otherwise start as plain Node and open no window.
+
 ## Smaller responses (opt-in)
 
 Defaults are unchanged. Three optional parameters and one server option reduce what an agent spends

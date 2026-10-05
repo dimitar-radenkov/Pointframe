@@ -7,6 +7,8 @@ namespace Pointframe.Mcp.Automation;
 
 public sealed class WindowsProcessController : IDesktopProcessController
 {
+    internal const string ElectronRunAsNodeVariable = "ELECTRON_RUN_AS_NODE";
+
     private readonly Dictionary<string, Process> _processes = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -43,6 +45,10 @@ public sealed class WindowsProcessController : IDesktopProcessController
         {
             startInfo.ArgumentList.Add(argument);
         }
+
+        // VS Code sets ELECTRON_RUN_AS_NODE for its extension host, and an agent running there passes it on
+        // to this server. An Electron target launched with it runs as plain Node and never opens a window.
+        startInfo.Environment.Remove(ElectronRunAsNodeVariable);
 
         // Deliberately not disposed here: disposing the Process closes the redirected pipes while the
         // target is still running, and the target then blocks or faults on its next write. The

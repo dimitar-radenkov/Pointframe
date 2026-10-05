@@ -1595,3 +1595,17 @@ The host keeps the assembly path only when it is non-empty and needs it only whe
 ### Takeaway
 
 Test the artifact shape you ship: a single-file publish changes `Assembly.Location` (the compiler warns with IL3000). A smoke test that only lists tools never constructs a tool's services; call at least one tool of each service graph against the published binary.
+
+## A worker message limit sized for tests failed on a real window
+
+### Problem
+
+Fresh agents verified a WPF app (dnGrep) and an Electron app with `verify run`, and every check failed with `ProviderUnavailable` or `CheckFailed` with no actual value, although the apps worked. Three limits had been sized on the small test fixture. The worker's protocol limit was 64 KiB: a 193-element WPF snapshot exceeded it, the worker threw while writing and closed the pipe, and the parent reported ProviderUnavailable. The UI walk stopped at depth 8, and an Electron page's content sits below that. `textEquals` read only the Value pattern, so a status-bar TextBlock or an HTML heading always read null. Separately, `ELECTRON_RUN_AS_NODE=1` from VS Code reached the launched Electron app, which then ran as Node.
+
+### What fixed it
+
+The protocol limit is 8 MiB and the worker answers `SnapshotTooLarge` instead of dying; depth is 32 (the 200-element cap still bounds the walk); a text control's Name is its text; the launcher removes `ELECTRON_RUN_AS_NODE`.
+
+### Takeaway
+
+Size limits against real apps, not the fixture, and make an over-limit case an answer, never a closed pipe. Before claiming a framework works, run a fresh agent on a real app of that framework.

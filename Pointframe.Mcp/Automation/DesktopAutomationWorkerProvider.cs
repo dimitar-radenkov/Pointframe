@@ -127,12 +127,20 @@ public sealed class DesktopAutomationWorkerProvider : IDesktopAutomationWorkerPr
             cancellationToken.ThrowIfCancellationRequested();
             Pointframe.Engine.Automation.DesktopTrace.Write(
                 $"worker inspect ok status={snapshot.Status} elements={snapshot.Elements.Count}");
+            var payload = JsonSerializer.Serialize(snapshot);
+            // Escaping inside the response can double the size; refuse here rather than let the write fail,
+            // which would close the pipe and fail every later request.
+            if (System.Text.Encoding.UTF8.GetByteCount(payload) * 2 > DesktopAutomationWorkerProtocol.MaxMessageBytes)
+            {
+                return Failure(request, "SnapshotTooLarge", $"The UI snapshot of {snapshot.Elements.Count} elements exceeds the worker message limit.");
+            }
+
             return new DesktopAutomationWorkerResponse(
                 DesktopAutomationWorkerProtocol.Version,
                 request.RequestId,
                 true,
                 "Ok",
-                JsonSerializer.Serialize(snapshot));
+                payload);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
