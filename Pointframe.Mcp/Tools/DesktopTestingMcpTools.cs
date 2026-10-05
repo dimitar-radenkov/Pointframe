@@ -250,14 +250,16 @@ internal sealed class DesktopTestingMcpTools(
         ClickCoreAsync(sessionId, actionId, observationRef, imageRef, x, y, count, rightButton, cancellationToken);
 
     [McpServerTool(Name = "desktop_press_keys", Title = "Press desktop keys", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
-    [Description("Presses a chord of keys, given as Windows virtual-key codes, against whatever currently has keyboard focus. Call desktop_focus_window first unless the target is already focused. Keys are pressed in the given order and released in reverse, so pass modifiers first (for example [0x11, 0x43] for Ctrl+C).")]
+    [Description("Presses a chord of keys, given as Windows virtual-key codes, against whatever currently has keyboard focus. A physical press must name the observed target with windowRef (a window_ref from desktop_observe_app) and/or observationRef; that window must still exist and be foreground, so call desktop_focus_window first unless it already is. The observationRef is consumed. Keys are pressed in the given order and released in reverse, so pass modifiers first (for example [0x11, 0x43] for Ctrl+C).")]
     public Task<DesktopTestingActionResponse> PressKeysAsync(
         [Description("Session id from desktop_start_test_session.")] string sessionId,
         [Description("A UUID action identifier.")] string actionId,
         [Description("One to four Windows virtual-key codes to press together, modifiers first (for example 0x11 Ctrl, 0x10 Shift, 0x12 Alt). More than four keys is rejected.")] IReadOnlyList<ushort> virtualKeys,
         [Description("Set only when the chord is a system-wide hotkey rather than input to the focused window. Must name a hotkey the active policy profile approves, or the action is rejected.")] string? globalHotkeyId = null,
+        [Description("observation_ref of the desktop_observe_app result the key press follows. Required for a physical press unless windowRef is given; it must not be stale, and a windowRef must belong to it. It is consumed by the action. Ignored for a global hotkey.")] string? observationRef = null,
+        [Description("The window reference (window_ref) of the observed window that must receive the keys. It must be the foreground window. When omitted, the observation's process must be foreground. Ignored for a global hotkey.")] string? windowRef = null,
         CancellationToken cancellationToken = default) =>
-        PressKeysCoreAsync(sessionId, actionId, virtualKeys, globalHotkeyId, cancellationToken);
+        PressKeysCoreAsync(sessionId, actionId, virtualKeys, globalHotkeyId, observationRef, windowRef, cancellationToken);
 
     [McpServerTool(Name = "desktop_drag", Title = "Drag desktop target", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
     [Description("Presses the left mouse button at the first point, moves through the remaining points in order, and releases at the last. Requires at least two points. Coordinates are image-local pixels within the given observation image, as for desktop_click.")]
@@ -742,6 +744,8 @@ internal sealed class DesktopTestingMcpTools(
         string actionId,
         IReadOnlyList<ushort> virtualKeys,
         string? globalHotkeyId,
+        string? observationRef,
+        string? windowRef,
         CancellationToken cancellationToken)
     {
         var session = await sessions.GetAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -750,28 +754,88 @@ internal sealed class DesktopTestingMcpTools(
             return Error(actionId, "SessionNotFound", "The desktop test session was not found.");
         }
 
-        if (!string.IsNullOrWhiteSpace(globalHotkeyId))
+        var isGlobalHotkey = !string.IsNullOrWhiteSpace(globalHotkeyId);
+        if (isGlobalHotkey)
         {
             var profile = LoadPolicy().Profiles.SingleOrDefault(item => item.Id == session.ProfileId);
-            if (profile is null || !profile.AllowedGlobalHotkeys.ContainsKey(globalHotkeyId))
+            if (profile is null || !profile.AllowedGlobalHotkeys.ContainsKey(globalHotkeyId!))
             {
                 return Error(actionId, "GlobalHotkeyNotApproved", "The global hotkey is not approved for the active profile.");
             }
         }
 
-        var method = string.IsNullOrWhiteSpace(globalHotkeyId)
-            ? DesktopInputMethod.Physical
-            : DesktopInputMethod.GlobalHotkey;
+        DesktopInputTarget? target = null;
+        string[] consumed = [];
+        if (!isGlobalHotkey)
+        {
+            try
+            {
+                var resolved = ResolvePressKeysTarget(session.Target.Process.ProcessRef, observationRef, windowRef);
+                if (resolved.Error is not null)
+                {
+                    return Error(actionId, resolved.Error.Value.Code, resolved.Error.Value.Message);
+                }
+
+                target = resolved.Target;
+                consumed = resolved.ObservationRef is null ? [] : [resolved.ObservationRef];
+            }
+            catch (DesktopOperationException exception)
+            {
+                return Error(actionId, exception.Code, exception.Message);
+            }
+        }
+
+        var method = isGlobalHotkey ? DesktopInputMethod.GlobalHotkey : DesktopInputMethod.Physical;
         return await ExecuteInputAsync(
             sessionId,
             actionId,
             "press_keys",
-            new { sessionId, virtualKeys, globalHotkeyId },
+            new { sessionId, virtualKeys, globalHotkeyId, observationRef, windowRef },
             () => input.PressKeysAsync(
-                new DesktopKeyPressRequest(null, virtualKeys, method, globalHotkeyId),
+                new DesktopKeyPressRequest(target, virtualKeys, method, globalHotkeyId),
                 session.Target.Process,
                 cancellationToken),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            consumed).ConfigureAwait(false);
+    }
+
+    private (DesktopInputTarget? Target, string? ObservationRef, (string Code, string Message)? Error) ResolvePressKeysTarget(
+        string processRef,
+        string? observationRef,
+        string? windowRef)
+    {
+        var hasObservation = !string.IsNullOrWhiteSpace(observationRef);
+        var hasWindow = !string.IsNullOrWhiteSpace(windowRef);
+        if (!hasObservation && !hasWindow)
+        {
+            return (null, null, ("TargetRequired", "A physical key press needs a windowRef and/or observationRef from desktop_observe_app."));
+        }
+
+        var observation = hasObservation ? observations.Resolve(observationRef!) : null;
+        if (!hasWindow)
+        {
+            var bounds = observation!.Observation.Images.FirstOrDefault()?.DesktopBoundsPixels;
+            return bounds is null
+                ? (null, null, ("TargetUnavailable", "The observation has no image to anchor the key press to."))
+                : (new DesktopInputTarget(BoundsPixels: bounds), observation.Observation.ObservationRef, null);
+        }
+
+        if (observation?.UiAutomation is { } snapshot &&
+            !snapshot.Elements.Any(element => string.Equals(element.WindowRef, windowRef, StringComparison.Ordinal)))
+        {
+            return (null, null, ("WindowUnavailable", "The window reference is not part of the given observation."));
+        }
+
+        var handle = ResolveWindowHandle(windowRef!, processRef);
+        if (handle == nint.Zero)
+        {
+            return (null, null, ("WindowUnavailable", "The window reference does not name a window of this session's target."));
+        }
+
+        return (
+            new DesktopInputTarget(new DesktopWindowIdentity(windowRef!, processRef, handle)),
+            observation?.Observation.ObservationRef,
+            null);
     }
 
     private async Task<DesktopTestingActionResponse> DragCoreAsync(

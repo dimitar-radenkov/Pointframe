@@ -920,9 +920,10 @@ function Invoke-DesktopWorkflow
         x = $textPoint.x; y = $textPoint.y; text = 'payload'
     }
 
-    # Physical key presses are rejected today: the tool passes no target to the input service, so only
-    # approved global hotkeys can succeed. The rejected call is recorded, the hotkey call is measured.
-    $null = Invoke-Tool 'desktop_press_keys' @{ sessionId = $sessionId; actionId = New-ActionId; virtualKeys = @(0x10, 0x41) } 'physical-keys' -ExpectError 'known issue: physical key presses have no target'
+    # A physical key press names the observed, foreground window and consumes the observation it follows.
+    $keys = Get-InputObservation $sessionId $Window
+    $keysWindowRef = (Find-Element $keys.Observation 'textBox')['windowRef']
+    $null = Invoke-Tool 'desktop_press_keys' @{ sessionId = $sessionId; actionId = New-ActionId; virtualKeys = @(0x10, 0x41); observationRef = $keys.ObservationRef; windowRef = $keysWindowRef } 'physical-keys'
     $null = Invoke-Tool 'desktop_press_keys' @{ sessionId = $sessionId; actionId = New-ActionId; virtualKeys = @(0x10, 0x41); globalHotkeyId = 'type-letter' } 'global-hotkey'
 
     $invoke = Get-InputObservation $sessionId $Window
@@ -942,8 +943,8 @@ function Invoke-DesktopWorkflow
     Start-Sleep -Seconds 2
     $null = Invoke-Tool 'desktop_replay_checks' @{ sessionId = $replaySession; reportPath = $reportPath }
 
-    # restart_app refuses to run while the target is alive, and the fixture's Close button does nothing.
-    # Close the window with an approved Alt+F4 hotkey, but only after proving the fixture has the foreground.
+    # restart_app refuses to run while the target is alive. Close the window with a physical Alt+F4 sent to the
+    # observed window, but only after proving the fixture has the foreground.
     $replayWindow = Find-FixtureWindow (Invoke-Tool 'list_windows' @{} 'replay-session')
     $replayFocus = Get-InputObservation $replaySession $replayWindow
     $replayRef = (Find-Element $replayFocus.Observation 'textBox')['windowRef']
@@ -954,7 +955,7 @@ function Invoke-DesktopWorkflow
         throw 'The fixture does not have the foreground, so Alt+F4 was not sent.'
     }
 
-    $null = Invoke-Tool 'desktop_press_keys' @{ sessionId = $replaySession; actionId = New-ActionId; virtualKeys = @(0x12, 0x73); globalHotkeyId = 'close-fixture' } 'close-with-alt-f4'
+    $null = Invoke-Tool 'desktop_press_keys' @{ sessionId = $replaySession; actionId = New-ActionId; virtualKeys = @(0x12, 0x73); observationRef = $replayFocus.ObservationRef; windowRef = $replayRef } 'close-with-alt-f4'
     $null = Invoke-Tool 'desktop_check_ui' @{ sessionId = $replaySession; kind = 'processExited'; timeoutSeconds = 10 } 'process-exited'
     $null = Invoke-Tool 'desktop_restart_app' @{ sessionId = $replaySession; actionId = New-ActionId }
     Start-Sleep -Seconds 2
@@ -1381,7 +1382,7 @@ $policy = @{
             'ListApps', 'StartTestSession', 'RestartApp', 'ObserveApp', 'FocusWindow', 'Click', 'PressKeys',
             'Drag', 'EnterText', 'Invoke', 'CheckUi', 'Scroll', 'GetActionResult', 'GetTestReport',
             'EndTestSession', 'ReplayChecks')
-        allowedGlobalHotkeys = @{ 'type-letter' = @('SHIFT', 'A'); 'close-fixture' = @('ALT', 'F4') }
+        allowedGlobalHotkeys = @{ 'type-letter' = @('SHIFT', 'A') }
         allowedShellSurfaces = @()
         allowMonitorObservation = $true
     })
