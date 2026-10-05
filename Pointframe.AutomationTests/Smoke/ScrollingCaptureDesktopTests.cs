@@ -2,8 +2,10 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using FlaUI.Core.Input;
 using FlaUI.Core.WindowsAPI;
+using FlaUI.UIA3;
 using Pointframe.AutomationTests.Fixtures;
 using Pointframe.AutomationTests.Support;
 using Xunit;
@@ -48,7 +50,7 @@ public sealed class ScrollingCaptureDesktopTests : IClassFixture<DesktopAutomati
 
         if (cancel)
         {
-            Thread.Sleep(TimeSpan.FromSeconds(1.8));
+            WaitForProgressFrame(app);
             Keyboard.Press(VirtualKeyShort.ESC);
         }
 
@@ -76,6 +78,34 @@ public sealed class ScrollingCaptureDesktopTests : IClassFixture<DesktopAutomati
         {
             Assert.InRange(rows.Count, 1, 39);
         }
+    }
+
+    private static void WaitForProgressFrame(AutomationApp app)
+    {
+        using var automation = new UIA3Automation();
+        var timeout = Stopwatch.StartNew();
+        while (timeout.Elapsed < TimeSpan.FromSeconds(15))
+        {
+            try
+            {
+                var progressWindow = automation.GetDesktop()
+                    .FindAllChildren(criteria => criteria.ByProcessId(app.Application.ProcessId))
+                    .FirstOrDefault(window => window.AutomationId == "ScrollingCaptureProgressWindow.Root");
+                var status = progressWindow?.FindFirstDescendant(
+                    criteria => criteria.ByAutomationId("ScrollingCaptureProgressWindow.Status"));
+                if (status is not null && Regex.IsMatch(status.Name, @"^Captured (?:[2-9]|[1-9]\d+) frames"))
+                {
+                    return;
+                }
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+            }
+
+            Thread.Sleep(100);
+        }
+
+        throw new TimeoutException("Scrolling capture did not report at least two captured frames within 15 seconds.");
     }
 
     private static Process StartFixture(string statePath)
