@@ -1,3 +1,9 @@
+using System.IO;
+using System.IO.Compression;
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Pointframe.Automation;
@@ -218,14 +224,15 @@ public sealed class TelemetryServiceTests
     public void TrackEvent_WhenRequiredPropertiesMissing_LogsSchemaWarning()
     {
         var logger = new CapturingLogger();
-        var sut = CreateSut(logger);
+        var localLogger = new CapturingLogger();
+        var sut = new TelemetryService(logger, SettingsWithInstallId("install-abc"), AppVersion(), localLogger);
 
         sut.TrackEvent(TelemetryEvents.SnipStarted, new Dictionary<string, string>
         {
             [TelemetryPropertyKeys.Type] = "region",
         });
 
-        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Contains(localLogger.Entries, entry => entry.Level == LogLevel.Warning);
     }
 
     [Fact]
@@ -573,7 +580,8 @@ public sealed class TelemetryServiceTests
     {
         // Arrange
         var logger = new CapturingLogger();
-        var sut = CreateSut(logger);
+        var localLogger = new CapturingLogger();
+        var sut = new TelemetryService(logger, SettingsWithInstallId("install-abc"), AppVersion(), localLogger);
 
         // Act
         sut.TrackEvent(TelemetryEvents.CapturePinned, new Dictionary<string, string>
@@ -582,9 +590,140 @@ public sealed class TelemetryServiceTests
         });
 
         // Assert
-        Assert.Contains(logger.Entries, entry =>
+        Assert.Contains(localLogger.Entries, entry =>
             entry.Level == LogLevel.Warning
             && entry.Message.Contains("file_path", StringComparison.Ordinal));
+        Assert.DoesNotContain(localLogger.Entries, entry => entry.Message.Contains(@"C:\captures\holiday-photo.png", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TrackEvent_WhenPropertyIsNotDeclaredInCatalog_DropsPropertyBeforeExport()
+    {
+        var logger = new CapturingLogger();
+        var localLogger = new CapturingLogger();
+        var sut = new TelemetryService(logger, SettingsWithInstallId("install-abc"), AppVersion(), localLogger);
+
+        sut.TrackEvent(TelemetryEvents.CapturePinned, new Dictionary<string, string>
+        {
+            ["file_path"] = @"C:\captures\holiday-photo.png",
+        });
+
+        Assert.DoesNotContain("file_path", logger.Entries.Single(entry => entry.Level == LogLevel.Information).Scope.Keys);
+        Assert.Contains(localLogger.Entries, entry => entry.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task ExporterPayload_UsesMinimalResourceAndIgnoresHostileEnvironmentOverrides()
+    {
+        var previousEnvironment = new Dictionary<string, string?>
+        {
+            ["OTEL_RESOURCE_ATTRIBUTES"] = Environment.GetEnvironmentVariable("OTEL_RESOURCE_ATTRIBUTES"),
+            ["OTEL_SERVICE_NAME"] = Environment.GetEnvironmentVariable("OTEL_SERVICE_NAME"),
+            ["COMPUTERNAME"] = Environment.GetEnvironmentVariable("COMPUTERNAME"),
+            ["USERNAME"] = Environment.GetEnvironmentVariable("USERNAME"),
+            ["USERDOMAIN"] = Environment.GetEnvironmentVariable("USERDOMAIN"),
+        };
+        const string hostileHost = "HOST-OVERRIDE-PRIVACY-CHECK";
+        const string hostileUser = "USER-OVERRIDE-PRIVACY-CHECK";
+        const string hostileDomain = "DOMAIN-OVERRIDE-PRIVACY-CHECK";
+        var port = GetFreePort();
+        using var listener = new HttpListener();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+
+        try
+        {
+            Environment.SetEnvironmentVariable("OTEL_RESOURCE_ATTRIBUTES", $"host.name={hostileHost},process.user.name={hostileUser},host.id={hostileDomain}");
+            Environment.SetEnvironmentVariable("OTEL_SERVICE_NAME", "HostileServiceName");
+            Environment.SetEnvironmentVariable("COMPUTERNAME", hostileHost);
+            Environment.SetEnvironmentVariable("USERNAME", hostileUser);
+            Environment.SetEnvironmentVariable("USERDOMAIN", hostileDomain);
+
+            var configuration = new Mock<IConfiguration>();
+            configuration.SetupGet(config => config["ApplicationInsights:ConnectionString"])
+                .Returns($"InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=http://127.0.0.1:{port}/");
+            using var sut = new TelemetryService(
+                configuration.Object,
+                SettingsWithInstallId("anonymous-install-id"),
+                AppVersion(),
+                Mock.Of<ILogger<TelemetryService>>(),
+                AutomationLaunchOptions.Parse([]));
+
+            var payloadTask = CaptureRequestPayloadAsync(listener);
+            sut.TrackEvent(TelemetryEvents.AppStarted, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.OsBuild] = "10.0.22631",
+                [TelemetryPropertyKeys.ScreenCount] = "2",
+                ["file_path"] = Environment.CurrentDirectory,
+            });
+            sut.Flush();
+
+            var payload = await payloadTask.WaitAsync(TimeSpan.FromSeconds(15));
+            Assert.Contains("Pointframe", payload, StringComparison.Ordinal);
+            Assert.Contains("desktop", payload, StringComparison.Ordinal);
+            Assert.Contains("ai.cloud.role", payload, StringComparison.Ordinal);
+            Assert.Contains("ai.cloud.roleInstance", payload, StringComparison.Ordinal);
+            Assert.Contains("app_started", payload, StringComparison.Ordinal);
+            Assert.Contains("anonymous-install-id", payload, StringComparison.Ordinal);
+            Assert.Contains("telemetry_schema_version", payload, StringComparison.Ordinal);
+            Assert.Contains("\"2\"", payload, StringComparison.Ordinal);
+            Assert.DoesNotContain("file_path", payload, StringComparison.Ordinal);
+            Assert.DoesNotContain("ai.user.id", payload, StringComparison.Ordinal);
+
+            var forbiddenValues = new[]
+            {
+                Environment.MachineName,
+                Environment.UserName,
+                Environment.UserDomainName,
+                Environment.CurrentDirectory,
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                AppContext.BaseDirectory,
+                hostileHost,
+                hostileUser,
+                hostileDomain,
+                "HostileServiceName",
+            };
+            foreach (var forbiddenValue in forbiddenValues.Where(value => !string.IsNullOrWhiteSpace(value)))
+            {
+                var serializedValue = JsonSerializer.Serialize(forbiddenValue)[1..^1];
+                Assert.DoesNotContain(serializedValue, payload, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        finally
+        {
+            foreach (var (name, value) in previousEnvironment)
+            {
+                Environment.SetEnvironmentVariable(name, value);
+            }
+        }
+    }
+
+    private static int GetFreePort()
+    {
+        using var socket = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        socket.Start();
+        return ((IPEndPoint)socket.LocalEndpoint).Port;
+    }
+
+    private static async Task<string> CaptureRequestPayloadAsync(HttpListener listener)
+    {
+        var context = await listener.GetContextAsync();
+        await using var body = new MemoryStream();
+        await context.Request.InputStream.CopyToAsync(body);
+        var bytes = body.ToArray();
+        if (context.Request.Headers["Content-Encoding"]?.Contains("gzip", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await using var compressed = new MemoryStream(bytes);
+            await using var decompressor = new GZipStream(compressed, CompressionMode.Decompress);
+            await using var decompressed = new MemoryStream();
+            await decompressor.CopyToAsync(decompressed);
+            bytes = decompressed.ToArray();
+        }
+
+        context.Response.StatusCode = (int)HttpStatusCode.OK;
+        context.Response.Close();
+        return Encoding.UTF8.GetString(bytes);
     }
 
     [Fact]
