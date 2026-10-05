@@ -1,6 +1,5 @@
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
-using Pointframe.Engine;
 
 namespace Pointframe.Mcp;
 
@@ -13,7 +12,7 @@ internal static class McpCaptureResultBuilder
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
-    public static CallToolResult Build(McpCaptureResponse response, bool includeImage)
+    public static CallToolResult Build(McpCaptureResponse response, bool includeImage, McpImageOptions? imageOptions = null)
     {
         var content = new List<ContentBlock>
         {
@@ -22,7 +21,8 @@ internal static class McpCaptureResultBuilder
 
         if (includeImage && response is { Success: true, Artifact.Metadata.Path: { Length: > 0 } path } && File.Exists(path))
         {
-            content.Add(ImageContentBlock.FromBytes(CapturePreviewImage.CreateDownscaledPng(path), "image/png"));
+            var (bytes, mimeType) = (imageOptions ?? McpImageOptions.Default).Encode(File.ReadAllBytes(path));
+            content.Add(ImageContentBlock.FromBytes(bytes, mimeType));
         }
 
         return new CallToolResult

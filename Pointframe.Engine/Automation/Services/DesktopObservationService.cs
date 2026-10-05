@@ -53,6 +53,10 @@ public sealed class DesktopObservationService : IDesktopObservationService
         using var trace = DesktopTrace.Scope("DesktopObservationService.ObserveAsync");
         var capturedUtc = _timeProvider.GetUtcNow();
         var images = new List<DesktopImageReference>();
+        var imageEdgeCap = Math.Clamp(
+            request.MaxImageLongestEdge ?? DesktopTestingLimits.MaxImageLongestEdge,
+            DesktopTestingLimits.MinImageLongestEdge,
+            DesktopTestingLimits.MaxImageLongestEdge);
         foreach (var bounds in request.CaptureBoundsPixels)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -71,7 +75,7 @@ public sealed class DesktopObservationService : IDesktopObservationService
             // the preview dimensions so coordinates coming back from the model can be rescaled.
             var (png, previewWidth, previewHeight) = CapturePreviewImage.CreateDownscaledPng(
                 bitmap,
-                DesktopTestingLimits.MaxImageLongestEdge);
+                imageEdgeCap);
             images.Add(new DesktopImageReference(imageRef, previewWidth, previewHeight, bounds, capturedUtc, png));
         }
 

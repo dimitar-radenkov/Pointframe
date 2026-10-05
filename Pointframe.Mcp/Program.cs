@@ -81,7 +81,14 @@ if (hostOptions.Enabled)
 var mcpServer = builder.Services
     .AddMcpServer(options => options.ServerInstructions = ServerInstructions(hostOptions.Enabled, telemetryNotice))
     .WithStdioServerTransport()
-    .WithRequestFilters(filters => filters.AddCallToolFilter(McpTelemetryFilter.Create(telemetry)))
+    .WithRequestFilters(filters =>
+    {
+        filters.AddCallToolFilter(McpTelemetryFilter.Create(telemetry));
+        if (McpOutputOptions.Parse(args).CompactText)
+        {
+            filters.AddCallToolFilter(McpCompactTextFilter.Create());
+        }
+    })
     .WithTools<PointframeMcpTools>()
     .WithResources<PointframeMcpResources>();
 if (hostOptions.Enabled)
