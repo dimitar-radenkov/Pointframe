@@ -1,5 +1,19 @@
 # Lessons Learned
 
+## PowerShell variable names are case-insensitive, so a local can collide with a switch parameter
+
+### Problem
+
+`scripts/merge-pr.ps1 -Auto` failed on its first real run with "Cannot convert value PSCustomObject to type SwitchParameter". The script-level code assigned `$auto = Get-AutoDecision ...`, which is the same variable as the `[switch]$Auto` parameter. The self-test passed because it made the same assignment inside a function, where `$auto` is a new local.
+
+### What fixed it
+
+Renamed the script-level variable to `$decision` and dry-ran the real path (`-Auto -DryRun`) against a live pull request.
+
+### Takeaway
+
+In PowerShell scripts, never name a script-scope variable like a parameter in any casing, and exercise the real top-level path (a `-DryRun`), not only functions called from a self-test.
+
 ## A stdio MCP server must send nothing to standard output except protocol messages
 
 ### Problem

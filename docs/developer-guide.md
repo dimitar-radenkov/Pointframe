@@ -359,8 +359,8 @@ The process is PerMonitorV2 (`app.manifest`), so every monitor has its own scale
 ## 14. CI / CD Pipeline
 
 ### CI (`ci.yml`)
-- Triggered on pushes to `master`, `feature/**`, and `fix/**`, and on pull requests to `master`.
-- Steps: checkout (full depth) → `dotnet tool restore` → restore → build `Pointframe.Tests` (Release) → `dotnet format Pointframe/Pointframe.csproj --verify-no-changes` → `dotnet test` with `--filter "Category!=Integration"` and Cobertura coverage → upload to Codecov.
+- Triggered on pushes to `master` and on pull requests to `master`; a newer push to a pull request cancels its older run.
+- Steps: checkout (full depth) → `dotnet tool restore` → restore → build `Pointframe.Tests` (Release) → `dotnet format Pointframe/Pointframe.csproj --verify-no-changes` → `dotnet test` with `--filter "Category!=Integration"` and Cobertura coverage → upload the coverage artifact. A separate, non-required `coverage` job sends it to Codecov.
 
 ### CD (`cd.yml`)
 - Triggered by a successful CI run on `master` (`workflow_run`).

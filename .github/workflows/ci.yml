@@ -2,9 +2,15 @@ name: CI
 
 on:
   push:
-    branches: [ master, "feature/**", "fix/**" ]
+    branches: [ master ]
   pull_request:
     branches: [ master ]
+
+# Feature branches run CI once, through their pull request. A new push to a pull request cancels the
+# older run; a master push has its own group (its SHA), so it is neither cancelled nor dropped from a queue, because CD waits for it.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   unit-tests:
@@ -20,18 +26,12 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v6
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
-          restore-keys: nuget-${{ runner.os }}-
-
       - name: Restore tools
         run: dotnet tool restore
 
       - name: Restore
-        run: dotnet restore Pointframe.slnx
+        # The test project references every product project; no need to restore the automation tests or the fixture.
+        run: dotnet restore Pointframe.Tests/Pointframe.Tests.csproj
 
       - name: Build
         run: dotnet build Pointframe.Tests/Pointframe.Tests.csproj --no-restore --configuration Release
@@ -125,8 +125,32 @@ jobs:
           --collect:"XPlat Code Coverage"
           --results-directory coverage
 
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/**/coverage.cobertura.xml
+          if-no-files-found: warn
+          retention-days: 3
+
+  # Not a required check: a Codecov outage or slow upload must not delay or fail a merge.
+  coverage:
+    needs: unit-tests
+    runs-on: windows-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage
+          path: coverage
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage/**/coverage.cobertura.xml
+          fail_ci_if_error: false

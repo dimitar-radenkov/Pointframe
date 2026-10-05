@@ -19,6 +19,9 @@
       "bucket": "cancel"
     }
   ],
+  "expectAuto": {
+    "action": "Fail"
+  },
   "expect": {
     "reasonContains": "cancel",
     "action": "Fail"

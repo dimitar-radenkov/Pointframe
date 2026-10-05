@@ -9,6 +9,10 @@ on:
     # Run every Monday at 08:00 UTC to catch newly published CVEs
     - cron: "0 8 * * 1"
 
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   analyze:
     name: Analyze (csharp)
@@ -20,9 +24,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
+      # build-mode none: CodeQL extracts the C# sources without compiling, so there is no restore or
+      # build step. The SDK is still needed for its dependency resolution.
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
@@ -32,14 +36,7 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: csharp
-
-      - name: Restore tools
-        run: dotnet tool restore
-
-      - name: Restore & Build
-        run: |
-          dotnet restore Pointframe/Pointframe.csproj
-          dotnet build Pointframe/Pointframe.csproj --no-restore --configuration Release
+          build-mode: none
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4

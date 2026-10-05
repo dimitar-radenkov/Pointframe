@@ -15,6 +15,9 @@
       "bucket": "pending"
     }
   ],
+  "expectAuto": {
+    "action": "Fail"
+  },
   "expect": {
     "reasonContains": "unit-tests: fail",
     "action": "Fail"

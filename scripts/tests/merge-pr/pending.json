@@ -19,6 +19,9 @@
       "bucket": "pass"
     }
   ],
+  "expectAuto": {
+    "action": "Enable"
+  },
   "expect": {
     "reasonContains": "pending: CodeQL",
     "action": "Wait"
