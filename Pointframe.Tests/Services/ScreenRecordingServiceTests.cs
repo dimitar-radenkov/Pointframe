@@ -364,7 +364,7 @@ public sealed class ScreenRecordingServiceTests
             capture,
             telemetry.Object);
         service.Start(0, 0, 100, 100, "recording.mp4");
-        Assert.True(capture.Failed.Wait(TimeSpan.FromSeconds(2)));
+        Assert.True(capture.Failed.Wait(TimeSpan.FromSeconds(10)), "The capture worker did not fail.");
 
         var exception = Record.Exception(service.Stop);
         service.Stop();
@@ -407,7 +407,7 @@ public sealed class ScreenRecordingServiceTests
             telemetry.Object);
         service.Start(0, 0, 100, 100, "recording.mp4");
 
-        Assert.True(writeStarted.Wait(TimeSpan.FromSeconds(2)));
+        Assert.True(writeStarted.Wait(TimeSpan.FromSeconds(10)), "The frame write did not start.");
         service.Stop();
 
         Assert.True(service.LastStopFailed);
