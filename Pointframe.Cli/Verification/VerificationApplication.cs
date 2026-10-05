@@ -212,6 +212,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         var specPath = SpecPathOf(command);
         var root = VerificationSpecLoader.RootDirectoryFor(specPath);
         var verdictPath = Path.Combine(root, OutputRelativePath, "verdict.json");
+        var outputDirectory = Path.Combine(root, OutputRelativePath);
         var current = services.WorkingTree.Read(root);
         var currentSpecSha256 = File.Exists(specPath)
             ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(specPath)))
@@ -219,6 +220,8 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         var status = "none";
         string? verdictTree = null;
         string? verdictSpecSha256 = null;
+        string? verdictTaskId = null;
+        string? verdictTaskSha256 = null;
         DateTimeOffset? startedUtc = null;
         if (File.Exists(verdictPath))
         {
@@ -230,16 +233,37 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
                 : null;
             verdictSpecSha256 = verdict.TryGetProperty("specSha256", out var specSha256) ? specSha256.GetString() : null;
             startedUtc = verdict.TryGetProperty("startedUtc", out var startedElement) ? startedElement.GetDateTimeOffset() : null;
+            if (verdict.TryGetProperty("task", out var task) && task.ValueKind == JsonValueKind.Object)
+            {
+                verdictTaskId = task.TryGetProperty("id", out var taskId) ? taskId.GetString() : null;
+                verdictTaskSha256 = task.TryGetProperty("snapshotSha256", out var taskSha256) ? taskSha256.GetString() : null;
+            }
+        }
+
+        // The same rule as the Stop hook's reusable verdict: with an active task, only a verdict for that task
+        // and its current snapshot is fresh.
+        var activeTask = services.Store.ReadActiveTask(root);
+        var activeSnapshot = activeTask is null ? null : services.Store.ReadTask(root, activeTask);
+        if (activeSnapshot is null)
+        {
+            activeTask = null;
         }
 
         var treeMatches = verdictTree is not null && verdictTree == current.TreeHash;
         var specMatches = currentSpecSha256 is not null && verdictSpecSha256 == currentSpecSha256;
-        var fresh = status == VerificationStatus.Pass && treeMatches && specMatches;
+        var taskMatches = activeTask is null || (verdictTaskId == activeTask && verdictTaskSha256 == activeSnapshot.Value.Sha256);
+        var fresh = status == VerificationStatus.Pass && treeMatches && specMatches && taskMatches;
         var freshnessReason = !specMatches && verdictSpecSha256 is not null
             ? "verdict_for_another_spec"
             : !treeMatches && verdictTree is not null
                 ? "tree_changed"
-                : null;
+                : taskMatches
+                    ? null
+                    : verdictTaskId is null ? "task_not_covered" : "verdict_for_another_task";
+        var lastStop = ReadLastStop(Path.Combine(outputDirectory, VerificationHook.LastStopFileName));
+        var unverifiedStop = lastStop is { } stop
+            && stop.TryGetProperty("outcome", out var outcome) && outcome.GetString() == "unverified"
+            && stop.TryGetProperty("treeHash", out var stopTree) && stopTree.GetString() == current.TreeHash;
         var hookCommand = (services.CommandResolver ?? new PointframeCommandResolver()).Resolve();
         var review = ReadReviewStatus(Path.Combine(root, OutputRelativePath, VerificationHook.ReviewFileName), current.TreeHash);
         await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new
@@ -252,12 +276,33 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             verdictSpecSha256,
             currentSpecSha256,
             freshnessReason,
+            activeTask,
+            lastStop,
+            unverifiedStop,
             startedUtc,
             verdictPath,
             hookCommand = new { path = hookCommand.Path, version = hookCommand.Version, ok = hookCommand.Ok },
             review,
         }, VerdictJson));
         return fresh ? 0 : 1;
+    }
+
+    private static JsonElement? ReadLastStop(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            return document.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static object ReadReviewStatus(string path, string? treeHash)

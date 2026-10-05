@@ -5,6 +5,7 @@ using System.Text.Json;
 namespace Pointframe.Cli;
 
 internal sealed record HookState(string? SessionId, int Blocks);
+internal sealed record LastStop(int SchemaVersion, string Outcome, string? Reason, string? ErrorCode, string? TreeHash, string? SpecSha256, string? TaskId, DateTimeOffset Utc);
 
 // `verify hook stop`: the Claude Code (and Codex) Stop hook. It lets the agent finish only when the project's
 // verdict is a pass for the files as they are now. A failure the agent can fix (a gate, a scenario, the frozen
@@ -16,6 +17,7 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
     internal const int DefaultMaxBlocks = 5;
     internal const string StateFileName = "hook-state.json";
     internal const string ReviewFileName = "review.json";
+    internal const string LastStopFileName = "last-stop.json";
 
     private static readonly HashSet<string> NeedsAPerson = new(StringComparer.Ordinal)
     {
@@ -32,9 +34,23 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
+            try
+            {
+                var cwd = Environment.CurrentDirectory;
+                var specPath = Path.GetFullPath(command.SpecPath ?? Path.Combine(cwd, VerificationSpecLoader.DefaultSpecRelativePath));
+                var root = VerificationSpecLoader.RootDirectoryFor(specPath);
+                var treeHash = services.WorkingTree.Read(root).TreeHash;
+                var specHash = File.Exists(specPath) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(specPath))) : null;
+                WriteLastStop(Path.Combine(root, VerificationApplication.OutputRelativePath), "unverified", "hook_error", null, treeHash, specHash, services.Store.ReadActiveTask(root));
+            }
+            catch (Exception)
+            {
+                // Recording the crash is best effort; the message below must still reach the person.
+            }
+
             await output.WriteLineAsync(JsonSerializer.Serialize(new
             {
-                systemMessage = $"Pointframe verify hook failed, so this work was NOT verified: {exception.GetType().Name}: {exception.Message}",
+                systemMessage = $"UNVERIFIED: Pointframe verify hook failed, so this work was NOT verified: {exception.GetType().Name}: {exception.Message}",
             }));
             return 0;
         }
@@ -78,7 +94,7 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
 
         if (verdict is null)
         {
-            return await AllowAsync(outputDirectory, state with { Blocks = 0 }, "Pointframe verify produced no verdict; the stop was not checked.");
+            return await AllowAsync(outputDirectory, state with { Blocks = 0 }, $"UNVERIFIED: Pointframe verify produced no verdict; the stop was not checked.", "no_verdict", null, tree.TreeHash, specSha256, activeTask);
         }
 
         var status = verdict.Value.GetProperty("status").GetString();
@@ -91,13 +107,13 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
                 message += " " + await ReviewAsync(root, outputDirectory, activeTask, tree, verdict.Value, cancellationToken);
             }
 
-            return await AllowAsync(outputDirectory, state with { Blocks = 0 }, message);
+            return await AllowAsync(outputDirectory, state with { Blocks = 0 }, message, null, null, tree.TreeHash, specSha256, activeTask);
         }
 
         if (errorCode is not null && NeedsAPerson.Contains(errorCode))
         {
             var error = verdict.Value.TryGetProperty("error", out var text) ? text.GetString() : errorCode;
-            return await AllowAsync(outputDirectory, state with { Blocks = 0 }, $"Pointframe verify could not check this work and needs you ({errorCode}), so this work was NOT verified: {error}");
+            return await AllowAsync(outputDirectory, state with { Blocks = 0 }, $"UNVERIFIED: Pointframe verify could not check this work and needs you ({errorCode}), so this work was NOT verified: {error}", "needs_person", errorCode, tree.TreeHash, specSha256, activeTask);
         }
 
         var maxBlocks = command.MaxBlocks ?? DefaultMaxBlocks;
@@ -107,7 +123,7 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
         {
             return await AllowAsync(
                 outputDirectory, state with { Blocks = 0 },
-                $"Pointframe verify still fails after {maxBlocks} blocked attempts, so the agent was allowed to stop and this work was NOT verified. Run `pointframe verify status` before trusting a done message. {summary}");
+                $"UNVERIFIED: Pointframe verify still fails after {maxBlocks} blocked attempts, so the agent was allowed to stop and this work was NOT verified. Run `pointframe verify status` before trusting a done message. {summary}", "block_limit", errorCode, tree.TreeHash, specSha256, activeTask);
         }
 
         WriteState(outputDirectory, state with { Blocks = blocks });
@@ -251,11 +267,19 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
         }
     }
 
-    private async Task<int> AllowAsync(string outputDirectory, HookState state, string message)
+    private async Task<int> AllowAsync(string outputDirectory, HookState state, string message, string? reason, string? errorCode, string? treeHash, string? specSha256, string? taskId)
     {
         WriteState(outputDirectory, state);
+        WriteLastStop(outputDirectory, reason is null ? "verified" : "unverified", reason, errorCode, treeHash, specSha256, taskId);
         await output.WriteLineAsync(JsonSerializer.Serialize(new { systemMessage = message }));
         return 0;
+    }
+
+    private static void WriteLastStop(string outputDirectory, string outcome, string? reason, string? errorCode, string? treeHash, string? specSha256, string? taskId)
+    {
+        Directory.CreateDirectory(outputDirectory);
+        File.WriteAllText(Path.Combine(outputDirectory, LastStopFileName), JsonSerializer.Serialize(
+            new LastStop(1, outcome, reason, errorCode, treeHash, specSha256, taskId, DateTimeOffset.UtcNow), VerificationStore.Json));
     }
 
     private async Task<(string? SessionId, string? Cwd)> ReadHookInputAsync()

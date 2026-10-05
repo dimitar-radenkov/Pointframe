@@ -167,6 +167,13 @@ they are now? It prints:
 - `status`: `pass`, `fail`, `partial`, or `none` when there is no verdict yet.
 - `fresh`: `true` only for a `pass` made on the current files. The exit code is
   `0` when `fresh` is true and `1` otherwise.
+- `freshnessReason`: when the pass is stale, `verdict_for_another_spec` takes
+  priority over `tree_changed`, then `task_not_covered` (the verdict has no task)
+  or `verdict_for_another_task` (the task id or frozen snapshot hash differs).
+- `activeTask`: the active task id (omitted when there is none). With an active task, freshness
+  requires the verdict to cover that id and the stored snapshot hash.
+- `lastStop`: the parsed `last-stop.json` record (omitted when there is none). `unverifiedStop` is
+  `true` when that record says `unverified` for the current tree hash.
 - `hookCommand`: where `pointframe` resolves to on `PATH`. `hookCommand.ok` should
   be `true`.
 - `review`: `status` is `none`, `reviewed`, or `failed`.
@@ -176,6 +183,9 @@ Files are written under the project folder:
 - `artifacts\pointframe-verify\verdict.json`: the last verdict.
 - `artifacts\pointframe-verify\runs\<time>\`: one log per gate.
 - `artifacts\pointframe-verify\review.json`: the reviewer's result, if a review ran.
+- `artifacts\pointframe-verify\last-stop.json`: the latest allowed Stop hook
+  outcome. `outcome` is `verified` or `unverified`; unverified records include a
+  reason (`no_verdict`, `needs_person`, `block_limit`, or `hook_error`).
 
 A failed gate lists compiler errors, failed tests, or the end of its log in
 `details`.
@@ -198,8 +208,9 @@ run is `partial`, and it is never `fresh`.
 ## Stopped is not verified
 
 The hook blocks a failing stop at most five times in a session (`--max-blocks`
-changes this). After that the agent is allowed to stop, and the message says the
-work was not verified.
+changes this). After that the agent is allowed to stop, and the message starts
+with `UNVERIFIED:`. `verify status` surfaces the recorded stop; `unverifiedStop`
+is true only while that stop's tree hash matches the current tree.
 
 The agent is also allowed to stop, with a message that the work was not verified,
 when only a person can fix the problem. These are an untrusted spec, no available
