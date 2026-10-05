@@ -12,6 +12,8 @@ internal sealed class GlobalHotkeyService : IGlobalHotkeyService
     private IntPtr _keyboardHook = IntPtr.Zero;
     private bool _disposed;
 
+    public bool IsHookInstalled => _keyboardHook != IntPtr.Zero;
+
     private volatile Action<uint, HotkeyModifiers>? _keyCaptureCallback;
     private volatile Action? _escapeCancellationCallback;
 

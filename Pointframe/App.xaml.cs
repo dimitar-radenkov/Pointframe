@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -178,7 +179,33 @@ public partial class App : Application
         _globalHotkey.CleanWindowSnipRequested += () => _captureLaunch.StartCleanWindowSnip("hotkey");
         _globalHotkey.Register();
         _logger.LogInformation("Global hotkey registered");
+        _telemetry.TrackEvent(TelemetryEvents.HotkeyStatus, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Status] = _globalHotkey.IsHookInstalled ? "installed" : "failed",
+        });
         _host.StartAsync().GetAwaiter().GetResult();
+        _ = ShowWelcomeIfEligibleAsync();
+    }
+
+    private async Task ShowWelcomeIfEligibleAsync()
+    {
+        try
+        {
+            var policy = _host.Services.GetRequiredService<WelcomeEligibilityPolicy>();
+            if (!await policy.ShouldShowAsync(_isAutomationMode))
+            {
+                return;
+            }
+
+            var window = _host.Services.GetRequiredService<WelcomeWindow>();
+            window.Show();
+            window.Activate();
+            Keyboard.Focus(window);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Welcome eligibility lookup failed; deferring welcome");
+        }
     }
 
     private void ApplyDataMigrations()

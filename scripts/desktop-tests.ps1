@@ -23,6 +23,7 @@ $selection = @(
     [pscustomobject]@{ Class = 'SettingsWindowSmokeTests'; Expected = 1 }
     [pscustomobject]@{ Class = 'SettingsSectionNavigationTests'; Expected = 6 }
     [pscustomobject]@{ Class = 'ScrollingCaptureDesktopTests'; Expected = 2 }
+    [pscustomobject]@{ Class = 'WelcomeWindowSmokeTests'; Expected = 1 }
     [pscustomobject]@{ Class = 'McpOrdinaryStartupObservationTests'; Expected = 2 }
 )
 $expectedPerRun = ($selection | Measure-Object -Property Expected -Sum).Sum

@@ -21,6 +21,14 @@ public sealed class CaptureCatalogService : ICaptureCatalogService
         _timeProvider = timeProvider;
     }
 
+    public async Task<bool> HasAnyCaptureAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<PointframeDataContext>();
+        return await context.CaptureArtifacts.AnyAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<CaptureRegistrationResult> RegisterAsync(
         CaptureRegistrationRequest request,
         CancellationToken cancellationToken = default)

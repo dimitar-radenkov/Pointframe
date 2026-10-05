@@ -48,14 +48,13 @@ public sealed class AutomationApp : IDisposable
         IReadOnlyDictionary<string, string>? environmentVariables = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
-        ArgumentException.ThrowIfNullOrWhiteSpace(automationArgument);
 
         if (!File.Exists(executablePath))
         {
             throw new FileNotFoundException("Pointframe.exe was not found at the requested automation launch path.", executablePath);
         }
 
-        var startInfo = new ProcessStartInfo(executablePath, automationArgument)
+        var startInfo = new ProcessStartInfo(executablePath, automationArgument ?? string.Empty)
         {
             UseShellExecute = false,
             WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
@@ -73,6 +72,72 @@ public sealed class AutomationApp : IDisposable
         var automation = new UIA3Automation();
         var mainWindow = WaitForMainWindow(application, automation);
         return new AutomationApp(application, automation, mainWindow);
+    }
+
+    public static AutomationApp LaunchNormally(IReadOnlyDictionary<string, string>? environmentVariables = null) =>
+        LaunchExecutable(ResolveAutomationExecutablePath(), string.Empty, environmentVariables);
+
+    public static Process StartExecutableWithoutWaiting(
+        string executablePath,
+        IReadOnlyDictionary<string, string>? environmentVariables = null)
+    {
+        var startInfo = new ProcessStartInfo(executablePath, string.Empty)
+        {
+            UseShellExecute = false,
+            WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory,
+        };
+        if (environmentVariables is not null)
+        {
+            foreach (var environmentVariable in environmentVariables)
+            {
+                startInfo.Environment[environmentVariable.Key] = environmentVariable.Value;
+            }
+        }
+
+        return Process.Start(startInfo) ?? throw new InvalidOperationException("Pointframe did not start.");
+    }
+
+    public bool HasWindowAutomationId(string automationId) => _automation.GetDesktop()
+        .FindAllChildren(criteria => criteria.ByProcessId(_processId))
+        .Any(window => string.Equals(window.AutomationId, automationId, StringComparison.Ordinal));
+
+    public void WaitForWindowTitle(string title)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < WindowTimeout)
+        {
+            var candidate = _automation.GetDesktop()
+                .FindAllChildren(criteria => criteria.ByProcessId(_processId))
+                .FirstOrDefault(window => string.Equals(window.Name, title, StringComparison.Ordinal));
+            if (candidate is not null)
+            {
+                MainWindow = candidate.AsWindow();
+                return;
+            }
+
+            Thread.Sleep(100);
+        }
+
+        throw new TimeoutException($"Timed out waiting for window '{title}'.");
+    }
+
+    public void WaitForWindowTitleToClose(string title)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < WindowTimeout)
+        {
+            var isOpen = _automation.GetDesktop()
+                .FindAllChildren(criteria => criteria.ByProcessId(_processId))
+                .Any(window => string.Equals(window.Name, title, StringComparison.Ordinal));
+            if (!isOpen)
+            {
+                return;
+            }
+
+            Thread.Sleep(100);
+        }
+
+        throw new TimeoutException($"Window '{title}' did not close within the expected timeout.");
     }
 
     public static AutomationApp LaunchSettingsWindow(string settingsPath)

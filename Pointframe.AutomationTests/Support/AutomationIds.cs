@@ -8,6 +8,9 @@ internal static class AutomationIds
     public const string LibraryWindowSearch = "LibraryWindow.Search";
     public const string LibraryWindowClose = "LibraryWindow.Close";
     public const string SettingsWindowRoot = "SettingsWindow.Root";
+    public const string WelcomeWindowRoot = "WelcomeWindow.Root";
+    public const string WelcomeWindowCapture = "WelcomeWindow.Capture";
+    public const string WelcomeWindowDismiss = "WelcomeWindow.Dismiss";
     public const string SettingsWindowAutoSaveScreenshots = "SettingsWindow.AutoSaveScreenshots";
     public const string SettingsWindowCancel = "SettingsWindow.Cancel";
     public const string SettingsWindowSave = "SettingsWindow.Save";

@@ -26,6 +26,7 @@ internal static class AppServiceRegistration
         services.AddSingleton(automationLaunchOptions ?? AutomationLaunchOptions.Parse([]));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<ICaptureCatalogService, CaptureCatalogService>();
+        services.AddSingleton<WelcomeEligibilityPolicy>();
         services.AddSingleton<ICaptureLibrarySources, WpfCaptureLibrarySources>();
         services.AddSingleton<ICaptureImportService, CaptureImportService>();
         services.AddSingleton<ICaptureRegistrationService, CaptureRegistrationService>();
@@ -105,6 +106,10 @@ internal static class AppServiceRegistration
             sp.GetRequiredService<ITelemetryService>(),
             sp.GetRequiredService<ITranscriptModelService>()));
         services.AddTransient<SettingsWindow>();
+        services.AddTransient<WelcomeViewModel>();
+        services.AddTransient<WelcomeWindow>(sp => new WelcomeWindow(
+            sp.GetRequiredService<WelcomeViewModel>(),
+            sp.GetRequiredService<ICaptureLaunchService>()));
         services.AddTransient<Func<IScreenRecordingService, string, RecordingHudViewModel>>(sp =>
             (screenRecordingService, outputPath) => new RecordingHudViewModel(
                 screenRecordingService,

@@ -78,7 +78,7 @@ Generated from the area files under `docs/knowledge-base/features/`. Each featur
 - [Recording](features/recording.md): F-15 Region recording; F-16 Whole-screen recording; F-17 Recording HUD: pause, stop, minimize, expand; F-18 Microphone audio; F-19 Live annotation while recording; F-20 Blur redaction burned into the video; F-21 Cursor effects; F-22 Trim a recording; F-23 Export a recording as GIF
 - [Transcription](features/transcription.md): F-24 Transcripts and subtitles
 - [Capture library](features/library.md): F-25 Capture library: browse, search, open; F-26 Capture catalog indexing and import
-- [Tray menu](features/tray.md): F-27 Recent captures and recordings menus; F-28 Open snips, videos, and logs folders
+- [Tray menu](features/tray.md): F-27 Recent captures and recordings menus; F-28 Open snips, videos, and logs folders; F-43 First-run welcome
 - [Settings](features/settings.md): F-29 Settings window; F-30 Custom global hotkeys; F-31 Light and dark theme; F-42 Share destination settings
 - [Updates and About](features/updates.md): F-32 Update check and install; F-33 About window
 - [Telemetry](features/telemetry.md): F-34 App lifecycle and usage telemetry
@@ -389,6 +389,7 @@ Screenshots and recordings go to the folder chosen in settings.
 | `Logging:RetainedFileCountLimit` | `appsettings.json` | Rolling log retention |
 | Any key above | `appsettings.Local.json` | Optional local override, loaded after `appsettings.json` and copied to output only if present |
 | `SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH` | environment | Redirects `settings.json` for automation tests |
+| `SNIPPINGTOOL_AUTOMATION_DATA_DIRECTORY` | environment | Redirects app data, database, logs, and the default screenshot import root for isolated desktop tests |
 | Automation launch options | command line, parsed by `AutomationLaunchOptions.Parse` | Drives `Pointframe.AutomationTests` scenarios |
 
 Identifiers still prefixed `SnippingTool` are pre-rename names kept for compatibility. Renaming one touches the automation project and the installer together.

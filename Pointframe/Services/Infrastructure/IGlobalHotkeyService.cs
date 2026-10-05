@@ -2,6 +2,8 @@ namespace Pointframe.Services;
 
 public interface IGlobalHotkeyService : IDisposable
 {
+    bool IsHookInstalled { get; }
+
     event Action RegionSnipRequested;
 
     event Action WholeScreenSnipRequested;

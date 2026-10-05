@@ -111,6 +111,27 @@ public sealed class CaptureCatalogPersistenceTests : IDisposable
     }
 
     [Fact]
+    public async Task CaptureCatalogService_HasAnyCapture_TracksCatalogExistence()
+    {
+        Directory.CreateDirectory(_tempDirectory);
+        var databasePath = Path.Combine(_tempDirectory, "catalog.db");
+        using var services = new ServiceCollection()
+            .AddPointframeDataServices($"Data Source={databasePath};Pooling=False")
+            .AddSingleton(TimeProvider.System)
+            .AddSingleton<ICaptureCatalogService, CaptureCatalogService>()
+            .BuildServiceProvider();
+        var sut = services.GetRequiredService<ICaptureCatalogService>();
+
+        Assert.False(await sut.HasAnyCaptureAsync());
+
+        var imagePath = Path.Combine(_tempDirectory, "capture.png");
+        WritePng(imagePath, System.Drawing.Color.Red);
+        await sut.RegisterAsync(new CaptureRegistrationRequest(imagePath, null, "wpf_save", DateTimeOffset.UtcNow, "capture"));
+
+        Assert.True(await sut.HasAnyCaptureAsync());
+    }
+
+    [Fact]
     public async Task CaptureImportService_ReconcilesLegacyFileThenMarksDeletedFileMissing()
     {
         Directory.CreateDirectory(_tempDirectory);
