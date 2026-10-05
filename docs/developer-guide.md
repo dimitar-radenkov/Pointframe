@@ -360,7 +360,9 @@ The process is PerMonitorV2 (`app.manifest`), so every monitor has its own scale
 
 ### CI (`ci.yml`)
 - Triggered on pushes to `master` and on pull requests to `master`; a newer push to a pull request cancels its older run.
-- Steps: checkout (full depth) → `dotnet tool restore` → restore → build `Pointframe.Tests` (Release) → `dotnet format Pointframe/Pointframe.csproj --verify-no-changes` → `dotnet test` with `--filter "Category!=Integration"` and Cobertura coverage → upload the coverage artifact. A separate, non-required `coverage` job sends it to Codecov.
+- Two parallel jobs, both required checks. `unit-tests`: checkout (full depth) → restore → build `Pointframe.Tests` (Release) → MCP contract and discovery tests → `dotnet test` with `--filter "Category!=Integration"` and Cobertura coverage → upload the coverage artifact. `package-checks`: restore `Pointframe`, `Pointframe.Mcp`, `Pointframe.Cli` → `dotnet format Pointframe/Pointframe.csproj --verify-no-changes` → publish the MCP server and CLI → MCP stdio smoke test → knowledge base, workflow script and agent discovery checks. A separate, non-required `coverage` job sends the coverage to Codecov.
+- `~/.nuget/packages` is cached, keyed on every `*.csproj`, `Directory.*.props/targets`, `global.json` and `dotnet-tools.json` (win-x64 runtime packs excluded). Change a package version and the key changes.
+- `codeql.yml` (`Analyze (csharp)`) analyzes shipping code only; `.github/codeql/codeql-config.yml` lists the ignored test, sample and tooling folders. Add a new non-shipping folder there.
 
 ### CD (`cd.yml`)
 - Triggered by a successful CI run on `master` (`workflow_run`).

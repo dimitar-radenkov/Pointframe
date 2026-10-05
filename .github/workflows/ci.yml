@@ -13,6 +13,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Two parallel jobs of roughly equal length; both are required checks. unit-tests builds and tests, package-checks
+  # publishes the shipped executables and runs the repository checks. The NuGet cache is saved by unit-tests only and
+  # only restored by package-checks; it excludes the win-x64 runtime packs, which the published projects download.
   unit-tests:
     runs-on: windows-latest
 
@@ -26,8 +29,16 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Restore tools
-        run: dotnet tool restore
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/microsoft.netcore.app.runtime.*
+            !~/.nuget/packages/microsoft.windowsdesktop.app.runtime.*
+            !~/.nuget/packages/microsoft.aspnetcore.app.runtime.*
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.*.props', '**/Directory.*.targets', 'global.json', 'dotnet-tools.json') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - name: Restore
         # The test project references every product project; no need to restore the automation tests or the fixture.
@@ -35,6 +46,73 @@ jobs:
 
       - name: Build
         run: dotnet build Pointframe.Tests/Pointframe.Tests.csproj --no-restore --configuration Release
+
+      - name: MCP contract and discovery tests
+        run: >
+          dotnet test Pointframe.Tests/Pointframe.Tests.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+          --verbosity normal
+          --filter "FullyQualifiedName~Mcp|FullyQualifiedName~DesktopTesting"
+
+      - name: Test with coverage
+        # Hosted CI stays on the unit-test lane only.
+        # DesktopAutomation and InstallerSmoke run outside this workflow.
+        run: >
+          dotnet test Pointframe.Tests/Pointframe.Tests.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+          --verbosity normal
+          --filter "Category!=Integration"
+          --collect:"XPlat Code Coverage"
+          --results-directory coverage
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/**/coverage.cobertura.xml
+          if-no-files-found: warn
+          retention-days: 3
+
+  package-checks:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore NuGet packages from cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/microsoft.netcore.app.runtime.*
+            !~/.nuget/packages/microsoft.windowsdesktop.app.runtime.*
+            !~/.nuget/packages/microsoft.aspnetcore.app.runtime.*
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.*.props', '**/Directory.*.targets', 'global.json', 'dotnet-tools.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        # Only what is published or formatted here; the test project is restored and built by unit-tests.
+        shell: pwsh
+        run: |
+          foreach ($project in 'Pointframe/Pointframe.csproj', 'Pointframe.Mcp/Pointframe.Mcp.csproj', 'Pointframe.Cli/Pointframe.Cli.csproj')
+          {
+            dotnet restore $project
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Format check
+        run: dotnet format Pointframe/Pointframe.csproj --verify-no-changes --no-restore
 
       - name: Publish MCP server
         shell: pwsh
@@ -76,18 +154,6 @@ jobs:
           ./packaging/test-mcp-stdio.ps1
           -ExecutablePath Pointframe.Mcp/bin/publish/win-x64/Pointframe.Mcp.exe
 
-      - name: MCP contract and discovery tests
-        run: >
-          dotnet test Pointframe.Tests/Pointframe.Tests.csproj
-          --configuration Release
-          --no-build
-          --no-restore
-          --verbosity normal
-          --filter "FullyQualifiedName~Mcp|FullyQualifiedName~DesktopTesting"
-
-      - name: Format check
-        run: dotnet format Pointframe/Pointframe.csproj --verify-no-changes --no-restore
-
       - name: Knowledge base check
         # Fails on a broken KB link or path, a tracked file with no File map row,
         # or a telemetry event or smoke test with no feature row.
@@ -111,27 +177,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./scripts/check-agent-discovery.ps1
           exit $LASTEXITCODE
-
-      - name: Test with coverage
-        # Hosted CI stays on the unit-test lane only.
-        # DesktopAutomation and InstallerSmoke run outside this workflow.
-        run: >
-          dotnet test Pointframe.Tests/Pointframe.Tests.csproj
-          --configuration Release
-          --no-build
-          --no-restore
-          --verbosity normal
-          --filter "Category!=Integration"
-          --collect:"XPlat Code Coverage"
-          --results-directory coverage
-
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage
-          path: coverage/**/coverage.cobertura.xml
-          if-no-files-found: warn
-          retention-days: 3
 
   # Not a required check: a Codecov outage or slow upload must not delay or fail a merge.
   coverage:

@@ -1,0 +1,16 @@
+name: Pointframe CodeQL config
+
+# Analyze only the code that ships. Test, automation, sample and tooling code is excluded, because with
+# build-mode none CodeQL otherwise extracts every .cs file in the repository.
+paths-ignore:
+  - Pointframe.Tests
+  - Pointframe.AutomationTests
+  - Pointframe.DesktopTestFixture
+  - Pointframe.Benchmarks
+  - samples
+  - website
+  - installer
+  - packaging
+  - scripts
+  - docs
+  - winget
