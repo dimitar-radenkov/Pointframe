@@ -18,6 +18,11 @@ For the chosen client the script does the following:
      magenta patch is in it.
   6. Cleans up the fixture, the server, the saved artifact, and the isolated configuration.
 
+The claude-plugin client runs the plugin in plugin/pointframe exactly as its .mcp.json does (Windows PowerShell 5.1 running
+scripts/start-mcp.ps1, with a temporary LOCALAPPDATA), pinned to the real release in server.lock.json. It first proves, without
+the desktop, that a tampered hash and a failed download fail closed with nothing on stdout; then it drives the stdio sequence
+above; then it proves that a second start works offline from the verified cache.
+
 Claude Desktop is validated at the bundle/manifest level only (its install is a GUI flow); the extracted
 server is still driven through the same stdio sequence.
 
@@ -36,7 +41,7 @@ pwsh scripts/test-agent-onboarding.ps1 -SelfTest
 [CmdletBinding(DefaultParameterSetName = "Client")]
 param(
     [Parameter(Mandatory = $true, ParameterSetName = "Client")]
-    [ValidateSet("claude-code", "codex", "vscode", "claude-desktop")]
+    [ValidateSet("claude-code", "codex", "vscode", "claude-desktop", "claude-plugin")]
     [string]$Client,
 
     [Parameter(ParameterSetName = "Client")]
@@ -545,7 +550,8 @@ function Start-McpServer
     param(
         [Parameter(Mandatory = $true)][string]$Command,
         [string[]]$Arguments = @(),
-        [string]$DataDirectory = ""
+        [string]$DataDirectory = "",
+        [hashtable]$Environment = @{}
     )
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -559,6 +565,10 @@ function Start-McpServer
     {
         # Keep the test off the user's real Pointframe database and capture folder.
         $startInfo.Environment["SNIPPINGTOOL_AUTOMATION_DATA_DIRECTORY"] = $DataDirectory
+    }
+    foreach ($name in $Environment.Keys)
+    {
+        $startInfo.Environment[[string]$name] = [string]$Environment[$name]
     }
     foreach ($argument in $Arguments)
     {
@@ -682,9 +692,11 @@ function Stop-McpServer
         return
     }
 
-    if (-not $Session.Process.HasExited)
+    # Closing stdin lets a server end by itself (including the plugin's server behind its launcher script); then end the tree.
+    try { $Session.Process.StandardInput.Close() } catch { }
+    if (-not $Session.Process.WaitForExit(5000))
     {
-        $Session.Process.Kill()
+        $Session.Process.Kill($true)
     }
 
     $Session.Process.Dispose()
@@ -781,7 +793,7 @@ function Invoke-CaptureSequence
         [Parameter(Mandatory = $true)]$FixtureProcess
     )
 
-    $session = Start-McpServer -Command $Launch.Command -Arguments $Launch.Arguments -DataDirectory $Launch.DataDirectory
+    $session = Start-McpServer -Command $Launch.Command -Arguments $Launch.Arguments -DataDirectory $Launch.DataDirectory -Environment $Launch.Environment
     try
     {
         $initialize = Send-McpRequest -Session $session -Method "initialize" -Params @{
@@ -892,6 +904,256 @@ function Invoke-AgentSmoke
 }
 
 # ---------------------------------------------------------------------------------------------
+# Claude plugin
+# ---------------------------------------------------------------------------------------------
+
+function Get-PluginLaunch
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$PluginDirectory,
+        [Parameter(Mandatory = $true)][string]$LocalAppData,
+        [Parameter(Mandatory = $true)][string]$DataDirectory
+    )
+
+    $mcp = Get-Content -LiteralPath (Join-Path $PluginDirectory ".mcp.json") -Raw | ConvertFrom-Json
+    $entry = $mcp.mcpServers.pointframe
+    $arguments = @($entry.args | ForEach-Object { ([string]$_).Replace('${CLAUDE_PLUGIN_ROOT}', $PluginDirectory) })
+    return [pscustomobject]@{
+        Command = [string]$entry.command
+        Arguments = $arguments
+        DataDirectory = $DataDirectory
+        Environment = @{ LOCALAPPDATA = $LocalAppData }
+        Source = ".mcp.json"
+    }
+}
+
+function Test-PluginManifestFiles
+{
+    param([Parameter(Mandatory = $true)][string]$PluginDirectory)
+
+    $manifest = Get-Content -LiteralPath (Join-Path $PluginDirectory ".claude-plugin\plugin.json") -Raw | ConvertFrom-Json
+    Assert-That -Condition ($manifest.name -ceq "pointframe") -Name "plugin name" -Detail "$($manifest.name)"
+    $lock = Get-Content -LiteralPath (Join-Path $PluginDirectory "server.lock.json") -Raw | ConvertFrom-Json
+    Assert-That -Condition ($lock.schemaVersion -eq 1 -and $lock.sha256 -match '^[0-9a-f]{64}$' -and $lock.url -like "https://github.com/dimitar-radenkov/Pointframe/releases/download/v$($lock.version)/*") -Name "plugin lock file format" -Detail "version=$($lock.version)"
+    Assert-That -Condition ($manifest.version -eq $lock.version) -Name "plugin.json version equals the pinned server version" -Detail "$($manifest.version)"
+    $launch = Get-PluginLaunch -PluginDirectory $PluginDirectory -LocalAppData "x" -DataDirectory "x"
+    Assert-That -Condition ($launch.Command -eq "powershell" -and $launch.Arguments[-1] -like "*scripts/start-mcp.ps1") -Name "plugin .mcp.json starts powershell with the start script" -Detail ($launch.Arguments -join " ")
+    return $lock
+}
+
+function Set-PluginLock
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$PluginDirectory,
+        [string]$Url,
+        [string]$Sha256
+    )
+
+    $path = Join-Path $PluginDirectory "server.lock.json"
+    $lock = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    if ($Url)
+    {
+        $lock.url = $Url
+    }
+    if ($Sha256)
+    {
+        $lock.sha256 = $Sha256
+    }
+
+    $lock | ConvertTo-Json | Set-Content -LiteralPath $path -Encoding utf8NoBOM
+}
+
+function Invoke-PluginStartToExit
+{
+    param(
+        [Parameter(Mandatory = $true)]$Launch,
+        [int]$TimeoutSeconds = 180
+    )
+
+    # Runs the launch command to completion with stdin closed, and returns what it wrote to each stream.
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $Launch.Command
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($name in $Launch.Environment.Keys)
+    {
+        $startInfo.Environment[[string]$name] = [string]$Launch.Environment[$name]
+    }
+    foreach ($argument in $Launch.Arguments)
+    {
+        [void]$startInfo.ArgumentList.Add($argument)
+    }
+
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    try
+    {
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        $process.StandardInput.Close()
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000))
+        {
+            $process.Kill($true)
+            throw "The plugin start did not finish within $TimeoutSeconds s."
+        }
+
+        return [pscustomobject]@{ ExitCode = $process.ExitCode; Stdout = $stdout.Result; Stderr = $stderr.Result }
+    }
+    finally
+    {
+        $process.Dispose()
+    }
+}
+
+function Test-PluginFailsClosed
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$PluginDirectory,
+        [Parameter(Mandatory = $true)][string]$LocalAppData,
+        [Parameter(Mandatory = $true)][string]$ExpectedMessage
+    )
+
+    $launch = Get-PluginLaunch -PluginDirectory $PluginDirectory -LocalAppData $LocalAppData -DataDirectory (Join-Path $LocalAppData "data")
+    $run = Invoke-PluginStartToExit -Launch $launch
+    Assert-That -Condition ($run.ExitCode -ne 0) -Name "$Name exits with an error" -Detail "exit=$($run.ExitCode)"
+    Assert-That -Condition ([string]::IsNullOrEmpty($run.Stdout)) -Name "$Name writes nothing to stdout" -Detail "stdout length=$($run.Stdout.Length)"
+    Assert-That -Condition ($run.Stderr -match $ExpectedMessage) -Name "$Name explains itself on stderr" -Detail $run.Stderr.Trim()
+    Assert-That -Condition (-not (Get-ChildItem -LiteralPath $LocalAppData -Recurse -Filter "Pointframe.Mcp.exe" -ErrorAction SilentlyContinue)) -Name "$Name leaves no server executable behind"
+}
+
+function Invoke-PluginHandshake
+{
+    param([Parameter(Mandatory = $true)]$Launch)
+
+    $session = Start-McpServer -Command $Launch.Command -Arguments $Launch.Arguments -DataDirectory $Launch.DataDirectory -Environment $Launch.Environment
+    try
+    {
+        $initialize = Send-McpRequest -Session $session -Method "initialize" -Params @{
+            protocolVersion = "2025-11-25"
+            capabilities = @{}
+            clientInfo = @{ name = "pointframe-plugin-test"; version = "1.0.0" }
+        } -TimeoutSeconds 120
+        Send-McpNotification -Session $session -Method "notifications/initialized"
+        Assert-That -Condition (-not [string]::IsNullOrWhiteSpace($initialize.serverInfo.name)) -Name "offline cached start initializes" -Detail "server=$($initialize.serverInfo.name) $($initialize.serverInfo.version)"
+        $tools = Send-McpRequest -Session $session -Method "tools/list"
+        Assert-That -Condition (@($tools.tools).Count -ge 3) -Name "offline cached start lists tools" -Detail "$(@($tools.tools).Count) tools"
+    }
+    finally
+    {
+        Stop-McpServer -Session $session
+    }
+}
+
+function Invoke-PluginCheck
+{
+    $workDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "pointframe-plugin-onboarding-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
+    New-Item -ItemType Directory -Force $workDirectory | Out-Null
+    $fixtureProcess = $null
+    $lockHeld = $false
+    try
+    {
+        # An installed plugin is a copy of the plugin folder; test that copy.
+        $pluginDirectory = Join-Path $workDirectory "plugin"
+        Copy-Item -LiteralPath (Join-Path $script:RepositoryRoot "plugin\pointframe") -Destination $pluginDirectory -Recurse
+        $lock = Test-PluginManifestFiles -PluginDirectory $pluginDirectory
+        $releaseBase = "https://github.com/dimitar-radenkov/Pointframe/releases/download/v$($lock.version)"
+
+        # Negative tests need no desktop. The tampered case points at the tiny .sha256 asset of the same release but keeps the
+        # real archive hash, so the download succeeds and the hash cannot match.
+        $tampered = Join-Path $workDirectory "plugin-tampered"
+        Copy-Item -LiteralPath $pluginDirectory -Destination $tampered -Recurse
+        Set-PluginLock -PluginDirectory $tampered -Url "$releaseBase/$($lock.asset).sha256"
+        Test-PluginFailsClosed -Name "tampered hash" -PluginDirectory $tampered -LocalAppData (Join-Path $workDirectory "appdata-tampered") -ExpectedMessage "SHA-256 mismatch"
+
+        $missing = Join-Path $workDirectory "plugin-missing"
+        Copy-Item -LiteralPath $pluginDirectory -Destination $missing -Recurse
+        Set-PluginLock -PluginDirectory $missing -Url "$releaseBase/does-not-exist.mcpb"
+        Test-PluginFailsClosed -Name "failed download" -PluginDirectory $missing -LocalAppData (Join-Path $workDirectory "appdata-missing") -ExpectedMessage "ERROR"
+
+        # The real run: first start downloads and verifies the pinned release.
+        $localAppData = Join-Path $workDirectory "appdata"
+        New-Item -ItemType Directory -Force $localAppData | Out-Null
+        $launch = Get-PluginLaunch -PluginDirectory $pluginDirectory -LocalAppData $localAppData -DataDirectory (Join-Path $workDirectory "pointframe-data")
+        $fixtureExecutable = Resolve-Fixture -WorkDirectory $workDirectory
+
+        Enter-DesktopLock
+        $lockHeld = $true
+        Stop-EditorMcpServers -WorkDirectory $workDirectory
+        $fixtureProcess = Start-Fixture -FixtureExecutable $fixtureExecutable
+        Invoke-CaptureSequence -Launch $launch -FixtureProcess $fixtureProcess
+        $cached = Join-Path $localAppData "Pointframe\plugin-mcp\$($lock.version)\server\Pointframe.Mcp.exe"
+        Assert-That -Condition (Test-Path $cached) -Name "verified server cached under LOCALAPPDATA" -Detail $cached
+
+        # Second start: the lock now points at an address that cannot be reached, so only the cache can serve it.
+        Set-PluginLock -PluginDirectory $pluginDirectory -Url "https://127.0.0.1:9/$($lock.asset)"
+        Invoke-PluginHandshake -Launch $launch
+        if ($AgentSmoke)
+        {
+            Invoke-AgentSmoke -Launch $launch -WorkDirectory $workDirectory
+        }
+    }
+    finally
+    {
+        if ($null -ne $fixtureProcess -and -not $fixtureProcess.HasExited)
+        {
+            Stop-Process -Id $fixtureProcess.Id -Force -ErrorAction SilentlyContinue
+            [void]$fixtureProcess.WaitForExit(10000)
+        }
+
+        if ($lockHeld)
+        {
+            Exit-DesktopLock
+        }
+
+        if (-not $KeepWorkDirectory -and (Test-Path $workDirectory))
+        {
+            Remove-DirectoryWithRetry -Path $workDirectory
+        }
+    }
+
+    Assert-That -Condition (-not (Test-Path $script:LockPath)) -Name "cleanup released the desktop lock"
+    Assert-That -Condition ($KeepWorkDirectory -or -not (Test-Path $workDirectory)) -Name "cleanup removed the work directory"
+}
+
+function Invoke-PluginSelfTest
+{
+    param([Parameter(Mandatory = $true)][string]$Work)
+
+    # Offline behaviour of scripts/start-mcp.ps1 against a stand-in server (a renamed copy of cmd.exe).
+    $source = Join-Path $script:RepositoryRoot "plugin\pointframe"
+    Test-PluginManifestFiles -PluginDirectory $source | Out-Null
+
+    $plugin = Join-Path $Work "plugin"
+    Copy-Item -LiteralPath $source -Destination $plugin -Recurse
+    $version = (Get-Content -LiteralPath (Join-Path $plugin "server.lock.json") -Raw | ConvertFrom-Json).version
+    Set-PluginLock -PluginDirectory $plugin -Url "https://127.0.0.1:9/unreachable.mcpb" -Sha256 ("ab" * 32)
+
+    $localAppData = Join-Path $Work "appdata"
+    $launch = Get-PluginLaunch -PluginDirectory $plugin -LocalAppData $localAppData -DataDirectory (Join-Path $Work "data")
+
+    New-Item -ItemType Directory -Force $localAppData | Out-Null
+    $unreachable = Invoke-PluginStartToExit -Launch $launch -TimeoutSeconds 60
+    Assert-That -Condition ($unreachable.ExitCode -eq 1 -and [string]::IsNullOrEmpty($unreachable.Stdout) -and $unreachable.Stderr -match "ERROR") -Name "selftest unreachable download fails closed with a clean stdout" -Detail "exit=$($unreachable.ExitCode)"
+
+    $serverDirectory = Join-Path $localAppData "Pointframe\plugin-mcp\$version\server"
+    New-Item -ItemType Directory -Force $serverDirectory | Out-Null
+    $fakeExe = Join-Path $serverDirectory "Pointframe.Mcp.exe"
+    Copy-Item -LiteralPath (Join-Path $env:SystemRoot "System32\cmd.exe") -Destination $fakeExe
+    @{ archiveSha256 = ("ab" * 32); exeSha256 = (Get-Sha256 -Path $fakeExe); version = $version } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $serverDirectory ".verified.json") -Encoding utf8NoBOM
+
+    $argumentsWithServerFlags = @($launch.Arguments) + @("/c", "echo hello & exit 7")
+    $cached = Invoke-PluginStartToExit -Launch ([pscustomobject]@{ Command = $launch.Command; Arguments = $argumentsWithServerFlags; Environment = $launch.Environment }) -TimeoutSeconds 60
+    Assert-That -Condition ($cached.ExitCode -eq 7) -Name "selftest cached start passes the server exit code through" -Detail "exit=$($cached.ExitCode) stderr=$($cached.Stderr.Trim())"
+    Assert-That -Condition ($cached.Stdout.Trim() -eq "hello" -and [string]::IsNullOrEmpty($cached.Stderr)) -Name "selftest cached start passes stdout through and adds nothing" -Detail "stdout='$($cached.Stdout.Trim())'"
+
+    Add-Content -LiteralPath $fakeExe -Value "tampered"
+    $changed = Invoke-PluginStartToExit -Launch $launch -TimeoutSeconds 60
+    Assert-That -Condition ($changed.ExitCode -eq 1 -and [string]::IsNullOrEmpty($changed.Stdout)) -Name "selftest a modified cached executable is not run" -Detail "exit=$($changed.ExitCode)"
+}
+# ---------------------------------------------------------------------------------------------
 # Client flow
 # ---------------------------------------------------------------------------------------------
 
@@ -912,6 +1174,12 @@ function Remove-DirectoryWithRetry
 
 function Invoke-ClientCheck
 {
+    if ($Client -eq "claude-plugin")
+    {
+        Invoke-PluginCheck
+        return
+    }
+
     $workDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "pointframe-onboarding-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
     New-Item -ItemType Directory -Force $workDirectory | Out-Null
     $isolatedRoot = Join-Path $workDirectory "isolated"
@@ -1089,6 +1357,17 @@ function Invoke-OfflineSelfTest
     finally
     {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    $pluginWork = Join-Path ([System.IO.Path]::GetTempPath()) "pointframe-onboarding-selftest-plugin-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
+    New-Item -ItemType Directory -Force $pluginWork | Out-Null
+    try
+    {
+        Invoke-PluginSelfTest -Work $pluginWork
+    }
+    finally
+    {
+        Remove-DirectoryWithRetry -Path $pluginWork
     }
 }
 

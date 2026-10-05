@@ -1,0 +1,14 @@
+{
+  "name": "pointframe",
+  "displayName": "Pointframe",
+  "description": "Windows screenshots, OCR, and redacted screen recording for Claude, plus a skill for verifying desktop work with signed proof. Windows only.",
+  "version": "6.7.63",
+  "author": {
+    "name": "Dimitar Radenkov",
+    "url": "https://github.com/dimitar-radenkov/Pointframe"
+  },
+  "homepage": "https://github.com/dimitar-radenkov/Pointframe",
+  "repository": "https://github.com/dimitar-radenkov/Pointframe",
+  "license": "MIT",
+  "keywords": ["screenshot", "screen-capture", "ocr", "screen-recording", "windows", "mcp", "desktop-testing"]
+}
