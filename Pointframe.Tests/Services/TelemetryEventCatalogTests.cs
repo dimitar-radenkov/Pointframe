@@ -154,9 +154,12 @@ public sealed class TelemetryEventCatalogTests
         Assert.True(TelemetryEventCatalog.TryGetDefinition(TelemetryEvents.AppHeartbeat, out var heartbeat));
         Assert.True(TelemetryEventCatalog.TryGetDefinition(TelemetryEvents.StartupCompleted, out var startup));
         Assert.True(TelemetryEventCatalog.TryGetDefinition(TelemetryEvents.UnhandledException, out var exception));
+        Assert.True(TelemetryEventCatalog.TryGetDefinition(TelemetryEvents.RecordingFailed, out var recordingFailed));
 
         Assert.Equal(TelemetryChannel.Diagnostic, heartbeat.Channel);
         Assert.Equal(TelemetryChannel.Diagnostic, startup.Channel);
         Assert.Equal(TelemetryChannel.Diagnostic, exception.Channel);
+        Assert.Equal(TelemetryChannel.Diagnostic, recordingFailed.Channel);
+        Assert.Equal([TelemetryPropertyKeys.Phase, TelemetryPropertyKeys.Reason, TelemetryPropertyKeys.InnerTypes], recordingFailed.RequiredProperties);
     }
 }

@@ -129,6 +129,19 @@ public sealed class ScreenRecordingServiceTests
         }
     }
 
+    private sealed class FailingFrameCapture : IRawFrameCapture
+    {
+        public ManualResetEventSlim Failed { get; } = new();
+
+        public void Capture(byte[] frameData)
+        {
+            Failed.Set();
+            throw new InvalidOperationException("capture failed");
+        }
+
+        public void Dispose() => Failed.Dispose();
+    }
+
     private static ScreenRecordingService CreateSut() =>
         new(NullLogger<ScreenRecordingService>.Instance,
             Mock.Of<IMicrophoneDeviceService>(),
@@ -326,6 +339,109 @@ public sealed class ScreenRecordingServiceTests
         // Assert
         Assert.False(svc.IsRecording);
         writerMock.Verify(w => w.Dispose(), Times.Once);
+    }
+
+    [Fact]
+    public void Stop_WhenCaptureWorkerFails_ContainsFailureAndEmitsRecordingFailedOnce()
+    {
+        var writer = new Mock<IVideoWriter>();
+        var factory = new Mock<IVideoWriterFactory>();
+        factory.Setup(item => item.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>())).Returns(writer.Object);
+        var microphone = new Mock<IMicrophoneDeviceService>();
+        microphone.Setup(item => item.GetAvailableCaptureDeviceNames()).Returns(["Studio Mic"]);
+        microphone.Setup(item => item.GetDefaultCaptureDeviceName()).Returns("Studio Mic");
+        microphone.Setup(item => item.TryGetCaptureDeviceMuted("Studio Mic")).Returns(true);
+        var telemetry = new Mock<ITelemetryService>();
+        using var capture = new FailingFrameCapture();
+        IReadOnlyDictionary<string, string>? failureProperties = null;
+        telemetry.Setup(item => item.TrackEvent(TelemetryEvents.RecordingFailed, It.IsAny<IReadOnlyDictionary<string, string>>()))
+            .Callback<string, IReadOnlyDictionary<string, string>?>((_, properties) => failureProperties = properties);
+        using var service = new ScreenRecordingService(
+            NullLogger<ScreenRecordingService>.Instance,
+            microphone.Object,
+            Mock.Of<IUserSettingsService>(settings => settings.Current == new UserSettings { RecordMicrophone = true }),
+            factory.Object,
+            capture,
+            telemetry.Object);
+        service.Start(0, 0, 100, 100, "recording.mp4");
+        Assert.True(capture.Failed.Wait(TimeSpan.FromSeconds(2)));
+
+        var exception = Record.Exception(service.Stop);
+        service.Stop();
+
+        Assert.Null(exception);
+        Assert.True(service.LastStopFailed);
+        Assert.False(service.IsRecording);
+        writer.Verify(item => item.Dispose(), Times.Once);
+        microphone.Verify(item => item.TrySetCaptureDeviceMuted("Studio Mic", true), Times.Once);
+        telemetry.Verify(item => item.TrackEvent(TelemetryEvents.RecordingFailed, It.IsAny<IReadOnlyDictionary<string, string>>()), Times.Once);
+        Assert.NotNull(failureProperties);
+        Assert.Equal("capture", failureProperties[TelemetryPropertyKeys.Phase]);
+        Assert.Equal("capture_failed", failureProperties[TelemetryPropertyKeys.Reason]);
+        Assert.Contains(nameof(InvalidOperationException), failureProperties[TelemetryPropertyKeys.InnerTypes]);
+    }
+
+    [Fact]
+    public void Stop_WhenWriterPipeFails_ReportsEncodeFailureAndDisposesWriter()
+    {
+        using var capture = new SignalingFrameCapture();
+        var writeStarted = new ManualResetEventSlim();
+        var writer = new Mock<IVideoWriter>();
+        writer.Setup(item => item.WriteFrame(It.IsAny<byte[]>())).Callback(() =>
+        {
+            writeStarted.Set();
+            throw new IOException("pipe broken");
+        });
+        var factory = new Mock<IVideoWriterFactory>();
+        factory.Setup(item => item.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>())).Returns(writer.Object);
+        var telemetry = new Mock<ITelemetryService>();
+        IReadOnlyDictionary<string, string>? failureProperties = null;
+        telemetry.Setup(item => item.TrackEvent(TelemetryEvents.RecordingFailed, It.IsAny<IReadOnlyDictionary<string, string>>()))
+            .Callback<string, IReadOnlyDictionary<string, string>?>((_, properties) => failureProperties = properties);
+        using var service = new ScreenRecordingService(
+            NullLogger<ScreenRecordingService>.Instance,
+            Mock.Of<IMicrophoneDeviceService>(),
+            Mock.Of<IUserSettingsService>(settings => settings.Current == new UserSettings()),
+            factory.Object,
+            capture,
+            telemetry.Object);
+        service.Start(0, 0, 100, 100, "recording.mp4");
+
+        Assert.True(writeStarted.Wait(TimeSpan.FromSeconds(2)));
+        service.Stop();
+
+        Assert.True(service.LastStopFailed);
+        Assert.Equal("encode", failureProperties![TelemetryPropertyKeys.Phase]);
+        Assert.Equal("pipe_broken", failureProperties[TelemetryPropertyKeys.Reason]);
+        writer.Verify(item => item.Dispose(), Times.Once);
+    }
+
+    [Fact]
+    public void Stop_WhenWriterFinalizeFails_ReportsFinalizeFailure()
+    {
+        var writer = new Mock<IVideoWriter>();
+        writer.Setup(item => item.Dispose()).Throws(new IOException("finalize failed"));
+        var factory = new Mock<IVideoWriterFactory>();
+        factory.Setup(item => item.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>())).Returns(writer.Object);
+        var telemetry = new Mock<ITelemetryService>();
+        IReadOnlyDictionary<string, string>? failureProperties = null;
+        telemetry.Setup(item => item.TrackEvent(TelemetryEvents.RecordingFailed, It.IsAny<IReadOnlyDictionary<string, string>>()))
+            .Callback<string, IReadOnlyDictionary<string, string>?>((_, properties) => failureProperties = properties);
+        using var service = new ScreenRecordingService(
+            NullLogger<ScreenRecordingService>.Instance,
+            Mock.Of<IMicrophoneDeviceService>(),
+            Mock.Of<IUserSettingsService>(settings => settings.Current == new UserSettings()),
+            factory.Object,
+            new SignalingFrameCapture(),
+            telemetry.Object);
+        service.Start(0, 0, 100, 100, "recording.mp4");
+
+        service.Stop();
+
+        Assert.True(service.LastStopFailed);
+        Assert.Equal("finalize", failureProperties![TelemetryPropertyKeys.Phase]);
+        Assert.Equal("unknown", failureProperties[TelemetryPropertyKeys.Reason]);
+        writer.Verify(item => item.Dispose(), Times.Once);
     }
 
     [Fact]

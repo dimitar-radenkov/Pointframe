@@ -10,6 +10,8 @@ public interface IScreenRecordingService : IDisposable
     bool CanToggleMicrophone { get; }
     bool IsMicrophoneMuted { get; }
     RecordingEventTrackSummary? EventTrackSummary { get; }
+    bool LastStopFailed { get; }
+    string? LastStopError { get; }
     void Start(
         int x,
         int y,

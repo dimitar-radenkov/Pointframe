@@ -695,6 +695,7 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 |---|---|
 | `recording_started` | `type` (region / whole_screen) |
 | `recording_completed` | `duration_seconds` when available |
+| `recording_failed` | `phase`, `reason`, `inner_types`, and `ffmpeg_exit_code` when known |
 | `transcript_completed` | `success`, `duration_seconds`, plus `segment_count` on success or `skip_reason` when skipped |
 | `transcript_failed` | `exception_type` |
 | `first_recording_completed` | `with_audio`, `duration_seconds` and `time_from_install_minutes` when available |

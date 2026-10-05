@@ -10,6 +10,8 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 |---|---|---|---|---|---|---|
 | F-34 | App lifecycle and usage telemetry | Startup, exit, heartbeat, unhandled errors | `Pointframe/App.xaml.cs`, `Pointframe/Services/Infrastructure/TelemetryService.cs`, `Pointframe/Services/Infrastructure/TelemetryHeartbeatService.cs` | `app_started`, `startup_completed`, `app_closed`, `app_heartbeat`, `unhandled_exception`, `hotkey_status` | `Pointframe.Tests/AppTests.cs`, `Pointframe.Tests/Services/TelemetryServiceTests.cs`, `Pointframe.Tests/Services/TelemetryEventCatalogTests.cs` | [Telemetry](#telemetry-pipeline), [App bootstrap](../knowledge-base.md#app-bootstrap-di-and-messaging) |
 
+Recording failures emit diagnostic `recording_failed` with required `phase` (`start`, `capture`, `encode`, `finalize`, `stop`), `reason`, and up to three distinct `inner_types`; `ffmpeg_exit_code` is optional. The event carries no exception messages or paths. `scripts/usage-report.ps1` groups these by version, phase, and reason.
+
 The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its catalog properties are `onboarding_action.action` (`capture` or `dismiss`) and `hotkey_status.status` (`installed` or `failed`); `onboarding_shown` has no properties. The capture action's regular `snip_started` event uses `source=onboarding`.
 
 ## Telemetry pipeline

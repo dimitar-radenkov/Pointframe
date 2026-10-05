@@ -149,6 +149,37 @@ public sealed class RecordingHudViewModelTests
     }
 
     [Fact]
+    public async Task StopCommand_WhenRecordingFailed_ShowsErrorAndDoesNotPublishCompletion()
+    {
+        var eventAggregatorMock = new Mock<IEventAggregator>();
+        var service = new Mock<IScreenRecordingService>();
+        service.SetupGet(item => item.LastStopFailed).Returns(true);
+        service.SetupGet(item => item.LastStopError).Returns("Recording failed and was not saved.");
+        var vm = CreateVm(svcMock: service, eventAggregator: eventAggregatorMock.Object);
+        string? toast = null;
+        vm.ToastRequested += message => toast = message;
+
+        await vm.StopCommand.ExecuteAsync(null);
+
+        Assert.Equal("Recording failed and was not saved.", toast);
+        eventAggregatorMock.Verify(item => item.Publish(It.IsAny<RecordingCompletedMessage>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task StopCommand_WhenServiceThrows_ContainsFailureAndDoesNotPublishCompletion()
+    {
+        var eventAggregatorMock = new Mock<IEventAggregator>();
+        var service = new Mock<IScreenRecordingService>();
+        service.Setup(item => item.Stop()).Throws(new AggregateException(new InvalidOperationException("pipe broken")));
+        var vm = CreateVm(svcMock: service, eventAggregator: eventAggregatorMock.Object);
+
+        var exception = await Record.ExceptionAsync(() => vm.StopCommand.ExecuteAsync(null));
+
+        Assert.Null(exception);
+        eventAggregatorMock.Verify(item => item.Publish(It.IsAny<RecordingCompletedMessage>()), Times.Never);
+    }
+
+    [Fact]
     public async Task StopCommand_PublishesAuthoritativeRecordingGeometry()
     {
         var eventAggregatorMock = new Mock<IEventAggregator>();

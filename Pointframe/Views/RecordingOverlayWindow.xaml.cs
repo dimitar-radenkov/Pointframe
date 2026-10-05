@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -38,6 +39,7 @@ public partial class RecordingOverlayWindow : Window
     private readonly IEventSubscription _recordingRedoSubscription;
     private readonly Func<Point?> _getCursorScreenPoint;
     private readonly Dictionary<UIElement, RecordingRedactionRegion> _recordingRedactions = [];
+    private DispatcherTimer? _failureToastTimer;
 
     private HwndSource? _windowSource;
 
@@ -157,10 +159,44 @@ public partial class RecordingOverlayWindow : Window
 
         if (_recorder.IsRecording)
         {
-            _recorder.Stop();
+            try
+            {
+                _recorder.Stop();
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "Recording stop failed while closing the recording overlay");
+            }
         }
 
         base.OnClosed(e);
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (_recorder.IsRecording)
+        {
+            var stopFailed = false;
+            try
+            {
+                _recorder.Stop();
+                stopFailed = _recorder.LastStopFailed;
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "Recording stop failed while closing the recording overlay");
+                stopFailed = true;
+            }
+
+            if (stopFailed)
+            {
+                e.Cancel = true;
+                ShowRecordingFailureToast(_recorder.LastStopError ?? "Recording failed and was not saved.");
+                return;
+            }
+        }
+
+        base.OnClosing(e);
     }
 
     private void PositionWindow()
@@ -464,8 +500,27 @@ public partial class RecordingOverlayWindow : Window
 
     private void ShowRecordingHud(RecordingHudViewModel hudViewModel)
     {
+        hudViewModel.ToastRequested += ShowRecordingFailureToast;
         _recordingHudCoordinator.Show(hudViewModel, OnRecordingHudCloseRequested);
         _recordingMousePassthroughCoordinator.Update();
+    }
+
+    private void ShowRecordingFailureToast(string message)
+    {
+        RecordingFailureToastText.Text = message;
+        RecordingFailureToast.Visibility = Visibility.Visible;
+        RecordingFailureToast.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var size = RecordingFailureToast.DesiredSize;
+        Canvas.SetLeft(RecordingFailureToast, Math.Max(12d, (ActualWidth - size.Width) / 2d));
+        Canvas.SetTop(RecordingFailureToast, Math.Max(12d, ActualHeight - size.Height - 72d));
+        _failureToastTimer?.Stop();
+        _failureToastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
+        _failureToastTimer.Tick += (_, _) =>
+        {
+            _failureToastTimer.Stop();
+            Close();
+        };
+        _failureToastTimer.Start();
     }
 
     private void HideRecordingHud()

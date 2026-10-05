@@ -11,6 +11,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private readonly IUserSettingsService _settings;
     private readonly IVideoWriterFactory _writerFactory;
     private readonly IRawFrameCapture? _frameCapture;
+    private readonly ITelemetryService _telemetry;
     private IVideoWriter? _writer;
     private RawFrameRecordingPipeline? _pipeline;
     private int _fps;
@@ -25,14 +26,17 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     public bool CanToggleMicrophone { get; private set; }
     public bool IsMicrophoneMuted { get; private set; }
     public RecordingEventTrackSummary? EventTrackSummary { get; private set; }
+    public bool LastStopFailed { get; private set; }
+    public string? LastStopError { get; private set; }
 
-    public ScreenRecordingService(ILogger<ScreenRecordingService> logger, IMicrophoneDeviceService microphoneDeviceService, IUserSettingsService settings, IVideoWriterFactory writerFactory, IRawFrameCapture? frameCapture = null)
+    public ScreenRecordingService(ILogger<ScreenRecordingService> logger, IMicrophoneDeviceService microphoneDeviceService, IUserSettingsService settings, IVideoWriterFactory writerFactory, IRawFrameCapture? frameCapture = null, ITelemetryService? telemetry = null)
     {
         _logger = logger;
         _microphoneDeviceService = microphoneDeviceService;
         _settings = settings;
         _writerFactory = writerFactory;
         _frameCapture = frameCapture;
+        _telemetry = telemetry ?? NullTelemetryService.Instance;
     }
 
     public void Start(int x, int y, int width, int height, string outputPath)
@@ -54,6 +58,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         }
 
         _fps = fps;
+        LastStopFailed = false;
+        LastStopError = null;
         _sessionStopwatch = Stopwatch.StartNew();
         EventTrackSummary = null;
         try
@@ -74,11 +80,12 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             IsRecording = true;
             _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps (MP4) to {Path}", width, height, fps, outputPath);
         }
-        catch
+        catch (Exception exception)
         {
             IsRecording = false;
             IsPaused = false;
             ResetMicrophoneFlags();
+            ReportFailure(exception, "start", _writer as IRecordingFailureDiagnostics);
             _pipeline?.Dispose();
             _pipeline = null;
             _writer?.Dispose();
@@ -100,32 +107,134 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
         _logger.LogInformation("Stopping recording");
         IsRecording = false;
-        _eventTrack?.Write("recording.stopped", new RecordingEventPayload());
+        LastStopFailed = false;
+        LastStopError = null;
         var elapsed = _sessionStopwatch?.Elapsed ?? TimeSpan.Zero;
         RawFrameRecordingStatistics? statistics = null;
+        Exception? failure = null;
+        var phase = "stop";
+        var failureDiagnostics = _writer as IRecordingFailureDiagnostics;
         try
         {
+            _eventTrack?.Write("recording.stopped", new RecordingEventPayload());
+            phase = "capture";
             statistics = _pipeline?.Stop(elapsed);
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+            if (exception is RawFrameRecordingWorkerException workerFailure)
+            {
+                phase = workerFailure.Phase;
+            }
         }
         finally
         {
             LogSessionSummary(elapsed, statistics ?? _pipeline?.GetStatistics());
-            _pipeline?.Dispose();
+            try
+            {
+                _pipeline?.Dispose();
+            }
+            catch (Exception exception)
+            {
+                failure ??= exception;
+            }
+
             _pipeline = null;
             ResetMicrophoneFlags();
             try
             {
+                phase = failure is null ? "finalize" : phase;
                 _writer?.Dispose();
                 _logger.LogInformation("Writer closed - file finalised");
             }
+            catch (Exception exception)
+            {
+                failure ??= exception;
+                phase = "finalize";
+            }
             finally
             {
-                _microphoneSession?.RestoreInitialMuteState();
+                try
+                {
+                    _microphoneSession?.RestoreInitialMuteState();
+                }
+                catch (Exception exception)
+                {
+                    failure ??= exception;
+                }
+
                 _microphoneSession = null;
                 _writer = null;
                 CompleteEventTrack();
                 ReleaseSessionReferences();
             }
+        }
+
+        if (failure is not null)
+        {
+            ReportFailure(failure, phase, failureDiagnostics);
+        }
+    }
+
+    private void ReportFailure(Exception exception, string phase, IRecordingFailureDiagnostics? diagnostics)
+    {
+        LastStopFailed = true;
+        var ffmpegUnavailableOrExited = diagnostics?.FfmpegExitCode is not null
+            || GetInnerExceptions(exception).Any(inner => inner is FileNotFoundException);
+        LastStopError = ffmpegUnavailableOrExited
+            ? "Recording failed and was not saved. Check that ffmpeg is installed and working."
+            : "Recording failed and was not saved.";
+        var innerTypes = GetInnerExceptions(exception)
+            .Select(inner => inner.GetType().Name)
+            .Distinct(StringComparer.Ordinal)
+            .Take(3);
+        var properties = new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Phase] = phase,
+            [TelemetryPropertyKeys.Reason] = exception is RawFrameRecordingWorkerException worker
+                ? worker.Reason
+                : diagnostics?.FfmpegExitCode is not null ? "ffmpeg_exited" : exception is TimeoutException ? "timeout" : "unknown",
+            [TelemetryPropertyKeys.InnerTypes] = string.Join(",", innerTypes),
+        };
+        _logger.LogError(exception, "Recording failed during {Phase}; ffmpeg stderr tail: {FfmpegStderr}", phase, diagnostics?.RecentStandardError);
+        if (diagnostics?.FfmpegExitCode is int exitCode)
+        {
+            properties[TelemetryPropertyKeys.FfmpegExitCode] = exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        try
+        {
+            _telemetry.TrackEvent(TelemetryEvents.RecordingFailed, properties);
+        }
+        catch (Exception telemetryException)
+        {
+            _logger.LogWarning(telemetryException, "Could not emit recording_failed telemetry");
+        }
+    }
+
+    private static IEnumerable<Exception> GetInnerExceptions(Exception exception)
+    {
+        if (exception is AggregateException aggregate)
+        {
+            foreach (var inner in aggregate.Flatten().InnerExceptions)
+            {
+                foreach (var nested in GetInnerExceptions(inner))
+                {
+                    yield return nested;
+                }
+            }
+        }
+        else if (exception.InnerException is not null)
+        {
+            foreach (var inner in GetInnerExceptions(exception.InnerException))
+            {
+                yield return inner;
+            }
+        }
+        else
+        {
+            yield return exception;
         }
     }
 

@@ -241,7 +241,7 @@ AppEvents
 
 AppEvents
 | where timestamp > ago(30d) and name == "recording_failed"
-| summarize events = count(), installs = dcount(install) by version = tostring(customDimensions.version)
+| summarize events = count(), installs = dcount(install) by version = tostring(customDimensions.version), phase = tostring(customDimensions.phase), reason = tostring(customDimensions.reason)
 | order by events desc
 '@) $Ctx
     }
@@ -516,7 +516,7 @@ function New-Report([scriptblock]$Runner, [hashtable]$Ctx, [datetime]$Now)
         $failed = @(& $q 'recordingFailed')
         [ordered]@{
             unhandled = @($rows | ForEach-Object { [ordered]@{ version = [string](Get-Value $_ 'version'); exceptionType = [string](Get-Value $_ 'exceptionType'); events = [int](Get-Value $_ 'events'); installs = [int](Get-Value $_ 'installs') } })
-            recordingFailed = @($failed | ForEach-Object { [ordered]@{ version = [string](Get-Value $_ 'version'); events = [int](Get-Value $_ 'events'); installs = [int](Get-Value $_ 'installs') } })
+            recordingFailed = @($failed | ForEach-Object { [ordered]@{ version = [string](Get-Value $_ 'version'); phase = [string](Get-Value $_ 'phase'); reason = [string](Get-Value $_ 'reason'); events = [int](Get-Value $_ 'events'); installs = [int](Get-Value $_ 'installs') } })
         }
     }
     $report.website = Get-Section {
@@ -650,8 +650,8 @@ function Format-ReportText($Report, [bool]$SandboxView)
         param($d)
         $text = '  unhandled_exception by version and type:'
         $text += "`n" + $(if (@($d.unhandled).Count -eq 0) { '  none' } else { Format-TextTable $d.unhandled @('version', 'type', 'events', 'installs') { param($r) @($r.version, $r.exceptionType, $r.events, $r.installs) } })
-        $text += "`n  recording_failed by version:"
-        $text += "`n" + $(if (@($d.recordingFailed).Count -eq 0) { '  no data yet' } else { Format-TextTable $d.recordingFailed @('version', 'events', 'installs') { param($r) @($r.version, $r.events, $r.installs) } })
+        $text += "`n  recording_failed by version, phase, and reason:"
+        $text += "`n" + $(if (@($d.recordingFailed).Count -eq 0) { '  no data yet' } else { Format-TextTable $d.recordingFailed @('version', 'phase', 'reason', 'events', 'installs') { param($r) @($r.version, $r.phase, $r.reason, $r.events, $r.installs) } })
         $text
     }
     & $section '9. Website (last 90 days)' $Report.website {

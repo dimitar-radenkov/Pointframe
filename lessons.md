@@ -1460,3 +1460,22 @@ colors while the production matcher can identify exact overlap.
 
 Build pixel fixtures around the same uniqueness and sampling rules used by the code under test; a
 visually distinct block may still repeat at the matcher’s comparison granularity.
+
+## A recording worker fault must be observed before finalization is reported
+
+### Problem
+
+`Task.Wait()` wraps worker faults in `AggregateException`. When the recording HUD or overlay close path
+calls stop on the dispatcher, an uncaught worker fault can reach the global dispatcher handler, and
+ordinary cleanup or completion notifications can be skipped.
+
+### What fixed it
+
+Observe both capture and encode workers during stop, complete the encode queue, then dispose the capture,
+writer, and microphone session even when a worker fails. Keep stop idempotent, report a failed recording
+once, and publish saved/completed UI only after successful finalization.
+
+### Takeaway
+
+Treat worker completion and output finalization as part of the recording service boundary. UI stop paths
+must receive an explicit success/failure state rather than a worker exception.
