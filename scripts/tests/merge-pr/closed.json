@@ -6,6 +6,9 @@
     "headRefOid": "aaa111"
   },
   "checks": [],
+  "expectAuto": {
+    "action": "Closed"
+  },
   "expect": {
     "action": "Closed"
   }

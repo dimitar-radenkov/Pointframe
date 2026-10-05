@@ -11,6 +11,9 @@
       "bucket": "pass"
     }
   ],
+  "expectAuto": {
+    "action": "Conflict"
+  },
   "expect": {
     "reasonContains": "conflicts",
     "action": "Conflict"

@@ -5,6 +5,7 @@ Waits for a pull request's checks, squash-merges the exact head that was checked
   pwsh scripts/merge-pr.ps1 -Pr 190                          # PR number or branch name
   pwsh scripts/merge-pr.ps1 -Pr 190 -Worktree ..\Pointframe-wt-x   # also remove that worktree after the merge
   pwsh scripts/merge-pr.ps1 -Pr 190 -DryRun                  # evaluate once and report; never merges or deletes
+  pwsh scripts/merge-pr.ps1 -Pr 190 -Auto                    # enable GitHub auto-merge (squash, delete branch) and return at once
   pwsh scripts/merge-pr.ps1 -Pr 190 -Required unit-tests,CodeQL -TimeoutMinutes 20 -PollSeconds 15
   pwsh scripts/merge-pr.ps1 -SelfTest                        # offline: decision logic on scripts/tests/merge-pr fixtures
 
@@ -19,7 +20,11 @@ Rules, each from a past incident:
   - Blank git refs are not repaired. If `git pull --ff-only` fails after the merge the script prints the recovery
     steps and exits 4.
 
-Exit codes: 0 merged and cleaned up (or -DryRun finished), 1 check failed, timeout, closed PR, or merge did not
+  - -Auto does not wait and does not clean up. It refuses a CONFLICTING, closed or failing pull request, otherwise runs
+    gh pr merge --auto --squash --delete-branch and exits 0; GitHub merges once the repository's required checks pass.
+    A -Worktree is NOT removed in this mode (it is still needed until the merge); remove it afterwards by hand.
+
+Exit codes: 0 merged and cleaned up (or -DryRun finished, or -Auto enabled auto-merge / found the PR merged), 1 check failed, timeout, closed PR, or merge did not
 complete, 2 gh missing or not authenticated or bad arguments, 3 merge conflict, 4 pull after merge failed.
 #>
 [CmdletBinding()]
@@ -30,6 +35,7 @@ param(
     [int]$TimeoutMinutes = 40,
     [int]$PollSeconds = 30,
     [switch]$DryRun,
+    [switch]$Auto,
     [switch]$SelfTest
 )
 
@@ -90,6 +96,17 @@ function Get-MergeDecision
     & $result 'Merge' "all required checks are present and none is pending or failed ($($Required -join ', '))"
 }
 
+function Get-AutoDecision
+{
+    # -Auto only enables GitHub auto-merge, which itself waits for the required checks, so pending or not yet registered
+    # checks are fine. Action is one of Merged, Closed, Conflict, Fail, Enable.
+    param($Pr, [object[]]$Checks, [string[]]$Required)
+
+    $decision = Get-MergeDecision $Pr $Checks $Required
+    $action = if ($decision.Action -in 'Wait', 'Merge') { 'Enable' } else { $decision.Action }
+    [pscustomobject]@{ Action = $action; Reason = $decision.Reason; Head = $decision.Head }
+}
+
 function Test-HeadMatches([string]$CheckedHead, [string]$CurrentHead)
 {
     [bool]$CheckedHead -and $CheckedHead -eq $CurrentHead
@@ -126,6 +143,15 @@ function Invoke-SelfTest
         if ($decision.Action -ne $fx.expect.action)
         {
             $failures.Add("$($file.Name): expected action $($fx.expect.action), got $($decision.Action) ($($decision.Reason))")
+        }
+        if ($fx.PSObject.Properties['expectAuto'])
+        {
+            $auto = Get-AutoDecision $fx.pr @($fx.checks) $required
+            $count++
+            if ($auto.Action -ne $fx.expectAuto.action)
+            {
+                $failures.Add("$($file.Name): expected -Auto action $($fx.expectAuto.action), got $($auto.Action) ($($auto.Reason))")
+            }
         }
         if ($fx.expect.PSObject.Properties['reasonContains'] -and $decision.Reason -notlike "*$($fx.expect.reasonContains)*")
         {
@@ -212,6 +238,51 @@ function Get-ChecksJson
     {
         @()
     }
+}
+
+if ($Auto)
+{
+    $prInfo = Get-PrJson
+    $checks = if ($prInfo.state -eq 'OPEN') { Get-ChecksJson } else { @() }
+    $auto = Get-AutoDecision $prInfo $checks $Required
+    Write-Host "PR #$($prInfo.number) $($prInfo.headRefName) @ $($auto.Head): $($auto.Action) - $($auto.Reason)"
+    if ($auto.Action -eq 'Merged')
+    {
+        Write-Host 'Already merged; nothing to enable.'
+        exit 0
+    }
+    if ($auto.Action -eq 'Conflict')
+    {
+        exit 3
+    }
+    if ($auto.Action -in 'Fail', 'Closed')
+    {
+        Write-Host 'NOT ENABLING AUTO-MERGE.'
+        exit 1
+    }
+    $mergeArgs = @('pr', 'merge', [string]$prInfo.number, '--auto', '--squash', '--delete-branch')
+    if ($auto.Head)
+    {
+        $mergeArgs += @('--match-head-commit', $auto.Head)
+    }
+    if ($DryRun)
+    {
+        Write-Host "DRY RUN: would run gh $($mergeArgs -join ' ')"
+        exit 0
+    }
+    $out = & gh @mergeArgs 2>&1
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Host "ERROR enabling auto-merge failed: $out"
+        exit 1
+    }
+    $out | Select-Object -Last 3 | ForEach-Object { Write-Host $_ }
+    Write-Host "Auto-merge enabled for #$($prInfo.number): GitHub squash-merges and deletes the remote branch once the required checks pass."
+    if ($Worktree)
+    {
+        Write-Host "Worktree '$Worktree' was NOT removed; clean it up after the merge (git worktree remove, git branch -D, git pull --ff-only)."
+    }
+    exit 0
 }
 
 $deadline = (Get-Date).AddMinutes($TimeoutMinutes)

@@ -23,6 +23,9 @@
       "bucket": "skipping"
     }
   ],
+  "expectAuto": {
+    "action": "Enable"
+  },
   "expect": {
     "action": "Merge"
   }
