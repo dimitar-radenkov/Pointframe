@@ -100,5 +100,7 @@ public sealed class UserSettings
 
     public bool FirstCaptureCompletedTracked { get; set; }
 
+    public bool WelcomeShown { get; set; }
+
     public bool FirstRecordingCompletedTracked { get; set; }
 }

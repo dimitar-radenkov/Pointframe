@@ -90,6 +90,7 @@ public sealed class SettingsViewModelCharacterizationTests
             InstallCreatedUtc = populated.InstallCreatedUtc,
             FirstCaptureCompletedTracked = populated.FirstCaptureCompletedTracked,
             FirstRecordingCompletedTracked = populated.FirstRecordingCompletedTracked,
+            WelcomeShown = populated.WelcomeShown,
             // The only available device, so restoring the default (null) resolves back to it.
             RecordingMicrophoneDeviceName = populated.RecordingMicrophoneDeviceName,
             VideoWatermark = new VideoWatermarkSettings(),

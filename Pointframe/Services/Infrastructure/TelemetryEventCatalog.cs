@@ -25,6 +25,7 @@ public static class TelemetryPropertyKeys
     public const string LastAction = "last_action";
     public const string OsBuild = "os_build";
     public const string ScreenCount = "screen_count";
+    public const string Status = "status";
     public const string SegmentCount = "segment_count";
     public const string SelectionHeightPx = "selection_height_px";
     public const string SelectionWidthPx = "selection_width_px";
@@ -68,6 +69,9 @@ public static class TelemetryEvents
     public const string OcrNoText = "ocr_no_text";
     public const string OcrUsed = "ocr_used";
     public const string OpenImageUsed = "open_image_used";
+    public const string OnboardingAction = "onboarding_action";
+    public const string OnboardingShown = "onboarding_shown";
+    public const string HotkeyStatus = "hotkey_status";
     public const string RecordingHudAnnotationInputToggled = "recording_hud_annotation_input_toggled";
     public const string RecordingHudClearAnnotations = "recording_hud_clear_annotations";
     public const string RecordingHudDisplayModeChanged = "recording_hud_display_mode_changed";
@@ -163,6 +167,9 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.OcrNoText] = Product(TelemetryEvents.OcrNoText, TelemetryPropertyKeys.SelectionWidthPx, TelemetryPropertyKeys.SelectionHeightPx),
             [TelemetryEvents.OcrUsed] = Product(TelemetryEvents.OcrUsed, TelemetryPropertyKeys.SelectionWidthPx, TelemetryPropertyKeys.SelectionHeightPx),
             [TelemetryEvents.OpenImageUsed] = Product(TelemetryEvents.OpenImageUsed),
+            [TelemetryEvents.OnboardingAction] = Product(TelemetryEvents.OnboardingAction, TelemetryPropertyKeys.Action),
+            [TelemetryEvents.OnboardingShown] = Product(TelemetryEvents.OnboardingShown),
+            [TelemetryEvents.HotkeyStatus] = Diagnostic(TelemetryEvents.HotkeyStatus, TelemetryPropertyKeys.Status),
             [TelemetryEvents.RecordingHudAnnotationInputToggled] = Product(TelemetryEvents.RecordingHudAnnotationInputToggled, TelemetryPropertyKeys.AnnotationInputState),
             [TelemetryEvents.RecordingHudClearAnnotations] = Product(TelemetryEvents.RecordingHudClearAnnotations),
             [TelemetryEvents.RecordingHudDisplayModeChanged] = Product(TelemetryEvents.RecordingHudDisplayModeChanged, TelemetryPropertyKeys.DisplayMode),

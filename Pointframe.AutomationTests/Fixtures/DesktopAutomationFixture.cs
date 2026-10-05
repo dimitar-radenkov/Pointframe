@@ -8,6 +8,7 @@ public class DesktopAutomationFixture : IDisposable
     private const string AutomationSettingsPathEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH";
     private const string AutomationOutputDirectoryEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_OUTPUT_DIRECTORY";
     private const string AutomationOpenImagePathEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_OPEN_IMAGE_PATH";
+    private const string AutomationDataDirectoryEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_DATA_DIRECTORY";
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
 
     private readonly string _tempDirectory = Path.Combine(
@@ -23,16 +24,22 @@ public class DesktopAutomationFixture : IDisposable
 
     public string RecordingOutputPath => Path.Combine(OutputDirectory, "Videos");
 
+    public string DataDirectory => Path.Combine(_tempDirectory, "Data");
+
     public string SampleOverlayPath => Path.Combine(OutputDirectory, "automation-sample-overlay.png");
 
     public IReadOnlyDictionary<string, string> CreateEnvironmentVariables(bool includeOpenImageSamplePath = false)
     {
         Directory.CreateDirectory(OutputDirectory);
+        Directory.CreateDirectory(ScreenshotOutputPath);
+        Directory.CreateDirectory(RecordingOutputPath);
+        Directory.CreateDirectory(DataDirectory);
 
         var environmentVariables = new Dictionary<string, string>
         {
             [AutomationSettingsPathEnvironmentVariable] = SettingsPath,
             [AutomationOutputDirectoryEnvironmentVariable] = OutputDirectory,
+            [AutomationDataDirectoryEnvironmentVariable] = DataDirectory,
         };
 
         if (includeOpenImageSamplePath)
@@ -41,6 +48,21 @@ public class DesktopAutomationFixture : IDisposable
         }
 
         return environmentVariables;
+    }
+
+    public void SeedWelcomeSettings(bool welcomeShown)
+    {
+        Directory.CreateDirectory(ScreenshotOutputPath);
+        Directory.CreateDirectory(RecordingOutputPath);
+        var settings = new UserSettings
+        {
+            AutoSaveScreenshots = true,
+            ScreenshotSavePath = ScreenshotOutputPath,
+            RecordingOutputPath = RecordingOutputPath,
+            WelcomeShown = welcomeShown,
+            FirstCaptureCompletedTracked = false,
+        };
+        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, SerializerOptions));
     }
 
     public UserSettings ReadSettings()

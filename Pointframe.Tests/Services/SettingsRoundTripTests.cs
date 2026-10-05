@@ -152,6 +152,7 @@ public sealed class SettingsRoundTripTests : IDisposable
             InstallId = "changed-install-id",
             InstallCreatedUtc = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc),
             FirstCaptureCompletedTracked = true,
+            WelcomeShown = true,
             FirstRecordingCompletedTracked = true,
         };
     }

@@ -629,6 +629,7 @@ public partial class SettingsViewModel : ObservableObject
             InstallId = currentSettings.InstallId,
             InstallCreatedUtc = currentSettings.InstallCreatedUtc,
             FirstCaptureCompletedTracked = currentSettings.FirstCaptureCompletedTracked,
+            WelcomeShown = currentSettings.WelcomeShown,
             FirstRecordingCompletedTracked = currentSettings.FirstRecordingCompletedTracked,
         });
         TrackSectionEvent(TelemetryEvents.SettingsSaved, SelectedSection);

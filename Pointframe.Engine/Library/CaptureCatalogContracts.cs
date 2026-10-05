@@ -2,6 +2,8 @@ namespace Pointframe.Engine;
 
 public interface ICaptureCatalogService
 {
+    Task<bool> HasAnyCaptureAsync(CancellationToken cancellationToken = default);
+
     Task<CaptureRegistrationResult> RegisterAsync(
         CaptureRegistrationRequest request,
         CancellationToken cancellationToken = default);

@@ -56,6 +56,7 @@ winget install DimitarRadenkov.Pointframe
 3. Add arrows, text, or blur and then copy, save, pin, or record.
 
 You can complete your first capture workflow in under a minute.
+On first launch, Pointframe opens a short welcome with a button to start your first capture.
 
 For the standalone command-line workflow, installation, artifact verification,
 exit codes, and troubleshooting, see the dedicated
@@ -667,6 +668,7 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 | Event | Properties |
 |---|---|
 | `app_started` | `os_build`, `screen_count` |
+| `hotkey_status` | `status` (installed / failed) |
 | `startup_completed` | `duration_ms` |
 | `app_heartbeat` | `uptime_minutes` (sent every 4 hours while the tray app remains open) |
 | `app_closed` | `session_minutes` |
@@ -675,7 +677,9 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 
 | Event | Properties |
 |---|---|
-| `snip_started` | `type` (region / whole_screen / window_clean / scrolling), `source` (tray / hotkey) |
+| `snip_started` | `type` (region / whole_screen / window_clean / scrolling), `source` (tray / hotkey / onboarding) |
+| `onboarding_shown` | — |
+| `onboarding_action` | `action` (capture / dismiss) |
 | `snip_cancelled` | `type` (region / whole_screen / scrolling) |
 | `scrolling_capture_completed` | `count` (frames captured), `stop_reason` (end_of_content / no_overlap / frame_limit / height_limit) |
 | `capture_delay_used` | `delay_seconds` |
