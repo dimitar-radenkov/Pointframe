@@ -6,6 +6,8 @@ namespace Pointframe.Mcp;
 
 public static class DesktopTestingResponseMapper
 {
+    private const int CompactTextLimit = 200;
+
     public static DesktopTestingObservationResponse MapObservation(DesktopObservationResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
@@ -32,6 +34,41 @@ public static class DesktopTestingResponseMapper
                 : new McpCaptureError(result.UiAutomation.ErrorCode, "UI automation data was not available."));
     }
 
+    public static DesktopTestingCompactObservationResponse ToCompact(DesktopTestingObservationResponse response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        var sharedWindowRef = response.Elements
+            .GroupBy(element => element.WindowRef, StringComparer.Ordinal)
+            .OrderByDescending(group => group.Count())
+            .Select(group => group.Key)
+            .FirstOrDefault();
+        return new DesktopTestingCompactObservationResponse(
+            response.SchemaVersion,
+            "compact",
+            response.ObservationRef,
+            response.TargetState,
+            response.ObservationStatus,
+            response.UiaStatus,
+            response.ProcessRef,
+            response.IsTruncated,
+            response.TopologyGeneration,
+            response.PixelCapturedUtc,
+            response.Images.Select(image => new DesktopCompactImageBlock(image.ImageRef, image.Width, image.Height, image.DesktopBoundsPixels)).ToArray(),
+            sharedWindowRef,
+            response.Elements.Select(element => new DesktopCompactElementBlock(
+                element.ElementRef,
+                element.Role,
+                Truncate(element.Name),
+                element.AutomationId,
+                [element.BoundsPixels.X, element.BoundsPixels.Y, element.BoundsPixels.Width, element.BoundsPixels.Height],
+                string.Equals(element.WindowRef, sharedWindowRef, StringComparison.Ordinal) ? null : element.WindowRef,
+                element.IsEnabled ? null : true,
+                element.ToggleState,
+                element.Selection,
+                Truncate(element.Text))).ToArray(),
+            response.Error,
+            response.Ocr);
+    }
     public static DesktopTestingCheckResponse MapCheck(DesktopUiCheckEvaluation evaluation)
     {
         ArgumentNullException.ThrowIfNull(evaluation);
@@ -95,6 +132,13 @@ public static class DesktopTestingResponseMapper
             result.Error is null ? null : new McpCaptureError(result.Error.Code, result.Error.Message),
             sessionRef,
             targetRef);
+    }
+
+    private static string? Truncate(string? value)
+    {
+        return value is not null && value.Length > CompactTextLimit
+            ? $"{value[..CompactTextLimit]}... (+{value.Length - CompactTextLimit} chars)"
+            : value;
     }
 
     private static DesktopElementBlock MapElement(DesktopUiElementSnapshot element)

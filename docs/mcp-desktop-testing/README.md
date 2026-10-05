@@ -258,6 +258,37 @@ structured artifact metadata, so a client that cannot read the server's
 filesystem can still see the screenshot. Pass `includeImage: false` for
 metadata only; the full-resolution PNG is saved to disk either way.
 
+## Smaller responses (opt-in)
+
+Defaults are unchanged. Three optional parameters and one server option reduce what an agent spends
+per call; `scripts/measure-mcp-payloads.ps1` prints the measured default-versus-compact table.
+
+- `desktop_observe_app` `detail: "compact"`: every ref and identity an action needs
+  (`observationRef`, `imageRef`, `elementRef`, `windowRef`, process ref, image size and desktop bounds)
+  and each element's role, name, automation id, and bounds, without null fields. Bounds are
+  `[x, y, width, height]` in desktop physical pixels; an element without `windowRef` uses the top-level
+  one; `disabled: true` appears only on disabled elements; names and text over 200 characters are
+  truncated with the omitted count. Use the default detail when you need the full text.
+- `desktop_observe_app` `maxImageEdge` (64 through 1600): caps each image's longest edge. The returned
+  `width` and `height` are the coordinate space for `desktop_click`, `desktop_drag`,
+  `desktop_enter_text`, and `desktop_scroll`, so actions stay accurate.
+- `desktop_get_test_report` `detail: "compact"`: verdicts, criteria, action outcomes, and check verdicts
+  without per-item evidence, check conditions, or `proof` (omitted, since it would not be verifiable inline). The proof bundle written to
+  `sessionDirectory` (`report.json`, `evidence/`, `index.html`) is always the full signed report, so
+  verify and replay from that file, not from the compact response.
+- Server option `--compact-text` or `POINTFRAME_MCP_COMPACT_TEXT=1`: the text block of the desktop
+  action tools, `desktop_check_ui`, `desktop_get_test_report`, `desktop_get_action_result`, and the
+  recording tools becomes a short summary instead of a copy of `structuredContent`. Action summaries
+  keep operation, dispatch, verification, observation status, and any error. When dispatch is
+  `Partial` or `Unknown` the summary says not to resend and to call `desktop_get_action_result` with
+  the action id; when it is `NotStarted` it says no input was sent. Observations, lists, searches, and
+  replay results keep their full text because a client that reads only text blocks needs that data.
+
+Because actions are never replayed and the observation they consume stays valid for 30 seconds,
+a compact flow does not change when to observe again: call `desktop_observe_app` (compact) before each
+input action, act with its refs, and read the action's own dispatch and verification fields before
+deciding to repeat anything.
+
 ## Local validation
 
 Build and publish the MCP executable:

@@ -6,6 +6,7 @@ public static class DesktopTestingLimits
     public const int MaxObservationCount = 16;
     public const int ObservationTtlSeconds = 30;
     public const int MaxImageLongestEdge = 1600;
+    public const int MinImageLongestEdge = 64;
     public const int MaxUiAutomationElements = 200;
     public const int MaxUiAutomationDepth = 8;
     public const int MaxQueueCapacity = 32;

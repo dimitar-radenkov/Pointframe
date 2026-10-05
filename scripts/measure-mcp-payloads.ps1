@@ -23,7 +23,8 @@ desktop automation first.
 [CmdletBinding()]
 param(
     [switch]$SelfTest,
-    [string]$Configuration = 'Release'
+    [string]$Configuration = 'Release',
+    [string]$BaselinePayloads
 )
 
 $ErrorActionPreference = 'Stop'
@@ -100,6 +101,55 @@ function Get-PngSize
     $width = [int][BitConverter]::ToUInt32([byte[]]($Bytes[19], $Bytes[18], $Bytes[17], $Bytes[16]), 0)
     $height = [int][BitConverter]::ToUInt32([byte[]]($Bytes[23], $Bytes[22], $Bytes[21], $Bytes[20]), 0)
     return "${width}x${height}"
+}
+
+function Get-JpegSize
+{
+    param([byte[]]$Bytes)
+
+    if ($Bytes.Length -lt 4 -or $Bytes[0] -ne 0xFF -or $Bytes[1] -ne 0xD8)
+    {
+        return $null
+    }
+
+    $index = 2
+    while ($index + 9 -lt $Bytes.Length)
+    {
+        if ($Bytes[$index] -ne 0xFF)
+        {
+            $index++
+            continue
+        }
+
+        $marker = $Bytes[$index + 1]
+        if ($marker -in 0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF)
+        {
+            $height = ($Bytes[$index + 5] * 256) + $Bytes[$index + 6]
+            $width = ($Bytes[$index + 7] * 256) + $Bytes[$index + 8]
+            return "${width}x${height}"
+        }
+
+        $index += 2 + ($Bytes[$index + 2] * 256) + $Bytes[$index + 3]
+    }
+
+    return $null
+}
+
+# Image tokens: width x height / 750 per image, the common vision-model estimate (pixels, not bytes).
+function Get-EstimatedImageTokens
+{
+    param([string[]]$Sizes)
+
+    $total = 0
+    foreach ($size in $Sizes)
+    {
+        if ($size -match '^(\d+)x(\d+)$')
+        {
+            $total += [int][math]::Ceiling(([double]$Matches[1] * [double]$Matches[2]) / 750.0)
+        }
+    }
+
+    return $total
 }
 
 # Canonical form ignores key order and key casing so a text block that is the same payload as the
@@ -227,6 +277,11 @@ function Measure-ToolResult
                 $decoded = [Convert]::FromBase64String((Get-Prop $block 'data').ToString())
                 $imageBytes += $decoded.Length
                 $size = Get-PngSize $decoded
+                if (-not $size)
+                {
+                    $size = Get-JpegSize $decoded
+                }
+
                 $imageSizes.Add($(if ($size) { $size } else { 'unknown' }))
             }
         }
@@ -256,6 +311,7 @@ function Measure-ToolResult
         duplicatedText = ($duplicatedBytes -gt 0)
         duplicatedBytes = $duplicatedBytes
         imageBlocks = $imageSizes.Count
+        estimatedImageTokens = Get-EstimatedImageTokens $imageSizes.ToArray()
         imageBytes = $imageBytes
         imageDimensions = ($imageSizes -join ';')
     }
@@ -283,6 +339,7 @@ function New-ProblemRow
         duplicatedText = $false
         duplicatedBytes = 0
         imageBlocks = 0
+        estimatedImageTokens = 0
         imageBytes = 0
         imageDimensions = ''
     }
@@ -412,13 +469,34 @@ function Invoke-SelfTest
     $errorRows = @((New-ProblemRow 'a' 'v' 'unexpected-error' 'boom'))
     Assert-Equal 2 @(Get-CoverageProblems @('a') $errorRows @{}).Count 'unexpected error and missing measurement fail'
 
-    'SelfTest passed (token estimator, UTF-8 counting, PNG sizes, duplicate detection, error rows, coverage rules).'
-}
+    $jpeg = [byte[]](0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x00, 0x64, 0x00, 0xC8, 0x03, 0x01, 0x22, 0x00, 0x02)
+    Assert-Equal '200x100' (Get-JpegSize $jpeg) 'JPEG dimensions'
+    Assert-Equal 1335 (Get-EstimatedImageTokens @('1000x1000', '10x10')) 'image tokens are width x height / 750 rounded up per image'
 
-if ($SelfTest)
-{
-    Invoke-SelfTest
-    exit 0
+    $base = @(
+        (New-ProblemRow 'desktop_observe_app' 'for-input' 'measured' ''),
+        (New-ProblemRow 'desktop_observe_app' 'for-input' 'measured' ''),
+        (New-ProblemRow 'desktop_click' '' 'measured' ''))
+    $base[0].wireBytes = 6000
+    $base[1].wireBytes = 8000
+    $base[2].wireBytes = 1000
+    $compactSample = @(
+        (New-ProblemRow 'desktop_observe_app' 'compact' 'measured' ''),
+        (New-ProblemRow 'desktop_click' 'compact-text' 'measured' ''))
+    $compactSample[0].wireBytes = 3500
+    $compactSample[1].wireBytes = 500
+    $comparisonRows = @(Get-ComparisonRows $base $compactSample $null $null)
+    Assert-Equal 3 $comparisonRows.Count 'comparison rows (observe, click) plus the combined step'
+    Assert-Equal 7000 $comparisonRows[0].baselineBytes 'baseline observe is the average of its calls'
+    Assert-Equal 3500 $comparisonRows[0].compactBytes 'compact observe bytes'
+    Assert-Equal 50 $comparisonRows[0].savedPercent 'observe saving percent'
+    Assert-Equal 8000 $comparisonRows[2].baselineBytes 'combined step baseline'
+    Assert-Equal 4000 $comparisonRows[2].compactBytes 'combined step compact'
+    $withDiscovery = @(Get-ComparisonRows $base $compactSample ([pscustomobject]@{ toolListBytes = 900 }) ([pscustomobject]@{ toolListBytes = 1000 }))
+    Assert-Equal 10 $withDiscovery[-1].savedPercent 'tools/list saving percent'
+    Assert-Equal 5 @(Get-ComparisonLines $comparisonRows).Count 'comparison table has a header, a rule and the rows'
+
+    'SelfTest passed (token estimator, UTF-8 counting, PNG sizes, duplicate detection, error rows, coverage rules, comparison math).'
 }
 
 # ---------------------------------------------------------------------------------------------------
@@ -521,6 +599,15 @@ function Invoke-Tool
     }
 
     Write-CallLog $Name $Arguments $result
+    $script:LastText = ''
+    foreach ($block in (Get-Prop $result 'content'))
+    {
+        if ($block -is [Text.Json.Nodes.JsonObject] -and (Get-Prop $block 'type').ToString() -eq 'text' -and $script:LastText -eq '')
+        {
+            $script:LastText = (Get-Prop $block 'text').ToString()
+        }
+    }
+
     $row = Measure-ToolResult $Name $Variant $result
     if ($ExpectError -and $row.outcome -eq 'unexpected-error')
     {
@@ -875,6 +962,268 @@ function Invoke-DesktopWorkflow
 }
 
 # ---------------------------------------------------------------------------------------------------
+# Compact pass: the opt-in compact modes, measured against the default calls above
+# ---------------------------------------------------------------------------------------------------
+
+$script:McpPath = $null
+$script:McpDataDirectory = $null
+$script:McpOutputDirectory = $null
+$script:McpPolicyPath = $null
+$script:LastText = ''
+
+function Start-McpProcess
+{
+    param([hashtable]$ExtraEnvironment = @{})
+
+    $startInfo = [Diagnostics.ProcessStartInfo]::new($script:McpPath)
+    $startInfo.WorkingDirectory = Split-Path $script:McpPath
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.CreateNoWindow = $true
+    $startInfo.Environment['SNIPPINGTOOL_AUTOMATION_DATA_DIRECTORY'] = $script:McpDataDirectory
+    $startInfo.Environment['POINTFRAME_FIXTURE_STATE_PATH'] = Join-Path $script:McpOutputDirectory 'fixture-state.json'
+    $startInfo.Environment['POINTFRAME_FIXTURE_MONITOR'] = '0'
+    foreach ($key in $ExtraEnvironment.Keys)
+    {
+        $startInfo.Environment[$key] = $ExtraEnvironment[$key]
+    }
+
+    $startInfo.ArgumentList.Add('--desktop-testing')
+    $startInfo.ArgumentList.Add('--desktop-policy')
+    $startInfo.ArgumentList.Add($script:McpPolicyPath)
+    $script:Process = [Diagnostics.Process]::Start($startInfo)
+    $script:ServerLog = $script:Process.StandardError.ReadToEndAsync()
+}
+
+function Stop-McpProcess
+{
+    if ($script:Process -and -not $script:Process.HasExited)
+    {
+        $script:Process.StandardInput.Close()
+        if (-not $script:Process.WaitForExit(10000))
+        {
+            $script:Process.Kill($true)
+        }
+    }
+}
+
+function Add-CompactCheck
+{
+    param([string]$Tool, [string]$Variant, [bool]$Condition, [string]$Reason)
+
+    if (-not $Condition)
+    {
+        $script:Rows.Add((New-ProblemRow $Tool $Variant 'unexpected-error' $Reason))
+    }
+}
+
+# Maps the centre of an element in a compact observation (bounds = [x, y, width, height]) to image-local pixels.
+function Get-CompactImagePoint
+{
+    param($Observation, [string]$AutomationId)
+
+    foreach ($element in @($Observation['elements']))
+    {
+        if ($element['automationId'] -eq $AutomationId)
+        {
+            $image = $Observation['images'][0]
+            $desktop = $image['desktopBoundsPixels']
+            $box = $element['bounds']
+            $scaleX = [double]$image['width'] / [double]$desktop['width']
+            $scaleY = [double]$image['height'] / [double]$desktop['height']
+            return @{
+                Element = $element
+                x = [int][math]::Floor((($box[0] + ($box[2] / 2)) - $desktop['x']) * $scaleX)
+                y = [int][math]::Floor((($box[1] + ($box[3] / 2)) - $desktop['y']) * $scaleY)
+            }
+        }
+    }
+
+    throw "The compact observation has no element with automation id '$AutomationId'."
+}
+
+# Runs against a second server started with POINTFRAME_MCP_COMPACT_TEXT=1. Every compact call must also
+# carry what an agent needs to act: the compact observation's refs drive a real click and invoke, and the
+# summary text of an action must still state the outcome and the action id.
+function Invoke-CompactPass
+{
+    Stop-McpProcess
+    Start-McpProcess @{ POINTFRAME_MCP_COMPACT_TEXT = '1' }
+    $null = Send-McpRequest 'initialize' @{
+        protocolVersion = '2025-06-18'
+        capabilities = @{}
+        clientInfo = @{ name = 'pointframe-payload-inventory'; version = '1' }
+    }
+    $script:Process.StandardInput.WriteLine('{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}')
+
+    $displays = Invoke-Tool 'list_displays' @{} 'compact-run' -NoRow
+    $monitorName = (Get-FirstItem $displays['displays'])['monitorName']
+    $session = Start-FixtureSession @('The fixture Save button is present.')
+    Start-Sleep -Seconds 2
+    $windows = Invoke-Tool 'list_windows' @{} 'compact-run' -NoRow
+    $window = Find-FixtureWindow $windows
+    if ($null -eq $window)
+    {
+        throw 'list_windows did not report the fixture window in the compact pass.'
+    }
+
+    $hwnd = [long]$window['hwnd']
+    $null = Invoke-Tool 'capture_monitor' @{ monitorName = $monitorName; maxImageEdge = 800 } 'edge-800'
+    $null = Invoke-Tool 'capture_monitor' @{ monitorName = $monitorName; imageFormat = 'jpeg' } 'jpeg'
+    $null = Invoke-Tool 'capture_monitor' @{ monitorName = $monitorName; maxImageEdge = 800; imageFormat = 'jpeg' } 'edge-800-jpeg'
+    $null = Invoke-Tool 'capture_window' @{ windowId = $hwnd; maxImageEdge = 800 } 'edge-800'
+    $null = Invoke-Tool 'capture_window' @{ windowId = $hwnd; imageFormat = 'jpeg' } 'jpeg'
+
+    $bounds = $window['boundsPixels']
+    $region = @(@{ x = $bounds['x']; y = $bounds['y']; width = $bounds['width']; height = $bounds['height'] })
+    $null = Invoke-Tool 'desktop_observe_app' @{ sessionId = $session; captureBoundsPixels = $region; includeUiAutomation = $true; includeImages = $true; detail = 'compact'; maxImageEdge = 800 } 'compact-edge-800'
+
+    # Metadata-only compact observation, the one an agent repeats before every input action.
+    $observation = Invoke-Tool 'desktop_observe_app' @{ sessionId = $session; captureBoundsPixels = $region; includeUiAutomation = $true; includeImages = $false; detail = 'compact' } 'compact'
+    $textBox = Get-CompactImagePoint $observation 'textBox'
+    $windowRef = if ($textBox.Element['windowRef']) { $textBox.Element['windowRef'] } else { $observation['windowRef'] }
+    Add-CompactCheck 'desktop_observe_app' 'compact' ([bool]$windowRef) 'a compact observation gave no window ref'
+    $null = Invoke-Tool 'desktop_focus_window' @{ sessionId = $session; actionId = New-ActionId; windowRef = $windowRef } 'compact-text'
+
+    $observation = Invoke-Tool 'desktop_observe_app' @{ sessionId = $session; captureBoundsPixels = $region; includeUiAutomation = $true; includeImages = $false; detail = 'compact' } 'compact'
+    $point = Get-CompactImagePoint $observation 'clickTarget'
+    $clickActionId = New-ActionId
+    $click = Invoke-Tool 'desktop_click' @{
+        sessionId = $session; actionId = $clickActionId
+        observationRef = $observation['observationRef']; imageRef = $observation['images'][0]['imageRef']
+        x = $point.x; y = $point.y
+    } 'compact-text'
+    Add-CompactCheck 'desktop_click' 'compact-text' ($click['dispatch'] -eq 'Complete') 'the click driven by a compact observation was not dispatched'
+    Add-CompactCheck 'desktop_click' 'compact-text' ($script:LastText -like '*dispatch=Complete*verification=*') "the summary text lost the dispatch or verification outcome: $script:LastText"
+
+    $observation = Invoke-Tool 'desktop_observe_app' @{ sessionId = $session; captureBoundsPixels = $region; includeUiAutomation = $true; includeImages = $false; detail = 'compact' } 'compact'
+    $save = Get-CompactImagePoint $observation 'saveButton'
+    $null = Invoke-Tool 'desktop_invoke' @{ sessionId = $session; actionId = New-ActionId; elementRef = $save.Element['elementRef'] } 'compact-text'
+    $null = Invoke-Tool 'desktop_check_ui' @{ sessionId = $session; kind = 'exists'; automationId = 'saveButton'; timeoutSeconds = 5; criterionId = 'C1' } 'compact-text'
+    $null = Invoke-Tool 'desktop_check_ui' @{ sessionId = $session; kind = 'textEquals'; automationId = 'statusLabel'; expected = 'definitely not the status'; timeoutSeconds = 2; expectFailure = $true } 'compact-text-negative-control'
+    $null = Invoke-Tool 'desktop_get_action_result' @{ actionId = $clickActionId } 'compact-text'
+
+    $full = Invoke-Tool 'desktop_get_test_report' @{ sessionId = $session } 'compact-text'
+    $compact = Invoke-Tool 'desktop_get_test_report' @{ sessionId = $session; detail = 'compact' } 'compact+compact-text'
+    Add-CompactCheck 'desktop_get_test_report' 'compact+compact-text' ($compact['verdict'] -eq $full['verdict']) 'the compact report verdict differs from the full one'
+    Add-CompactCheck 'desktop_get_test_report' 'compact+compact-text' ($script:LastText -like '*verdict=*sessionDirectory=*') "the report summary lost the verdict or bundle path: $script:LastText"
+    $onDisk = Get-Content -LiteralPath (Join-Path $full['sessionDirectory'] 'report.json') -Raw | ConvertFrom-Json
+    Add-CompactCheck 'desktop_get_test_report' 'compact+compact-text' (@($onDisk.proof.entries).Count -gt 0 -and $null -eq $compact['proof']) 'the full proof must stay on disk while the compact response omits it'
+    $null = Invoke-Tool 'desktop_end_test_session' @{ sessionId = $session; actionId = New-ActionId } 'compact-text'
+}
+
+function Get-AverageOf
+{
+    param($Rows, [string]$Tool, [string]$Variant, [string]$Property)
+
+    $matching = @($Rows | Where-Object { $_.outcome -eq 'measured' -and $_.tool -eq $Tool -and $_.variant -eq $Variant })
+    if ($matching.Count -eq 0)
+    {
+        return $null
+    }
+
+    return [int][math]::Round((($matching | Measure-Object $Property -Average).Average))
+}
+
+# Each comparison row: what is measured, the default call, and the compact variant. Rows come from the
+# same run, so both sides saw the same fixture and the same monitor.
+function Get-ComparisonRows
+{
+    param($BaselineRows, $CompactRows, $Discovery, $BaselineDiscovery)
+
+    $specs = @(
+        @{ Name = 'desktop_observe_app, metadata only (before each input)'; BaseTool = 'desktop_observe_app'; BaseVariant = 'for-input'; Tool = 'desktop_observe_app'; Variant = 'compact' },
+        @{ Name = 'desktop_observe_app with image (compact, cap 800 px)'; BaseTool = 'desktop_observe_app'; BaseVariant = 'with-images'; Tool = 'desktop_observe_app'; Variant = 'compact-edge-800' },
+        @{ Name = 'capture_monitor, image cap 800 px'; BaseTool = 'capture_monitor'; BaseVariant = ''; Tool = 'capture_monitor'; Variant = 'edge-800' },
+        @{ Name = 'capture_monitor, jpeg'; BaseTool = 'capture_monitor'; BaseVariant = ''; Tool = 'capture_monitor'; Variant = 'jpeg' },
+        @{ Name = 'capture_monitor, jpeg + cap 800 px'; BaseTool = 'capture_monitor'; BaseVariant = ''; Tool = 'capture_monitor'; Variant = 'edge-800-jpeg' },
+        @{ Name = 'capture_window, image cap 800 px'; BaseTool = 'capture_window'; BaseVariant = ''; Tool = 'capture_window'; Variant = 'edge-800' },
+        @{ Name = 'capture_window, jpeg'; BaseTool = 'capture_window'; BaseVariant = ''; Tool = 'capture_window'; Variant = 'jpeg' },
+        @{ Name = 'desktop_get_test_report, compact text only'; BaseTool = 'desktop_get_test_report'; BaseVariant = ''; Tool = 'desktop_get_test_report'; Variant = 'compact-text' },
+        @{ Name = 'desktop_get_test_report, detail compact + compact text'; BaseTool = 'desktop_get_test_report'; BaseVariant = ''; Tool = 'desktop_get_test_report'; Variant = 'compact+compact-text' },
+        @{ Name = 'desktop_click, compact text'; BaseTool = 'desktop_click'; BaseVariant = ''; Tool = 'desktop_click'; Variant = 'compact-text' },
+        @{ Name = 'desktop_check_ui, compact text'; BaseTool = 'desktop_check_ui'; BaseVariant = ''; Tool = 'desktop_check_ui'; Variant = 'compact-text' },
+        @{ Name = 'desktop_get_action_result, compact text'; BaseTool = 'desktop_get_action_result'; BaseVariant = ''; Tool = 'desktop_get_action_result'; Variant = 'compact-text' }
+    )
+
+    $rows = [Collections.Generic.List[object]]::new()
+    foreach ($spec in $specs)
+    {
+        $baseWire = Get-AverageOf $BaselineRows $spec.BaseTool $spec.BaseVariant 'wireBytes'
+        $compactWire = Get-AverageOf $CompactRows $spec.Tool $spec.Variant 'wireBytes'
+        if ($null -eq $baseWire -or $null -eq $compactWire)
+        {
+            continue
+        }
+
+        $rows.Add([pscustomobject]@{
+            name = $spec.Name
+            baselineBytes = $baseWire
+            compactBytes = $compactWire
+            baselineTextBytes = Get-AverageOf $BaselineRows $spec.BaseTool $spec.BaseVariant 'textBytes'
+            compactTextBytes = Get-AverageOf $CompactRows $spec.Tool $spec.Variant 'textBytes'
+            baselineImageTokens = Get-AverageOf $BaselineRows $spec.BaseTool $spec.BaseVariant 'estimatedImageTokens'
+            compactImageTokens = Get-AverageOf $CompactRows $spec.Tool $spec.Variant 'estimatedImageTokens'
+            savedPercent = [math]::Round(100.0 * ($baseWire - $compactWire) / [math]::Max(1, $baseWire), 1)
+        })
+    }
+
+    # One input step of the observe-then-act loop: the observation an action consumes plus the action.
+    $baseObserve = Get-AverageOf $BaselineRows 'desktop_observe_app' 'for-input' 'wireBytes'
+    $baseClick = Get-AverageOf $BaselineRows 'desktop_click' '' 'wireBytes'
+    $compactObserve = Get-AverageOf $CompactRows 'desktop_observe_app' 'compact' 'wireBytes'
+    $compactClick = Get-AverageOf $CompactRows 'desktop_click' 'compact-text' 'wireBytes'
+    if ($null -ne $baseObserve -and $null -ne $baseClick -and $null -ne $compactObserve -and $null -ne $compactClick)
+    {
+        $baseStep = $baseObserve + $baseClick
+        $compactStep = $compactObserve + $compactClick
+        $rows.Add([pscustomobject]@{
+            name = 'one input step (observe metadata + click)'
+            baselineBytes = $baseStep
+            compactBytes = $compactStep
+            baselineTextBytes = $null
+            compactTextBytes = $null
+            baselineImageTokens = $null
+            compactImageTokens = $null
+            savedPercent = [math]::Round(100.0 * ($baseStep - $compactStep) / [math]::Max(1, $baseStep), 1)
+        })
+    }
+
+    if ($null -ne $BaselineDiscovery)
+    {
+        $rows.Add([pscustomobject]@{
+            name = 'tools/list (baseline file vs this build)'
+            baselineBytes = [int]$BaselineDiscovery.toolListBytes
+            compactBytes = [int]$Discovery.toolListBytes
+            baselineTextBytes = $null
+            compactTextBytes = $null
+            baselineImageTokens = $null
+            compactImageTokens = $null
+            savedPercent = [math]::Round(100.0 * ($BaselineDiscovery.toolListBytes - $Discovery.toolListBytes) / [math]::Max(1, $BaselineDiscovery.toolListBytes), 1)
+        })
+    }
+
+    return $rows.ToArray()
+}
+
+function Get-ComparisonLines
+{
+    param($Comparison)
+
+    $lines = [Collections.Generic.List[string]]::new()
+    $lines.Add('| Call | Default wire bytes | Compact wire bytes | Default text bytes | Compact text bytes | Default image tokens | Compact image tokens | Wire saved |')
+    $lines.Add('|---|---|---|---|---|---|---|---|')
+    foreach ($row in $Comparison)
+    {
+        $lines.Add("| $($row.name) | $($row.baselineBytes) | $($row.compactBytes) | $($row.baselineTextBytes) | $($row.compactTextBytes) | $($row.baselineImageTokens) | $($row.compactImageTokens) | $($row.savedPercent)% |")
+    }
+
+    return $lines.ToArray()
+}
+
+# ---------------------------------------------------------------------------------------------------
 # Reports
 # ---------------------------------------------------------------------------------------------------
 
@@ -896,7 +1245,7 @@ function New-MarkdownTable
 
 function Write-Summary
 {
-    param([string]$Path, $Discovery, $Rows, [string[]]$Advertised, [string[]]$CleanupProblems)
+    param([string]$Path, $Discovery, $Rows, [string[]]$Advertised, [string[]]$CleanupProblems, $Comparison = @())
 
     $measured = @($Rows | Where-Object { $_.outcome -eq 'measured' })
     $topText = @($measured | Sort-Object estimatedTextTokens -Descending | Select-Object -First 10)
@@ -941,6 +1290,18 @@ function Write-Summary
     }
 
     $md.Add('')
+    if (@($Comparison).Count -gt 0)
+    {
+        $md.Add('## Default versus compact modes (same run, bytes on the wire)')
+        $md.Add('')
+        foreach ($line in (Get-ComparisonLines $Comparison))
+        {
+            $md.Add($line)
+        }
+
+        $md.Add('')
+    }
+
     $md.Add('## Coverage')
     $md.Add('')
     $coverage = foreach ($tool in ($Advertised | Sort-Object))
@@ -977,6 +1338,12 @@ function Write-Summary
     }
 
     Set-Content -LiteralPath $Path -Value $md -Encoding utf8
+}
+
+if ($SelfTest)
+{
+    Invoke-SelfTest
+    exit 0
 }
 
 # ---------------------------------------------------------------------------------------------------
@@ -1025,24 +1392,16 @@ $fixtureBefore = @(Get-Process -Name 'Pointframe.DesktopTestFixture' -ErrorActio
 $discovery = $null
 $advertised = @()
 $runFailure = $null
+$compactRows = @()
+$comparison = @()
 
 try
 {
-    $startInfo = [Diagnostics.ProcessStartInfo]::new($mcpPath)
-    $startInfo.WorkingDirectory = Split-Path $mcpPath
-    $startInfo.UseShellExecute = $false
-    $startInfo.RedirectStandardInput = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $startInfo.CreateNoWindow = $true
-    $startInfo.Environment['SNIPPINGTOOL_AUTOMATION_DATA_DIRECTORY'] = $dataDirectory
-    $startInfo.Environment['POINTFRAME_FIXTURE_STATE_PATH'] = Join-Path $outputDirectory 'fixture-state.json'
-    $startInfo.Environment['POINTFRAME_FIXTURE_MONITOR'] = '0'
-    $startInfo.ArgumentList.Add('--desktop-testing')
-    $startInfo.ArgumentList.Add('--desktop-policy')
-    $startInfo.ArgumentList.Add($policyPath)
-    $script:Process = [Diagnostics.Process]::Start($startInfo)
-    $script:ServerLog = $script:Process.StandardError.ReadToEndAsync()
+    $script:McpPath = $mcpPath
+    $script:McpDataDirectory = $dataDirectory
+    $script:McpOutputDirectory = $outputDirectory
+    $script:McpPolicyPath = $policyPath
+    Start-McpProcess
 
     $discovery = Measure-Discovery $outputDirectory
     $advertised = $discovery.toolNames
@@ -1065,6 +1424,18 @@ try
     Invoke-CaptureWorkflow $displays $window
     Invoke-RecordingWorkflow $displays
     Invoke-DesktopWorkflow $window $fixtureSession
+
+    $baselineRows = $script:Rows
+    $script:Rows = [Collections.Generic.List[object]]::new()
+    try
+    {
+        Invoke-CompactPass
+    }
+    finally
+    {
+        $compactRows = @($script:Rows)
+        $script:Rows = $baselineRows
+    }
 }
 catch
 {
@@ -1072,14 +1443,7 @@ catch
 }
 finally
 {
-    if ($script:Process -and -not $script:Process.HasExited)
-    {
-        $script:Process.StandardInput.Close()
-        if (-not $script:Process.WaitForExit(10000))
-        {
-            $script:Process.Kill($true)
-        }
-    }
+    Stop-McpProcess
 }
 
 # ---------------------------------------------------------------------------------------------------
@@ -1124,6 +1488,22 @@ if ($null -ne $discovery)
     }
 }
 
+foreach ($row in @($compactRows | Where-Object { $_.outcome -eq 'unexpected-error' }))
+{
+    $problems.Add("Unexpected error from compact call $($row.tool) [$($row.variant)]: $($row.reason)")
+}
+
+$baselineDiscovery = $null
+if ($BaselinePayloads)
+{
+    $baselineDiscovery = (Get-Content -LiteralPath $BaselinePayloads -Raw | ConvertFrom-Json).discovery
+}
+
+if ($null -ne $discovery -and $compactRows.Count -gt 0)
+{
+    $comparison = @(Get-ComparisonRows @($script:Rows) $compactRows $discovery $baselineDiscovery)
+}
+
 foreach ($problem in $cleanupProblems)
 {
     $problems.Add("Cleanup: $problem")
@@ -1136,12 +1516,20 @@ $document = [ordered]@{
     discovery = $discovery
     allowedSkips = $script:AllowedSkips
     calls = @($script:Rows)
+    compactCalls = @($compactRows)
+    comparison = @($comparison)
     problems = $problems.ToArray()
 }
 $document | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $outputDirectory 'payloads.json') -Encoding utf8
 if ($null -ne $discovery)
 {
-    Write-Summary (Join-Path $outputDirectory 'summary.md') $discovery $script:Rows $advertised $cleanupProblems.ToArray()
+    Write-Summary (Join-Path $outputDirectory 'summary.md') $discovery $script:Rows $advertised $cleanupProblems.ToArray() $comparison
+}
+
+if ($comparison.Count -gt 0)
+{
+    Write-Output 'Default versus compact (bytes on the wire, same run):'
+    Get-ComparisonLines $comparison | ForEach-Object { Write-Output $_ }
 }
 
 Write-Output "Payload inventory written to $outputDirectory"

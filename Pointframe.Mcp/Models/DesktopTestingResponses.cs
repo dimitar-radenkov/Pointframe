@@ -94,3 +94,40 @@ public sealed record McpUiCheckRequest(
     string? WindowRef = null,
     string? Expected = null,
     string? ProcessRef = null);
+
+public sealed record DesktopCompactImageBlock(
+    string ImageRef,
+    int Width,
+    int Height,
+    McpPixelBounds DesktopBoundsPixels);
+
+// Bounds are [x, y, width, height] in desktop physical pixels. WindowRef is omitted when it equals the
+// response's top-level WindowRef; Disabled is present (true) only for a disabled element.
+public sealed record DesktopCompactElementBlock(
+    string ElementRef,
+    string Role,
+    string? Name,
+    string? AutomationId,
+    IReadOnlyList<int> Bounds,
+    string? WindowRef = null,
+    bool? Disabled = null,
+    string? ToggleState = null,
+    string? Selection = null,
+    string? Text = null);
+
+public sealed record DesktopTestingCompactObservationResponse(
+    int SchemaVersion,
+    string Detail,
+    string ObservationRef,
+    string TargetState,
+    string ObservationStatus,
+    string UiaStatus,
+    string? ProcessRef,
+    bool IsTruncated,
+    int TopologyGeneration,
+    DateTimeOffset PixelCapturedUtc,
+    IReadOnlyList<DesktopCompactImageBlock> Images,
+    string? WindowRef,
+    IReadOnlyList<DesktopCompactElementBlock> Elements,
+    McpCaptureError? Error = null,
+    DesktopOcrObservationResponse? Ocr = null);

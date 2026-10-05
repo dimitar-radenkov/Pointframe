@@ -207,6 +207,16 @@ image content block — downscaled to at most 1600 px on its longest edge, while
 full-resolution PNG is always saved to disk — so a client that cannot reach the server's
 filesystem can still see the screenshot. Pass `includeImage: false` to suppress it.
 
+#### Smaller responses (opt-in)
+
+Every default above is unchanged. These optional parameters and one server option cut what an agent spends per call:
+
+- `maxImageEdge` (64 through 1600, default 1600) on `capture_monitor`, `capture_window`, `read_text_from_monitor`, `read_text_from_window`, and `desktop_observe_app` caps the inline image's longest edge. Image tokens follow pixels, so a whole-monitor capture at 800 px costs about a quarter of the default. On `desktop_observe_app` the returned image width and height are what action coordinates use, so clicks stay correct.
+- `imageFormat: "jpeg"` on the four capture and OCR tools returns the inline image as JPEG (quality 80). It shrinks whole-monitor captures sharply but can be larger than PNG for flat UI windows, so measure before using it on windows. The saved file is always the full-resolution PNG.
+- `detail: "compact"` on `desktop_observe_app` keeps every ref (`observationRef`, `imageRef`, `elementRef`, `windowRef`), the process and image identity, and each element's role, name, automation id, and bounds, in a payload about half the size: bounds become `[x, y, width, height]`, null fields are omitted, an element without `windowRef` uses the top-level `windowRef`, `disabled: true` marks disabled elements, and names or text over 200 characters are truncated with the omitted count.
+- `detail: "compact"` on `desktop_get_test_report` returns verdicts, criteria, every action outcome, and every check verdict, but leaves out per-item evidence, recorded check conditions, and the whole `proof` (it is not verifiable from the response). The full signed `report.json`, evidence folder, and `index.html` are always written to `sessionDirectory`.
+- Server option `--compact-text` (or environment variable `POINTFRAME_MCP_COMPACT_TEXT=1`) replaces the duplicated JSON text block of status-style tools (the desktop action tools, `desktop_check_ui`, `desktop_get_test_report`, `desktop_get_action_result`, and the recording tools) with a one-line summary. `structuredContent` is untouched, and tools whose result is the data itself (lists, search, observations, replay differences) keep their full text. An action summary always states the operation, dispatch, verification, and observation status plus any error; when the dispatch is partial or unknown it says not to resend the action and names `desktop_get_action_result` with the action id.
+
 ### MCP use cases
 
 The MCP server is useful when an agent needs a local, verifiable visual artifact

@@ -64,6 +64,42 @@ public static class CapturePreviewImage
         return (output.ToArray(), width, height);
     }
 
+    public const int DefaultJpegQuality = 80;
+
+    // JPEG is for opt-in compact previews of photographic or whole-monitor captures: it is lossy, so the
+    // on-disk PNG stays the evidence and this is only the transport copy.
+    public static byte[] CreateDownscaledJpeg(byte[] originalBytes, int maxLongestEdgePixels = DefaultMaxLongestEdgePixels, int quality = DefaultJpegQuality)
+    {
+        ArgumentNullException.ThrowIfNull(originalBytes);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLongestEdgePixels);
+        ArgumentOutOfRangeException.ThrowIfLessThan(quality, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(quality, 100);
+
+        using var sourceStream = new MemoryStream(originalBytes, writable: false);
+        using var source = new Bitmap(sourceStream);
+
+        var longestEdge = Math.Max(source.Width, source.Height);
+        var scale = longestEdge <= maxLongestEdgePixels ? 1d : (double)maxLongestEdgePixels / longestEdge;
+        var width = Math.Max(1, (int)Math.Round(source.Width * scale));
+        var height = Math.Max(1, (int)Math.Round(source.Height * scale));
+
+        using var flattened = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+        using (var graphics = Graphics.FromImage(flattened))
+        {
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            graphics.SmoothingMode = SmoothingMode.HighQuality;
+            graphics.DrawImage(source, 0, 0, width, height);
+        }
+
+        var codec = ImageCodecInfo.GetImageEncoders().First(encoder => encoder.FormatID == ImageFormat.Jpeg.Guid);
+        using var parameters = new EncoderParameters(1);
+        parameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, (long)quality);
+        using var output = new MemoryStream();
+        flattened.Save(output, codec, parameters);
+        return output.ToArray();
+    }
+
     public static byte[] CreateDownscaledPng(byte[] originalBytes, int maxLongestEdgePixels = DefaultMaxLongestEdgePixels)
     {
         ArgumentNullException.ThrowIfNull(originalBytes);

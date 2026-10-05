@@ -55,7 +55,8 @@ public sealed record DesktopObservationRequest(
     bool IncludeUiAutomation = true,
     string? WindowRef = null,
     DesktopSurfaceIdentity? Surface = null,
-    int? TopologyGeneration = null);
+    int? TopologyGeneration = null,
+    int? MaxImageLongestEdge = null);
 
 public sealed record DesktopObservationResult(
     DesktopObservation Observation,

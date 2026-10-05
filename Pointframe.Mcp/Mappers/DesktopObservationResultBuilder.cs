@@ -14,14 +14,37 @@ internal static class DesktopObservationResultBuilder
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
+    private static readonly JsonSerializerOptions CompactSerializerOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
+
     public static CallToolResult Build(
         DesktopTestingObservationResponse response,
         DesktopObservation? observation,
         bool includeImages)
     {
+        return BuildCore(response, SerializerOptions, response.Error is not null, observation, includeImages);
+    }
+
+    public static CallToolResult BuildCompact(
+        DesktopTestingCompactObservationResponse response,
+        DesktopObservation? observation,
+        bool includeImages)
+    {
+        return BuildCore(response, CompactSerializerOptions, response.Error is not null, observation, includeImages);
+    }
+
+    private static CallToolResult BuildCore(
+        object response,
+        JsonSerializerOptions serializerOptions,
+        bool isError,
+        DesktopObservation? observation,
+        bool includeImages)
+    {
         var content = new List<ContentBlock>
         {
-            new TextContentBlock { Text = JsonSerializer.Serialize(response, SerializerOptions) },
+            new TextContentBlock { Text = JsonSerializer.Serialize(response, serializerOptions) },
         };
 
         if (includeImages && observation is not null)
@@ -40,8 +63,8 @@ internal static class DesktopObservationResultBuilder
         return new CallToolResult
         {
             Content = content,
-            StructuredContent = JsonSerializer.SerializeToElement(response, SerializerOptions),
-            IsError = response.Error is not null,
+            StructuredContent = JsonSerializer.SerializeToElement(response, serializerOptions),
+            IsError = isError,
         };
     }
 }
