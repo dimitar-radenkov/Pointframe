@@ -338,8 +338,8 @@ public sealed class VerificationTests : IDisposable
     }
 
     [Theory]
-    [InlineData(new[] { "verify" }, "The verify command requires an action: init, run, status, trust, task start, hook stop, or agent.")]
-    [InlineData(new[] { "verify", "start" }, "The verify command requires an action: init, run, status, trust, task start, hook stop, or agent.")]
+    [InlineData(new[] { "verify" }, "The verify command requires an action: init, run, setup, status, trust, task start, hook stop, or agent.")]
+    [InlineData(new[] { "verify", "start" }, "The verify command requires an action: init, run, setup, status, trust, task start, hook stop, or agent.")]
     [InlineData(new[] { "verify", "task", "start" }, "The verify task command requires: task start <task-file>.")]
     [InlineData(new[] { "verify", "run", "--fast" }, "Unrecognized verify run option '--fast'.")]
     [InlineData(new[] { "verify", "status", "--mcp", "x" }, "Unrecognized verify status option '--mcp'.")]

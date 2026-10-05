@@ -18,7 +18,9 @@ internal sealed record VerificationServices(
     IReviewer? Reviewer = null,
     TextReader? HookInput = null,
     ICommandApprover? Approver = null,
-    IPointframeCommandResolver? CommandResolver = null);
+    IPointframeCommandResolver? CommandResolver = null,
+    IMcpServerHost? ServerHost = null,
+    IMcpPackageInstaller? McpInstaller = null);
 
 internal sealed record TaskStartResponse(
     int SchemaVersion,
@@ -64,12 +66,32 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         "task-start" => TaskStartAsync(command, cancellationToken),
         "hook-stop" => new VerificationHook(services, services.HookInput ?? TextReader.Null, standardOutput, standardError).StopAsync(command, cancellationToken),
         "agent" => AgentAsync(command),
+        "setup" => new DesktopToolsApplication(services, this, standardOutput, standardError).SetupAsync(command, cancellationToken),
         _ => VerifyAsync(command, cancellationToken),
     };
 
+    internal Task<int> ServeAsync(CliCommand command, string currentDirectory, CancellationToken cancellationToken) =>
+        new DesktopToolsApplication(services, this, standardOutput, standardError).ServeAsync(command, currentDirectory, cancellationToken);
+
     private Task<int> InitAsync(CliCommand command, CancellationToken cancellationToken) => new VerificationInit(
         new PhysicalVerificationInitFileSystem(), standardOutput, standardError, services.CommandResolver, services.VerifierVersion)
-        .RunAsync(command, Environment.CurrentDirectory, ResolveMcpExecutable, services.ClientFactory, services.DesktopLockName, cancellationToken);
+        .RunAsync(command, Environment.CurrentDirectory, ResolveMcpExecutable, services.ClientFactory, services.DesktopLockName, TrustFailureCodeAsync, cancellationToken);
+
+    private async Task<string?> TrustFailureCodeAsync(VerificationSpec spec, CancellationToken cancellationToken)
+    {
+        var (_, untrusted, errorCode) = await EnsureTrustedAsync(spec, cancellationToken);
+        if (untrusted is null)
+        {
+            return null;
+        }
+
+        foreach (var line in untrusted)
+        {
+            await standardError.WriteLineAsync($"  {line}");
+        }
+
+        return errorCode ?? "spec_untrusted";
+    }
 
     private async Task<int> VerifyAsync(CliCommand command, CancellationToken cancellationToken)
     {
@@ -638,7 +660,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         return result;
     }
 
-    private static IReadOnlyList<string> IsolatedArguments(VerificationApp app, string dataDirectory) =>
+    internal static IReadOnlyList<string> IsolatedArguments(VerificationApp app, string dataDirectory) =>
         app.Isolation?.Argument is { } argument ? [.. app.Arguments, argument, dataDirectory] : app.Arguments;
 
     private (VerificationScenario? Scenario, VerificationTaskInfo? Info, (string Code, string Message)? Error) LoadTask(VerificationSpec spec, string taskId, string specSha256)
@@ -680,7 +702,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
     }
 
     // Approval order: exact existing approval; fixed rules; standard command policy; approver agent; person.
-    private async Task<(string? ApprovedBy, IReadOnlyList<string>? Untrusted, string? ErrorCode)> EnsureTrustedAsync(VerificationSpec spec, CancellationToken cancellationToken)
+    internal async Task<(string? ApprovedBy, IReadOnlyList<string>? Untrusted, string? ErrorCode)> EnsureTrustedAsync(VerificationSpec spec, CancellationToken cancellationToken)
     {
         var commandsSha256 = SpecDigests.CommandsSha256(spec);
         var trust = services.Store.ReadTrust(spec.RootDirectory);
@@ -741,9 +763,9 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         .Append("Use an approver agent with network access, or a person can approve them by running 'Pointframe.Cli.exe verify trust' in a terminal.")
         .ToArray();
 
-    private string SpecPathOf(CliCommand command) => Path.GetFullPath(command.SpecPath ?? VerificationSpecLoader.DefaultSpecRelativePath);
+    internal string SpecPathOf(CliCommand command) => Path.GetFullPath(command.SpecPath ?? VerificationSpecLoader.DefaultSpecRelativePath);
 
-    private string? ResolveMcpExecutable(string? explicitPath)
+    internal string? ResolveMcpExecutable(string? explicitPath)
     {
         var candidate = explicitPath
             ?? Environment.GetEnvironmentVariable(McpExecutableVariable)
@@ -757,7 +779,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         return File.Exists(fullPath) ? fullPath : null;
     }
 
-    private const string McpNotFoundMessage =
+    internal const string McpNotFoundMessage =
         "No Pointframe MCP server found. Pass --mcp <path>, set POINTFRAME_MCP_EXECUTABLE, or run 'Pointframe.Cli.exe mcp install --client vscode'.";
 
     private const string DesktopBusyMessage = "Another Pointframe verification run is using the desktop. Wait for it to finish.";

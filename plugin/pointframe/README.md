@@ -52,6 +52,8 @@ Official builds of the server send one anonymous usage event per tool call to Az
 
 The `verify-desktop-work` skill needs the server's opt-in desktop-testing tools, which let Claude launch a listed app and click in it. They are off in this plugin. To turn them on, write a policy file that lists the apps Claude may launch (see the [desktop-testing guide](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp-desktop-testing/README.md)), then register the plugin's launcher yourself with the two extra flags, for example `claude mcp add --scope user pointframe-testing -- "<plugin folder>\scripts\start-mcp.cmd" --desktop-testing --desktop-policy C:\path\to\policy.json`. The flags are passed through to the server.
 
+If the project already has a `.pointframe/verify.json` with an `app`, skip all of that: run `pointframe verify setup` in the project instead. It approves the spec like `pointframe verify run`, installs the server if needed, and writes the project's `.mcp.json` so Claude gets desktop tools for exactly that app, with no policy file to write.
+
 ## Uninstall and clear the cache
 
 Remove the plugin with `/plugin`, then delete the cached server:

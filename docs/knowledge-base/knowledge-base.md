@@ -82,7 +82,7 @@ Generated from the area files under `docs/knowledge-base/features/`. Each featur
 - [Settings](features/settings.md): F-29 Settings window; F-30 Custom global hotkeys; F-31 Light and dark theme; F-42 Share destination settings
 - [Updates and About](features/updates.md): F-32 Update check and install; F-33 About window
 - [Telemetry](features/telemetry.md): F-34 App lifecycle and usage telemetry; F-44 CLI and MCP operation telemetry: one anonymous event per MCP tool call or CLI command, first-run notice, opt-out
-- [CLI and MCP](features/cli-mcp.md): F-35 CLI: capture/OCR/recording plus managed MCP install, status, and doctor for VS Code; F-36 MCP capture, OCR, recording, and library tools; F-37 MCP desktop testing tools; F-39 CLI: spec-driven verification (`verify init`, `run`, `status`, `trust`, `task start`, `hook stop`, `agent`): gates, desktop scenarios, frozen task criteria, project onboarding; F-45 Claude plugin: the pinned MCP server plus the desktop-verification and capture skills, installed from the Claude plugin directory
+- [CLI and MCP](features/cli-mcp.md): F-35 CLI: capture/OCR/recording plus managed MCP install, status, and doctor for VS Code, and `mcp serve` (the stdio launcher a project's agent config runs); F-36 MCP capture, OCR, recording, and library tools; F-37 MCP desktop testing tools; F-39 CLI: spec-driven verification (`verify init`, `setup`, `run`, `status`, `trust`, `task start`, `hook stop`, `agent`): gates, desktop scenarios, frozen task criteria, project onboarding, interactive desktop tools for the spec's app; F-45 Claude plugin: the pinned MCP server plus the desktop-verification and capture skills, installed from the Claude plugin directory
 
 <!-- /features -->
 
@@ -251,6 +251,7 @@ A decision records why a choice was made over the obvious alternative, so nobody
 - [D-011 Standard commands are approved by policy](features/cli-mcp.md#d-011-standard-commands-are-approved-by-policy)
 - [D-012 Version compatibility](features/cli-mcp.md#d-012-version-compatibility)
 - [D-013 Verification spec v1 is frozen](features/cli-mcp.md#d-013-verification-spec-v1-is-frozen)
+- [D-014 Interactive desktop testing reuses verify trust](features/cli-mcp.md#d-014-interactive-desktop-testing-reuses-verify-trust)
 
 <!-- /decisions -->
 

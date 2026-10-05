@@ -292,6 +292,9 @@ internal static partial class CommandPolicy
     }
 
     private static bool Inside(string path, string root) =>
+        LexicallyInside(path, root) && PathContainment.IsInside(path, root);
+
+    internal static bool LexicallyInside(string path, string root) =>
         Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase)
         || string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)) + Path.DirectorySeparatorChar, root, StringComparison.OrdinalIgnoreCase);
 

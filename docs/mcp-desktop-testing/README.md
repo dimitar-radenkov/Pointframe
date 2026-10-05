@@ -113,7 +113,7 @@ the caller with two indistinguishable `click` tools.
 
 | Tool | Purpose |
 |---|---|
-| `desktop_list_apps` | Acknowledge a candidate-listing request; this host never returns candidates |
+| `desktop_list_apps` | List the policy's profiles (`id`, executable file name, allowed action count); never lists running processes or attach candidates |
 | `desktop_start_test_session` | Launch one approved executable |
 | `desktop_restart_app` | Restart only after the previous target exited normally |
 | `desktop_observe_app` | Capture bounded images and optional UIA data |

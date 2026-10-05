@@ -68,6 +68,7 @@ internal sealed class VerificationInit(
         Func<string?, string?> resolveMcp,
         IMcpToolClientFactory clientFactory,
         string desktopLockName,
+        Func<VerificationSpec, CancellationToken, Task<string?>> trustFailureCode,
         CancellationToken cancellationToken)
     {
         rootDirectory = Path.GetFullPath(rootDirectory);
@@ -92,7 +93,12 @@ internal sealed class VerificationInit(
         if (!preserveExistingSpec && command.Explore && app is not null && fileSystem.FileExists(app))
         {
             var mcp = resolveMcp(command.McpExecutablePath);
-            if (mcp is null)
+            var untrustedCode = await ExploreTrustFailureAsync(rootDirectory, specPath, appRelative, gates, trustFailureCode, cancellationToken);
+            if (untrustedCode is not null)
+            {
+                warnings.Add($"The app was not launched to explore it because the spec's commands are not trusted yet ({untrustedCode}). Run 'pointframe verify trust' in a terminal, then 'pointframe verify init --app <path> --explore --force'.");
+            }
+            else if (mcp is null)
             {
                 warnings.Add("The app could not be explored because no Pointframe MCP server was found; pass --mcp to verify run later, or set POINTFRAME_MCP_EXECUTABLE.");
             }
@@ -203,6 +209,27 @@ internal sealed class VerificationInit(
 
         await WriteAsync(new VerificationInitResponse(status, filesWritten, filesLeftAlone, preserveExistingSpec ? [] : gates.Select(DescribeGate).ToArray(), preserveExistingSpec ? null : appRelative, warnings, nextSteps));
         return 0;
+    }
+
+    // Exploring launches the app, which is a command the spec declares; it needs the same approval as a run.
+    private async Task<string?> ExploreTrustFailureAsync(
+        string rootDirectory,
+        string specPath,
+        string? appRelative,
+        IReadOnlyList<VerificationGate> gates,
+        Func<VerificationSpec, CancellationToken, Task<string?>> trustFailureCode,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(JsonSerializer.Serialize(BuildSpec(appRelative, gates, null), JsonOptions));
+            var spec = VerificationSpecLoader.Parse(document.RootElement, specPath, rootDirectory);
+            return await trustFailureCode(spec, cancellationToken);
+        }
+        catch (VerificationSpecException)
+        {
+            return "spec_invalid";
+        }
     }
 
     internal IReadOnlyList<VerificationGate> DetectGates(string rootDirectory, List<string>? warnings = null)
