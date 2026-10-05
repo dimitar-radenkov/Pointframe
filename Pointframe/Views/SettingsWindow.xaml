@@ -441,6 +441,8 @@
                                     <TextBlock Text="Response JSON path" Style="{StaticResource RowTitle}" Margin="0,0,0,4"/>
                                     <TextBox Text="{Binding ShareResponseLinkPath, UpdateSourceTrigger=PropertyChanged}"
                                              AutomationProperties.AutomationId="SettingsWindow.ShareResponseLinkPath"/>
+                                    <TextBlock Text="Dot path; use numeric segments for array items (example: files.0.url)."
+                                               Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="4">
                                     <TextBlock Text="Timeout (seconds)" Style="{StaticResource RowTitle}" Margin="0,0,0,4"/>

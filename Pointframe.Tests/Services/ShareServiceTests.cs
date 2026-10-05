@@ -120,6 +120,46 @@ public sealed class ShareServiceTests
     }
 
     [Fact]
+    public async Task UploadAsync_ExtractsLinkThroughNestedArrayPath()
+    {
+        var service = Service(Settings(path: "files.0.url"), new FakeHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, "{\"files\":[{\"url\":\"https://share.example/array\"}]}"))));
+
+        var result = await service.UploadAsync([1]);
+
+        Assert.Equal("https://share.example/array", result.Link);
+    }
+
+    [Fact]
+    public async Task UploadAsync_ArrayIndexOutOfRange_IsUnparseable()
+    {
+        var service = Service(Settings(path: "files.1.url"), new FakeHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, "{\"files\":[{\"url\":\"https://share.example/array\"}]}"))));
+
+        var result = await service.UploadAsync([1]);
+
+        Assert.Equal(ShareFailure.UnparseableResponse, result.Failure);
+    }
+
+    [Fact]
+    public async Task UploadAsync_NumericSegmentOnObject_IsPropertyName()
+    {
+        var service = Service(Settings(path: "files.0.url"), new FakeHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, "{\"files\":{\"0\":{\"url\":\"https://share.example/object\"}}}"))));
+
+        var result = await service.UploadAsync([1]);
+
+        Assert.Equal("https://share.example/object", result.Link);
+    }
+
+    [Fact]
+    public async Task UploadAsync_ArrayAtEndOfPath_IsUnparseable()
+    {
+        var service = Service(Settings(path: "files"), new FakeHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, "{\"files\":[{\"url\":\"https://share.example/array\"}]}"))));
+
+        var result = await service.UploadAsync([1]);
+
+        Assert.Equal(ShareFailure.UnparseableResponse, result.Failure);
+    }
+
+    [Fact]
     public async Task UploadAsync_AcceptsPlainHttpsUrlBody()
     {
         var service = Service(Settings(), new FakeHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
