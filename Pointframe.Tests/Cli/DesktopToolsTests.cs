@@ -154,6 +154,56 @@ public sealed class DesktopToolsTests : IDisposable
     }
 
     [Fact]
+    public async Task Serve_OlderInstalledServer_UpdatesAndKeepsStdoutEmpty()
+    {
+        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        _fixture.CreateAppAndMcp();
+        TrustByPerson();
+        var oldPath = Path.Combine(_outside, "old.exe");
+        var newPath = Path.Combine(_outside, "new.exe");
+        File.WriteAllBytes(oldPath, [0]);
+        File.WriteAllBytes(newPath, [0]);
+        var installer = new Mock<IMcpPackageInstaller>();
+        installer.Setup(item => item.GetCurrent()).Returns(new McpInstallation("1.2.3", oldPath, _outside));
+        installer.Setup(item => item.InstallLatestAsync(false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new McpInstallation("1.2.4", newPath, _outside));
+        var app = new VerificationApplication(_services.Build(_store, serverHost: _host, installer: installer.Object,
+            installedMcp: () => oldPath, verifierVersion: "Pointframe CLI 1.2.4"), _output, _error);
+
+        var exit = await app.ServeAsync(new CliCommand("mcp", McpAction: "serve", ProjectPath: _fixture.Root), _fixture.Root, CancellationToken.None);
+
+        Assert.Equal(0, exit);
+        Assert.Equal(string.Empty, _output.ToString());
+        Assert.Contains("updated the MCP server from 1.2.3 to 1.2.4 to match CLI 1.2.4", _error.ToString(), StringComparison.Ordinal);
+        Assert.Contains(_host.Launches, item => item.Executable == newPath);
+        installer.Verify(item => item.InstallLatestAsync(false, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Serve_OlderInstalledServerUpdateFailure_RefusesOnStderrWithEmptyStdout()
+    {
+        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        _fixture.CreateAppAndMcp();
+        TrustByPerson();
+        var oldPath = Path.Combine(_outside, "old.exe");
+        File.WriteAllBytes(oldPath, [0]);
+        var installer = new Mock<IMcpPackageInstaller>();
+        installer.Setup(item => item.GetCurrent()).Returns(new McpInstallation("1.2.3", oldPath, _outside));
+        installer.Setup(item => item.InstallLatestAsync(false, It.IsAny<CancellationToken>())).ThrowsAsync(new HttpRequestException("offline"));
+        var app = new VerificationApplication(_services.Build(_store, serverHost: _host, installer: installer.Object,
+            installedMcp: () => oldPath, verifierVersion: "Pointframe CLI 1.2.4"), _output, _error);
+
+        var exit = await app.ServeAsync(new CliCommand("mcp", McpAction: "serve", ProjectPath: _fixture.Root), _fixture.Root, CancellationToken.None);
+
+        Assert.Equal(1, exit);
+        Assert.Equal(string.Empty, _output.ToString());
+        Assert.Contains("[mcp_version_mismatch]", _error.ToString(), StringComparison.Ordinal);
+        Assert.Contains("1.2.3", _error.ToString(), StringComparison.Ordinal);
+        Assert.Contains("1.2.4", _error.ToString(), StringComparison.Ordinal);
+        Assert.Empty(_host.Launches);
+    }
+
+    [Fact]
     public async Task Serve_AppReachedThroughJunctionOutsideTheProject_IsRefused()
     {
         var target = Path.Combine(_outside, "elsewhere");

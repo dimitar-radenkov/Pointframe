@@ -62,10 +62,11 @@ internal sealed class DesktopToolsApplication(
             return await RefuseServeAsync(refusal!);
         }
 
-        var mcp = verification.ResolveMcpExecutable(command.McpExecutablePath);
+        var resolution = await verification.ResolveMcpExecutableAsync(command.McpExecutablePath, cancellationToken);
+        var mcp = resolution.Path;
         if (mcp is null)
         {
-            return await RefuseServeAsync(new Refusal(1, "mcp_not_found", VerificationApplication.McpNotFoundMessage));
+            return await RefuseServeAsync(new Refusal(1, resolution.ErrorCode ?? "mcp_not_found", resolution.Error ?? VerificationApplication.McpNotFoundMessage));
         }
 
         var app = spec.App!;
@@ -124,12 +125,18 @@ internal sealed class DesktopToolsApplication(
         }
 
         var warnings = new List<string>();
-        var mcp = verification.ResolveMcpExecutable(command.McpExecutablePath);
+        var resolution = await verification.ResolveMcpExecutableAsync(command.McpExecutablePath, cancellationToken);
+        var mcp = resolution.Path;
         var installed = false;
         string? version = null;
         string? failureCode = null;
         string? failureMessage = null;
-        if (mcp is null && command.McpExecutablePath is null && services.McpInstaller is { } installer)
+        if (mcp is null && resolution.ErrorCode is not null)
+        {
+            failureCode = resolution.ErrorCode;
+            failureMessage = resolution.Error;
+        }
+        else if (mcp is null && command.McpExecutablePath is null && services.McpInstaller is { } installer)
         {
             try
             {
@@ -146,8 +153,8 @@ internal sealed class DesktopToolsApplication(
         }
         else if (mcp is null)
         {
-            failureCode = "mcp_not_found";
-            failureMessage = VerificationApplication.McpNotFoundMessage;
+            failureCode = resolution.ErrorCode ?? "mcp_not_found";
+            failureMessage = resolution.Error ?? VerificationApplication.McpNotFoundMessage;
         }
 
         if (mcp is not null && version is null)

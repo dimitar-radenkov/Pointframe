@@ -179,9 +179,14 @@ internal sealed class VerificationFixture : IDisposable
             string? hookInput = null,
             IMcpServerHost? serverHost = null,
             IMcpPackageInstaller? installer = null,
-            Func<string?>? installedMcp = null) => new(
-            Factory.Object, installedMcp ?? (() => null), Commands.Object, WorkingTree.Object, store, Confirmation.Object, Examiner.Object, LockName, "test-1.0",
-            Reviewer.Object, hookInput is null ? null : new StringReader(hookInput), Approver?.Object, CommandResolver.Object, serverHost, installer);
+            Func<string?>? installedMcp = null,
+            string? verifierVersion = null) => new(
+            Factory.Object, installedMcp ?? (() => null), Commands.Object, WorkingTree.Object, store, Confirmation.Object, Examiner.Object, LockName, verifierVersion ?? "test-1.0",
+            Reviewer.Object, hookInput is null ? null : new StringReader(hookInput), Approver?.Object, CommandResolver.Object, serverHost, installer,
+            EnvironmentVariable: name => Environment.TryGetValue(name, out var value) ? value : null);
+
+        // The machine's own variables (POINTFRAME_MCP_EXECUTABLE) must not reach a test.
+        internal Dictionary<string, string> Environment { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         internal VerificationApplication Application(VerificationStore store, TextWriter output, string? hookInput = null) => new(
             Build(store, hookInput),

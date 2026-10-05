@@ -20,7 +20,10 @@ internal sealed record VerificationServices(
     ICommandApprover? Approver = null,
     IPointframeCommandResolver? CommandResolver = null,
     IMcpServerHost? ServerHost = null,
-    IMcpPackageInstaller? McpInstaller = null);
+    IMcpPackageInstaller? McpInstaller = null,
+    Func<string, string?>? EnvironmentVariable = null);
+
+internal sealed record McpResolution(string? Path, string? ErrorCode = null, string? Error = null);
 
 internal sealed record TaskStartResponse(
     int SchemaVersion,
@@ -75,7 +78,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
     private Task<int> InitAsync(CliCommand command, CancellationToken cancellationToken) => new VerificationInit(
         new PhysicalVerificationInitFileSystem(), standardOutput, standardError, services.CommandResolver, services.VerifierVersion)
-        .RunAsync(command, Environment.CurrentDirectory, ResolveMcpExecutable, services.ClientFactory, services.DesktopLockName, TrustFailureCodeAsync, cancellationToken);
+        .RunAsync(command, Environment.CurrentDirectory, ResolveMcpExecutableAsync, services.ClientFactory, services.DesktopLockName, TrustFailureCodeAsync, cancellationToken);
 
     private async Task<string?> TrustFailureCodeAsync(VerificationSpec spec, CancellationToken cancellationToken)
     {
@@ -187,10 +190,11 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
                     return await ErrorAsync(context, 1, "app_not_found", $"The app executable does not exist: {app.ExecutablePath}. Build the app first.", writeFile: true, gates: gates);
                 }
 
-                var mcpExecutable = ResolveMcpExecutable(command.McpExecutablePath);
+                var resolution = await ResolveMcpExecutableAsync(command.McpExecutablePath, cancellationToken);
+                var mcpExecutable = resolution.Path;
                 if (mcpExecutable is null)
                 {
-                    return await ErrorAsync(context, 1, "mcp_not_found", McpNotFoundMessage, writeFile: true, gates: gates);
+                    return await ErrorAsync(context, 1, resolution.ErrorCode ?? "mcp_not_found", resolution.Error ?? McpNotFoundMessage, writeFile: true, gates: gates);
                 }
 
                 context.Provenance = context.Provenance with
@@ -488,10 +492,11 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             return await TaskErrorAsync(taskId, 1, "app_not_found", $"The app executable does not exist: {spec.App.ExecutablePath}. Build the unchanged app first.");
         }
 
-        var mcpExecutable = ResolveMcpExecutable(command.McpExecutablePath);
+        var resolution = await ResolveMcpExecutableAsync(command.McpExecutablePath, cancellationToken);
+        var mcpExecutable = resolution.Path;
         if (mcpExecutable is null)
         {
-            return await TaskErrorAsync(taskId, 1, "mcp_not_found", McpNotFoundMessage);
+            return await TaskErrorAsync(taskId, 1, resolution.ErrorCode ?? "mcp_not_found", resolution.Error ?? McpNotFoundMessage);
         }
 
         using var desktopLock = DesktopLock.TryTake(services.DesktopLockName);
@@ -765,18 +770,77 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
     internal string SpecPathOf(CliCommand command) => Path.GetFullPath(command.SpecPath ?? VerificationSpecLoader.DefaultSpecRelativePath);
 
-    internal string? ResolveMcpExecutable(string? explicitPath)
+    internal async Task<McpResolution> ResolveMcpExecutableAsync(string? explicitPath, CancellationToken cancellationToken = default)
     {
-        var candidate = explicitPath
-            ?? Environment.GetEnvironmentVariable(McpExecutableVariable)
-            ?? services.InstalledMcpExecutable();
-        if (string.IsNullOrWhiteSpace(candidate))
+        var configured = explicitPath ?? (services.EnvironmentVariable ?? Environment.GetEnvironmentVariable)(McpExecutableVariable);
+        if (configured is not null)
         {
-            return null;
+            return ResolvePath(configured);
         }
 
-        var fullPath = Path.GetFullPath(candidate);
-        return File.Exists(fullPath) ? fullPath : null;
+        var installed = services.McpInstaller?.GetCurrent();
+        var candidate = installed?.ExecutablePath ?? services.InstalledMcpExecutable();
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return new McpResolution(null);
+        }
+
+        if (installed is not null && TryVersion(installed.Version, out var serverVersion)
+            && TryVersion(CliVersion(), out var cliVersion))
+        {
+            var comparison = serverVersion.CompareTo(cliVersion);
+            if (comparison < 0)
+            {
+                try
+                {
+                    if (services.McpInstaller is null)
+                    {
+                        throw new InvalidOperationException("No MCP package installer is available.");
+                    }
+
+                    var updated = await services.McpInstaller.InstallLatestAsync(false, cancellationToken);
+                    await standardError.WriteLineAsync($"Pointframe verify: updated the MCP server from {installed.Version} to {updated.Version} to match CLI {CliVersion()}.");
+                    return ResolvePath(updated.ExecutablePath);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    return Mismatch(installed.Version, CliVersion(), exception.Message);
+                }
+            }
+
+            if (comparison > 0)
+            {
+                await standardError.WriteLineAsync($"Pointframe verify: installed MCP server {installed.Version} is newer than CLI {CliVersion()}.");
+            }
+        }
+
+        return ResolvePath(candidate);
+    }
+
+    private static McpResolution ResolvePath(string candidate)
+    {
+        var path = Path.GetFullPath(candidate);
+        return File.Exists(path) ? new McpResolution(path) : new McpResolution(null);
+    }
+
+    private static McpResolution Mismatch(string server, string cli, string detail) => new(null, "mcp_version_mismatch",
+        $"The installed Pointframe MCP server is {server}, older than CLI {cli}, and could not be updated ({detail}). Run 'pointframe mcp install --client vscode' or pass --mcp <path>.");
+
+    private string CliVersion() => services.VerifierVersion is { } version
+        ? version.Split(' ').Last()
+        : CliApplication.GetVersion().Split(' ').Last();
+
+    private static bool TryVersion(string value, out Version version)
+    {
+        var core = value.Split('-', '+')[0];
+        var parts = core.Split('.');
+        if (parts.Length >= 3 && Version.TryParse(string.Join('.', parts.Take(3)), out var parsed))
+        {
+            version = parsed;
+            return true;
+        }
+        version = new Version(0, 0, 0);
+        return false;
     }
 
     internal const string McpNotFoundMessage =

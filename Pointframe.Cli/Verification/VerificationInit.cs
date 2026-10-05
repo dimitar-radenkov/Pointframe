@@ -65,7 +65,7 @@ internal sealed class VerificationInit(
     internal async Task<int> RunAsync(
         CliCommand command,
         string rootDirectory,
-        Func<string?, string?> resolveMcp,
+        Func<string?, CancellationToken, Task<McpResolution>> resolveMcp,
         IMcpToolClientFactory clientFactory,
         string desktopLockName,
         Func<VerificationSpec, CancellationToken, Task<string?>> trustFailureCode,
@@ -92,7 +92,8 @@ internal sealed class VerificationInit(
 
         if (!preserveExistingSpec && command.Explore && app is not null && fileSystem.FileExists(app))
         {
-            var mcp = resolveMcp(command.McpExecutablePath);
+            var resolution = await resolveMcp(command.McpExecutablePath, cancellationToken);
+            var mcp = resolution.Path;
             var untrustedCode = await ExploreTrustFailureAsync(rootDirectory, specPath, appRelative, gates, trustFailureCode, cancellationToken);
             if (untrustedCode is not null)
             {
