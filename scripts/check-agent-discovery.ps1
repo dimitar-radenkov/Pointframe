@@ -759,12 +759,12 @@ function Test-ClaudePluginRepository([string]$Root, [System.Collections.Generic.
     $ci = Read-RepoFile $Root '.github/workflows/ci.yml'
     if ($null -eq $ci -or $ci -notmatch "(?s)push:.*?paths-ignore:\s*\r?\n\s*- 'plugin/\*\*'")
     {
-        Add-Problem $Problems "ci.yml does not ignore master pushes that change only plugin/**; the plugin pin pull request would cut a release."
+        Add-Problem $Problems "ci.yml does not ignore master pushes that change only plugin/**; a plugin-only merge would cut a release."
     }
-    $pin = Read-RepoFile $Root '.github/workflows/plugin-pin.yml'
-    if ($null -eq $pin -or -not $pin.Contains('update-plugin-pin.ps1') -or -not $pin.Contains('--auto --squash'))
+    $merge = Read-RepoFile $Root 'scripts/merge-pr.ps1'
+    if ($null -eq $merge -or -not $merge.Contains('update-plugin-pin.ps1') -or -not $merge.Contains('function Update-PluginPin'))
     {
-        Add-Problem $Problems 'plugin-pin.yml is missing or does not run update-plugin-pin.ps1 and request auto-merge.'
+        Add-Problem $Problems 'scripts/merge-pr.ps1 no longer pins the Claude plugin to the latest release (Update-PluginPin calling update-plugin-pin.ps1).'
     }
     $draft = Read-RepoFile $Root 'packaging/directory-submissions/claude-plugin-directory.txt'
     if ($null -eq $draft)

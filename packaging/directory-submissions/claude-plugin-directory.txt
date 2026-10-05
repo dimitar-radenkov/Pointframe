@@ -3,7 +3,7 @@ DRAFT. Not submitted. Fields follow the Claude developer portal's "Plugin bundle
 Source step
   Repository: dimitar-radenkov/Pointframe
   Plugin path: plugin/pointframe
-  Branch or tag: leave empty (the default branch, master). New versions arrive when the pin pull request (plugin-pin.yml) merges.
+  Branch or tag: leave empty (the default branch, master). New versions arrive when a pull request that moves the pin (scripts/merge-pr.ps1 -Auto) merges.
   Before pressing Validate: run `claude plugin validate ./plugin/pointframe` and `pwsh scripts/check-agent-discovery.ps1`.
 
 Listing details (read from plugin.json and README.md; edit those files, not the form)

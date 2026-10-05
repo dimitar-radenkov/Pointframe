@@ -31,6 +31,7 @@
 !docs/cli/verify.md
 !docs/cli/verify-spec.md
 !Pointframe.Mcp/Guides/*.md
+!plugin/**/*.md
 
 # Claude Code per-user settings
 .claude/settings.local.json
