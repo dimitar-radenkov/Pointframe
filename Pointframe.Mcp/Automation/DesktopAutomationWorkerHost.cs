@@ -24,7 +24,9 @@ public sealed class DesktopAutomationWorkerHost : IAsyncDisposable
     public DesktopAutomationWorkerHost(string executablePath, string assemblyPath)
     {
         _executablePath = Path.GetFullPath(executablePath);
-        _assemblyPath = Path.GetFullPath(assemblyPath);
+        // A single-file publish (the released server) has an empty Assembly.Location; the assembly path is
+        // only needed when the worker starts through the dotnet host.
+        _assemblyPath = string.IsNullOrEmpty(assemblyPath) ? string.Empty : Path.GetFullPath(assemblyPath);
     }
 
     public int? WorkerProcessId => _worker?.Id;
@@ -287,6 +289,11 @@ public sealed class DesktopAutomationWorkerHost : IAsyncDisposable
         };
         if (string.Equals(Path.GetFileNameWithoutExtension(_executablePath), "dotnet", StringComparison.OrdinalIgnoreCase))
         {
+            if (_assemblyPath.Length == 0)
+            {
+                throw new InvalidOperationException("The MCP worker needs the server assembly path to start through the dotnet host.");
+            }
+
             startInfo.ArgumentList.Add(_assemblyPath);
         }
 

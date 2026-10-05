@@ -1581,3 +1581,17 @@ Keep MCP args out of `.mcp.json` when they are not paths: put the flags in a lau
 ### Takeaway
 
 To pass your own stdin and stdout to a child with `Process.Start`, redirect nothing and do not set `CreateNoWindow`. Test it once with real pipes; a unit test with a fake host cannot show this.
+
+## Assembly.Location is empty in the released single-file server
+
+### Problem
+
+Every desktop tool in every released MCP package failed with "An error occurred invoking ..." from v6.7 on. `WorkerDesktopAutomationService` passed `Assembly.GetExecutingAssembly().Location` to `DesktopAutomationWorkerHost`, which called `Path.GetFullPath` on it. The release is published with `PublishSingleFile=true`, where `Location` is an empty string, so constructing the service threw `ArgumentException: The path is empty` during dependency injection, before any tool ran. Unit tests, the desktop automation suite, `verify run` on this repo, and the onboarding script all ran a normal build or only the direct tools, and CI's stdio smoke test only listed tools. A fresh agent on a third-party app (PKHeX) found it: `verify run` reported `SessionNotStarted` with no reason.
+
+### What fixed it
+
+The host keeps the assembly path only when it is non-empty and needs it only when the worker starts through the `dotnet` host. `packaging/test-mcp-stdio.ps1` now calls `desktop_list_apps` on the published single-file server with desktop testing enabled, which constructs the desktop services, and drains the server's stderr while it runs.
+
+### Takeaway
+
+Test the artifact shape you ship: a single-file publish changes `Assembly.Location` (the compiler warns with IL3000). A smoke test that only lists tools never constructs a tool's services; call at least one tool of each service graph against the published binary.

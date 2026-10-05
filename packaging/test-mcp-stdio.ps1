@@ -19,7 +19,8 @@ function Invoke-McpDiscovery {
         [Parameter(Mandatory = $true)]
         [string[]]$ExpectedTools,
         [Parameter(Mandatory = $true)]
-        [string]$DiscoveryName
+        [string]$DiscoveryName,
+        [string]$ProbeTool
     )
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -45,6 +46,8 @@ function Invoke-McpDiscovery {
         }
 
         $started = $true
+        # Drain stderr from the start: the server logs heavily, and an unread pipe blocks it mid-response.
+        $stderrTask = $process.StandardError.ReadToEndAsync()
         $initialize = @{
             jsonrpc = "2.0"
             id = 1
@@ -75,11 +78,26 @@ function Invoke-McpDiscovery {
         $process.StandardInput.WriteLine($initialize)
         $process.StandardInput.WriteLine($initialized)
         $process.StandardInput.WriteLine($listTools)
+        $expectedResponses = 2
+        if ($ProbeTool)
+        {
+            # Discovery alone never constructs a tool's services; calling one does. The released single-file
+            # server once failed every desktop tool at that point (an empty Assembly.Location).
+            $probe = @{
+                jsonrpc = "2.0"
+                id = 3
+                method = "tools/call"
+                params = @{ name = $ProbeTool; arguments = @{ actionId = [guid]::NewGuid().ToString() } }
+            } | ConvertTo-Json -Compress -Depth 10
+            $process.StandardInput.WriteLine($probe)
+            $expectedResponses = 3
+        }
+
         $process.StandardInput.Flush()
 
         $responses = @()
         $deadline = [DateTime]::UtcNow.AddSeconds(15)
-        while ($responses.Count -lt 2 -and [DateTime]::UtcNow -lt $deadline)
+        while ($responses.Count -lt $expectedResponses -and [DateTime]::UtcNow -lt $deadline)
         {
             $remainingMilliseconds = [Math]::Max(1, [int]($deadline - [DateTime]::UtcNow).TotalMilliseconds)
             $readTask = $process.StandardOutput.ReadLineAsync()
@@ -106,7 +124,8 @@ function Invoke-McpDiscovery {
 
         if ($responses.Count -lt 2)
         {
-            $stderr = $process.StandardError.ReadToEnd()
+            $process.Kill()
+            $stderr = $stderrTask.Result
             throw "MCP $DiscoveryName discovery did not return initialize and tools/list. stderr: $stderr"
         }
 
@@ -123,6 +142,22 @@ function Invoke-McpDiscovery {
         if ($actualTools.Count -ne $ExpectedTools.Count -or $unexpectedTools.Count -gt 0 -or $missingTools.Count -gt 0)
         {
             throw "MCP $DiscoveryName discovery returned an unexpected exact tool set: $($actualTools -join ', ')."
+        }
+
+        if ($ProbeTool)
+        {
+            $probeResponse = $responses | Where-Object { $_.id -eq 3 } | Select-Object -First 1
+            $probeFailed = $null -eq $probeResponse `
+                -or $null -eq $probeResponse.PSObject.Properties['result'] `
+                -or ($null -ne $probeResponse.result.PSObject.Properties['isError'] -and $probeResponse.result.isError -eq $true)
+            if ($probeFailed)
+            {
+                $process.Kill()
+                $stderr = $stderrTask.Result
+                throw "MCP $DiscoveryName probe call to $ProbeTool failed: $($probeResponse | ConvertTo-Json -Compress -Depth 10) stderr: $stderr"
+            }
+
+            Write-Host "MCP $DiscoveryName probe call to $ProbeTool passed."
         }
 
         Write-Host "MCP $DiscoveryName discovery passed: exact delivered tool set returned."
@@ -177,7 +212,8 @@ if (-not $SkipEnabledDiscovery)
         Invoke-McpDiscovery -ResolvedExecutablePath $resolvedExecutablePath `
             -Arguments @("--desktop-testing", "--desktop-policy", $policyPath) `
             -ExpectedTools $enabledExpectedTools `
-            -DiscoveryName "enabled"
+            -DiscoveryName "enabled" `
+            -ProbeTool "desktop_list_apps"
     }
     finally
     {
