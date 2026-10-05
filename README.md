@@ -352,6 +352,22 @@ To check the connection, ask the agent to list your displays; it should call
 `list_displays`. The `pointframe://server-info` resource reports the server version
 and whether `ffmpeg` was found for recording.
 
+#### Use with Claude (plugin)
+
+The [`plugin/pointframe`](plugin/pointframe) folder is a Claude plugin for Windows. It
+starts this MCP server for you and adds two skills: `verify-desktop-work` (prove that a
+change to a Windows desktop app works, with a signed report) and `capture-screen`. On
+the first start it downloads the pinned release of the server from GitHub, checks its
+SHA-256 against `server.lock.json`, and caches it under
+`%LOCALAPPDATA%\Pointframe\plugin-mcp`; the
+[plugin README](plugin/pointframe/README.md) lists exactly what it runs and how to
+remove it. Once the plugin is listed in the Claude plugin directory, install it from the
+`/plugin` marketplace. To try a local copy:
+
+```powershell
+claude --plugin-dir ./plugin/pointframe
+```
+
 Each release is also published to the official
 [MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=pointframe)
 as `io.github.dimitar-radenkov/pointframe-mcp`, so registry-aware clients can find

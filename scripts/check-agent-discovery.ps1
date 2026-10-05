@@ -17,6 +17,13 @@ are in the sitemap, the index, and pages.yml; the telemetry disclosure is comple
 the agent page, both drafts, the README Privacy Policy, and website/privacy.html name the opt-out, every property the code
 sends is disclosed, the MCPB manifest links the privacy page, and the source build carries no connection string.
 
+Claude plugin checks (plugin/pointframe, the directory's rules that can be checked offline): plugin.json fields and name
+pattern, README of at least 40 words outside code blocks that names the pinned download, the opt-out, and the privacy page,
+LICENSE, server.lock.json schema and version agreement with plugin.json, .mcp.json that starts powershell on a script written
+from ${CLAUDE_PLUGIN_ROOT} with no other variable or inline code, start script that never writes to stdout and uses no package
+launcher, skill front matter with a single-string description, only small text files, no symlinks or system files, CI that ignores
+plugin-only master pushes, the pin workflow, and the directory submission draft. The self-test mutates a copy of the plugin.
+
 -Online and -Snapshot only send GET and HEAD requests (gh api GET). Nothing is posted, and nothing is submitted.
 Prints one "ERROR ..." line per problem and exits 1; otherwise prints a summary and exits 0. Exit 2 on bad arguments.
 #>
@@ -559,6 +566,231 @@ function Invoke-OfflineChecks([string]$Root)
     @($problems)
 }
 
+function Get-MarkdownWordCount([string]$Markdown)
+{
+    $outside = [regex]::Replace($Markdown, '(?s)```.*?```', ' ')
+    @([regex]::Matches($outside, '[\p{L}\p{N}][\p{L}\p{N}''-]*')).Count
+}
+
+function Test-ClaudePlugin([string]$PluginRoot, [System.Collections.Generic.List[string]]$Problems)
+{
+    $label = 'plugin/pointframe'
+    if (-not (Test-Path -LiteralPath $PluginRoot -PathType Container))
+    {
+        Add-Problem $Problems "$label is missing."
+        return
+    }
+
+    $files = @(Get-ChildItem -LiteralPath $PluginRoot -Recurse -Force -File)
+    if ($files.Count -gt 512)
+    {
+        Add-Problem $Problems "$label has $($files.Count) files; the directory holds a plugin of more than 512 files for review."
+    }
+    foreach ($item in @(Get-ChildItem -LiteralPath $PluginRoot -Recurse -Force))
+    {
+        $relative = $item.FullName.Substring($PluginRoot.Length).TrimStart('\', '/')
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)
+        {
+            Add-Problem $Problems "$label contains the symbolic link $relative."
+        }
+        if ($item.Name -in @('.DS_Store', 'Thumbs.db', 'desktop.ini', '__MACOSX'))
+        {
+            Add-Problem $Problems "$label contains the system file $relative, which the directory rejects."
+        }
+    }
+    foreach ($file in $files)
+    {
+        $relative = $file.FullName.Substring($PluginRoot.Length).TrimStart('\', '/')
+        if ($file.Length -ge 256KB)
+        {
+            Add-Problem $Problems "$label/$relative is $($file.Length) bytes; keep every file under 256 KiB."
+        }
+        if ([IO.File]::ReadAllBytes($file.FullName) -contains 0)
+        {
+            Add-Problem $Problems "$label/$relative is a binary file; a plugin may hold only text files."
+        }
+    }
+
+    $manifestText = Read-RepoFile $PluginRoot '.claude-plugin/plugin.json'
+    $manifest = $null
+    if ($null -eq $manifestText)
+    {
+        Add-Problem $Problems "$label/.claude-plugin/plugin.json is missing."
+    }
+    else
+    {
+        try { $manifest = $manifestText | ConvertFrom-Json } catch { Add-Problem $Problems "$label/.claude-plugin/plugin.json is not valid JSON." }
+    }
+    if ($manifest)
+    {
+        $names = @($manifest.PSObject.Properties.Name)
+        if ($names -notcontains 'name' -or $manifest.name -cnotmatch '^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$' -or $manifest.name -in @('claude', 'anthropic', 'official', 'plugin', 'mcp', 'test'))
+        {
+            Add-Problem $Problems "$label plugin.json name must be lowercase letters, digits, and hyphens, and not a reserved word."
+        }
+        foreach ($field in @('displayName', 'description', 'version', 'license', 'homepage', 'repository'))
+        {
+            if ($names -notcontains $field -or [string]::IsNullOrWhiteSpace([string]$manifest.$field))
+            {
+                Add-Problem $Problems "$label plugin.json does not set $field."
+            }
+        }
+        if ($names -notcontains 'author' -or [string]::IsNullOrWhiteSpace([string]$manifest.author.name))
+        {
+            Add-Problem $Problems "$label plugin.json does not set author.name."
+        }
+        if ($names -contains 'license' -and $manifest.license -ne 'MIT')
+        {
+            Add-Problem $Problems "$label plugin.json license is '$($manifest.license)' but the repository is MIT."
+        }
+    }
+
+    if ($null -eq (Read-RepoFile $PluginRoot 'LICENSE'))
+    {
+        Add-Problem $Problems "$label/LICENSE is missing."
+    }
+
+    $readme = Read-RepoFile $PluginRoot 'README.md'
+    if ($null -eq $readme)
+    {
+        Add-Problem $Problems "$label/README.md is missing."
+    }
+    else
+    {
+        if ((Get-MarkdownWordCount $readme) -lt 40)
+        {
+            Add-Problem $Problems "$label/README.md has fewer than 40 words outside code blocks."
+        }
+        foreach ($required in @($PrivacyUrl, 'POINTFRAME_TELEMETRY_OPTOUT', 'DO_NOT_TRACK', 'plugin-mcp', 'server.lock.json', 'SHA-256'))
+        {
+            if (-not $readme.Contains($required))
+            {
+                Add-Problem $Problems "$label/README.md does not mention '$required'."
+            }
+        }
+    }
+
+    $lock = $null
+    $lockText = Read-RepoFile $PluginRoot 'server.lock.json'
+    if ($null -eq $lockText)
+    {
+        Add-Problem $Problems "$label/server.lock.json is missing."
+    }
+    else
+    {
+        try { $lock = $lockText | ConvertFrom-Json } catch { Add-Problem $Problems "$label/server.lock.json is not valid JSON." }
+    }
+    if ($lock)
+    {
+        $version = [string]$lock.version
+        $expectedUrl = "$RepoUrl/releases/download/v$version/Pointframe.Mcp-$version-win-x64.mcpb"
+        if ($lock.schemaVersion -ne 1 -or $version -notmatch '^[0-9]+(\.[0-9]+){2,3}$' -or [string]$lock.sha256 -cnotmatch '^[0-9a-f]{64}$' -or [string]$lock.url -cne $expectedUrl -or [string]$lock.asset -cne "Pointframe.Mcp-$version-win-x64.mcpb")
+        {
+            Add-Problem $Problems "$label/server.lock.json must have schemaVersion 1, a version, a lowercase sha256, the asset name, and the matching release URL $expectedUrl."
+        }
+        if ($manifest -and [string]$manifest.version -ne $version)
+        {
+            Add-Problem $Problems "$label plugin.json version '$($manifest.version)' differs from the pinned server version '$version'."
+        }
+    }
+
+    $mcpText = Read-RepoFile $PluginRoot '.mcp.json'
+    if ($null -eq $mcpText)
+    {
+        Add-Problem $Problems "$label/.mcp.json is missing."
+    }
+    else
+    {
+        try
+        {
+            $entry = ($mcpText | ConvertFrom-Json).mcpServers.pointframe
+            $arguments = @($entry.args | ForEach-Object { [string]$_ })
+            $startScript = $arguments | Select-Object -Last 1
+            if ($entry.command -ne 'powershell' -or $startScript -ne '${CLAUDE_PLUGIN_ROOT}/scripts/start-mcp.ps1' -or $arguments -contains '-Command' -or $arguments -contains '-c')
+            {
+                Add-Problem $Problems "$label/.mcp.json must start powershell on `${CLAUDE_PLUGIN_ROOT}/scripts/start-mcp.ps1 with plain arguments."
+            }
+            if ([regex]::Matches($mcpText, '\$\{[^}]+\}') | Where-Object { $_.Value -ne '${CLAUDE_PLUGIN_ROOT}' })
+            {
+                Add-Problem $Problems "$label/.mcp.json uses a variable other than `${CLAUDE_PLUGIN_ROOT}."
+            }
+        }
+        catch
+        {
+            Add-Problem $Problems "$label/.mcp.json is not valid JSON or has no pointframe server."
+        }
+    }
+
+    $start = Read-RepoFile $PluginRoot 'scripts/start-mcp.ps1'
+    if ($null -eq $start)
+    {
+        Add-Problem $Problems "$label/scripts/start-mcp.ps1 is missing."
+    }
+    else
+    {
+        if ($start -match '(?im)^\s*(Write-Host|Write-Output|Out-Host)\b|\bnpx\b|\buvx\b|\bnpm\b|\bpipx?\b')
+        {
+            Add-Problem $Problems "$label/scripts/start-mcp.ps1 must not write to stdout (Write-Host, Write-Output, Out-Host) or use a package launcher."
+        }
+        if ($start -notmatch 'Tls12')
+        {
+            Add-Problem $Problems "$label/scripts/start-mcp.ps1 does not enforce TLS 1.2."
+        }
+    }
+
+    $skills = @(Get-ChildItem -LiteralPath (Join-Path $PluginRoot 'skills') -Recurse -Filter 'SKILL.md' -File -ErrorAction SilentlyContinue)
+    if ($skills.Count -eq 0)
+    {
+        Add-Problem $Problems "$label has no skills/<name>/SKILL.md."
+    }
+    foreach ($skill in $skills)
+    {
+        $text = [IO.File]::ReadAllText($skill.FullName)
+        $frontMatter = if ($text -match '(?s)\A---\r?\n(.*?)\r?\n---') { $Matches[1] } else { '' }
+        if ($frontMatter -notmatch '(?m)^description:\s*\S[^\r\n]*$' -or $frontMatter -match '(?m)^description:\s*[\[|>]')
+        {
+            Add-Problem $Problems "$label/skills/$($skill.Directory.Name)/SKILL.md needs YAML front matter with a single-string description."
+        }
+    }
+}
+
+function Test-ClaudePluginRepository([string]$Root, [System.Collections.Generic.List[string]]$Problems)
+{
+    $ci = Read-RepoFile $Root '.github/workflows/ci.yml'
+    if ($null -eq $ci -or $ci -notmatch "(?s)push:.*?paths-ignore:\s*\r?\n\s*- 'plugin/\*\*'")
+    {
+        Add-Problem $Problems "ci.yml does not ignore master pushes that change only plugin/**; a plugin-only merge would cut a release."
+    }
+    $merge = Read-RepoFile $Root 'scripts/merge-pr.ps1'
+    if ($null -eq $merge -or -not $merge.Contains('update-plugin-pin.ps1') -or -not $merge.Contains('function Update-PluginPin'))
+    {
+        Add-Problem $Problems 'scripts/merge-pr.ps1 no longer pins the Claude plugin to the latest release (Update-PluginPin calling update-plugin-pin.ps1).'
+    }
+    $draft = Read-RepoFile $Root 'packaging/directory-submissions/claude-plugin-directory.txt'
+    if ($null -eq $draft)
+    {
+        Add-Problem $Problems 'packaging/directory-submissions/claude-plugin-directory.txt is missing.'
+    }
+    else
+    {
+        foreach ($required in @($PrivacyUrl, 'POINTFRAME_TELEMETRY_OPTOUT', 'DRAFT'))
+        {
+            if (-not $draft.Contains($required))
+            {
+                Add-Problem $Problems "claude-plugin-directory.txt does not mention '$required'."
+            }
+        }
+    }
+}
+
+function Invoke-PluginChecks([string]$Root)
+{
+    $problems = [System.Collections.Generic.List[string]]::new()
+    Test-ClaudePlugin (Join-Path $Root 'plugin' 'pointframe') $problems
+    Test-ClaudePluginRepository $Root $problems
+    @($problems)
+}
+
 function Get-UrlStatus([string]$Url)
 {
     foreach ($method in @('Head', 'Get'))
@@ -761,6 +993,51 @@ function Invoke-SelfTest
         }
     }
 
+    $pluginBaseline = [System.Collections.Generic.List[string]]::new()
+    Test-ClaudePlugin (Join-Path $RepoRoot 'plugin' 'pointframe') $pluginBaseline
+    $cases++
+    if ($pluginBaseline.Count -ne 0)
+    {
+        $failures.Add("the plugin should pass but reported: $($pluginBaseline -join ' | ')")
+    }
+
+    $pluginMutations = @(
+        @{ Name = 'uppercase plugin name'; Expect = 'plugin.json name must be'; Apply = { param($r) Edit-FixtureFile $r '.claude-plugin/plugin.json' '"name": "pointframe"' '"name": "Pointframe"' } },
+        @{ Name = 'missing description'; Expect = 'does not set description'; Apply = { param($r) Edit-FixtureFile $r '.claude-plugin/plugin.json' '"description"' '"summary"' } },
+        @{ Name = 'version drift'; Expect = 'differs from the pinned server version'; Apply = { param($r) Edit-FixtureFile $r '.claude-plugin/plugin.json' '"version": "' '"version": "0.0.' } },
+        @{ Name = 'short sha256'; Expect = 'server.lock.json must have'; Apply = { param($r) Edit-FixtureFile $r 'server.lock.json' '"sha256": "' '"sha256": "AB' } },
+        @{ Name = 'lock url for another version'; Expect = 'server.lock.json must have'; Apply = { param($r) Edit-FixtureFile $r 'server.lock.json' '/releases/download/v' '/releases/download/v9.' } },
+        @{ Name = 'shell in mcp command'; Expect = 'must start powershell'; Apply = { param($r) Edit-FixtureFile $r '.mcp.json' '"-File"' '"-Command"' } },
+        @{ Name = 'other variable in mcp command'; Expect = 'variable other than'; Apply = { param($r) Edit-FixtureFile $r '.mcp.json' '"-NoProfile"' '"${HOME}"' } },
+        @{ Name = 'start script writes to stdout'; Expect = 'must not write to stdout'; Apply = { param($r) Edit-FixtureFile $r 'scripts/start-mcp.ps1' 'function Write-Log' "Write-Host 'x'`r`nfunction Write-Log" } },
+        @{ Name = 'short README'; Expect = 'fewer than 40 words'; Apply = { param($r) Set-Content -LiteralPath (Join-Path $r 'README.md') -Value 'Too short.' } },
+        @{ Name = 'README without opt-out'; Expect = "does not mention 'POINTFRAME_TELEMETRY_OPTOUT'"; Apply = { param($r) Edit-FixtureFile $r 'README.md' 'POINTFRAME_TELEMETRY_OPTOUT' 'POINTFRAME_OTHER' } },
+        @{ Name = 'missing LICENSE'; Expect = 'LICENSE is missing'; Apply = { param($r) Remove-Item (Join-Path $r 'LICENSE') } },
+        @{ Name = 'binary file'; Expect = 'binary file'; Apply = { param($r) [IO.File]::WriteAllBytes((Join-Path $r 'tool.bin'), [byte[]](1, 0, 2)) } },
+        @{ Name = 'large file'; Expect = 'keep every file under 256 KiB'; Apply = { param($r) Set-Content -LiteralPath (Join-Path $r 'big.txt') -Value ('x' * 300000) } },
+        @{ Name = 'system file'; Expect = 'system file'; Apply = { param($r) Set-Content -LiteralPath (Join-Path $r 'Thumbs.db') -Value 'x' } },
+        @{ Name = 'skill description as a list'; Expect = 'single-string description'; Apply = { param($r) Edit-FixtureFile $r 'skills/capture-screen/SKILL.md' 'description: ' 'description: [' } }
+    )
+    foreach ($mutation in $pluginMutations)
+    {
+        $cases++
+        $copy = Copy-FixtureTree (Join-Path $RepoRoot 'plugin' 'pointframe')
+        try
+        {
+            & $mutation.Apply $copy
+            $found = [System.Collections.Generic.List[string]]::new()
+            Test-ClaudePlugin $copy $found
+            if (@($found | Where-Object { $_.Contains($mutation.Expect) }).Count -eq 0)
+            {
+                $failures.Add("plugin mutation '$($mutation.Name)' should report '$($mutation.Expect)' but reported: $($found -join ' | ')")
+            }
+        }
+        finally
+        {
+            Remove-Item -LiteralPath $copy -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     if ($failures.Count -gt 0)
     {
         foreach ($failure in $failures)
@@ -782,7 +1059,7 @@ if ($Snapshot)
     exit (Invoke-Snapshot)
 }
 
-$all = @(Invoke-OfflineChecks $RepoRoot)
+$all = @(Invoke-OfflineChecks $RepoRoot) + @(Invoke-PluginChecks $RepoRoot)
 if ($Online)
 {
     $all += @(Invoke-OnlineChecks $RepoRoot)

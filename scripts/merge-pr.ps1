@@ -23,6 +23,10 @@ Rules, each from a past incident:
   - -Auto does not wait and does not clean up. It refuses a CONFLICTING, closed or failing pull request, otherwise runs
     gh pr merge --auto --squash --delete-branch and exits 0; GitHub merges once the repository's required checks pass.
     A -Worktree is NOT removed in this mode (it is still needed until the merge); remove it afterwards by hand.
+  - -Auto with -Worktree first pins the Claude plugin (plugin/pointframe) to the latest release when it is behind:
+    scripts/update-plugin-pin.ps1 verifies the asset against the release .sha256, and the pin is committed and pushed
+    to the same pull request, so it passes the same required checks. Every release comes from a merged pull request,
+    so the plugin trails by at most one release and no token or bot PR is needed. -NoPluginPin skips this.
 
 Exit codes: 0 merged and cleaned up (or -DryRun finished, or -Auto enabled auto-merge / found the PR merged), 1 check failed, timeout, closed PR, or merge did not
 complete, 2 gh missing or not authenticated or bad arguments, 3 merge conflict, 4 pull after merge failed.
@@ -36,6 +40,7 @@ param(
     [int]$PollSeconds = 30,
     [switch]$DryRun,
     [switch]$Auto,
+    [switch]$NoPluginPin,
     [switch]$SelfTest
 )
 
@@ -211,6 +216,67 @@ if ($LASTEXITCODE -ne 0)
     exit 2
 }
 
+function Update-PluginPin
+{
+    param([string]$WorktreePath)
+
+    $root = (Resolve-Path -LiteralPath $WorktreePath).Path
+    $lockPath = Join-Path $root 'plugin' 'pointframe' 'server.lock.json'
+    $pinScript = Join-Path $root 'scripts' 'update-plugin-pin.ps1'
+    if (-not (Test-Path -LiteralPath $lockPath) -or -not (Test-Path -LiteralPath $pinScript))
+    {
+        return
+    }
+
+    $latest = (gh release view --json tagName -q .tagName 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $latest)
+    {
+        Write-Host 'Plugin pin: could not read the latest release; leaving the pin as it is.'
+        return
+    }
+
+    $latest = $latest.Trim() -replace '^v', ''
+    $pinned = (Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json).version
+    if ($pinned -eq $latest)
+    {
+        Write-Host "Plugin pin: already v$latest."
+        return
+    }
+
+    Write-Host "Plugin pin: v$pinned -> v$latest."
+    & pwsh -NoProfile -File $pinScript -Version $latest | Out-Host
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Host "ERROR plugin pin update failed (exit $LASTEXITCODE); not enabling auto-merge."
+        exit 1
+    }
+
+    git -C $root add -- plugin/pointframe/server.lock.json plugin/pointframe/.claude-plugin/plugin.json
+    git -C $root commit -q -m "Pin the Claude plugin to v$latest"
+    git -C $root push -q
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Host 'ERROR pushing the plugin pin failed; not enabling auto-merge.'
+        exit 1
+    }
+
+    # GitHub needs a moment to move the pull request's head to the pushed commit; auto-merge is enabled for the
+    # head we read next, so wait until it is the pin commit.
+    $pushed = (git -C $root rev-parse HEAD).Trim()
+    for ($attempt = 0; $attempt -lt 30; $attempt++)
+    {
+        if ((gh pr view $Pr --json headRefOid -q .headRefOid) -eq $pushed)
+        {
+            return
+        }
+
+        Start-Sleep -Seconds 2
+    }
+
+    Write-Host "ERROR the pull request head did not reach the pushed pin commit $pushed; not enabling auto-merge."
+    exit 1
+}
+
 function Get-PrJson
 {
     $text = & gh pr view $Pr --json number,state,headRefName,headRefOid,mergeable,mergeStateStatus 2>&1
@@ -242,6 +308,11 @@ function Get-ChecksJson
 
 if ($Auto)
 {
+    if ($Worktree -and -not $NoPluginPin -and -not $DryRun)
+    {
+        Update-PluginPin $Worktree
+    }
+
     $prInfo = Get-PrJson
     $checks = if ($prInfo.state -eq 'OPEN') { Get-ChecksJson } else { @() }
     $decision = Get-AutoDecision $prInfo $checks $Required

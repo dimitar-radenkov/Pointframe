@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "pointframe": {
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${CLAUDE_PLUGIN_ROOT}/scripts/start-mcp.ps1"
+      ]
+    }
+  }
+}

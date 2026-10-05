@@ -3,6 +3,11 @@ name: CI
 on:
   push:
     branches: [ master ]
+    # A commit that changes only the Claude plugin (its README or skills) must not run CI on master: CD follows every successful
+    # master CI run and would cut a release for it, which would bring a new pin, which would cut a release. Pull requests
+    # still run everything, because the required checks must report on them.
+    paths-ignore:
+      - 'plugin/**'
   pull_request:
     branches: [ master ]
 

@@ -1,0 +1,40 @@
+DRAFT. Not submitted. Fields follow the Claude developer portal's "Plugin bundle" flow (https://claude.ai/directory/manage). The form changes, so confirm each field against the live form before submitting by hand. Fields marked CONFIRM are a guess.
+
+Source step
+  Repository: dimitar-radenkov/Pointframe
+  Plugin path: plugin/pointframe
+  Branch or tag: leave empty (the default branch, master). New versions arrive when a pull request that moves the pin (scripts/merge-pr.ps1 -Auto) merges.
+  Before pressing Validate: run `claude plugin validate ./plugin/pointframe` and `pwsh scripts/check-agent-discovery.ps1`.
+
+Listing details (read from plugin.json and README.md; edit those files, not the form)
+  Name: pointframe
+  Display name: Pointframe
+  Description: Windows screenshots, OCR, and redacted screen recording for Claude, plus a skill for verifying desktop work with signed proof. Windows only.
+  Author: Dimitar Radenkov
+  License: MIT
+  Homepage: https://github.com/dimitar-radenkov/Pointframe
+  Category (CONFIRM): Developer tools
+
+Expected review notes
+  The plugin starts a local stdio MCP server with `powershell -NoProfile -ExecutionPolicy Bypass -File ${CLAUDE_PLUGIN_ROOT}/scripts/start-mcp.ps1`. The script is a non-shell file in a subfolder, so the scan may hold it for a reviewer ("Scripts the validator couldn't follow"). It downloads one pinned release asset from github.com/dimitar-radenkov/Pointframe, verifies its SHA-256 against server.lock.json, caches it, and runs it. The README states all of this. The downloaded executable is a compiled binary built by the repository's public CD pipeline from the same source tree; the SHA-256 is also published beside the release asset.
+
+Data handling answers
+  Does the plugin read or store personal data? It can capture the user's screen when the user asks Claude to. Screenshots, OCR text, and recordings are stored only on the user's disk under %LOCALAPPDATA%\Pointframe. A screenshot reaches the model only when a capture tool returns it to the client; includeImage false returns metadata only. Nothing is uploaded by the plugin.
+  Does it send data to services other than its declared connectors? Official builds of the MCP server send one anonymous usage event per tool call (tool name, outcome, duration bucket, host, MCP client type, version) to Azure Application Insights with IP masking. No arguments, paths, screenshots, text, error messages, or identifiers. Opt out with POINTFRAME_TELEMETRY_OPTOUT=1 or DO_NOT_TRACK=1. The first start also downloads the server from GitHub Releases.
+  How long is data kept? Locally, until the user deletes it. Telemetry follows the retention in the privacy policy.
+  Is it intended for people under 18? No (CONFIRM wording).
+  Privacy policy: https://dimitar-radenkov.github.io/Pointframe/privacy.html
+
+Compliance step
+  Contact email (CONFIRM which address to use): the maintainer's public address from the repository, or the SECURITY.md contact.
+  Support: https://github.com/dimitar-radenkov/Pointframe/issues
+
+Testing notes for reviewers
+  Windows 10 or 11 x64 in a signed-in desktop session, with internet access on the first start (about 120 MB download). Install the plugin, ask Claude to list the displays; it should call list_displays. Then ask it to take a screenshot of a window; it should call list_windows and capture_window. Desktop-testing tools are off by default and not needed for review.
+
+Example prompts (CONFIRM the count the form wants)
+  1. Take a screenshot of my second monitor and tell me why the layout looks broken.
+  2. Read the error dialog in the installer window and suggest a fix.
+  3. Capture the app before and after your change so I can compare them.
+  4. Find the screenshot from yesterday that mentions "timeout".
+  5. Verify that the Save button in my WPF app still persists the setting after a restart.
