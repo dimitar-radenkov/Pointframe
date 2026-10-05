@@ -213,6 +213,66 @@ public sealed class VerificationTests : IDisposable
         Assert.Equal("TREE1", result.RootElement.GetProperty("verdictTreeHash").GetString());
         Assert.Equal("TREE1", result.RootElement.GetProperty("currentTreeHash").GetString());
         Assert.Equal(result.RootElement.GetProperty("verdictSpecSha256").GetString(), result.RootElement.GetProperty("currentSpecSha256").GetString());
+        Assert.False(result.RootElement.TryGetProperty("activeTask", out _));
+    }
+
+    [Fact]
+    public async Task Status_ActiveTaskRequiresMatchingVerdictSnapshot()
+    {
+        _fixture.WriteSpec();
+        var snapshotHash = WriteActiveTask("task-a");
+        WritePassingVerdict(_fixture.Root, _fixture.SpecPath, "TREE1", task: new { id = "task-a", snapshotSha256 = snapshotHash });
+        var first = await StatusJsonAsync();
+        Assert.True(first.GetProperty("fresh").GetBoolean());
+        Assert.Equal("task-a", first.GetProperty("activeTask").GetString());
+
+        WritePassingVerdict(_fixture.Root, _fixture.SpecPath, "TREE1", task: new { id = "task-a", snapshotSha256 = "OLD" });
+        var replaced = await StatusJsonAsync();
+        Assert.False(replaced.GetProperty("fresh").GetBoolean());
+        Assert.Equal("verdict_for_another_task", replaced.GetProperty("freshnessReason").GetString());
+
+        WritePassingVerdict(_fixture.Root, _fixture.SpecPath, "TREE1", task: new { id = "other", snapshotSha256 = snapshotHash });
+        var other = await StatusJsonAsync();
+        Assert.Equal("verdict_for_another_task", other.GetProperty("freshnessReason").GetString());
+
+        WritePassingVerdict(_fixture.Root, _fixture.SpecPath, "TREE1");
+        var uncovered = await StatusJsonAsync();
+        Assert.Equal("task_not_covered", uncovered.GetProperty("freshnessReason").GetString());
+    }
+
+    [Fact]
+    public async Task Status_SurfacesLastStopAndMarksOnlyCurrentTreeUnverified()
+    {
+        _fixture.WriteSpec();
+        var outputDir = Path.Combine(_fixture.Root, VerificationApplication.OutputRelativePath);
+        Directory.CreateDirectory(outputDir);
+        File.WriteAllText(Path.Combine(outputDir, VerificationHook.LastStopFileName), """{ "schemaVersion": 1, "outcome": "unverified", "treeHash": "TREE1" }""");
+        var current = await StatusJsonAsync();
+        Assert.True(current.GetProperty("unverifiedStop").GetBoolean());
+        Assert.Equal("unverified", current.GetProperty("lastStop").GetProperty("outcome").GetString());
+        File.WriteAllText(Path.Combine(outputDir, VerificationHook.LastStopFileName), """{ "schemaVersion": 1, "outcome": "unverified", "treeHash": "OLD" }""");
+        var stale = await StatusJsonAsync();
+        Assert.False(stale.GetProperty("unverifiedStop").GetBoolean());
+    }
+
+    private async Task<JsonElement> StatusJsonAsync()
+    {
+        var output = new StringWriter();
+        await new VerificationFixture.Services(treeHash: "TREE1").Application(_fixture.Store, output)
+            .RunAsync(new CliCommand("verify", SpecPath: _fixture.SpecPath, VerifyAction: "status"), CancellationToken.None);
+        using var document = JsonDocument.Parse(output.ToString());
+        return document.RootElement.Clone();
+    }
+
+    private string WriteActiveTask(string taskId)
+    {
+        using var scenarioDoc = JsonDocument.Parse("{}");
+        var snapshot = new TaskSnapshot(1, taskId, _fixture.Root, "task", "task-hash", DateTimeOffset.UtcNow, null, null,
+            new SpecDigest("spec", new Dictionary<string, string>(), new Dictionary<string, string>()), scenarioDoc.RootElement.Clone(), [], null, "test",
+            new TaskFailBefore("confirmed", [], [], null));
+        var hash = _fixture.Store.WriteTask(snapshot);
+        _fixture.Store.WriteActiveTask(_fixture.Root, taskId);
+        return hash;
     }
 
     [Fact]
@@ -249,7 +309,7 @@ public sealed class VerificationTests : IDisposable
         Assert.Equal("tree_changed", result.RootElement.GetProperty("freshnessReason").GetString());
     }
 
-    private static void WritePassingVerdict(string root, string specPath, string treeHash, string? specSha256 = null)
+    private static void WritePassingVerdict(string root, string specPath, string treeHash, string? specSha256 = null, object? task = null)
     {
         var outputDirectory = Path.Combine(root, VerificationApplication.OutputRelativePath);
         Directory.CreateDirectory(outputDirectory);
@@ -259,6 +319,7 @@ public sealed class VerificationTests : IDisposable
             JsonSerializer.Serialize(new
             {
                 status = "pass",
+                task,
                 specSha256,
                 startedUtc = DateTimeOffset.UtcNow,
                 provenance = new { treeHash },

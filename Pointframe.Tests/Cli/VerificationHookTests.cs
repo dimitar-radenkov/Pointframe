@@ -40,6 +40,7 @@ public sealed class VerificationHookTests : IDisposable
         Assert.False(first.TryGetProperty("decision", out _));
         Assert.Contains("pass", second.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
         Assert.Single(services.Launches);
+        AssertLastStop("verified", null, null);
     }
 
     [Fact]
@@ -64,8 +65,10 @@ public sealed class VerificationHookTests : IDisposable
         var stoppedMessage = third.GetProperty("systemMessage").GetString()!;
         Assert.Contains("still fails after 2 blocked attempts", stoppedMessage, StringComparison.Ordinal);
         Assert.Contains("this work was NOT verified", stoppedMessage, StringComparison.Ordinal);
+        Assert.StartsWith("UNVERIFIED:", stoppedMessage, StringComparison.Ordinal);
         Assert.Contains("pointframe verify status", stoppedMessage, StringComparison.Ordinal);
         Assert.Single(services.Launches);
+        AssertLastStop("unverified", "block_limit", null);
     }
 
     [Fact]
@@ -112,6 +115,33 @@ public sealed class VerificationHookTests : IDisposable
 
         Assert.False(result.TryGetProperty("decision", out _));
         Assert.Contains("needs you (spec_untrusted)", result.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("UNVERIFIED:", result.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
+        AssertLastStop("unverified", "needs_person", "spec_untrusted");
+    }
+
+    [Fact]
+    public async Task Stop_HookCrashStillReturnsMessageWhenLastStopCannotBeWritten()
+    {
+        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        var services = new VerificationFixture.Services();
+        services.WorkingTree.Setup(item => item.Read(It.IsAny<string>())).Throws(new IOException("tree read failed"));
+        var output = new StringWriter();
+        var code = await services.Application(_fixture.Store, output, HookInput("s1", _fixture.Root))
+            .RunAsync(Hook(), CancellationToken.None);
+        Assert.Equal(0, code);
+        using var document = JsonDocument.Parse(output.ToString());
+        Assert.StartsWith("UNVERIFIED:", document.RootElement.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
+        Assert.Contains("hook failed", document.RootElement.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
+    }
+
+    private void AssertLastStop(string outcome, string? reason, string? errorCode)
+    {
+        using var record = JsonDocument.Parse(File.ReadAllText(Path.Combine(_fixture.Root, "artifacts", "pointframe-verify", VerificationHook.LastStopFileName)));
+        Assert.Equal(1, record.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(outcome, record.RootElement.GetProperty("outcome").GetString());
+        Assert.Equal(reason, record.RootElement.GetProperty("reason").ValueKind == JsonValueKind.Null ? null : record.RootElement.GetProperty("reason").GetString());
+        Assert.Equal(errorCode, record.RootElement.GetProperty("errorCode").ValueKind == JsonValueKind.Null ? null : record.RootElement.GetProperty("errorCode").GetString());
+        Assert.True(record.RootElement.TryGetProperty("utc", out _));
     }
 
     [Fact]
