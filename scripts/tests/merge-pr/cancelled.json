@@ -1,0 +1,26 @@
+{
+  "pr": {
+    "state": "OPEN",
+    "mergeable": "MERGEABLE",
+    "mergeStateStatus": "CLEAN",
+    "headRefOid": "aaa111"
+  },
+  "checks": [
+    {
+      "name": "unit-tests",
+      "bucket": "pass"
+    },
+    {
+      "name": "CodeQL",
+      "bucket": "pass"
+    },
+    {
+      "name": "Analyze (csharp)",
+      "bucket": "cancel"
+    }
+  ],
+  "expect": {
+    "reasonContains": "cancel",
+    "action": "Fail"
+  }
+}
