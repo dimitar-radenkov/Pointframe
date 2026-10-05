@@ -1,5 +1,33 @@
 # Lessons Learned
 
+## A stdio MCP server must send nothing to standard output except protocol messages
+
+### Problem
+
+Adding telemetry and a first-run notice to the MCP server risked writing human text to standard output. A single non-JSON line there breaks the client's JSON-RPC stream.
+
+### What fixed it
+
+The notice goes to standard error and, once, into the server instructions. The telemetry exporter runs off the tool-call path, and a test starts the real `Pointframe.Mcp.exe` with telemetry on and asserts every standard-output line is a JSON-RPC message.
+
+### Takeaway
+
+Any new output path in `Pointframe.Mcp` needs a stdout test on the real executable, because an in-process server cannot see what a library writes to the console.
+
+## PowerShell variable names are case-insensitive, so a local can shadow a script-level path
+
+### Problem
+
+A new check did `$readme = Read-RepoFile $Root $Readme` and then passed `$Readme` to later calls. PowerShell treats both names as one variable, so the later calls received the file's text as a path and the whole check failed with hundreds of lines of noise.
+
+### What fixed it
+
+Name locals that hold file text with a `Text` suffix, and compare against the script-level path variable names before choosing a local name.
+
+### Takeaway
+
+In scripts that keep file-path constants in script scope, never reuse a constant's name, in any casing, for a local.
+
 ## Azure Monitor's exporter sends the machine name as the role instance unless the resource is set explicitly
 
 ### Problem

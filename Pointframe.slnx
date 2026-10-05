@@ -4,6 +4,7 @@
     <Project Path="Pointframe.Data/Pointframe.Data.csproj" />
     <Project Path="Pointframe.Engine/Pointframe.Engine.csproj" />
     <Project Path="Pointframe.Mcp/Pointframe.Mcp.csproj" />
+    <Project Path="Pointframe.Telemetry/Pointframe.Telemetry.csproj" />
     <Project Path="Pointframe/Pointframe.csproj" />
   </Folder>
   <Folder Name="/tests/">

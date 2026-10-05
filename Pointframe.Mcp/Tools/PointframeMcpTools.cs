@@ -120,6 +120,7 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
 
     [McpServerTool(
         Title = "Capture window",
+        ReadOnly = true,
         Destructive = false),
      Description("Captures the visible screen rectangle of a window by its handle (Hwnd from list_windows). This is a screen-rectangle capture: if the window is partially covered by another window, the occluding content will appear in the capture. Minimized, zero-size, off-screen, and multi-monitor-spanning windows are rejected. Returns the saved PNG artifact metadata as structured content plus, unless includeImage is false, the captured image itself (downscaled to at most 1600 px on its longest edge) as an inline image block.")]
     public async Task<CallToolResult> CaptureWindowAsync(
@@ -133,6 +134,7 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
 
     [McpServerTool(
         Title = "Read text from window",
+        ReadOnly = true,
         Destructive = false),
      Description("Captures the visible screen rectangle of a window by its handle (Hwnd from list_windows) and recognizes on-screen text using Windows OCR. Returns the saved PNG artifact and the recognized text as structured content plus, unless includeImage is false, the captured image itself (downscaled to at most 1600 px on its longest edge) as an inline image block. RecognizedText is null when no text was found or no OCR language pack is installed. Same screen-rectangle capture semantics and rejection rules as capture_window.")]
     public async Task<CallToolResult> ReadTextFromWindowAsync(
@@ -146,6 +148,7 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
 
     [McpServerTool(
         Title = "Capture monitor",
+        ReadOnly = true,
         Destructive = false),
      Description("Starts a Pointframe monitor capture for the named display, optionally limited to a sub-region. Returns the saved PNG artifact metadata as structured content plus, unless includeImage is false, the captured image itself (downscaled to at most 1600 px on its longest edge) as an inline image block.")]
     public async Task<CallToolResult> CaptureMonitorAsync(
@@ -160,6 +163,7 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
 
     [McpServerTool(
         Title = "Read text from monitor",
+        ReadOnly = true,
         Destructive = false),
      Description("Captures a Pointframe monitor screenshot, optionally limited to a sub-region, and recognizes on-screen text using Windows OCR. Returns the saved PNG artifact and the recognized text as structured content plus, unless includeImage is false, the captured image itself (downscaled to at most 1600 px on its longest edge) as an inline image block. RecognizedText is null when no text was found or no OCR language pack is installed.")]
     public async Task<CallToolResult> ReadTextFromMonitorAsync(
@@ -174,6 +178,8 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
 
     [McpServerTool(
         Title = "Start recording",
+        ReadOnly = false,
+        Destructive = false,
         UseStructuredContent = true),
      Description("Starts direct, no-microphone MP4 recording for a monitor without launching the Pointframe desktop application. Only one recording can be active at a time; call stop_recording to finalize it and obtain the MP4 artifact.")]
     public Task<McpRecordingResponse> StartRecordingAsync(
@@ -192,6 +198,8 @@ internal sealed class PointframeMcpTools(IDirectCaptureService directCaptureServ
 
     [McpServerTool(
         Title = "Stop recording",
+        ReadOnly = false,
+        Destructive = false,
         UseStructuredContent = true),
      Description("Stops the active direct recording and returns its finalized MP4 artifact and sidecar metadata.")]
     public async Task<McpRecordingResponse> StopRecordingAsync(CancellationToken cancellationToken)

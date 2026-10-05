@@ -27,8 +27,8 @@ Category (CONFIRM): Developer tools / Productivity
 
 Tools (the manifest list, 11): list_displays, list_windows, capture_monitor, capture_window, read_text_from_monitor, read_text_from_window, search_captures, get_capture, start_recording, stop_recording, get_recording_status
 
-Privacy policy (CONFIRM whether a URL is required): https://github.com/dimitar-radenkov/Pointframe#privacy--telemetry
-Privacy statement: The MCP server runs locally and sends no telemetry. Captures and recordings stay on the user's disk under %LOCALAPPDATA%\Pointframe. A screenshot reaches the model only when a capture tool returns it to the MCP client; pass includeImage false to return metadata only. The capture, OCR, and recording tools only observe; tools that send input are off unless a local policy file enables them.
+Privacy policy: https://dimitar-radenkov.github.io/Pointframe/privacy.html
+Privacy statement: The MCP server runs locally. Official builds send one anonymous usage event per tool call (tool name, outcome, duration bucket, host, MCP client type, version) to Azure Application Insights with IP masking; no arguments, paths, screenshots, text, error messages, or identifiers. Opt out with POINTFRAME_TELEMETRY_OPTOUT=1 or DO_NOT_TRACK=1. Captures and recordings stay on the user's disk under %LOCALAPPDATA%\Pointframe. A screenshot reaches the model only when a capture tool returns it to the MCP client; pass includeImage false to return metadata only. The capture, OCR, and recording tools only observe; tools that send input are off unless a local policy file enables them.
 
 Example prompts (CONFIRM the count the form wants):
 1. Take a screenshot of my second monitor and tell me why the layout looks broken.

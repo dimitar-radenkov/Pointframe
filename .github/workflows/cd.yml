@@ -102,6 +102,12 @@ jobs:
           $json.ApplicationInsights.ConnectionString = '${{ secrets.APP_INSIGHTS_CONNECTION_STRING }}'
           $json | ConvertTo-Json -Depth 10 | Set-Content $file
 
+          # The CLI and MCP server embed the same connection string from this file at build time.
+          $agentFile = 'Pointframe.Telemetry/telemetry.json'
+          $agentJson = Get-Content $agentFile | ConvertFrom-Json
+          $agentJson.ApplicationInsights.ConnectionString = '${{ secrets.APP_INSIGHTS_CONNECTION_STRING }}'
+          $agentJson | ConvertTo-Json -Depth 10 | Set-Content $agentFile
+
       - name: Verify connection string was injected
         if: steps.existing.outputs.skip != 'true'
         shell: pwsh
@@ -109,6 +115,8 @@ jobs:
           $len = ((Get-Content 'Pointframe/appsettings.json' | ConvertFrom-Json).ApplicationInsights.ConnectionString).Length
           if ($len -eq 0) { Write-Error "APP_INSIGHTS_CONNECTION_STRING secret is empty or not set"; exit 1 }
           Write-Host "Connection string length: $len (secret injected successfully)"
+          $agentLen = ((Get-Content 'Pointframe.Telemetry/telemetry.json' | ConvertFrom-Json).ApplicationInsights.ConnectionString).Length
+          if ($agentLen -eq 0) { Write-Error "APP_INSIGHTS_CONNECTION_STRING was not injected for the CLI and MCP server"; exit 1 }
 
       - name: Publish (self-contained single-file)
         if: steps.existing.outputs.skip != 'true'

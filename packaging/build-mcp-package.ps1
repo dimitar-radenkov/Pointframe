@@ -67,6 +67,7 @@ Copy-Item $iconSourcePath (Join-Path $packageDirectory "icon.png") -Force
     homepage = $RepositoryUrl
     documentation = "$RepositoryUrl/blob/master/README.md"
     support = "$RepositoryUrl/issues"
+    privacy_policies = @("https://dimitar-radenkov.github.io/Pointframe/privacy.html")
     license = "MIT"
     icon = "icon.png"
     keywords = @("mcp", "screenshot", "screen-capture", "ocr", "screen-recording", "redaction", "windows", "ai-agents", "pointframe")

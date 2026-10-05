@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy | Pointframe</title>
+    <meta name="description" content="What the Pointframe desktop app, CLI, and MCP server collect, where it goes, how long it is kept, and how to opt out of CLI and MCP telemetry.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://dimitar-radenkov.github.io/Pointframe/privacy.html">
+    <link rel="icon" href="./favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="./app-icon.png">
+    <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+    <nav class="site-nav">
+        <div class="container nav-inner">
+            <a class="brand" href="./index.html" aria-label="Go to the Pointframe homepage">
+                <img src="./app-icon.png" alt="" class="brand-logo" width="32" height="32">
+                <span>Pointframe</span>
+            </a>
+            <div class="nav-links">
+                <a href="./index.html#mcp-cli" class="nav-link">MCP &amp; CLI</a>
+                <a href="./windows-screenshot-mcp-server.html" class="nav-link">MCP server</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="hero article-hero">
+        <div class="container hero-panel">
+            <p class="hero-eyebrow">Privacy</p>
+            <h1 class="hero-title article-title">Pointframe Privacy Policy</h1>
+            <p class="hero-copy">This policy covers the Pointframe desktop app, the Pointframe CLI, and the Pointframe MCP server. Pointframe is free and open source, needs no account, and keeps your screenshots, recordings, and text on your machine.</p>
+        </div>
+    </main>
+
+    <section class="section">
+        <div class="container">
+            <div class="content-shell">
+                <article class="content-card">
+                    <h2>Data collection</h2>
+                    <p>The project never collects screenshots, recordings, OCR text, file names, or file paths. They stay on your machine under <code>%LOCALAPPDATA%\Pointframe</code>, apart from what you choose to send somewhere yourself. An MCP capture tool returns the image to your MCP client, which passes it to your model; pass <code>includeImage: false</code> to return metadata only. Upload &amp; copy link in the desktop app sends one capture to the HTTPS destination you configured.</p>
+
+                    <h2>Usage telemetry of the CLI and the MCP server</h2>
+                    <p>Official release builds of the CLI and the MCP server send one anonymous event per MCP tool call or CLI command to Azure Application Insights. The event holds only these fixed values:</p>
+                    <ul>
+                        <li><code>name</code>: the MCP tool or CLI command, taken from a fixed list; any other value is reported as <code>other</code>.</li>
+                        <li><code>outcome</code>: <code>success</code>, <code>error</code>, <code>cancelled</code>, or <code>denied</code>. Error text is never sent.</li>
+                        <li><code>duration_bucket</code>: <code>lt_1s</code>, <code>1_5s</code>, <code>5_30s</code>, or <code>gt_30s</code>.</li>
+                        <li><code>host</code>: <code>cli</code> or <code>mcp</code>.</li>
+                        <li><code>client</code> (MCP only): <code>claude-desktop</code>, <code>claude-code</code>, <code>codex</code>, <code>vscode</code>, <code>cursor</code>, or <code>other</code>, mapped from the client name in the MCP initialize request.</li>
+                        <li><code>version</code>: the Pointframe version.</li>
+                    </ul>
+                    <p>No arguments, paths, screenshots, text, error messages, or identifiers are sent. There is no install ID, session ID, user name, or machine name, and the exporter identifies itself only with the fixed names <code>Pointframe.Cli</code> or <code>Pointframe.Mcp</code>. Because nothing identifies an install, this telemetry measures operations; it cannot count unique users or retention. Source builds send nothing, because the connection string is injected only by the official release pipeline.</p>
+                    <p>The first run prints a one-time notice to standard error. The MCP server never writes to standard output outside the MCP protocol, so it also places the notice in its server instructions once. A small local file under <code>%LOCALAPPDATA%\Pointframe</code> records that the notice was shown; it holds no identifier.</p>
+
+                    <h2>Opting out of CLI and MCP telemetry</h2>
+                    <p>Set the environment variable <code>POINTFRAME_TELEMETRY_OPTOUT=1</code> or the standard <code>DO_NOT_TRACK=1</code>, or create <code>%LOCALAPPDATA%\Pointframe\agent-telemetry.json</code> containing <code>{"optOut": true}</code>. A config file that cannot be read counts as an opt-out. When you opt out, no telemetry request is made at all. Telemetry never blocks a tool call or command, and a failure to send it is ignored.</p>
+
+                    <h2>Desktop app telemetry</h2>
+                    <p>Official installer builds of the desktop app send the usage telemetry described in the <a href="https://github.com/dimitar-radenkov/Pointframe#privacy--telemetry" target="_blank" rel="noopener noreferrer">README</a>, including a random install ID that is not tied to an account. The desktop app has no in-app telemetry switch, and the opt-out above applies to the CLI and the MCP server only.</p>
+
+                    <h2>Third-party sharing</h2>
+                    <p>Telemetry goes to Microsoft Azure Application Insights, which acts as a processor on the project's behalf. Application Insights receives the IP address of the connection, derives a coarse country and city from it, and stores the address masked (IP masking is on). The exporter attaches no host name, user name, or other machine details. Nothing is sold or shared with anyone else.</p>
+
+                    <h2>Retention</h2>
+                    <p>Telemetry is kept in the project's Application Insights resource under its default retention of 90 days, unless the maintainer changes that setting, and is used only to see which tools and commands are used and whether they fail. Files on your machine stay until you delete them.</p>
+
+                    <h2>Contact</h2>
+                    <p>Questions, deletion requests, and privacy concerns: open an issue at <a href="https://github.com/dimitar-radenkov/Pointframe/issues" target="_blank" rel="noopener noreferrer">github.com/dimitar-radenkov/Pointframe/issues</a>. The same policy is in the <a href="https://github.com/dimitar-radenkov/Pointframe#privacy-policy" target="_blank" rel="noopener noreferrer">README</a>.</p>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container footer-inner">
+            <div class="brand">
+                <img src="./app-icon.png" alt="" class="brand-logo" width="32" height="32">
+                <span>Pointframe</span>
+            </div>
+            <div class="footer-links">
+                <a href="./index.html">Home</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe">GitHub</a>
+            </div>
+        </div>
+    </footer>
+    <script type="module" src="./index.js"></script>
+</body>
+</html>

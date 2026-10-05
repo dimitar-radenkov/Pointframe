@@ -7,6 +7,7 @@ using Pointframe.Engine.Automation.Services;
 using Pointframe.Mcp;
 using Pointframe.Mcp.Automation;
 using Pointframe.Mcp.Configuration;
+using Pointframe.Telemetry;
 
 var hostOptions = DesktopTestingHostOptions.Parse(args);
 if (hostOptions.WorkerMode)
@@ -21,6 +22,19 @@ if (hostOptions.WorkerMode)
 
 var builder = Host.CreateApplicationBuilder(args);
 Directory.CreateDirectory(PointframePaths.LocalAppDataDirectory);
+
+// Standard output carries the JSON-RPC protocol, so the first-run telemetry notice goes to standard
+// error and, when it is shown, into the server instructions the client hands to the model.
+string? telemetryNotice = null;
+var telemetry = OperationTelemetryFactory.Create(
+    TelemetryHost.Mcp,
+    OperationTelemetryFactory.NormalizeVersion(System.Diagnostics.FileVersionInfo.GetVersionInfo(Environment.ProcessPath ?? string.Empty).ProductVersion),
+    PointframePaths.LocalAppDataDirectory,
+    notice =>
+    {
+        telemetryNotice = notice;
+        Console.Error.WriteLine(notice);
+    });
 builder.Services.AddPointframeDataServices($"Data Source={PointframePaths.PointframeDatabasePath}");
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Logging.ClearProviders();
@@ -65,8 +79,9 @@ if (hostOptions.Enabled)
     builder.Services.AddSingleton<IDesktopActionCoordinator, DesktopActionCoordinator>();
 }
 var mcpServer = builder.Services
-    .AddMcpServer(options => options.ServerInstructions = ServerInstructions(hostOptions.Enabled))
+    .AddMcpServer(options => options.ServerInstructions = ServerInstructions(hostOptions.Enabled, telemetryNotice))
     .WithStdioServerTransport()
+    .WithRequestFilters(filters => filters.AddCallToolFilter(McpTelemetryFilter.Create(telemetry)))
     .WithTools<PointframeMcpTools>()
     .WithResources<PointframeMcpResources>();
 if (hostOptions.Enabled)
@@ -99,12 +114,14 @@ _ = Task.Run(async () =>
     }
 });
 await host.RunAsync();
+telemetry.Flush();
 return 0;
 
 // Clients show these instructions to the agent at connect time, which is the one moment an agent that has
 // never seen Pointframe learns that it can verify its own desktop work here, and where the steps are.
-static string ServerInstructions(bool desktopTestingEnabled) =>
+static string ServerInstructions(bool desktopTestingEnabled, string? telemetryNotice) =>
     "Pointframe captures, reads (OCR), and records the Windows desktop. " +
+    (telemetryNotice is null ? string.Empty : telemetryNotice + " ") +
     (desktopTestingEnabled
         ? "Desktop testing is enabled: to verify a change in a running desktop app and return a signed proof, read the resource " +
           $"{PointframeMcpResources.VerifyDesktopWorkGuideUri} before calling any desktop_ tool."

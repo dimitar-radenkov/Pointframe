@@ -61,6 +61,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://dimitar-radenkov.github.io/Pointframe/privacy.html</loc>
+    <lastmod>2026-10-05T00:00:00Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
     <loc>https://dimitar-radenkov.github.io/Pointframe/windows-screenshot-mcp-server.html</loc>
     <lastmod>2026-10-05T00:00:00Z</lastmod>
     <changefreq>monthly</changefreq>

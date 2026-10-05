@@ -13,7 +13,7 @@ Category: Developer tools / Screenshots and screen capture (alternatives if the 
 Author: Dimitar Radenkov
 
 Description:
-A free, local MCP server that lets an AI agent see and record the Windows desktop. It lists monitors and windows, captures a monitor, a sub-region, or one window (returned inline so the model can look at it), reads on-screen text with Windows OCR, searches previously saved captures, and records a monitor to MP4 with pixelated redaction regions. It is a self-contained executable; it needs neither the Pointframe desktop app nor the .NET runtime, and the bundle includes ffmpeg. The MCP server sends no telemetry. Tools that drive the desktop exist for UI testing but stay off unless enabled with a local policy file.
+A free, local MCP server that lets an AI agent see and record the Windows desktop. It lists monitors and windows, captures a monitor, a sub-region, or one window (returned inline so the model can look at it), reads on-screen text with Windows OCR, searches previously saved captures, and records a monitor to MP4 with pixelated redaction regions. It is a self-contained executable; it needs neither the Pointframe desktop app nor the .NET runtime, and the bundle includes ffmpeg. Official builds send only anonymous usage counts (tool name, outcome, duration bucket, client type, version); opt out with POINTFRAME_TELEMETRY_OPTOUT=1 or DO_NOT_TRACK=1. Tools that drive the desktop exist for UI testing but stay off unless enabled with a local policy file.
 
 Install:
 1. Claude Desktop: download and open https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb

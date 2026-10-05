@@ -2,3 +2,5 @@ Fixture draft. Not submitted.
 Install:
    codex mcp add pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
 Tools: list_displays, get_capture, stop_recording
+Privacy policy: https://dimitar-radenkov.github.io/Pointframe/privacy.html
+Opt out: POINTFRAME_TELEMETRY_OPTOUT=1

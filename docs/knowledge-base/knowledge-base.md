@@ -81,7 +81,7 @@ Generated from the area files under `docs/knowledge-base/features/`. Each featur
 - [Tray menu](features/tray.md): F-27 Recent captures and recordings menus; F-28 Open snips, videos, and logs folders; F-43 First-run welcome
 - [Settings](features/settings.md): F-29 Settings window; F-30 Custom global hotkeys; F-31 Light and dark theme; F-42 Share destination settings
 - [Updates and About](features/updates.md): F-32 Update check and install; F-33 About window
-- [Telemetry](features/telemetry.md): F-34 App lifecycle and usage telemetry
+- [Telemetry](features/telemetry.md): F-34 App lifecycle and usage telemetry; F-44 CLI and MCP operation telemetry: one anonymous event per MCP tool call or CLI command, first-run notice, opt-out
 - [CLI and MCP](features/cli-mcp.md): F-35 CLI: capture/OCR/recording plus managed MCP install, status, and doctor for VS Code; F-36 MCP capture, OCR, recording, and library tools; F-37 MCP desktop testing tools; F-39 CLI: spec-driven verification (`verify init`, `run`, `status`, `trust`, `task start`, `hook stop`, `agent`): gates, desktop scenarios, frozen task criteria, project onboarding
 
 <!-- /features -->
@@ -158,6 +158,7 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 
 | Path | What lives here | Read first |
 |---|---|---|
+| `Pointframe.Telemetry/**`, `website/privacy.html` | Operation telemetry shared by the CLI and MCP server (allowlist, opt-out, exporter) and the hosted privacy policy | [CLI and MCP operation telemetry](features/telemetry.md#cli-and-mcp-operation-telemetry) |
 | `Pointframe.Engine/**`, `Pointframe.Cli/**`, `Pointframe.Mcp/**`, `Pointframe.DesktopTestFixture/**` | WPF-free capture, recording, OCR, and desktop automation engine; the CLI and MCP hosts; the WinForms fixture the desktop tools drive | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation), [Spec-driven verification runs](features/cli-mcp.md#spec-driven-verification-runs) |
 | `.pointframe/**` | Pointframe's fixture verification spec and real WPF app spec for `verify run` | [Spec-driven verification runs](features/cli-mcp.md#spec-driven-verification-runs) |
 | `.github/workflows/verify-samples.yml`, `samples/verify/**` | Release CLI verification samples and their Windows CI job | [Spec-driven verification runs](features/cli-mcp.md#spec-driven-verification-runs) |
