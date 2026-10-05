@@ -24,14 +24,14 @@ internal sealed class DesktopTestingMcpTools(
     DesktopTestingPolicyLoader policyLoader,
     DesktopTestingHostOptions options)
 {
-    [McpServerTool(Name = "desktop_list_apps", Title = "List desktop applications", ReadOnly = true, Idempotent = true, UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_list_apps", Title = "List desktop applications", ReadOnly = true, Destructive = false, Idempotent = true, UseStructuredContent = true)]
     [Description("Acknowledges a request for policy-eligible desktop application candidates. This host does not enumerate candidates: it always returns an empty acknowledgement, never a list of applications. To start an application, pass a profile id from the desktop testing policy file directly to desktop_start_test_session.")]
     public Task<DesktopTestingActionResponse> ListAppsAsync(
         [Description("A UUID action identifier.")] string actionId,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(Ok(actionId));
 
-    [McpServerTool(Name = "desktop_start_test_session", Title = "Start desktop test session", UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_start_test_session", Title = "Start desktop test session", ReadOnly = false, Destructive = false, UseStructuredContent = true)]
     [Description("Starts one approved desktop application profile or attaches to an explicitly approved process.")]
     public async Task<DesktopTestingActionResponse> StartTestSessionAsync(
         [Description("A UUID action identifier.")] string actionId,
@@ -92,7 +92,7 @@ internal sealed class DesktopTestingMcpTools(
         return Ok(actionId, sessionRef, result.Session.Target.TargetRef);
     }
 
-    [McpServerTool(Name = "desktop_restart_app", Title = "Restart desktop application", UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_restart_app", Title = "Restart desktop application", ReadOnly = false, Destructive = false, UseStructuredContent = true)]
     [Description("Relaunches the application under test for an existing session, using the same policy profile it was started with. It does not stop the application: close it through its own UI first (its Close or Exit command, or desktop_press_keys), or the call fails with TargetStillRunning. Use it to check that saved state survives a restart. The session id stays valid; observation and element references from before the restart do not.")]
     public async Task<DesktopTestingActionResponse> RestartAppAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -141,7 +141,7 @@ internal sealed class DesktopTestingMcpTools(
     // No UseStructuredContent: on a method returning CallToolResult the SDK derives an output schema from
     // CallToolResult itself, with "structuredContent": true, and Claude Code then rejects the whole tool list.
     // The result builder sets StructuredContent directly, so callers still get it.
-    [McpServerTool(Name = "desktop_observe_app", Title = "Observe desktop application", ReadOnly = true)]
+    [McpServerTool(Name = "desktop_observe_app", Title = "Observe desktop application", ReadOnly = true, Destructive = false)]
     [Description("Captures the current state of the application under test: one image block per requested rectangle, plus the UI Automation element tree when requested. This is the only way to obtain the observation_ref and image_ref that desktop_click, desktop_drag, desktop_enter_text, and desktop_scroll require, so call it before every interaction — refs expire 30 seconds after capture, and are also invalidated if the monitor topology changes, after which any action using them is rejected as StaleObservation.")]
     public async Task<CallToolResult> ObserveAppAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -186,7 +186,7 @@ internal sealed class DesktopTestingMcpTools(
         return DesktopObservationResultBuilder.Build(response, result.Observation, includeImages);
     }
 
-    [McpServerTool(Name = "desktop_focus_window", Title = "Focus desktop window", UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_focus_window", Title = "Focus desktop window", ReadOnly = false, Destructive = false, UseStructuredContent = true)]
     [Description("Brings one window of the application under test to the foreground and gives it keyboard focus. Call this before desktop_press_keys when the target window may not already be focused, since key input goes to whatever currently has focus.")]
     public async Task<DesktopTestingActionResponse> FocusWindowAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -220,7 +220,7 @@ internal sealed class DesktopTestingMcpTools(
             cancellationToken).ConfigureAwait(false);
     }
 
-    [McpServerTool(Name = "desktop_click", Title = "Click desktop target", UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_click", Title = "Click desktop target", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
     [Description("Clicks a point inside a captured image from desktop_observe_app. Coordinates are image-local pixels relative to that image block's top-left corner, not desktop coordinates; the server maps them back to the desktop for you.")]
     public Task<DesktopTestingActionResponse> ClickAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -234,7 +234,7 @@ internal sealed class DesktopTestingMcpTools(
         CancellationToken cancellationToken = default) =>
         ClickCoreAsync(sessionId, actionId, observationRef, imageRef, x, y, count, rightButton, cancellationToken);
 
-    [McpServerTool(Name = "desktop_press_keys", Title = "Press desktop keys", UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_press_keys", Title = "Press desktop keys", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
     [Description("Presses a chord of keys, given as Windows virtual-key codes, against whatever currently has keyboard focus. Call desktop_focus_window first unless the target is already focused. Keys are pressed in the given order and released in reverse, so pass modifiers first (for example [0x11, 0x43] for Ctrl+C).")]
     public Task<DesktopTestingActionResponse> PressKeysAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -244,7 +244,7 @@ internal sealed class DesktopTestingMcpTools(
         CancellationToken cancellationToken = default) =>
         PressKeysCoreAsync(sessionId, actionId, virtualKeys, globalHotkeyId, cancellationToken);
 
-    [McpServerTool(Name = "desktop_drag", Title = "Drag desktop target", UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_drag", Title = "Drag desktop target", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
     [Description("Presses the left mouse button at the first point, moves through the remaining points in order, and releases at the last. Requires at least two points. Coordinates are image-local pixels within the given observation image, as for desktop_click.")]
     public Task<DesktopTestingActionResponse> DragAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -256,7 +256,7 @@ internal sealed class DesktopTestingMcpTools(
         CancellationToken cancellationToken = default) =>
         DragCoreAsync(sessionId, actionId, observationRef, imageRef, points, durationMilliseconds, cancellationToken);
 
-    [McpServerTool(Name = "desktop_enter_text", Title = "Enter desktop text", UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_enter_text", Title = "Enter desktop text", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
     [Description("Clicks a point to place the caret and then types text into it. Prefer semantic entry with an element_ref where the field exposes it, since that sets the value directly instead of relying on synthesized keystrokes.")]
     public Task<DesktopTestingActionResponse> EnterTextAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -271,7 +271,7 @@ internal sealed class DesktopTestingMcpTools(
         CancellationToken cancellationToken = default) =>
         EnterTextCoreAsync(sessionId, actionId, observationRef, imageRef, x, y, text, semanticValue, elementRef, cancellationToken);
 
-    [McpServerTool(Name = "desktop_invoke", Title = "Invoke desktop element", UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_invoke", Title = "Invoke desktop element", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
     [Description("Activates a UI Automation element directly through its invoke pattern, without moving the mouse or synthesizing input. Prefer this over desktop_click for buttons and menu items that expose an element_ref: it does not depend on the element being visible, unoccluded, or correctly mapped from pixels.")]
     public async Task<DesktopTestingActionResponse> InvokeAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -299,7 +299,7 @@ internal sealed class DesktopTestingMcpTools(
             cancellationToken).ConfigureAwait(false);
     }
 
-    [McpServerTool(Name = "desktop_check_ui", Title = "Check desktop UI", ReadOnly = true, UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_check_ui", Title = "Check desktop UI", ReadOnly = true, Destructive = false, UseStructuredContent = true)]
     [Description("Waits until a condition holds over the application's UI Automation state, or until the timeout elapses. Use this to synchronize with the UI after an action instead of guessing at delays. Returns verification 'passed', 'failed', or 'inconclusive' when the state could not be read at all, plus actualValue when one element's state was read. Every evaluated check is recorded in the session report, and a failed check fails the report, so use desktop_observe_app rather than this tool to explore.")]
     public async Task<DesktopTestingCheckResponse> CheckUiAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -396,7 +396,7 @@ internal sealed class DesktopTestingMcpTools(
         return (response, verdict);
     }
 
-    [McpServerTool(Name = "desktop_replay_checks", Title = "Replay recorded checks", UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_replay_checks", Title = "Replay recorded checks", ReadOnly = false, Destructive = false, UseStructuredContent = true)]
     [Description("Re-runs the checks of a signed report against a fresh session of the same executable and compares the verdicts, check by check and criterion by criterion. Use it to confirm results that should survive a restart, such as saved data that reopens. The report must be a report.json under the policy's artifact root, its proof must verify, and the session's executable hash must equal the report's. Checks scoped to a window_ref are skipped, because window refs belong to one session. Replayed checks are also recorded in this session's report. Status is 'matched' when every replayed verdict equals the original, otherwise 'differs'.")]
     public async Task<DesktopReplayResponse> ReplayChecksAsync(
         [Description("The id of a fresh session from desktop_start_test_session, running the same executable as the report.")] string sessionId,
@@ -590,7 +590,7 @@ internal sealed class DesktopTestingMcpTools(
         };
     }
 
-    [McpServerTool(Name = "desktop_scroll", Title = "Scroll desktop target", UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_scroll", Title = "Scroll desktop target", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
     [Description("Scrolls the mouse wheel over a point inside a captured image from desktop_observe_app. Coordinates are image-local pixels, as for desktop_click.")]
     public Task<DesktopTestingActionResponse> ScrollAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -603,7 +603,7 @@ internal sealed class DesktopTestingMcpTools(
         CancellationToken cancellationToken = default) =>
         ScrollCoreAsync(sessionId, actionId, observationRef, imageRef, x, y, detents, cancellationToken);
 
-    [McpServerTool(Name = "desktop_get_action_result", Title = "Get desktop action result", ReadOnly = true, Idempotent = true, UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_get_action_result", Title = "Get desktop action result", ReadOnly = true, Destructive = false, Idempotent = true, UseStructuredContent = true)]
     [Description("Returns the recorded outcome of a previously dispatched action by its action id. Use this to resolve an action whose result was uncertain; actions are never replayed, so re-issuing the original call is not a safe alternative.")]
     public Task<DesktopTestingActionResponse> GetActionResultAsync(
         [Description("The UUID action identifier that was passed to the original action.")] string actionId,
@@ -613,7 +613,7 @@ internal sealed class DesktopTestingMcpTools(
         return Task.FromResult(DesktopTestingResponseMapper.MapAction(coordinator.GetResult(actionId)));
     }
 
-    [McpServerTool(Name = "desktop_get_test_report", Title = "Get desktop test report", Idempotent = true, UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_get_test_report", Title = "Get desktop test report", ReadOnly = false, Destructive = false, Idempotent = true, UseStructuredContent = true)]
     [Description("Finalizes and returns the signed report for a session: the executable under test and its hash, every action and check with its evidence, the criteria verdicts, the overall verdict, and the proof. Also writes a proof bundle to the report's sessionDirectory: report.json, the evidence folder, and an index.html timeline for a person to review. Call before desktop_end_test_session if the report is needed.")]
     public async Task<DesktopTestReport> GetTestReportAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,
@@ -628,7 +628,7 @@ internal sealed class DesktopTestingMcpTools(
         return report;
     }
 
-    [McpServerTool(Name = "desktop_end_test_session", Title = "End desktop test session", UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_end_test_session", Title = "End desktop test session", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
     [Description("Ends the session and stops the application it launched. Observation, image, and element references from the session become invalid. Always call this when finished, so the target process is not left running.")]
     public async Task<DesktopTestingActionResponse> EndTestSessionAsync(
         [Description("The session id returned by desktop_start_test_session.")] string sessionId,

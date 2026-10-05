@@ -1,6 +1,6 @@
 # Pointframe
 
-> Pointframe is a free, open-source (MIT) Windows tool for screen capture, annotation, and recording. Its standalone MCP server and CLI let AI agents list monitors and windows, capture screenshots, read on-screen text with Windows OCR, search saved captures, and record redacted MP4s. Everything runs locally; the MCP server and the CLI send no telemetry. Windows 10 and 11, interactive desktop session required.
+> Pointframe is a free, open-source (MIT) Windows tool for screen capture, annotation, and recording. Its standalone MCP server and CLI let AI agents list monitors and windows, capture screenshots, read on-screen text with Windows OCR, search saved captures, and record redacted MP4s. Everything runs locally; official builds of the MCP server and the CLI send only anonymous usage counts (tool or command name, outcome, duration bucket, host, client type, version), and POINTFRAME_TELEMETRY_OPTOUT=1 or DO_NOT_TRACK=1 turns that off. Windows 10 and 11, interactive desktop session required.
 
 Install the MCP server for Claude Desktop (open the .mcpb bundle), Claude Code (`claude mcp add`), Codex (`codex mcp add`), VS Code, or Cursor. The exact commands are on the agent page below and in the README.
 
@@ -12,7 +12,8 @@ Install the MCP server for Claude Desktop (open the .mcpb bundle), Claude Code (
 ## Documentation
 
 - [README: MCP server](https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server): tools, resources, workflow, and per-client install
-- [README: privacy and telemetry](https://github.com/dimitar-radenkov/Pointframe#privacy--telemetry): what the desktop app sends and what the MCP server and CLI do not
+- [Privacy policy](https://dimitar-radenkov.github.io/Pointframe/privacy.html): what the desktop app, CLI, and MCP server collect, where it goes, retention, and the opt-out
+- [README: privacy policy](https://github.com/dimitar-radenkov/Pointframe#privacy-policy): the same policy in the repository
 - [CLI guide](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/README.md): commands, JSON output, exit codes, and the MCP installer
 - [Desktop-testing MCP guide](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp-desktop-testing/README.md): the opt-in tools that drive a Windows app, off by default
 - [pointframe verify](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify.md): declarative done-checks for coding agents

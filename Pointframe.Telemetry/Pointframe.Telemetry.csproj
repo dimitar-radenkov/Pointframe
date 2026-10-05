@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.Exporter" />
+    <PackageReference Include="OpenTelemetry" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The official release pipeline writes the Application Insights connection string into this file
+         before building the CLI and MCP packages, the same way it does for the desktop appsettings.json.
+         It is empty in source, so source builds send nothing. -->
+    <EmbeddedResource Include="telemetry.json" LogicalName="Pointframe.Telemetry.telemetry.json" />
+    <InternalsVisibleTo Include="Pointframe.Tests" />
+  </ItemGroup>
+
+</Project>

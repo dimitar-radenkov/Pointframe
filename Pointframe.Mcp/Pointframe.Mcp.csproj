@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Pointframe.Engine\Pointframe.Engine.csproj" />
     <ProjectReference Include="..\Pointframe.Data\Pointframe.Data.csproj" />
+    <ProjectReference Include="..\Pointframe.Telemetry\Pointframe.Telemetry.csproj" />
     <PackageReference Include="FlaUI.Core" />
     <PackageReference Include="FlaUI.UIA3" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />

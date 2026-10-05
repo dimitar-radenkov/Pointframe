@@ -13,7 +13,9 @@ in-page anchor resolves; every github.com/dimitar-radenkov/Pointframe link is we
 anchor exists; every code-block line on the page is a line of README.md or docs/cli/README.md, and the README
 registration commands are on the page; version-free release asset names are published by cd.yml and have a versioned
 counterpart in packaging/; every tool in the MCPB manifest is on the page and in both drafts; the page and llms.txt
-are in the sitemap, the index, and pages.yml; the "no telemetry" claim holds for the MCP and CLI projects.
+are in the sitemap, the index, and pages.yml; the telemetry disclosure is complete: no text still claims "no telemetry",
+the agent page, both drafts, the README Privacy Policy, and website/privacy.html name the opt-out, every property the code
+sends is disclosed, the MCPB manifest links the privacy page, and the source build carries no connection string.
 
 -Online and -Snapshot only send GET and HEAD requests (gh api GET). Nothing is posted, and nothing is submitted.
 Prints one "ERROR ..." line per problem and exits 1; otherwise prints a summary and exits 0. Exit 2 on bad arguments.
@@ -43,6 +45,10 @@ $CdWorkflow = '.github/workflows/cd.yml'
 $PagesWorkflow = '.github/workflows/pages.yml'
 $McpPackaging = 'packaging/build-mcp-package.ps1'
 $CliPackaging = 'packaging/build-cli-package.ps1'
+$PrivacyPage = 'website/privacy.html'
+$PrivacyUrl = 'https://dimitar-radenkov.github.io/Pointframe/privacy.html'
+$TelemetrySource = 'Pointframe.Telemetry/OperationTelemetry.cs'
+$TelemetryConfig = 'Pointframe.Telemetry/telemetry.json'
 $Submissions = @(
     'packaging/directory-submissions/mcp-so-issue.txt',
     'packaging/directory-submissions/claude-local-extension-directory.txt'
@@ -132,7 +138,7 @@ function Add-Problem([System.Collections.Generic.List[string]]$Problems, [string
 
 function Test-FilesExist([string]$Root, [System.Collections.Generic.List[string]]$Problems)
 {
-    $required = @($AgentPage, $Llms, $Sitemap, $Index, $Readme, $CdWorkflow, $PagesWorkflow, $McpPackaging) + $Submissions
+    $required = @($AgentPage, $Llms, $Sitemap, $Index, $Readme, $CdWorkflow, $PagesWorkflow, $McpPackaging, $PrivacyPage, $TelemetrySource, $TelemetryConfig) + $Submissions
     foreach ($path in $required)
     {
         if (-not (Test-Path -LiteralPath (Join-Path $Root $path) -PathType Leaf))
@@ -447,36 +453,95 @@ function Test-Publishing([string]$Root, [System.Collections.Generic.List[string]
     }
 }
 
-function Test-TelemetryClaim([string]$Root, [System.Collections.Generic.List[string]]$Problems)
+function Test-TelemetryDisclosure([string]$Root, [System.Collections.Generic.List[string]]$Problems)
 {
-    $claimed = $false
     foreach ($path in $AgentTexts)
     {
         $text = Read-RepoFile $Root $path
-        if ($text -and $text -match 'send no telemetry')
+        if ($text -and $text -match '(?i)\bsends?\s+no\s+telemetry\b|\bno\s+telemetry\b')
         {
-            $claimed = $true
+            Add-Problem $Problems "$path still claims there is no telemetry; the CLI and MCP server send anonymous usage counts."
         }
     }
-    if (-not $claimed)
+
+    $optOut = 'POINTFRAME_TELEMETRY_OPTOUT'
+    $disclosures = @($AgentPage, 'packaging/directory-submissions/claude-local-extension-directory.txt', $Readme, $PrivacyPage)
+    foreach ($path in $disclosures)
     {
-        Add-Problem $Problems 'No agent-facing file states that the MCP server and CLI send no telemetry.'
-        return
+        $text = Read-RepoFile $Root $path
+        if ($text -and $text.IndexOf($optOut, [StringComparison]::Ordinal) -lt 0)
+        {
+            Add-Problem $Problems "$path does not name the opt-out $optOut."
+        }
     }
-    foreach ($project in @('Pointframe.Mcp', 'Pointframe.Cli', 'Pointframe.Engine'))
+
+    foreach ($path in @($AgentPage, 'packaging/directory-submissions/claude-local-extension-directory.txt'))
     {
-        $dir = Join-Path $Root $project
-        if (-not (Test-Path -LiteralPath $dir))
+        $text = Read-RepoFile $Root $path
+        if ($text -and $text -notmatch 'privacy\.html')
         {
-            continue
+            Add-Problem $Problems "$path does not link the privacy page $PrivacyUrl."
         }
-        $hits = @(Get-ChildItem -LiteralPath $dir -Recurse -File -Include *.cs, *.csproj |
-                Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
-                Select-String -Pattern 'ApplicationInsights|OpenTelemetry|TelemetryClient' -List)
-        foreach ($hit in $hits)
+    }
+
+    $privacy = Read-RepoFile $Root $PrivacyPage
+    if ($privacy)
+    {
+        if ($privacy -notmatch [regex]::Escape("<link rel=`"canonical`" href=`"$PrivacyUrl`">"))
         {
-            Add-Problem $Problems "The no-telemetry claim is false: $project references telemetry in $($hit.Path)."
+            Add-Problem $Problems "$PrivacyPage canonical link is not $PrivacyUrl."
         }
+        foreach ($term in @('DO_NOT_TRACK', 'agent-telemetry.json', 'Application Insights', 'github.com/dimitar-radenkov/Pointframe/issues'))
+        {
+            if ($privacy.IndexOf($term, [StringComparison]::Ordinal) -lt 0)
+            {
+                Add-Problem $Problems "$PrivacyPage does not mention '$term'."
+            }
+        }
+    }
+    $sitemapText = Read-RepoFile $Root $Sitemap
+    if ($sitemapText -and $sitemapText -notmatch "<loc>$([regex]::Escape($PrivacyUrl))</loc>")
+    {
+        Add-Problem $Problems "$Sitemap does not list $PrivacyUrl."
+    }
+
+    $readmeText = Read-RepoFile $Root $Readme
+    if ($readmeText -and $readmeText -notmatch '(?m)^## Privacy Policy\s*$')
+    {
+        Add-Problem $Problems "$Readme has no '## Privacy Policy' section."
+    }
+
+    $script = Read-RepoFile $Root $McpPackaging
+    if ($script -and $script -notmatch "privacy_policies\s*=\s*@\(\s*`"$([regex]::Escape($PrivacyUrl))`"")
+    {
+        Add-Problem $Problems "The MCPB manifest in $McpPackaging does not set privacy_policies to $PrivacyUrl."
+    }
+
+    $source = Read-RepoFile $Root $TelemetrySource
+    if ($source)
+    {
+        $keys = @([regex]::Matches($source, 'internal const string \w+Key = "([a-z_]+)";') | ForEach-Object { $_.Groups[1].Value })
+        if ($keys.Count -eq 0)
+        {
+            Add-Problem $Problems "No telemetry property keys found in $TelemetrySource."
+        }
+        foreach ($key in $keys)
+        {
+            foreach ($path in @($Readme, $PrivacyPage))
+            {
+                $text = Read-RepoFile $Root $path
+                if ($text -and $text.IndexOf("``$key``", [StringComparison]::Ordinal) -lt 0 -and $text.IndexOf("<code>$key</code>", [StringComparison]::Ordinal) -lt 0)
+                {
+                    Add-Problem $Problems "$path does not disclose the telemetry property '$key' that $TelemetrySource sends."
+                }
+            }
+        }
+    }
+
+    $config = Read-RepoFile $Root $TelemetryConfig
+    if ($config -and $config -match '"ConnectionString"\s*:\s*"[^"]')
+    {
+        Add-Problem $Problems "$TelemetryConfig carries a connection string in source; only the release pipeline may inject it."
     }
 }
 
@@ -490,7 +555,7 @@ function Invoke-OfflineChecks([string]$Root)
     Test-ReleaseAssetNames $Root $problems
     Test-ToolCoverage $Root $problems
     Test-Publishing $Root $problems
-    Test-TelemetryClaim $Root $problems
+    Test-TelemetryDisclosure $Root $problems
     @($problems)
 }
 
@@ -668,7 +733,12 @@ function Invoke-SelfTest
         @{ Name = 'tool count drift'; Expect = "says 'All ten tools'"; Apply = { param($r) Edit-FixtureFile $r 'website/windows-screenshot-mcp-server.html' 'All three tools' 'All ten tools' } },
         @{ Name = 'page missing from sitemap'; Expect = 'does not list'; Apply = { param($r) Edit-FixtureFile $r 'website/sitemap.xml' 'windows-screenshot-mcp-server.html' 'other.html' } },
         @{ Name = 'pages.yml stops publishing website'; Expect = 'does not publish ./website'; Apply = { param($r) Edit-FixtureFile $r '.github/workflows/pages.yml' './website' './elsewhere' } },
-        @{ Name = 'false no-telemetry claim'; Expect = 'no-telemetry claim is false'; Apply = { param($r) New-Item -ItemType Directory -Force (Join-Path $r "Pointframe.Mcp") | Out-Null; Set-Content (Join-Path $r "Pointframe.Mcp" "Telemetry.cs") 'var c = new TelemetryClient();' } }
+        @{ Name = 'stale no-telemetry claim'; Expect = 'still claims there is no telemetry'; Apply = { param($r) Edit-FixtureFile $r 'website/llms.txt' 'A fixture summary.' 'A fixture summary. The MCP server sends no telemetry.' } },
+        @{ Name = 'opt-out missing on agent page'; Expect = 'does not name the opt-out'; Apply = { param($r) Edit-FixtureFile $r 'website/windows-screenshot-mcp-server.html' 'POINTFRAME_TELEMETRY_OPTOUT' 'POINTFRAME_OTHER' } },
+        @{ Name = 'privacy page missing from sitemap'; Expect = 'privacy.html'; Apply = { param($r) Edit-FixtureFile $r 'website/sitemap.xml' 'Pointframe/privacy.html' 'Pointframe/other.html' } },
+        @{ Name = 'undisclosed telemetry property'; Expect = "does not disclose the telemetry property 'host'"; Apply = { param($r) Edit-FixtureFile $r 'website/privacy.html' '<code>host</code>' '<code>machine</code>' } },
+        @{ Name = 'manifest without privacy policy'; Expect = 'does not set privacy_policies'; Apply = { param($r) Edit-FixtureFile $r 'packaging/build-mcp-package.ps1' 'privacy_policies' 'privacy_links' } },
+        @{ Name = 'connection string in source'; Expect = 'carries a connection string in source'; Apply = { param($r) Edit-FixtureFile $r 'Pointframe.Telemetry/telemetry.json' '"ConnectionString": ""' '"ConnectionString": "InstrumentationKey=abc"' } }
     )
 
     foreach ($mutation in $mutations)

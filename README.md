@@ -150,6 +150,8 @@ Pointframe also ships a standalone MCP server for agents that need to inspect th
 
 The standalone host requires an interactive Windows desktop session. It is a local stdio server intended to be launched by VS Code, Copilot, or another MCP client.
 
+Official builds of the MCP server and the CLI send anonymous usage counts (tool or command name, outcome, duration bucket, host, MCP client type, version) and nothing else. Opt out with `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1`. See the [Privacy Policy](#privacy-policy).
+
 ### MCP capabilities
 
 The server exposes:
@@ -682,6 +684,35 @@ Pointframe is built on a very clean, modern stack (.NET 10, WPF, CommunityToolki
 1. Check out our [Developer Guide](docs/developer-guide.md) and [Architecture Knowledge Base](docs/knowledge-base/knowledge-base.md).
 2. Browse the [open issues](https://github.com/dimitar-radenkov/Pointframe/issues) or look for ones tagged `good first issue`.
 3. Open a Pull Request!
+
+## Privacy Policy
+
+This policy covers the Pointframe desktop app, the Pointframe CLI, and the Pointframe MCP server. The same text is published at <https://dimitar-radenkov.github.io/Pointframe/privacy.html>.
+
+**Data collection.** Pointframe is free, open source, and needs no account. Screenshots, recordings, OCR text, file names, and file paths are never collected by the project. They stay on your machine under `%LOCALAPPDATA%\Pointframe`, apart from what you choose to send somewhere yourself: an MCP capture tool returns the image to your MCP client (pass `includeImage: false` to return metadata only), and Upload & copy link sends one capture to the HTTPS destination you configured.
+
+**Usage telemetry of the CLI and the MCP server.** Official release builds of the CLI and the MCP server send one anonymous event per MCP tool call or CLI command to Azure Application Insights. The event holds only these fixed values:
+
+| Property | Values |
+|---|---|
+| `name` | the MCP tool or CLI command, from a fixed list; anything else is `other` |
+| `outcome` | `success`, `error`, `cancelled`, or `denied` (never an error message) |
+| `duration_bucket` | `lt_1s`, `1_5s`, `5_30s`, or `gt_30s` |
+| `host` | `cli` or `mcp` |
+| `client` (MCP only) | `claude-desktop`, `claude-code`, `codex`, `vscode`, `cursor`, or `other` |
+| `version` | the Pointframe version |
+
+No arguments, paths, screenshots, text, error messages, or identifiers are sent: there is no install ID, session ID, user name, or machine name, and the exporter identifies itself with the fixed names `Pointframe.Cli` or `Pointframe.Mcp`. Because nothing identifies an install, this telemetry counts operations; it cannot count unique users or retention. Source builds send nothing, because the connection string is empty in the repository and injected only by the release pipeline. The first run prints a one-time notice to standard error (the MCP server never writes to standard output outside the protocol, so it also adds the notice to its server instructions once).
+
+**Opting out of CLI and MCP telemetry.** Set the environment variable `POINTFRAME_TELEMETRY_OPTOUT=1` (or the standard `DO_NOT_TRACK=1`), or create `%LOCALAPPDATA%\Pointframe\agent-telemetry.json` containing `{"optOut": true}`. A config file that cannot be read counts as an opt-out. When opted out, no telemetry request is made at all.
+
+**Desktop app telemetry.** Official installer builds also send the usage telemetry described in [Privacy & Telemetry](#privacy--telemetry) below, including a random install ID. The desktop app has no in-app telemetry switch; the opt-out above applies to the CLI and the MCP server only.
+
+**Third-party sharing.** Telemetry goes to Microsoft Azure Application Insights, which acts as a processor on the project's behalf. Application Insights receives the IP address of the connection, derives a coarse country and city from it, and stores the address masked (IP masking is on); the exporter attaches no host name, user name, or other machine details. Nothing is sold or shared with anyone else.
+
+**Retention.** Telemetry is kept in the project's Application Insights resource under Application Insights' default retention (90 days unless the maintainer changes the resource setting) and is used only to see which tools and commands are used and whether they fail. Local files stay until you delete them.
+
+**Contact.** Questions, deletion requests, and privacy concerns: open an issue at <https://github.com/dimitar-radenkov/Pointframe/issues>.
 
 ## Privacy & Telemetry
 

@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Pointframe.Data;
 using Pointframe.Engine;
+using Pointframe.Telemetry;
 
 namespace Pointframe.Cli;
 
@@ -28,7 +29,46 @@ internal sealed class CliApplication
         _standardError = standardError;
     }
 
-    internal static async Task<int> RunAsync(string[] args, TextWriter standardOutput, TextWriter standardError, CancellationToken cancellationToken = default)
+    internal static async Task<int> RunAsync(
+        string[] args,
+        TextWriter standardOutput,
+        TextWriter standardError,
+        CancellationToken cancellationToken = default,
+        IOperationTelemetry? telemetry = null)
+    {
+        telemetry ??= OperationTelemetryFactory.Create(
+            TelemetryHost.Cli,
+            OperationTelemetryFactory.NormalizeVersion(GetVersion()),
+            PointframePaths.LocalAppDataDirectory,
+            notice => standardError.WriteLine(notice));
+        string? commandName = null;
+        var started = Stopwatch.GetTimestamp();
+        var exitCode = await RunCoreAsync(args, standardOutput, standardError, cancellationToken, name => commandName = name);
+        if (commandName is not ("help" or "version"))
+        {
+            var outcome = exitCode == 0
+                ? TelemetryOutcome.Success
+                : cancellationToken.IsCancellationRequested ? TelemetryOutcome.Cancelled : TelemetryOutcome.Error;
+            try
+            {
+                telemetry.Track(commandName ?? TelemetryAllowlist.Other, outcome, Stopwatch.GetElapsedTime(started));
+                telemetry.Flush();
+            }
+            catch (Exception)
+            {
+                // Telemetry must never change a command's result.
+            }
+        }
+
+        return exitCode;
+    }
+
+    private static async Task<int> RunCoreAsync(
+        string[] args,
+        TextWriter standardOutput,
+        TextWriter standardError,
+        CancellationToken cancellationToken,
+        Action<string> onCommand)
     {
         try
         {
@@ -41,6 +81,7 @@ internal sealed class CliApplication
                 return 2;
             }
 
+            onCommand(command.Name);
             if (string.Equals(command.Name, "help", StringComparison.Ordinal))
             {
                 await standardOutput.WriteLineAsync(CliCommandParser.HelpText);

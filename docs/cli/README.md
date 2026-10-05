@@ -745,6 +745,10 @@ test does not prove that the current machine has an unlocked interactive
 desktop or a working `ffmpeg.exe`; use a real `displays`, `capture`, or
 `record` invocation for that check.
 
+## Privacy and telemetry
+
+Official release builds of the CLI send one anonymous event per command: the command name (`other` for anything unrecognized), whether it succeeded, a coarse duration bucket, `cli`, and the version. Arguments, paths, output, error text, and identifiers are never sent, `--help` and `--version` send nothing, and source builds send nothing. The first run prints a one-time notice to standard error. Opt out with `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1`, or put `{"optOut": true}` in `%LOCALAPPDATA%\Pointframegent-telemetry.json`. See the [Privacy Policy](../../README.md#privacy-policy).
+
 ## Troubleshooting
 
 ### No displays or capture errors
