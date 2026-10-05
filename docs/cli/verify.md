@@ -6,6 +6,40 @@ until the last verdict is a fresh pass. This page shows how to set it up in your
 own project. The full reference is in the [CLI README](README.md#verify-a-desktop-app-from-a-spec).
 The fields of the spec file are in the [spec reference](verify-spec.md).
 
+## Coding agents: start here
+
+1. Download the versioned CLI ZIP and its `.sha256` file from the [latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest).
+   The CLI winget package is not available yet. `DimitarRadenkov.Pointframe` installs the desktop app, not the CLI.
+2. Check the ZIP hash against the value in the `.sha256` file:
+
+   ```powershell
+   (Get-FileHash .\Pointframe.Cli-<version>-win-x64.zip -Algorithm SHA256).Hash
+   ```
+
+3. Extract the ZIP. From the extracted folder, install the CLI and call that executable in this shell:
+
+   ```powershell
+   .\Pointframe.Cli.exe install
+   .\Pointframe.Cli.exe verify init --app <path to the built exe> --hooks claude
+   ```
+
+   Install adds `pointframe` to PATH for new shells. For Codex, use `--hooks codex`.
+4. Add a desktop scenario using the [spec reference](verify-spec.md) and [Advanced](#advanced-desktop-scenarios-and-tasks).
+5. Run the checks (from a new shell; in the same shell, call the extracted `.\Pointframe.Cli.exe` instead):
+
+   ```powershell
+   pointframe verify run
+   ```
+
+6. Optionally run `pointframe verify setup` to give the agent interactive desktop tools. Restart the agent session afterwards.
+
+Real apps:
+
+- WinForms menu items may have no AutomationId. Locate them by role and name, for example `{ "role": "menu item", "name": "Options" }`.
+- Electron apps need `--force-renderer-accessibility` in the app arguments, before the app path.
+- `textEquals` on a label, TextBlock, or heading compares its displayed text.
+- A gate that resets app state is fine. A modal opened by `invoke` can block the step; show it with BeginInvoke or check it in the next step.
+
 ## What it does, and what it does not
 
 - It runs the commands in `.pointframe/verify.json`, called gates. For a .NET
