@@ -18,8 +18,8 @@ For the chosen client the script does the following:
      magenta patch is in it.
   6. Cleans up the fixture, the server, the saved artifact, and the isolated configuration.
 
-The claude-plugin client runs the plugin in plugin/pointframe exactly as its .mcp.json does (Windows PowerShell 5.1 running
-scripts/start-mcp.ps1, with a temporary LOCALAPPDATA), pinned to the real release in server.lock.json. It first proves, without
+The claude-plugin client runs the plugin in plugin/pointframe exactly as its .mcp.json does (the scripts/start-mcp.cmd launcher, which
+runs Windows PowerShell 5.1 on scripts/start-mcp.ps1, with a temporary LOCALAPPDATA), pinned to the real release in server.lock.json. It first proves, without
 the desktop, that a tampered hash and a failed download fail closed with nothing on stdout; then it drives the stdio sequence
 above; then it proves that a second start works offline from the verified cache.
 
@@ -917,9 +917,11 @@ function Get-PluginLaunch
 
     $mcp = Get-Content -LiteralPath (Join-Path $PluginDirectory ".mcp.json") -Raw | ConvertFrom-Json
     $entry = $mcp.mcpServers.pointframe
-    $arguments = @($entry.args | ForEach-Object { ([string]$_).Replace('${CLAUDE_PLUGIN_ROOT}', $PluginDirectory) })
+    $rawArguments = @(if ($entry.PSObject.Properties.Name -contains 'args') { $entry.args })
+    $arguments = @($rawArguments | ForEach-Object { ([string]$_).Replace('${CLAUDE_PLUGIN_ROOT}', $PluginDirectory) })
+    $command = ([string]$entry.command).Replace('${CLAUDE_PLUGIN_ROOT}', $PluginDirectory).Replace('/', '\')
     return [pscustomobject]@{
-        Command = [string]$entry.command
+        Command = $command
         Arguments = $arguments
         DataDirectory = $DataDirectory
         Environment = @{ LOCALAPPDATA = $LocalAppData }
@@ -937,7 +939,7 @@ function Test-PluginManifestFiles
     Assert-That -Condition ($lock.schemaVersion -eq 1 -and $lock.sha256 -match '^[0-9a-f]{64}$' -and $lock.url -like "https://github.com/dimitar-radenkov/Pointframe/releases/download/v$($lock.version)/*") -Name "plugin lock file format" -Detail "version=$($lock.version)"
     Assert-That -Condition ($manifest.version -eq $lock.version) -Name "plugin.json version equals the pinned server version" -Detail "$($manifest.version)"
     $launch = Get-PluginLaunch -PluginDirectory $PluginDirectory -LocalAppData "x" -DataDirectory "x"
-    Assert-That -Condition ($launch.Command -eq "powershell" -and $launch.Arguments[-1] -like "*scripts/start-mcp.ps1") -Name "plugin .mcp.json starts powershell with the start script" -Detail ($launch.Arguments -join " ")
+    Assert-That -Condition ($launch.Command -like "*\scripts\start-mcp.cmd" -and $launch.Arguments.Count -eq 0 -and (Test-Path -LiteralPath $launch.Command)) -Name "plugin .mcp.json runs the start-mcp.cmd launcher with no args" -Detail $launch.Command
     return $lock
 }
 

@@ -1549,3 +1549,17 @@ The tool takes optional `windowRef` and `observationRef` like the other input to
 ### Takeaway
 
 When an input path is gated by a validator, test the tool-to-service wiring for every method, not only the service. A recorded "expected error" in a measurement script is a bug report, not a fixture.
+
+## The directory validator reads every MCP arg after the command as a path
+
+### Problem
+
+The Claude plugin's `.mcp.json` ran `powershell` with args `-NoProfile -ExecutionPolicy Bypass -File <script>`. The Anthropic directory validator treated the flag values as paths and blocked the plugin with `COMMAND_PATH_COMPUTED` (Command path can't be followed). Dropping `-ExecutionPolicy Bypass` passed the check but the script then failed on machines with the default Restricted policy.
+
+### What fixed it
+
+`.mcp.json` now has only `command: ${CLAUDE_PLUGIN_ROOT}/scripts/start-mcp.cmd` and no args. The two-line `.cmd` runs `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-mcp.ps1" %*` and returns its exit code. Claude Code spawns a `.cmd` stdio server directly. The README and submission draft state the exact flags for the human reviewer.
+
+### Takeaway
+
+Keep MCP args out of `.mcp.json` when they are not paths: put the flags in a launcher file inside the plugin. Do not echo from the launcher, because stdout is the JSON-RPC stream. Keep the launcher disclosure exact instead of rewording it to dodge scanner heuristics.

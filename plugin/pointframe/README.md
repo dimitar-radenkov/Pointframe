@@ -22,11 +22,13 @@ Then ask Claude to list your displays. It should call `list_displays`.
 
 ## What the plugin runs and downloads
 
-`.mcp.json` starts one local stdio MCP server with this command:
+`.mcp.json` starts one local stdio MCP server by running `scripts/start-mcp.cmd`, with no arguments. That two-line launcher runs this command, passes the arguments it receives through, and returns its exit code:
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -File ${CLAUDE_PLUGIN_ROOT}/scripts/start-mcp.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<plugin folder>\scripts\start-mcp.ps1"
 ```
+
+`-ExecutionPolicy Bypass` applies only to this one PowerShell process, so the script runs on machines with the default Restricted policy; it does not change your system or user policy.
 
 `scripts/start-mcp.ps1` is a short, readable script. It does the following and nothing else:
 
@@ -48,7 +50,7 @@ Official builds of the server send one anonymous usage event per tool call to Az
 
 ## Enable desktop testing (optional)
 
-The `verify-desktop-work` skill needs the server's opt-in desktop-testing tools, which let Claude launch a listed app and click in it. They are off in this plugin. To turn them on, write a policy file that lists the apps Claude may launch (see the [desktop-testing guide](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp-desktop-testing/README.md)), then register the plugin's script yourself with the two extra flags, for example `claude mcp add --scope user pointframe-testing -- powershell -NoProfile -ExecutionPolicy Bypass -File <plugin folder>\scripts\start-mcp.ps1 --desktop-testing --desktop-policy C:\path\to\policy.json`. The flags are passed through to the server.
+The `verify-desktop-work` skill needs the server's opt-in desktop-testing tools, which let Claude launch a listed app and click in it. They are off in this plugin. To turn them on, write a policy file that lists the apps Claude may launch (see the [desktop-testing guide](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp-desktop-testing/README.md)), then register the plugin's launcher yourself with the two extra flags, for example `claude mcp add --scope user pointframe-testing -- "<plugin folder>\scripts\start-mcp.cmd" --desktop-testing --desktop-policy C:\path\to\policy.json`. The flags are passed through to the server.
 
 ## Uninstall and clear the cache
 
