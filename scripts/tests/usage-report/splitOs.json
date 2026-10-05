@@ -1,0 +1,1 @@
+{"tables":[{"name":"PrimaryResult","columns":[{"name":"key","type":"long"},{"name":"size","type":"long"},{"name":"sandboxLike","type":"long"},{"name":"activated7d","type":"long"}],"rows":[["Win10",100,10,10],["Win11",200,20,50]]}]}

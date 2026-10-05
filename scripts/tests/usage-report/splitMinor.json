@@ -1,0 +1,1 @@
+{"tables":[{"name":"PrimaryResult","columns":[{"name":"key","type":"long"},{"name":"size","type":"long"},{"name":"sandboxLike","type":"long"},{"name":"activated7d","type":"long"}],"rows":[["6.7",300,30,60]]}]}
