@@ -344,9 +344,10 @@ quoted path followed by arguments. A .NET project in Codex's `workspace-write`
 sandbox also needs `-c sandbox_workspace_write.network_access=true`, or
 `dotnet build` cannot restore packages.
 
-**Other agents** (Cursor, Copilot, and others) have no Stop hook that can hold
-them back. Use `pointframe verify init --agents-md` so their instructions say to
-run `pointframe verify run`, and require a pass in CI.
+**Cursor** can use a Stop hook; configure it in Cursor's project rules or hooks
+settings to run `pointframe verify hook stop`. Copilot and agents without a
+compatible Stop hook rely on `pointframe verify init --agents-md` instructions
+and a required passing CI check.
 
 The `--review` flag in the hook starts a reviewer agent after the first pass on a
 new tree. It flags weakened tests and edits to the spec or hooks, and its flags
