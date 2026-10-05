@@ -359,7 +359,9 @@ starts this MCP server for you and adds two skills: `verify-desktop-work` (prove
 change to a Windows desktop app works, with a signed report) and `capture-screen`. On
 the first start it downloads the pinned release of the server from GitHub, checks its
 SHA-256 against `server.lock.json`, and caches it under
-`%LOCALAPPDATA%\Pointframe\plugin-mcp`; the
+`%LOCALAPPDATA%\Pointframe\plugin-mcp`. Its `.mcp.json` runs `scripts/start-mcp.cmd`, which
+runs `powershell.exe -NoProfile -ExecutionPolicy Bypass -File start-mcp.ps1` for that one
+process only; the
 [plugin README](plugin/pointframe/README.md) lists exactly what it runs and how to
 remove it. Once the plugin is listed in the Claude plugin directory, install it from the
 `/plugin` marketplace. To try a local copy:

@@ -605,9 +605,9 @@ function Test-ClaudePlugin([string]$PluginRoot, [System.Collections.Generic.List
         {
             Add-Problem $Problems "$label/$relative is $($file.Length) bytes; keep every file under 256 KiB."
         }
-        if ([IO.File]::ReadAllBytes($file.FullName) -contains 0)
+        if ($relative -ne '.claude-plugin\icon.png' -and $relative -ne '.claude-plugin/icon.png' -and [IO.File]::ReadAllBytes($file.FullName) -contains 0)
         {
-            Add-Problem $Problems "$label/$relative is a binary file; a plugin may hold only text files."
+            Add-Problem $Problems "$label/$relative is a binary file; a plugin may hold only text files and .claude-plugin/icon.png."
         }
     }
 
@@ -642,6 +642,29 @@ function Test-ClaudePlugin([string]$PluginRoot, [System.Collections.Generic.List
         if ($names -contains 'license' -and $manifest.license -ne 'MIT')
         {
             Add-Problem $Problems "$label plugin.json license is '$($manifest.license)' but the repository is MIT."
+        }
+    }
+
+    $iconPath = Join-Path $PluginRoot '.claude-plugin/icon.png'
+    if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf))
+    {
+        Add-Problem $Problems "$label/.claude-plugin/icon.png is missing; the directory shows a No icon warning without it."
+    }
+    else
+    {
+        $iconBytes = [IO.File]::ReadAllBytes($iconPath)
+        $pngSignature = [byte[]](0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        $isPng = $iconBytes.Length -ge 24 -and (-not (Compare-Object $pngSignature $iconBytes[0..7]))
+        $iconWidth = 0
+        $iconHeight = 0
+        if ($isPng)
+        {
+            $iconWidth = ([int]$iconBytes[16] -shl 24) + ([int]$iconBytes[17] -shl 16) + ([int]$iconBytes[18] -shl 8) + [int]$iconBytes[19]
+            $iconHeight = ([int]$iconBytes[20] -shl 24) + ([int]$iconBytes[21] -shl 16) + ([int]$iconBytes[22] -shl 8) + [int]$iconBytes[23]
+        }
+        if (-not $isPng -or $iconWidth -ne $iconHeight -or $iconWidth -lt 512 -or $iconWidth -gt 2048)
+        {
+            Add-Problem $Problems "$label/.claude-plugin/icon.png must be a square PNG between 512 and 2048 pixels (found $iconWidth x $iconHeight)."
         }
     }
 
@@ -704,11 +727,16 @@ function Test-ClaudePlugin([string]$PluginRoot, [System.Collections.Generic.List
         try
         {
             $entry = ($mcpText | ConvertFrom-Json).mcpServers.pointframe
-            $arguments = @($entry.args | ForEach-Object { [string]$_ })
-            $startScript = $arguments | Select-Object -Last 1
-            if ($entry.command -ne 'powershell' -or $startScript -ne '${CLAUDE_PLUGIN_ROOT}/scripts/start-mcp.ps1' -or $arguments -contains '-Command' -or $arguments -contains '-c')
+            $arguments = @(if ($entry.PSObject.Properties.Name -contains 'args') { $entry.args | ForEach-Object { [string]$_ } })
+            $command = [string]$entry.command
+            $launcherRelative = if ($command -cmatch '^\$\{CLAUDE_PLUGIN_ROOT\}/(?<file>[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*)$') { $Matches['file'] } else { $null }
+            if (-not $launcherRelative -or -not (Test-Path -LiteralPath (Join-Path $PluginRoot $launcherRelative) -PathType Leaf))
             {
-                Add-Problem $Problems "$label/.mcp.json must start powershell on `${CLAUDE_PLUGIN_ROOT}/scripts/start-mcp.ps1 with plain arguments."
+                Add-Problem $Problems "$label/.mcp.json command must be a literal `${CLAUDE_PLUGIN_ROOT}/<file> that exists in the plugin."
+            }
+            if ($arguments | Where-Object { $_ -match '^-' -or $_ -match '[\\/]' -or $_ -match '\.(ps1|cmd|bat|exe)$' })
+            {
+                Add-Problem $Problems "$label/.mcp.json must not pass args that are flags or look like paths; the directory validator reads every arg as a path. Put them in the launcher."
             }
             if ([regex]::Matches($mcpText, '\$\{[^}]+\}') | Where-Object { $_.Value -ne '${CLAUDE_PLUGIN_ROOT}' })
             {
@@ -719,6 +747,16 @@ function Test-ClaudePlugin([string]$PluginRoot, [System.Collections.Generic.List
         {
             Add-Problem $Problems "$label/.mcp.json is not valid JSON or has no pointframe server."
         }
+    }
+
+    $launcher = Read-RepoFile $PluginRoot 'scripts/start-mcp.cmd'
+    if ($null -eq $launcher)
+    {
+        Add-Problem $Problems "$label/scripts/start-mcp.cmd is missing."
+    }
+    elseif ($launcher -notmatch '(?m)^@powershell\.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-mcp\.ps1" %\*\r?$' -or $launcher -match '(?im)^\s*@?echo\b')
+    {
+        Add-Problem $Problems "$label/scripts/start-mcp.cmd must run powershell.exe -NoProfile -ExecutionPolicy Bypass -File start-mcp.ps1 with %* and must not echo."
     }
 
     $start = Read-RepoFile $PluginRoot 'scripts/start-mcp.ps1'
@@ -1007,8 +1045,15 @@ function Invoke-SelfTest
         @{ Name = 'version drift'; Expect = 'differs from the pinned server version'; Apply = { param($r) Edit-FixtureFile $r '.claude-plugin/plugin.json' '"version": "' '"version": "0.0.' } },
         @{ Name = 'short sha256'; Expect = 'server.lock.json must have'; Apply = { param($r) Edit-FixtureFile $r 'server.lock.json' '"sha256": "' '"sha256": "AB' } },
         @{ Name = 'lock url for another version'; Expect = 'server.lock.json must have'; Apply = { param($r) Edit-FixtureFile $r 'server.lock.json' '/releases/download/v' '/releases/download/v9.' } },
-        @{ Name = 'shell in mcp command'; Expect = 'must start powershell'; Apply = { param($r) Edit-FixtureFile $r '.mcp.json' '"-File"' '"-Command"' } },
-        @{ Name = 'other variable in mcp command'; Expect = 'variable other than'; Apply = { param($r) Edit-FixtureFile $r '.mcp.json' '"-NoProfile"' '"${HOME}"' } },
+        @{ Name = 'mcp command is not the plugin root launcher'; Expect = 'command must be a literal'; Apply = { param($r) Edit-FixtureFile $r '.mcp.json' '"${CLAUDE_PLUGIN_ROOT}/scripts/start-mcp.cmd"' '"powershell"' } },
+        @{ Name = 'mcp command launcher missing'; Expect = 'command must be a literal'; Apply = { param($r) Edit-FixtureFile $r '.mcp.json' 'start-mcp.cmd' 'missing.cmd' } },
+        @{ Name = 'mcp args that look like flags or paths'; Expect = 'must not pass args'; Apply = { param($r) Edit-FixtureFile $r '.mcp.json' 'start-mcp.cmd"' 'start-mcp.cmd", "args": ["-ExecutionPolicy", "Bypass"]' } },
+        @{ Name = 'other variable in mcp command'; Expect = 'variable other than'; Apply = { param($r) Edit-FixtureFile $r '.mcp.json' 'start-mcp.cmd"' 'start-mcp.cmd", "args": ["${HOME}"]' } },
+        @{ Name = 'launcher drops the execution policy'; Expect = 'start-mcp.cmd must run'; Apply = { param($r) Edit-FixtureFile $r 'scripts/start-mcp.cmd' ' -ExecutionPolicy Bypass' '' } },
+        @{ Name = 'launcher echoes'; Expect = 'must not echo'; Apply = { param($r) Edit-FixtureFile $r 'scripts/start-mcp.cmd' "@exit" "@echo hi`r`n@exit" } },
+        @{ Name = 'missing icon'; Expect = 'icon.png is missing'; Apply = { param($r) Remove-Item (Join-Path $r '.claude-plugin/icon.png') } },
+        @{ Name = 'icon is not a png'; Expect = 'square PNG'; Apply = { param($r) Set-Content -LiteralPath (Join-Path $r '.claude-plugin/icon.png') -Value ('x' * 40) } },
+        @{ Name = 'icon too small'; Expect = 'square PNG'; Apply = { param($r) $p = Join-Path $r '.claude-plugin/icon.png'; $b = [IO.File]::ReadAllBytes($p); $b[18] = 0; $b[19] = 64; [IO.File]::WriteAllBytes($p, $b) } },
         @{ Name = 'start script writes to stdout'; Expect = 'must not write to stdout'; Apply = { param($r) Edit-FixtureFile $r 'scripts/start-mcp.ps1' 'function Write-Log' "Write-Host 'x'`r`nfunction Write-Log" } },
         @{ Name = 'short README'; Expect = 'fewer than 40 words'; Apply = { param($r) Set-Content -LiteralPath (Join-Path $r 'README.md') -Value 'Too short.' } },
         @{ Name = 'README without opt-out'; Expect = "does not mention 'POINTFRAME_TELEMETRY_OPTOUT'"; Apply = { param($r) Edit-FixtureFile $r 'README.md' 'POINTFRAME_TELEMETRY_OPTOUT' 'POINTFRAME_OTHER' } },
