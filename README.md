@@ -657,7 +657,7 @@ Pointframe is built on a very clean, modern stack (.NET 10, WPF, CommunityToolki
 
 ## Privacy & Telemetry
 
-Pointframe collects **anonymous, privacy-safe usage telemetry** in official builds to help understand how the app is used and catch errors early. Screenshots, recordings, OCR output, file names, file paths, exception messages, and stack traces are not sent as telemetry.
+Official builds send usage telemetry to Azure Application Insights. The payload contains a random install ID, a per-run session ID, app version, event name, and only properties declared for that event in the catalog below. `os_build` and `screen_count` are sent with `app_started`; other declared properties are sent only with their corresponding event. The envelope also includes `telemetry_channel` and `telemetry_schema_version`. The exporter uses the fixed service identity `service.name=Pointframe` and `service.instance.id=desktop`; it does not attach the PC name, Windows user or domain, or automatic host, process, and OS resource details. Azure derives country and city from the connection IP address.
 
 ### What is collected
 
@@ -756,13 +756,13 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 | `update_dismissed` | `version` |
 | `unhandled_exception` | `exception_type`, `context`, `last_action` when available |
 
-Every event includes an app `version`, a per-run `session_id`, a `telemetry_channel` (`product` or `diagnostic`), a `telemetry_schema_version`, and an `install_id` when one is available. The install ID is a random GUID generated once on first launch and stored locally. It is used only to count unique installs; it is not tied to an account or identity.
+Every event includes an app `version`, a per-run `session_id`, a `telemetry_channel` (`product` or `diagnostic`), a `telemetry_schema_version` (currently `2`), and an `install_id` when one is available. The install ID is a random GUID generated once on first launch and stored locally. It is used only to count unique installs; it is not tied to an account or identity. Azure may derive country and city from the IP address used to connect to Application Insights.
 
-Properties are allow-listed per event in the catalog: anything a caller passes that the event does not declare is reported as a schema violation, and every value is truncated to 200 characters. Both measures exist to keep paths, file names, and recognised text out of telemetry by construction rather than by convention.
+Properties are allow-listed per event in the catalog: anything a caller passes that the event does not declare is dropped before export and reported locally as a schema violation without logging its value. Every declared value is truncated to 200 characters. OpenTelemetry resource environment overrides (`OTEL_RESOURCE_ATTRIBUTES`, `OTEL_SERVICE_NAME`, and related `OTEL_*` settings) are ignored by the product telemetry pipeline. These measures keep paths, file names, and recognised text out of telemetry by construction rather than by convention.
 
 The `last_action` value attached to `unhandled_exception` is the name of the most recent **product** event — background diagnostic events such as `app_heartbeat` never overwrite it.
 
-**Apart from these anonymised events, nothing leaves your machine unless you set up an upload destination yourself** (Settings → Sharing). Screenshots, recordings, OCR output, file names, and file paths are never sent as telemetry. Captures stay local until you use Upload & copy link; then only the capture you choose to upload is sent, to the one HTTPS destination you configured. Local diagnostic logs are stored under `%LOCALAPPDATA%\Pointframe\logs\` and may include local paths to help troubleshoot issues; they are not uploaded automatically.
+Screenshots, recordings, OCR output, file names, file paths, exception messages, and stack traces are not sent as telemetry. Captures stay local until you use Upload & copy link; then only the capture you choose to upload is sent to the HTTPS destination you configured in Settings → Sharing. Local diagnostic logs are stored under `%LOCALAPPDATA%\Pointframe\logs\` and may include local paths to help troubleshoot issues; they are not uploaded automatically.
 
 ### Source builds
 

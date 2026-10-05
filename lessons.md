@@ -1,5 +1,23 @@
 # Lessons Learned
 
+## Azure Monitor's exporter sends the machine name as the role instance unless the resource is set explicitly
+
+### Problem
+
+Application Insights showed workstation names in `cloud_RoleInstance` for Pointframe events even though the event scope contained no machine name.
+
+### Root cause
+
+Azure Monitor's OpenTelemetry exporter maps the OpenTelemetry resource to Azure's cloud role fields. When the application leaves the resource at its default, the default resource can include the host name, which becomes the role instance.
+
+### What fixed it
+
+Build the product logger resource from `ResourceBuilder.CreateEmpty()` and add only the fixed `service.name=Pointframe` and `service.instance.id=desktop` attributes. Keep host, process, and OS detectors out of the product pipeline, and capture the actual exporter HTTP payload in a test under hostile environment overrides.
+
+### Takeaway
+
+Audit the serialized exporter envelope, not only the properties passed by the application. The envelope can contain resource data that never appears in the event scope.
+
 ## A pwsh step fails with the last native exit code unless the script exits 0
 
 ### Problem
