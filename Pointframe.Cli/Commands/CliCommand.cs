@@ -30,4 +30,5 @@ internal sealed record CliCommand(
     string? Hooks = null,
     bool AgentsMd = false,
     bool Explore = false,
-    bool Force = false);
+    bool Force = false,
+    string? ProjectPath = null);

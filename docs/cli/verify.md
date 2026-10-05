@@ -405,6 +405,23 @@ To stop verifying a project:
 To uninstall the CLI, delete `%LOCALAPPDATA%\Programs\Pointframe.Cli` and remove
 that folder from your user `Path`.
 
+## Interactive desktop tools for your agent
+
+If your project is a Windows desktop app and the spec has an `app`, one command gives your agent
+interactive desktop-testing tools for exactly that app, under the same approval as `verify run`:
+
+```powershell
+pointframe verify setup
+```
+
+It approves the spec's commands (standard ones by policy, offline), makes sure the Pointframe MCP server is
+installed, writes the project's agent configuration (`.mcp.json` for Claude Code; use `--client codex`,
+`vscode`, or `all` for the others), and checks that the server starts and lists your app. Restart your agent
+session afterwards. The agent can then call `desktop_list_apps`, which lists your app's profile, and the other
+`desktop_*` tools to start it, click, type, and check its UI. Nothing else can be launched, and if the spec's
+commands change, the server refuses to start until they are approved again (`pointframe verify trust`).
+Details: [Give your agent interactive desktop tools](README.md#give-your-agent-interactive-desktop-tools).
+
 ## Advanced: desktop scenarios and tasks
 
 If your project is a Windows desktop app, the spec can also hold scenarios that

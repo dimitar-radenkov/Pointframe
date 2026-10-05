@@ -174,10 +174,17 @@ internal sealed class VerificationFixture : IDisposable
         // Null: no approver agent, so unapproved commands need a person, as in a host without Claude Code.
         internal Mock<ICommandApprover>? Approver { get; set; }
 
+        internal VerificationServices Build(
+            VerificationStore store,
+            string? hookInput = null,
+            IMcpServerHost? serverHost = null,
+            IMcpPackageInstaller? installer = null,
+            Func<string?>? installedMcp = null) => new(
+            Factory.Object, installedMcp ?? (() => null), Commands.Object, WorkingTree.Object, store, Confirmation.Object, Examiner.Object, LockName, "test-1.0",
+            Reviewer.Object, hookInput is null ? null : new StringReader(hookInput), Approver?.Object, CommandResolver.Object, serverHost, installer);
+
         internal VerificationApplication Application(VerificationStore store, TextWriter output, string? hookInput = null) => new(
-            new VerificationServices(
-                Factory.Object, () => null, Commands.Object, WorkingTree.Object, store, Confirmation.Object, Examiner.Object, LockName, "test-1.0",
-                Reviewer.Object, hookInput is null ? null : new StringReader(hookInput), Approver?.Object, CommandResolver.Object),
+            Build(store, hookInput),
             output,
             TextWriter.Null);
     }

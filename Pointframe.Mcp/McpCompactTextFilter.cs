@@ -15,7 +15,6 @@ internal static class McpCompactTextFilter
 
     private static readonly HashSet<string> ActionTools = new(StringComparer.Ordinal)
     {
-        "desktop_list_apps",
         "desktop_start_test_session",
         "desktop_restart_app",
         "desktop_focus_window",

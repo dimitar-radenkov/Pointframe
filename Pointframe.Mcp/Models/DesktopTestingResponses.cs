@@ -58,7 +58,10 @@ public sealed record DesktopTestingActionResponse(
     string ObservationStatus,
     McpCaptureError? Error = null,
     string? SessionRef = null,
-    string? TargetRef = null);
+    string? TargetRef = null,
+    IReadOnlyList<DesktopAppSummary>? Apps = null);
+
+public sealed record DesktopAppSummary(string Id, string ExecutableName, int AllowedActionCount);
 
 public sealed record DesktopReplayCheck(
     int Index,

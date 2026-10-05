@@ -283,6 +283,36 @@ public sealed class VerificationInitTests
     }
 
     [Fact]
+    public async Task RunAsync_ExploreWithoutTrustDoesNotLaunchTheAppAndWarns()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("Pointframe.sln", "Project(\"{GUID}\") = \"A\", \"a.csproj\", \"{GUID}\"\nEndProject");
+        fixture.Write("bin/App.exe", "exe");
+        var mcp = new FakeMcp(Path.Combine(fixture.Root, "proof"));
+        var services = new VerificationFixture.Services(mcp);
+        var checkedApps = new List<string?>();
+
+        var result = await fixture.RunAsync(
+            Command(appPath: "bin/App.exe", explore: true, hooks: "none"),
+            services,
+            fixture.McpPath,
+            (spec, _) =>
+            {
+                checkedApps.Add(spec.App?.Id);
+                return Task.FromResult<string?>("spec_untrusted");
+            });
+
+        Assert.Equal(0, result);
+        Assert.Equal(["App"], checkedApps);
+        services.Factory.Verify(
+            item => item.LaunchAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        Assert.Contains("spec_untrusted", fixture.Output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("pointframe verify trust", fixture.Output.ToString(), StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(fixture.Root, ".pointframe", "verify.json")));
+    }
+
+    [Fact]
     public async Task RunAsync_NoGatesOrScenarioReturnsOneWithoutWriting()
     {
         using var fixture = new InitFixture();
@@ -457,15 +487,25 @@ public sealed class VerificationInitTests
         internal Task<int> RunAsync(CliCommand command, IPointframeCommandResolver resolver) => new VerificationInit(
             new PhysicalVerificationInitFileSystem(), Output, TextWriter.Null, resolver, "Pointframe CLI 1.0").RunAsync(
                 command, Root, path => path is null ? null : File.Exists(path) ? path : null,
-                new VerificationFixture.Services().Factory.Object, "test-init-lock", CancellationToken.None);
+                new VerificationFixture.Services().Factory.Object, "test-init-lock", Trusted, CancellationToken.None);
 
-        internal Task<int> RunAsync(CliCommand command, VerificationFixture.Services services, string? mcpPath) => Init.RunAsync(
+        internal Task<int> RunAsync(CliCommand command, VerificationFixture.Services services, string? mcpPath) =>
+            RunAsync(command, services, mcpPath, Trusted);
+
+        internal Task<int> RunAsync(
+            CliCommand command,
+            VerificationFixture.Services services,
+            string? mcpPath,
+            Func<VerificationSpec, CancellationToken, Task<string?>> trustFailureCode) => Init.RunAsync(
             command,
             Root,
             path => path is null ? mcpPath : File.Exists(path) ? path : null,
             services.Factory.Object,
             services.LockName,
+            trustFailureCode,
             CancellationToken.None);
+
+        private static Task<string?> Trusted(VerificationSpec spec, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 
         public void Dispose()
         {

@@ -4,7 +4,7 @@ namespace Pointframe.Cli;
 
 internal static class CliCommandParser
 {
-    internal const string Usage = "Usage: Pointframe.Cli.exe install | displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | mcp install|status|doctor --client vscode [--dry-run] | verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios] | verify init [--app <path>] [--mcp <file>] [--hooks claude|codex|both|none] [--agents-md] [--explore] [--force] | verify status|trust [--spec <file>] [--revoke] | verify task start <task-file> [--id <id>] [--replace] | verify hook stop [--review] [--max-blocks <n>] | verify agent [--use claude|codex|auto] | --help | --version";
+    internal const string Usage = "Usage: Pointframe.Cli.exe install | displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | mcp install|status|doctor --client vscode [--dry-run] | mcp serve [--project <dir>] [--mcp <file>] | verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios] | verify init [--app <path>] [--mcp <file>] [--hooks claude|codex|both|none] [--agents-md] [--explore] [--force] | verify setup [--client claude-code|codex|vscode|all] [--spec <file>] [--mcp <file>] | verify status|trust [--spec <file>] [--revoke] | verify task start <task-file> [--id <id>] [--replace] | verify hook stop [--review] [--max-blocks <n>] | verify agent [--use claude|codex|auto] | --help | --version";
 
     internal const string HelpText = """
         Pointframe CLI - standalone screen capture, OCR, and recording automation.
@@ -21,8 +21,10 @@ internal static class CliCommandParser
           Pointframe.Cli.exe mcp install --client vscode [--dry-run]
           Pointframe.Cli.exe mcp status --client vscode
           Pointframe.Cli.exe mcp doctor --client vscode
+          Pointframe.Cli.exe mcp serve [--project <dir>] [--mcp <file>]
           Pointframe.Cli.exe verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios]
           Pointframe.Cli.exe verify init [--app <path>] [--mcp <file>] [--hooks claude|codex|both|none] [--agents-md] [--explore] [--force]
+          Pointframe.Cli.exe verify setup [--client claude-code|codex|vscode|all] [--spec <file>] [--mcp <file>]
           Pointframe.Cli.exe verify status [--spec <file>]
           Pointframe.Cli.exe verify trust [--spec <file>] [--revoke]
           Pointframe.Cli.exe verify task start <task-file> [--spec <file>] [--mcp <file>] [--id <id>] [--replace]
@@ -40,13 +42,17 @@ internal static class CliCommandParser
           capture-window  Capture the visible screen rectangle of a window by its handle.
           ocr-window      Capture a window and extract on-screen text via OCR.
           record          Record one monitor to an MP4 for a fixed duration, then exit with a JSON summary.
-          mcp             Install, configure, inspect, or diagnose the Pointframe MCP server.
+          mcp             Install, configure, inspect, or diagnose the Pointframe MCP server; serve starts it
+                          over stdio with desktop testing for the project's verified app (the command a
+                          committed agent config runs).
           verify          Run a project's verification spec (gates, then desktop scenarios) and write a signed
                           verdict to artifacts\pointframe-verify\verdict.json; report whether the last verdict
                           still matches the working tree (status); approve the spec's gate commands (trust);
                           have an examiner agent freeze a task's criteria before work starts (task start);
                           or, as an agent's Stop hook, refuse "done" until the verdict passes (hook stop);
                           init creates a starter spec and optional Stop hooks for a new project;
+                          setup approves the spec and writes the project's agent config so the agent gets
+                          interactive desktop tools for the spec's app;
                           agent shows or picks the AI (Claude Code, Codex, or a command) for those roles.
 
         Options:
@@ -59,10 +65,13 @@ internal static class CliCommandParser
           -o, --output <file>               Exact output file to write (.png for capture/ocr, .mp4 for record);
                                             parent directories are created. Defaults to a timestamped name
                                             under %LOCALAPPDATA%\Pointframe when omitted.
-              --client <name>               MCP client to configure. The first supported client is vscode.
+              --client <name>               MCP client to configure. mcp install|status|doctor support vscode;
+                                            verify setup takes claude-code (default), codex, vscode, or all.
               --dry-run                     Validate and report MCP installation changes without writing them.
               --spec <file>                 verify: the verification spec (default .pointframe\verify.json)
-              --mcp <file>                  verify run/init: the Pointframe.Mcp.exe to drive the app with
+              --project <dir>               mcp serve: the project folder (default: the folder above the nearest
+                                            .pointframe\verify.json, searching up from the current directory)
+              --mcp <file>                  verify run/init/setup, mcp serve: the Pointframe.Mcp.exe to drive the app with
                                             (default POINTFRAME_MCP_EXECUTABLE, then the CLI-installed server)
               --scenario <id>               verify: run one scenario only; the verdict is then "partial"
               --task <id>                   verify run: also run the frozen criteria of this task
@@ -201,15 +210,20 @@ internal static class CliCommandParser
         if (args.Length < 2)
         {
             command = default!;
-            error = "The mcp command requires an action: install, status, or doctor.";
+            error = "The mcp command requires an action: install, status, doctor, or serve.";
             return false;
         }
 
         var action = args[1].ToLowerInvariant();
+        if (action == "serve")
+        {
+            return TryParseMcpServe(args, out command, out error);
+        }
+
         if (action is not ("install" or "status" or "doctor"))
         {
             command = default!;
-            error = $"Unsupported mcp action '{args[1]}'. Expected install, status, or doctor.";
+            error = $"Unsupported mcp action '{args[1]}'. Expected install, status, doctor, or serve.";
             return false;
         }
 
@@ -264,6 +278,44 @@ internal static class CliCommandParser
         return true;
     }
 
+    private static bool TryParseMcpServe(string[] args, out CliCommand command, out string? error)
+    {
+        command = default!;
+        string? projectPath = null;
+        string? mcpPath = null;
+        var index = 2;
+        while (index < args.Length)
+        {
+            var flag = args[index].ToLowerInvariant();
+            if (flag is not ("--project" or "--mcp"))
+            {
+                error = $"Unrecognized mcp serve option '{args[index]}'.";
+                return false;
+            }
+
+            if (index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
+            {
+                error = $"The mcp serve option {flag} requires a value.";
+                return false;
+            }
+
+            if (flag == "--project")
+            {
+                projectPath = args[index + 1];
+            }
+            else
+            {
+                mcpPath = args[index + 1];
+            }
+
+            index += 2;
+        }
+
+        command = new CliCommand("mcp", McpAction: "serve", McpExecutablePath: mcpPath, ProjectPath: projectPath);
+        error = null;
+        return true;
+    }
+
     private static bool TryParseVerify(string[] args, out CliCommand command, out string? error)
     {
         command = default!;
@@ -301,6 +353,7 @@ internal static class CliCommandParser
         string[] allowed = action switch
         {
             "run" => ["--spec", "--mcp", "--scenario", "--task", "--only"],
+            "setup" => ["--spec", "--mcp", "--client"],
             "status" => ["--spec"],
             "trust" => ["--spec", "--revoke"],
             "task-start" => ["--spec", "--mcp", "--id", "--replace"],
@@ -311,7 +364,7 @@ internal static class CliCommandParser
         };
         if (allowed.Length == 0)
         {
-            error = "The verify command requires an action: init, run, status, trust, task start, hook stop, or agent.";
+            error = "The verify command requires an action: init, run, setup, status, trust, task start, hook stop, or agent.";
             return false;
         }
 
@@ -326,6 +379,7 @@ internal static class CliCommandParser
         int? maxBlocks = null;
         string? useAgent = null;
         string? appPath = null;
+        string? setupClient = null;
         var hooks = action == "init" ? "both" : null;
         var agentsMd = false;
         var explore = false;
@@ -399,6 +453,15 @@ internal static class CliCommandParser
                 case "--app":
                     appPath = value;
                     break;
+                case "--client":
+                    setupClient = value.ToLowerInvariant();
+                    if (setupClient is not ("claude-code" or "codex" or "vscode" or "all"))
+                    {
+                        error = "The verify setup option --client takes claude-code, codex, vscode, or all.";
+                        return false;
+                    }
+
+                    break;
                 case "--hooks":
                     hooks = value.ToLowerInvariant();
                     if (hooks is not ("claude" or "codex" or "both" or "none"))
@@ -434,7 +497,8 @@ internal static class CliCommandParser
             Hooks: hooks,
             AgentsMd: agentsMd,
             Explore: explore,
-            Force: force);
+            Force: force,
+            McpClient: action == "setup" ? setupClient ?? "claude-code" : null);
         error = null;
         return true;
     }

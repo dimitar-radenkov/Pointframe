@@ -95,6 +95,28 @@ create or enable a desktop-testing policy.
 The first supported managed client is `vscode`. Claude Code, Cursor, update,
 and uninstall adapters remain manual workflows for now.
 
+### Serve interactive desktop tools for a project's app
+
+`pointframe mcp serve [--project <dir>] [--mcp <file>]` is the command a
+committed agent configuration runs (`pointframe verify setup` writes it for
+you; see [Interactive desktop tools for your agent](verify.md#interactive-desktop-tools-for-your-agent)).
+It finds the project (`--project`, otherwise the nearest folder above the
+current directory that holds `.pointframe\verify.json`), loads the spec, and
+starts `Pointframe.Mcp.exe --desktop-testing --desktop-policy <file>` with the
+caller's own stdin, stdout, and stderr, so the agent talks to the server
+directly. The policy lists exactly the spec's `app` and is written to
+`%LOCALAPPDATA%\Pointframe\verify\projects\<16 hex>\`, outside the repository.
+
+It starts only under the same approval as `verify run`: the spec's commands must
+already be trusted, approved by policy (standard commands), or approved by the
+approver agent. `mcp serve` never asks a person at a terminal. Standard output is
+reserved for the server; every refusal is one line on standard error with a stable
+code and exit code `1`: `spec_untrusted`, `approver_unavailable`, `spec_invalid`,
+`no_app`, `app_outside_project` (the app or its working folder resolves through a
+link to a place outside the project), `mcp_not_found`, or `mcp_start_failed`.
+When the spec's `app` declares `isolation`, the app starts on a fresh data folder
+that is deleted when the server exits; without it the app uses its normal data.
+
 ## Commands
 
 Every long option below also accepts a short alias: `-m` for `--monitor`,
@@ -331,6 +353,41 @@ is left untouched unless `--force` is supplied.
 
 After initialization, run `pointframe verify run`; standard commands are approved by policy offline. Use
 `pointframe verify trust` if the approver refuses nonstandard commands or no approver is available.
+
+`--explore` launches the app, which is a command the spec declares, so it needs the same approval as a
+run: init checks trust on the generated spec first. When approval is not obtained it skips exploring,
+warns with the code (`spec_untrusted` or `approver_unavailable`), and points to `pointframe verify trust`.
+
+### Give your agent interactive desktop tools
+
+`pointframe verify setup [--client claude-code|codex|vscode|all] [--spec <file>] [--mcp <file>]`
+turns a project that already has `.pointframe\verify.json` with an `app` into one an agent can drive
+interactively, with no hand-written files:
+
+```powershell
+pointframe verify setup
+pointframe verify setup --client all
+```
+
+It approves the spec through the same pipeline as `verify run` (standard commands are approved by policy
+offline), installs the Pointframe MCP server with the checksum-verified `mcp install` installer only when
+none resolves (it never touches VS Code's user configuration), and merges project-scoped agent
+configuration that runs `pointframe mcp serve`: `.mcp.json` for Claude Code (the default),
+`.codex\config.toml` for Codex, `.vscode\mcp.json` for VS Code, or all three. Other servers and settings
+are kept, the first rewrite of a file leaves a `.pointframe.bak` copy, and a second run reports `unchanged`.
+JSON comments and trailing commas are accepted but not kept when a file is rewritten; the Codex file is
+edited as text, so its comments and other tables stay. It finishes with a smoke check: it starts
+`pointframe mcp serve` for the project, requires `desktop_start_test_session` in `tools/list` and the spec's
+app id in `desktop_list_apps`, and prints one JSON line with `status`, `filesWritten`, `filesUnchanged`,
+`clients`, `profileId`, `serverPath`, `serverVersion`, `tools`, `warnings`, and a `nextStep` (restart the
+agent session). Failures carry a `code`; the configuration files stay written. `pointframe.exe` must be on
+`PATH` (`pointframe_not_on_path`).
+
+| Flag | Meaning | Default |
+|---|---|---|
+| `--client <claude-code\|codex\|vscode\|all>` | Agent configuration to write | `claude-code` |
+| `--spec <file>` | The verification spec | `.pointframe\verify.json` in the current folder |
+| `--mcp <file>` | The `Pointframe.Mcp.exe` to use for the smoke check and installation check | `POINTFRAME_MCP_EXECUTABLE`, then the CLI-installed server |
 
 A minimal spec:
 
@@ -747,7 +804,7 @@ desktop or a working `ffmpeg.exe`; use a real `displays`, `capture`, or
 
 ## Privacy and telemetry
 
-Official release builds of the CLI send one anonymous event per command: the command name (`other` for anything unrecognized), whether it succeeded, a coarse duration bucket, `cli`, and the version. Arguments, paths, output, error text, and identifiers are never sent, `--help` and `--version` send nothing, and source builds send nothing. The first run prints a one-time notice to standard error. Opt out with `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1`, or put `{"optOut": true}` in `%LOCALAPPDATA%\Pointframegent-telemetry.json`. See the [Privacy Policy](../../README.md#privacy-policy).
+Official release builds of the CLI send one anonymous event per command: the command name (`other` for anything unrecognized), whether it succeeded, a coarse duration bucket, `cli`, and the version. Arguments, paths, output, error text, and identifiers are never sent, `--help` and `--version` send nothing, and source builds send nothing. The first run prints a one-time notice to standard error. Opt out with `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1`, or put `{"optOut": true}` in `%LOCALAPPDATA%\Pointframe\agent-telemetry.json`. See the [Privacy Policy](../../README.md#privacy-policy).
 
 ## Troubleshooting
 

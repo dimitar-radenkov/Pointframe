@@ -25,11 +25,26 @@ internal sealed class DesktopTestingMcpTools(
     DesktopTestingHostOptions options)
 {
     [McpServerTool(Name = "desktop_list_apps", Title = "List desktop applications", ReadOnly = true, Destructive = false, Idempotent = true, UseStructuredContent = true)]
-    [Description("Acknowledges a request for desktop application candidates but never enumerates any: it always returns an empty acknowledgement. To start an application, pass a policy profile id directly to desktop_start_test_session.")]
+    [Description("Lists the application profiles the desktop testing policy approves: for each, its id, the executable file name, and how many actions it allows. Pass an id as profileId to desktop_start_test_session. It never lists running processes or attach candidates.")]
     public Task<DesktopTestingActionResponse> ListAppsAsync(
         [Description("A UUID action identifier.")] string actionId,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(Ok(actionId));
+        CancellationToken cancellationToken = default)
+    {
+        DesktopTestingPolicy policy;
+        try
+        {
+            policy = LoadPolicy();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or ArgumentException or JsonException or IOException)
+        {
+            return Task.FromResult(Error(actionId, "PolicyUnavailable", exception.Message));
+        }
+
+        var apps = policy.Profiles
+            .Select(profile => new DesktopAppSummary(profile.Id, Path.GetFileName(profile.ExecutablePath), profile.AllowedActions.Count))
+            .ToArray();
+        return Task.FromResult(Ok(actionId) with { Apps = apps });
+    }
 
     [McpServerTool(Name = "desktop_start_test_session", Title = "Start desktop test session", ReadOnly = false, Destructive = false, UseStructuredContent = true)]
     [Description("Starts one approved desktop application profile or attaches to an explicitly approved process.")]

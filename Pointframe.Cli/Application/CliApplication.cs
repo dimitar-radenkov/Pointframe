@@ -103,23 +103,18 @@ internal sealed class CliApplication
             {
                 using var httpClient = new HttpClient();
                 var installer = new McpPackageInstaller(new GitHubMcpPackageSource(httpClient), McpInstallRoot());
-                var (agent, _) = AgentSelection.Create(AgentSelection.Read(VerificationStore.Default));
-                var verifyApplication = new VerificationApplication(
-                    new VerificationServices(
-                        new McpStdioToolClientFactory(),
-                        () => installer.GetCurrent()?.ExecutablePath,
-                        new ShellCommandRunner(),
-                        new GitWorkingTreeReader(),
-                        VerificationStore.Default,
-                        new ConsoleConfirmation(standardError),
-                        new AgentExaminer(agent),
-                        VerifierVersion: GetVersion(),
-                        Reviewer: new AgentReviewer(agent),
-                        HookInput: Console.IsInputRedirected ? Console.In : null,
-                        Approver: new AgentApprover(agent)),
-                    standardOutput,
-                    standardError);
+                var verifyApplication = CreateVerificationApplication(installer, standardOutput, standardError);
                 return await verifyApplication.RunAsync(command, cancellationToken);
+            }
+
+            if (string.Equals(command.Name, "mcp", StringComparison.Ordinal) && string.Equals(command.McpAction, "serve", StringComparison.Ordinal))
+            {
+                // Standard output belongs to the MCP server this process hands its stdio to, so the
+                // verification code gets a writer that discards anything it would print there.
+                using var httpClient = new HttpClient();
+                var installer = new McpPackageInstaller(new GitHubMcpPackageSource(httpClient), McpInstallRoot());
+                var verifyApplication = CreateVerificationApplication(installer, TextWriter.Null, standardError);
+                return await verifyApplication.ServeAsync(command, Environment.CurrentDirectory, cancellationToken);
             }
 
             if (string.Equals(command.Name, "mcp", StringComparison.Ordinal))
@@ -281,6 +276,27 @@ internal sealed class CliApplication
             stopResult.Artifact);
         await _standardOutput.WriteLineAsync(JsonSerializer.Serialize(response));
         return stopResult.Success ? 0 : 1;
+    }
+
+    private static VerificationApplication CreateVerificationApplication(McpPackageInstaller installer, TextWriter standardOutput, TextWriter standardError)
+    {
+        var (agent, _) = AgentSelection.Create(AgentSelection.Read(VerificationStore.Default));
+        return new VerificationApplication(
+            new VerificationServices(
+                new McpStdioToolClientFactory(),
+                () => installer.GetCurrent()?.ExecutablePath,
+                new ShellCommandRunner(),
+                new GitWorkingTreeReader(),
+                VerificationStore.Default,
+                new ConsoleConfirmation(standardError),
+                new AgentExaminer(agent),
+                VerifierVersion: GetVersion(),
+                Reviewer: new AgentReviewer(agent),
+                HookInput: Console.IsInputRedirected ? Console.In : null,
+                Approver: new AgentApprover(agent),
+                McpInstaller: installer),
+            standardOutput,
+            standardError);
     }
 
     private static string McpInstallRoot() => Path.Combine(

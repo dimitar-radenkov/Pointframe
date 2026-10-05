@@ -1563,3 +1563,21 @@ The Claude plugin's `.mcp.json` ran `powershell` with args `-NoProfile -Executio
 ### Takeaway
 
 Keep MCP args out of `.mcp.json` when they are not paths: put the flags in a launcher file inside the plugin. Do not echo from the launcher, because stdout is the JSON-RPC stream. Keep the launcher disclosure exact instead of rewording it to dodge scanner heuristics.
+
+## A launcher that hands its stdio to a child must not set CreateNoWindow
+
+### Problem
+
+`pointframe mcp serve` starts `Pointframe.Mcp.exe` with no redirection so the agent that started the CLI talks to the server directly. With `CreateNoWindow = true` the server never saw the agent's pipes: tools/list got no answer, and after the agent closed stdin the server kept running because it was reading a console.
+
+### Root cause
+
+`CreateNoWindow` creates the child with a new hidden console. Without `STARTF_USESTDHANDLES` (which .NET sets only when a stream is redirected) a console program reads and writes its console, not the parent's redirected handles.
+
+### What fixed it
+
+`InheritedStdioMcpServerHost` leaves `CreateNoWindow` false, so the child shares the CLI's console and, through it, the pipes. A real run of `mcp serve` against the built server answers tools/list and exits when stdin closes.
+
+### Takeaway
+
+To pass your own stdin and stdout to a child with `Process.Start`, redirect nothing and do not set `CreateNoWindow`. Test it once with real pipes; a unit test with a fake host cannot show this.

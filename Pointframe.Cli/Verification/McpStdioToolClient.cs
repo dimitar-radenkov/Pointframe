@@ -6,6 +6,8 @@ namespace Pointframe.Cli;
 internal interface IMcpToolClient : IAsyncDisposable
 {
     Task<JsonElement> CallToolAsync(string name, object arguments, TimeSpan timeout, CancellationToken cancellationToken);
+
+    Task<JsonElement> ListToolsAsync(TimeSpan timeout, CancellationToken cancellationToken);
 }
 
 internal interface IMcpToolClientFactory
@@ -108,6 +110,9 @@ internal sealed class McpStdioToolClient : IMcpToolClient
 
     public Task<JsonElement> CallToolAsync(string name, object arguments, TimeSpan timeout, CancellationToken cancellationToken) =>
         SendRequestAsync("tools/call", new { name, arguments }, timeout, cancellationToken);
+
+    public Task<JsonElement> ListToolsAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+        SendRequestAsync("tools/list", new { }, timeout, cancellationToken);
 
     public async ValueTask DisposeAsync()
     {

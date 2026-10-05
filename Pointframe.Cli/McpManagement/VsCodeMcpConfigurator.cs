@@ -56,20 +56,22 @@ internal sealed class VsCodeMcpConfigurator : IMcpClientConfigurator
         }
     }
 
-    private JsonObject ReadConfiguration()
+    private JsonObject ReadConfiguration() => ReadJsonObject(ConfigurationPath);
+
+    internal static JsonObject ReadJsonObject(string path)
     {
-        if (!File.Exists(ConfigurationPath))
+        if (!File.Exists(path))
         {
             return [];
         }
 
         return JsonNode.Parse(
-            File.ReadAllText(ConfigurationPath),
+            File.ReadAllText(path),
             documentOptions: new JsonDocumentOptions
             {
                 AllowTrailingCommas = true,
                 CommentHandling = JsonCommentHandling.Skip,
             }) as JsonObject
-            ?? throw new JsonException("The VS Code MCP configuration root must be a JSON object.");
+            ?? throw new JsonException($"The MCP configuration root in {path} must be a JSON object.");
     }
 }
