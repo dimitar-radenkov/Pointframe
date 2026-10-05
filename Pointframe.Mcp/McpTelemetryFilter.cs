@@ -14,6 +14,8 @@ internal static class McpTelemetryFilter
         "ProfileNotFound",
     };
 
+    private const string VerificationResultErrorCode = "NegativeControlMatched";
+
     internal static McpRequestFilter<CallToolRequestParams, CallToolResult> Create(IOperationTelemetry telemetry)
     {
         return next => async (context, cancellationToken) =>
@@ -40,12 +42,20 @@ internal static class McpTelemetryFilter
 
     internal static TelemetryOutcome Classify(CallToolResult result)
     {
-        if (result.IsError != true)
+        var code = ErrorCode(result.StructuredContent);
+        if (code is not null && _deniedErrorCodes.Contains(code))
         {
-            return TelemetryOutcome.Success;
+            return TelemetryOutcome.Denied;
         }
 
-        return IsDenied(result.StructuredContent) ? TelemetryOutcome.Denied : TelemetryOutcome.Error;
+        if (result.IsError == true)
+        {
+            return TelemetryOutcome.Error;
+        }
+
+        // Typed tools return their failure in the structured content and leave IsError unset, so the
+        // wire result stays unchanged and the failure is read from the content instead.
+        return HasTypedFailure(result.StructuredContent) ? TelemetryOutcome.Error : TelemetryOutcome.Success;
     }
 
     private static void Track(IOperationTelemetry telemetry, RequestContext<CallToolRequestParams> context, TelemetryOutcome outcome, TimeSpan duration)
@@ -64,7 +74,11 @@ internal static class McpTelemetryFilter
         }
     }
 
-    private static bool IsDenied(JsonElement? structuredContent)
+    // A typed response failed the operation when it carries a top-level error or reports success=false.
+    // A desktop check that ran and found the application not in the expected state is a verification
+    // result, not a tool failure: "failed" and "inconclusive" without an error, and a negative control
+    // that matched (NegativeControlMatched), count as Success.
+    private static bool HasTypedFailure(JsonElement? structuredContent)
     {
         if (structuredContent is not { ValueKind: JsonValueKind.Object } content)
         {
@@ -73,20 +87,43 @@ internal static class McpTelemetryFilter
 
         foreach (var property in content.EnumerateObject())
         {
+            if (property.Name.Equals("success", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.False)
+            {
+                return true;
+            }
+
+            if (property.Name.Equals("error", StringComparison.OrdinalIgnoreCase)
+                && property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.String
+                && !string.Equals(ErrorCode(structuredContent), VerificationResultErrorCode, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string? ErrorCode(JsonElement? structuredContent)
+    {
+        if (structuredContent is not { ValueKind: JsonValueKind.Object } content)
+        {
+            return null;
+        }
+
+        foreach (var property in content.EnumerateObject())
+        {
             if (property.Name.Equals("error", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.Object)
             {
                 foreach (var errorProperty in property.Value.EnumerateObject())
                 {
-                    if (errorProperty.Name.Equals("code", StringComparison.OrdinalIgnoreCase)
-                        && errorProperty.Value.ValueKind == JsonValueKind.String
-                        && _deniedErrorCodes.Contains(errorProperty.Value.GetString()!))
+                    if (errorProperty.Name.Equals("code", StringComparison.OrdinalIgnoreCase) && errorProperty.Value.ValueKind == JsonValueKind.String)
                     {
-                        return true;
+                        return errorProperty.Value.GetString();
                     }
                 }
             }
         }
 
-        return false;
+        return null;
     }
 }

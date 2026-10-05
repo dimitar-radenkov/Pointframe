@@ -28,7 +28,7 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 | `TelemetryPreferences` | Opt-out from `POINTFRAME_TELEMETRY_OPTOUT`, `DO_NOT_TRACK`, or `agent-telemetry.json` (`{"optOut": true}`) in the Pointframe data directory; also the notice-shown marker file |
 | `OperationTelemetryFactory` | Returns a no-op when the connection string is empty or the user opted out; otherwise shows the notice once and returns `OperationTelemetry` |
 | `OperationTelemetry` | Emits `agent_operation` on a pool thread through the same OpenTelemetry log pipeline as the desktop app; `Flush` waits at most two seconds |
-| `McpTelemetryFilter` | The MCP call-tool filter: measures every `tools/call`, maps `GlobalHotkeyNotApproved` and `ProfileNotFound` results to `denied` |
+| `McpTelemetryFilter` | The MCP call-tool filter: measures every `tools/call`, maps `GlobalHotkeyNotApproved` and `ProfileNotFound` results to `denied`; classifies typed failures (top-level `error` or `success: false` in the structured content, `IsError` unset) as `error`, but a desktop check that ran and failed or was inconclusive, or a matched negative control (`NegativeControlMatched`), stays `success` |
 
 **Invariants.**
 

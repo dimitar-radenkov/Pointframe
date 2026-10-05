@@ -6,11 +6,13 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
 using Pointframe.Engine;
+using Pointframe.Engine.Automation.Models;
 using Pointframe.Mcp;
 using Pointframe.Telemetry;
 using Xunit;
@@ -112,6 +114,91 @@ public sealed class McpTelemetryTests
         Assert.Equal(TelemetryOutcome.Error, McpTelemetryFilter.Classify(failed));
         Assert.Equal(TelemetryOutcome.Error, McpTelemetryFilter.Classify(new CallToolResult { IsError = true }));
         Assert.Equal(TelemetryOutcome.Success, McpTelemetryFilter.Classify(new CallToolResult()));
+    }
+
+    [Fact]
+    public void Classify_DesktopTypedError_WhileIsErrorIsUnset()
+    {
+        var result = Typed(DesktopAction("SessionNotFound"));
+
+        Assert.NotEqual(true, result.IsError);
+        Assert.Equal(TelemetryOutcome.Error, McpTelemetryFilter.Classify(result));
+    }
+
+    [Theory]
+    [InlineData("GlobalHotkeyNotApproved")]
+    [InlineData("ProfileNotFound")]
+    public void Classify_DesktopTypedPolicyDenial_IsDenied(string code)
+    {
+        Assert.Equal(TelemetryOutcome.Denied, McpTelemetryFilter.Classify(Typed(DesktopAction(code))));
+    }
+
+    [Fact]
+    public void Classify_DesktopOk_IsSuccess()
+    {
+        Assert.Equal(TelemetryOutcome.Success, McpTelemetryFilter.Classify(Typed(DesktopAction(null))));
+    }
+
+    [Fact]
+    public void Classify_CheckThatRanAndFailedAnAssertionAboutTheApp_IsSuccess()
+    {
+        var failed = DesktopTestingResponseMapper.MapCheck(new DesktopUiCheckEvaluation(true, false, 0));
+        var inconclusive = DesktopTestingResponseMapper.MapCheck(new DesktopUiCheckEvaluation(true, false, 1, ActualValue: "On"));
+        var negativeControlPassed = DesktopTestingResponseMapper.MapNegativeControl(new DesktopUiCheckEvaluation(true, false, 0));
+        var negativeControlMatched = DesktopTestingResponseMapper.MapNegativeControl(new DesktopUiCheckEvaluation(true, true, 1));
+
+        Assert.Equal("failed", failed.Verification);
+        Assert.Equal("passed", negativeControlPassed.Verification);
+        Assert.Equal("NegativeControlMatched", negativeControlMatched.Error?.Code);
+        foreach (var response in new[] { failed, inconclusive, negativeControlPassed, negativeControlMatched })
+        {
+            Assert.Equal(TelemetryOutcome.Success, McpTelemetryFilter.Classify(Typed(response)));
+        }
+    }
+
+    [Theory]
+    [InlineData("SessionNotFound")]
+    [InlineData("InvalidCondition")]
+    [InlineData("UiaUnavailable")]
+    public void Classify_CheckThatCouldNotRun_IsError(string code)
+    {
+        var response = DesktopTestingResponseMapper.MapCheck(new DesktopUiCheckEvaluation(false, false, 0, code, "x"));
+
+        Assert.Equal(TelemetryOutcome.Error, McpTelemetryFilter.Classify(Typed(response)));
+    }
+
+    [Fact]
+    public void Classify_RecordingResponse_FollowsSuccessFlag()
+    {
+        var failed = McpResponseMapper.DeserializeRecordingResponse("{\"SchemaVersion\":1,\"Success\":false,\"Error\":{\"Code\":\"RecordingFailed\",\"Message\":\"x\"}}");
+        var succeeded = McpResponseMapper.DeserializeRecordingResponse("{\"SchemaVersion\":1,\"Success\":true}");
+
+        Assert.False(failed.Success);
+        Assert.Equal(TelemetryOutcome.Error, McpTelemetryFilter.Classify(Typed(failed)));
+        Assert.Equal(TelemetryOutcome.Success, McpTelemetryFilter.Classify(Typed(succeeded)));
+    }
+
+    [Fact]
+    public void Classify_CaptureResultWithIsError_IsStillError()
+    {
+        var result = Typed(new McpCaptureResponse(1, false, new McpCaptureError("CaptureFailed", "x")));
+        result.IsError = true;
+
+        Assert.Equal(TelemetryOutcome.Error, McpTelemetryFilter.Classify(result));
+    }
+
+    private static CallToolResult Typed<T>(T response)
+    {
+        return new CallToolResult { StructuredContent = JsonSerializer.SerializeToElement(response, McpJsonUtilities.DefaultOptions) };
+    }
+
+    private static DesktopTestingActionResponse DesktopAction(string? errorCode)
+    {
+        var actionId = Guid.NewGuid().ToString();
+        var result = errorCode is null
+            ? new DesktopActionResult(DesktopTestingLimits.SchemaVersion, actionId, DesktopOperationStatus.Completed, DesktopDispatchStatus.Complete, DesktopVerificationStatus.NotRequested, DesktopObservationStatus.NotRequested)
+            : new DesktopActionResult(DesktopTestingLimits.SchemaVersion, actionId, DesktopOperationStatus.Completed, DesktopDispatchStatus.NotStarted, DesktopVerificationStatus.Inconclusive, DesktopObservationStatus.NotRequested, new DesktopOperationError(errorCode, "x"));
+        return DesktopTestingResponseMapper.MapAction(result);
     }
 
     [Fact]
