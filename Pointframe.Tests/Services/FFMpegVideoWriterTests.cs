@@ -91,7 +91,10 @@ public sealed class FFMpegVideoWriterTests
     {
         var writer = CreateDetachedWriter(exitCode: 1, out _);
 
-        writer.Dispose();
+        var exception = Assert.Throws<InvalidOperationException>(writer.Dispose);
+
+        Assert.Contains("code 1", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, writer.FfmpegExitCode);
     }
 
     [Fact]

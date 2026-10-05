@@ -21,7 +21,9 @@ public static class TelemetryPropertyKeys
     public const string DurationMilliseconds = "duration_ms";
     public const string DurationSeconds = "duration_seconds";
     public const string ExceptionType = "exception_type";
+    public const string FfmpegExitCode = "ffmpeg_exit_code";
     public const string FirstAction = "first_action";
+    public const string InnerTypes = "inner_types";
     public const string LastAction = "last_action";
     public const string OsBuild = "os_build";
     public const string ScreenCount = "screen_count";
@@ -32,6 +34,8 @@ public static class TelemetryPropertyKeys
     public const string SessionMinutes = "session_minutes";
     public const string SkipReason = "skip_reason";
     public const string Source = "source";
+    public const string Phase = "phase";
+    public const string Reason = "reason";
     public const string StopReason = "stop_reason";
     public const string State = "state";
     public const string Success = "success";
@@ -81,6 +85,7 @@ public static class TelemetryEvents
     public const string RecordingHudToolSelected = "recording_hud_tool_selected";
     public const string RecordingHudUndoAnnotations = "recording_hud_undo_annotations";
     public const string RecordingCompleted = "recording_completed";
+    public const string RecordingFailed = "recording_failed";
     public const string RecordingStarted = "recording_started";
     public const string TranscriptCompleted = "transcript_completed";
     public const string TranscriptFailed = "transcript_failed";
@@ -179,6 +184,7 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.RecordingHudToolSelected] = Product(TelemetryEvents.RecordingHudToolSelected, TelemetryPropertyKeys.AnnotationTool),
             [TelemetryEvents.RecordingHudUndoAnnotations] = Product(TelemetryEvents.RecordingHudUndoAnnotations),
             [TelemetryEvents.RecordingCompleted] = Product(TelemetryEvents.RecordingCompleted).WithOptional(TelemetryPropertyKeys.DurationSeconds),
+            [TelemetryEvents.RecordingFailed] = Diagnostic(TelemetryEvents.RecordingFailed, TelemetryPropertyKeys.Phase, TelemetryPropertyKeys.Reason, TelemetryPropertyKeys.InnerTypes).WithOptional(TelemetryPropertyKeys.FfmpegExitCode),
             [TelemetryEvents.RecordingStarted] = Product(TelemetryEvents.RecordingStarted, TelemetryPropertyKeys.Type),
             [TelemetryEvents.TranscriptCompleted] = Product(TelemetryEvents.TranscriptCompleted, TelemetryPropertyKeys.Success, TelemetryPropertyKeys.DurationSeconds).WithOptional(TelemetryPropertyKeys.SegmentCount, TelemetryPropertyKeys.SkipReason),
             [TelemetryEvents.TranscriptFailed] = Diagnostic(TelemetryEvents.TranscriptFailed, TelemetryPropertyKeys.ExceptionType),

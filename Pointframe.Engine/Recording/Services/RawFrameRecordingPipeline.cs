@@ -111,9 +111,17 @@ public sealed class RawFrameRecordingPipeline : IDisposable
         }
 
         _cancellation.Cancel();
-        WaitForCompletion(_captureLoop, TimeSpan.FromSeconds(3));
+        var captureFailure = WaitForCompletion(_captureLoop, TimeSpan.FromSeconds(3), "capture");
         _encodeChannel.Writer.TryComplete();
-        WaitForCompletion(_encodeLoop, TimeSpan.FromSeconds(10));
+        var encodeFailure = WaitForCompletion(_encodeLoop, TimeSpan.FromSeconds(10), "encode");
+        var failure = captureFailure is not null && encodeFailure is not null
+            ? new RawFrameRecordingWorkerException("capture", "capture_failed", new AggregateException(captureFailure, encodeFailure))
+            : captureFailure ?? encodeFailure;
+        if (failure is not null)
+        {
+            throw failure;
+        }
+
         PadToElapsedDuration(targetElapsed);
         return GetStatistics();
     }
@@ -218,14 +226,24 @@ public sealed class RawFrameRecordingPipeline : IDisposable
         }
     }
 
-    private static void WaitForCompletion(Task task, TimeSpan timeout)
+    private static Exception? WaitForCompletion(Task task, TimeSpan timeout, string phase)
     {
         try
         {
-            task.Wait(timeout);
+            if (!task.Wait(timeout))
+            {
+                return new RawFrameRecordingWorkerException(phase, "timeout", new TimeoutException("A recording worker did not stop before its timeout."));
+            }
+
+            return null;
         }
         catch (AggregateException exception) when (exception.InnerExceptions.All(inner => inner is OperationCanceledException))
         {
+            return null;
+        }
+        catch (AggregateException exception)
+        {
+            return new RawFrameRecordingWorkerException(phase, phase == "capture" ? "capture_failed" : "pipe_broken", exception.Flatten());
         }
     }
 
@@ -302,6 +320,13 @@ public sealed class RawFrameRecordingPipeline : IDisposable
             ReleaseDC(IntPtr.Zero, Handle);
         }
     }
+}
+
+public sealed class RawFrameRecordingWorkerException(string phase, string reason, Exception innerException)
+    : Exception($"The recording {phase} worker failed.", innerException)
+{
+    public string Phase { get; } = phase;
+    public string Reason { get; } = reason;
 }
 
 public static class RawFramePixelation

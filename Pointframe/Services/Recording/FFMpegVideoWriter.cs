@@ -5,14 +5,18 @@ using System.Globalization;
 
 namespace Pointframe.Services;
 
-public sealed class FFMpegVideoWriter : IVideoWriter
+public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnostics
 {
     private static readonly ConcurrentDictionary<string, bool> DrawtextSupportCache = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly Process _ffmpeg;
     private readonly Stream _stdin;
     private readonly ILogger _logger;
+    private Task? _stderrTask;
     private bool _closed;
+    private readonly ConcurrentQueue<string> _recentStandardError = new();
+    public int? FfmpegExitCode { get; private set; }
+    public string RecentStandardError => string.Join(Environment.NewLine, _recentStandardError);
 
     public FFMpegVideoWriter(
         int width,
@@ -51,7 +55,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter
         }
 
         _stdin = _ffmpeg.StandardInput.BaseStream;
-        _ = ConsumeStderr(_ffmpeg);
+        _stderrTask = ConsumeStderr(_ffmpeg);
         _logger.LogInformation("FFMpeg process started (PID {Pid})", _ffmpeg.Id);
     }
 
@@ -323,24 +327,50 @@ public sealed class FFMpegVideoWriter : IVideoWriter
         }
 
         _closed = true;
-        _stdin.Close();
-
-        if (!_ffmpeg.WaitForExit(TimeSpan.FromSeconds(10)))
+        Exception? closeFailure = null;
+        try
         {
-            _logger.LogWarning("ffmpeg did not exit within 10 s — killing");
-            _ffmpeg.Kill();
+            _stdin.Close();
+        }
+        catch (Exception exception)
+        {
+            closeFailure = exception;
         }
 
-        if (_ffmpeg.ExitCode != 0)
+        try
         {
-            _logger.LogError("ffmpeg exited with code {Code}", _ffmpeg.ExitCode);
+            if (!_ffmpeg.WaitForExit(TimeSpan.FromSeconds(10)))
+            {
+                _logger.LogWarning("ffmpeg did not exit within 10 s — killing");
+                _ffmpeg.Kill(entireProcessTree: true);
+                _ffmpeg.WaitForExit();
+            }
+
+            FfmpegExitCode = _ffmpeg.ExitCode;
+            _stderrTask?.GetAwaiter().GetResult();
+            if (_ffmpeg.ExitCode != 0)
+            {
+                _logger.LogError("ffmpeg exited with code {Code}", _ffmpeg.ExitCode);
+            }
+            else
+            {
+                _logger.LogInformation("ffmpeg exited cleanly");
+            }
         }
-        else
+        finally
         {
-            _logger.LogInformation("ffmpeg exited cleanly");
+            _ffmpeg.Dispose();
         }
 
-        _ffmpeg.Dispose();
+        if (closeFailure is not null)
+        {
+            throw new IOException("Could not close ffmpeg's recording input pipe.", closeFailure);
+        }
+
+        if (FfmpegExitCode != 0)
+        {
+            throw new InvalidOperationException($"ffmpeg exited with code {FfmpegExitCode} while finalizing the recording.");
+        }
     }
 
     private async Task ConsumeStderr(Process process)
@@ -350,6 +380,12 @@ public sealed class FFMpegVideoWriter : IVideoWriter
             string? line;
             while ((line = await process.StandardError.ReadLineAsync().ConfigureAwait(false)) is not null)
             {
+                _recentStandardError.Enqueue(line);
+                while (_recentStandardError.Count > 12)
+                {
+                    _recentStandardError.TryDequeue(out _);
+                }
+
                 if (line.Contains("error", StringComparison.OrdinalIgnoreCase) ||
                     line.Contains("warning", StringComparison.OrdinalIgnoreCase) ||
                     line.Contains("failed", StringComparison.OrdinalIgnoreCase))

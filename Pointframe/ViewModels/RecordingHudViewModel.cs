@@ -71,6 +71,7 @@ public partial class RecordingHudViewModel : ObservableObject
         : "Microphone controls are unavailable for this recording. Enable Record microphone in Settings and make sure a compatible microphone device is selected.";
 
     public event Action? CloseRequested;
+    public event Action<string>? ToastRequested;
 
     public RecordingHudViewModel(
         IScreenRecordingService svc,
@@ -155,7 +156,23 @@ public partial class RecordingHudViewModel : ObservableObject
         CanPauseResume = false;
         CancelElapsedTimer();
         var hadMicrophoneAudio = _svc.IsRecordingMicrophoneEnabled;
-        await Task.Run(() => _svc.Stop()).ConfigureAwait(true);
+        var stopFailed = false;
+        try
+        {
+            await Task.Run(() => _svc.Stop()).ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Recording stop escaped the service boundary");
+            stopFailed = true;
+        }
+
+        if (stopFailed || _svc.LastStopFailed)
+        {
+            ToastRequested?.Invoke(_svc.LastStopError ?? "Recording failed and was not saved.");
+            return;
+        }
+
         _logger.LogInformation("Recording saved to {Path}", OutputPath);
         _telemetry.TrackEvent(TelemetryEvents.RecordingHudStopped, new Dictionary<string, string>
         {
