@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fixture agent page</title>
+    <link rel="canonical" href="https://dimitar-radenkov.github.io/Pointframe/windows-screenshot-mcp-server.html">
+</head>
+<body>
+    <a href="./index.html">Home</a>
+    <a href="#setup">Set up</a>
+    <h2 id="setup">Set it up</h2>
+    <pre class="code-sample"><code>claude mcp add --scope user pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"</code></pre>
+    <pre class="code-sample"><code>codex mcp add pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"</code></pre>
+    <pre class="code-sample"><code>Invoke-WebRequest "$release/Pointframe.Mcp-win-x64.mcpb" -OutFile $mcpb</code></pre>
+    <h2>All three tools</h2>
+    <p><code>list_displays</code>, <code>get_capture</code>, <code>stop_recording</code>. See <a href="./llms.txt">llms.txt</a>.</p>
+    <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb">Download</a>
+    <p>The MCP server and the CLI send no telemetry.</p>
+</body>
+</html>

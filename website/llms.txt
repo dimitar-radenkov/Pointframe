@@ -1,0 +1,31 @@
+# Pointframe
+
+> Pointframe is a free, open-source (MIT) Windows tool for screen capture, annotation, and recording. Its standalone MCP server and CLI let AI agents list monitors and windows, capture screenshots, read on-screen text with Windows OCR, search saved captures, and record redacted MP4s. Everything runs locally; the MCP server and the CLI send no telemetry. Windows 10 and 11, interactive desktop session required.
+
+Install the MCP server for Claude Desktop (open the .mcpb bundle), Claude Code (`claude mcp add`), Codex (`codex mcp add`), VS Code, or Cursor. The exact commands are on the agent page below and in the README.
+
+## Agents
+
+- [Windows screenshot MCP server for AI agents](https://dimitar-radenkov.github.io/Pointframe/windows-screenshot-mcp-server.html): what the server does, install steps per client, the eleven tools, and the privacy model
+- [Make your coding agent prove it's done](https://dimitar-radenkov.github.io/Pointframe/verify-coding-agents-windows.html): keep Claude Code or Codex working until your own build and tests pass
+
+## Documentation
+
+- [README: MCP server](https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server): tools, resources, workflow, and per-client install
+- [README: privacy and telemetry](https://github.com/dimitar-radenkov/Pointframe#privacy--telemetry): what the desktop app sends and what the MCP server and CLI do not
+- [CLI guide](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/README.md): commands, JSON output, exit codes, and the MCP installer
+- [Desktop-testing MCP guide](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp-desktop-testing/README.md): the opt-in tools that drive a Windows app, off by default
+- [pointframe verify](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify.md): declarative done-checks for coding agents
+
+## Releases
+
+- [Latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest): installer, CLI ZIP, MCP bundle, and checksums
+- [Pointframe.Mcp-win-x64.mcpb](https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb): the MCP server bundle (self-contained, includes ffmpeg)
+- [Pointframe.Mcp-win-x64.mcpb.sha256](https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb.sha256): its SHA-256
+- [Pointframe.Cli-win-x64.zip](https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Cli-win-x64.zip): the standalone CLI
+- [MCP Registry entry](https://registry.modelcontextprotocol.io/v0/servers?search=pointframe): io.github.dimitar-radenkov/pointframe-mcp
+
+## Optional
+
+- [Source code](https://github.com/dimitar-radenkov/Pointframe)
+- [Pointframe website](https://dimitar-radenkov.github.io/Pointframe/)

@@ -1,0 +1,40 @@
+DRAFT. Not submitted. Values come from the MCPB manifest that packaging/build-mcp-package.ps1 writes. The directory form changes, so confirm the field names against the live form before submitting by hand. Fields marked CONFIRM are a guess at what the form asks.
+
+Extension name (manifest name): pointframe-mcp
+Display name: Pointframe MCP Server
+Version: the latest release version (the manifest version equals the release version; see https://github.com/dimitar-radenkov/Pointframe/releases/latest)
+Manifest version: 0.3
+Download URL: https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb
+Checksum: https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb.sha256
+Server type: binary (entry point Pointframe.Mcp.exe, stdio)
+Platforms: win32 (Windows x64 only)
+Icon: packaging/assets/mcp-icon.png (shipped in the bundle as icon.png)
+
+Short description:
+Windows screenshots, OCR, and redacted screen recording for AI agents. No desktop app needed.
+
+Long description:
+Lets an AI agent see and record the Windows desktop: list monitors and windows, capture a monitor, a sub-region, or a window (returned inline so the model can see it), read on-screen text with Windows OCR, search previously saved captures, and record a monitor to MP4 with pixelated redaction regions. Runs as a local stdio MCP server in an interactive Windows desktop session. Captures and recordings are written to the user's local Pointframe data directory. Desktop-testing services are opt-in and disabled unless explicitly enabled with a local policy.
+
+Author: Dimitar Radenkov (https://github.com/dimitar-radenkov/Pointframe)
+Homepage: https://github.com/dimitar-radenkov/Pointframe
+Repository: https://github.com/dimitar-radenkov/Pointframe.git
+Documentation: https://github.com/dimitar-radenkov/Pointframe/blob/master/README.md
+Support: https://github.com/dimitar-radenkov/Pointframe/issues
+License: MIT
+Keywords: mcp, screenshot, screen-capture, ocr, screen-recording, redaction, windows, ai-agents, pointframe
+Category (CONFIRM): Developer tools / Productivity
+
+Tools (the manifest list, 11): list_displays, list_windows, capture_monitor, capture_window, read_text_from_monitor, read_text_from_window, search_captures, get_capture, start_recording, stop_recording, get_recording_status
+
+Privacy policy (CONFIRM whether a URL is required): https://github.com/dimitar-radenkov/Pointframe#privacy--telemetry
+Privacy statement: The MCP server runs locally and sends no telemetry. Captures and recordings stay on the user's disk under %LOCALAPPDATA%\Pointframe. A screenshot reaches the model only when a capture tool returns it to the MCP client; pass includeImage false to return metadata only. The capture, OCR, and recording tools only observe; tools that send input are off unless a local policy file enables them.
+
+Example prompts (CONFIRM the count the form wants):
+1. Take a screenshot of my second monitor and tell me why the layout looks broken.
+2. Read the error dialog in the installer window and suggest a fix.
+3. Capture the app before and after your change so I can compare them.
+4. Find the screenshot from yesterday that mentions "timeout".
+5. Record my main monitor while I reproduce the bug, and blur the token field.
+
+Testing notes for reviewers: run on Windows 10 or 11 in a signed-in desktop session. Ask the agent to list displays; it should call list_displays. The pointframe://server-info resource reports the server version and whether ffmpeg was found.
