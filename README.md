@@ -445,7 +445,7 @@ For full detail by version, see the [Releases](https://github.com/dimitar-radenk
 - **Screenshot watermark** — Optionally stamp a configurable text watermark on captured screenshots
 - **Undo / redo** — Full undo/redo stack during annotation
 - **Copy & auto-save** — Copy to clipboard; optional auto-save to a configurable folder
-- **Upload & copy link** — Send an annotated PNG to one configured HTTPS destination and copy its returned HTTPS link
+- **Upload & copy link** — Send an annotated PNG to one configured HTTPS destination and copy its returned HTTPS link; see the [Upload to Zipline setup recipe](docs/zipline-upload.md)
 - **Screen recording** — Record a selected region to MP4 (H.264 via ffmpeg) or start a whole-screen recording instantly with `Ctrl+Shift+R` (default); optional microphone audio from a selected Windows input device
 - **Recording-time annotations** — Add shapes and text directly on top of a recording while it is in progress; switch between draw mode and interact mode from the floating HUD
 - **Video watermark** — Optionally burn a configurable watermark into MP4 recordings

@@ -155,7 +155,17 @@ public sealed class ShareService : IShareService
             var current = document.RootElement;
             foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries))
             {
-                if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment, out current))
+                if (current.ValueKind == JsonValueKind.Array)
+                {
+                    if (!int.TryParse(segment, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var index)
+                        || index >= current.GetArrayLength())
+                    {
+                        return null;
+                    }
+
+                    current = current[index];
+                }
+                else if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment, out current))
                 {
                     return null;
                 }
