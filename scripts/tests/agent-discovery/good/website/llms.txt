@@ -1,0 +1,10 @@
+# Fixture
+
+> A fixture summary.
+
+## Agents
+
+- [Agent page](https://dimitar-radenkov.github.io/Pointframe/windows-screenshot-mcp-server.html): the page
+- [README](https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server): the MCP section
+- [Latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest): downloads
+- [Local page](./index.html): relative link

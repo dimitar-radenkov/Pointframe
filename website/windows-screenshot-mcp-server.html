@@ -132,14 +132,30 @@
 pointframe mcp install --client vscode
 pointframe mcp doctor --client vscode</code></pre>
                     <p>The installer preserves your other MCP servers, creates a backup before its first configuration change, and leaves desktop-testing tools disabled. Use <code>pointframe mcp install --client vscode --dry-run</code> to validate the package and proposed change without installing it.</p>
-                    <p><strong>Claude Code, VS Code, Cursor, and other clients</strong> run the server from a folder on disk. Unpack the bundle once in PowerShell; run the same lines again to update:</p>
+                    <p><strong>Claude Code, Codex, Cursor, and VS Code</strong> run the server from a folder on disk. Download and verify the latest bundle once (a <code>.mcpb</code> is a ZIP archive):</p>
                     <pre class="code-sample"><code>$dir = "$env:LOCALAPPDATA\Programs\Pointframe.Mcp"
 $mcpb = "$env:TEMP\Pointframe.Mcp-win-x64.mcpb"
-Invoke-WebRequest https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb -OutFile $mcpb
+$release = 'https://github.com/dimitar-radenkov/Pointframe/releases/latest/download'
+Invoke-WebRequest "$release/Pointframe.Mcp-win-x64.mcpb" -OutFile $mcpb
+Invoke-WebRequest "$release/Pointframe.Mcp-win-x64.mcpb.sha256" -OutFile "$mcpb.sha256"
+$expected = ((Get-Content "$mcpb.sha256" -Raw).Trim() -split '\s+')[0]
+$actual = (Get-FileHash $mcpb -Algorithm SHA256).Hash
+if ($actual -ne $expected) { throw 'MCPB SHA-256 verification failed.' }
 New-Item -ItemType Directory -Force $dir | Out-Null
 tar -xf $mcpb -C $dir</code></pre>
-                    <p>Then register it. For Claude Code:</p>
+                    <p>Stop the server in your client before updating, because Windows locks a running <code>Pointframe.Mcp.exe</code>. Then register it. For Claude Code:</p>
                     <pre class="code-sample"><code>claude mcp add --scope user pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"</code></pre>
+                    <p><code>claude mcp add</code> refuses a name that already exists; to change the path, run <code>claude mcp remove --scope user pointframe</code> first. For Codex (running it again is safe):</p>
+                    <pre class="code-sample"><code>codex mcp add pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"</code></pre>
+                    <p>For VS Code, add it to <code>.vscode/mcp.json</code> or your user MCP configuration, using your own user name in the path:</p>
+                    <pre class="code-sample"><code>{
+  "servers": {
+    "pointframe": {
+      "type": "stdio",
+      "command": "C:\\Users\\&lt;you&gt;\\AppData\\Local\\Programs\\Pointframe.Mcp\\Pointframe.Mcp.exe"
+    }
+  }
+}</code></pre>
                     <p>For Cursor and other clients that use the <code>mcpServers</code> format, such as <code>%USERPROFILE%\.cursor\mcp.json</code>:</p>
                     <pre class="code-sample"><code>{
   "mcpServers": {
@@ -148,8 +164,10 @@ tar -xf $mcpb -C $dir</code></pre>
     }
   }
 }</code></pre>
-                    <p>In VS Code, run <strong>MCP: Add Server</strong> from the Command Palette, choose <strong>Command (stdio)</strong>, and enter the path to <code>Pointframe.Mcp.exe</code>. The server is also listed in the official <a href="https://registry.modelcontextprotocol.io/v0/servers?search=pointframe" target="_blank" rel="noopener noreferrer">MCP Registry</a> as <code>io.github.dimitar-radenkov/pointframe-mcp</code>.</p>
+                    <p>In VS Code you can also run <strong>MCP: Add Server</strong> from the Command Palette, choose <strong>Command (stdio)</strong>, and enter the path to <code>Pointframe.Mcp.exe</code>. To check the connection, ask the agent to list your displays; it should call <code>list_displays</code>. The <code>pointframe://server-info</code> resource reports the server version and whether <code>ffmpeg</code> was found for recording. The server is also listed in the official <a href="https://registry.modelcontextprotocol.io/v0/servers?search=pointframe" target="_blank" rel="noopener noreferrer">MCP Registry</a> as <code>io.github.dimitar-radenkov/pointframe-mcp</code>.</p>
 
+                    <h2 id="tools">All eleven tools</h2>
+                    <p>Discovery: <code>list_displays</code>, <code>list_windows</code>. Capture: <code>capture_monitor</code>, <code>capture_window</code>. OCR: <code>read_text_from_monitor</code>, <code>read_text_from_window</code>. Saved captures: <code>search_captures</code>, <code>get_capture</code>. Recording: <code>start_recording</code>, <code>get_recording_status</code>, <code>stop_recording</code>. The full reference is in the <a href="https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server" target="_blank" rel="noopener noreferrer">README</a>, and a plain-text summary for agents is in <a href="./llms.txt">llms.txt</a>.</p>
                     <h2>Things to ask your agent</h2>
                     <ul>
                         <li>"Take a screenshot of my second monitor and tell me why the layout looks broken."</li>
@@ -160,21 +178,20 @@ tar -xf $mcpb -C $dir</code></pre>
                     </ul>
 
                     <h2>Local and observable by default</h2>
-                    <p>The server runs as a local stdio process in your own Windows session and writes captures under <code>%LOCALAPPDATA%\Pointframe</code>. The capture, OCR, and recording tools only observe; they never click or type. Tools that drive the desktop exist for automated UI testing, but they stay off unless you enable them with a local policy file. A capture tool returns the image to your MCP client unless you pass <code>includeImage: false</code>.</p>
+                    <p>The server runs as a local stdio process in your own Windows session and writes captures under <code>%LOCALAPPDATA%\Pointframe</code>. The capture, OCR, and recording tools only observe; they never click or type. Tools that drive the desktop exist for automated UI testing, but they stay off unless you enable them with a local policy file. A capture tool returns the image to your MCP client unless you pass <code>includeImage: false</code>. The MCP server and the CLI send no telemetry. The usage telemetry described in the <a href="https://github.com/dimitar-radenkov/Pointframe#privacy--telemetry" target="_blank" rel="noopener noreferrer">README privacy section</a> belongs to the Pointframe desktop app, which the MCP server does not need.</p>
 
                     <h2>Prefer a script? Use the CLI</h2>
                     <p>The same capture, OCR, and recording engine is available as a standalone command-line tool that prints single-line JSON with stable error codes, ready for scripts and CI jobs.</p>
                     <pre class="code-sample"><code>.\Pointframe.Cli.exe install
-pointframe displays
-pointframe capture --monitor \\.\DISPLAY1 -o shot.png
-pointframe ocr-window --window-id 12345678</code></pre>
-
+.\Pointframe.Cli.exe capture --monitor '\\.\DISPLAY1' --output .\shot.png
+.\Pointframe.Cli.exe ocr-window --window-id 12345678</code></pre>
                     <div class="cta-panel">
                         <h3>Give your agent eyes on Windows</h3>
                         <p>Free and open source under the MIT license. Windows 10 and 11, interactive desktop session required.</p>
                         <div class="hero-actions compact-actions">
                             <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb" class="primary-button js-utm-link" data-utm-campaign="mcp_server" data-utm-medium="cta" data-utm-content="mcp_server_article_cta" data-track-event="website_cta_clicked" data-cta-type="download_mcp" data-cta-location="article_cta">Download the MCP server</a>
                             <a href="https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server" class="secondary-link" target="_blank" rel="noopener noreferrer">Read the full tool reference</a>
+                            <a href="./llms.txt" class="secondary-link">llms.txt for agents</a>
                         </div>
                     </div>
 

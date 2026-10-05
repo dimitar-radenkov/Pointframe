@@ -1,0 +1,4 @@
+Fixture draft. Not submitted.
+Install:
+   codex mcp add pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
+Tools: list_displays, get_capture, stop_recording

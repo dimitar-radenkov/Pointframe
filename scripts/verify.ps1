@@ -10,7 +10,8 @@ so an agent can act on them. Run it before saying a task is done; a task is done
 Gates, in order: preflight (no running process locks the Release output), build (Release, like CI),
 format (dotnet format --verify-no-changes on the main project), tests (unit lane, Category!=Integration),
 kb (scripts/kb.ps1 check -NoFix), workflows (scripts/check-workflow-scripts.ps1: its self-test, then every pwsh
-run: block in .github/workflows must parse). Tests are skipped when the build fails; every other gate always
+run: block in .github/workflows must parse), discovery (scripts/check-agent-discovery.ps1: its self-test, then the offline
+checks of the agent page, llms.txt, directory drafts, install commands, and release asset names). Tests are skipped when the build fails; every other gate always
 runs, so one pass reports every problem.
 
 Writes artifacts/verify/verdict.json (status, gates, failure details, and the working-tree hash it verified)
@@ -26,7 +27,7 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
 
-$GateNames = @('preflight', 'build', 'format', 'tests', 'kb', 'workflows')
+$GateNames = @('preflight', 'build', 'format', 'tests', 'kb', 'workflows', 'discovery')
 $Skip = @($Skip | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $unknown = @($Skip | Where-Object { $GateNames -notcontains $_ })
 if ($unknown.Count -gt 0)
@@ -222,6 +223,28 @@ function Test-Workflows
     New-Gate 'workflows' 'fail' "$($problems.Count) workflow run: block(s) do not parse as PowerShell." $details $run.Log
 }
 
+function Test-Discovery
+{
+    $script = Join-Path $RepoRoot 'scripts' 'check-agent-discovery.ps1'
+    $selfTest = Invoke-Logged 'discovery' 'pwsh' @('-NoProfile', '-NonInteractive', '-File', $script, '-SelfTest')
+    $selfTestLog = $selfTest.Lines
+    $run = Invoke-Logged 'discovery' 'pwsh' @('-NoProfile', '-NonInteractive', '-File', $script)
+    $run.Lines = @($selfTestLog) + @($run.Lines)
+    $run.Lines | Set-Content -Path (Join-Path $OutDir 'discovery.log') -Encoding utf8
+    if ($selfTest.ExitCode -ne 0)
+    {
+        $details = @($selfTestLog | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        return New-Gate 'discovery' 'fail' 'The agent discovery checker failed its self-test.' $details $run.Log
+    }
+    if ($run.ExitCode -eq 0)
+    {
+        return New-Gate 'discovery' 'pass' ($run.Lines | Select-Object -Last 1) -Log $run.Log
+    }
+    $problems = @($run.Lines | Select-Object -Skip $selfTestLog.Count | Where-Object { $_ -match '^ERROR ' } | ForEach-Object { $_.Trim() })
+    $details = @('Fix the page, llms.txt, drafts, or packaging named below, then run pwsh scripts/check-agent-discovery.ps1.') + $problems
+    New-Gate 'discovery' 'fail' "$($problems.Count) agent discovery problem(s)." $details $run.Log
+}
+
 $started = Get-Date
 $treeHash = Get-WorkingTreeHash
 $gates = [System.Collections.Generic.List[object]]::new()
@@ -232,6 +255,7 @@ $checks = [ordered]@{
     tests = { Test-Tests }
     kb = { Test-Kb }
     workflows = { Test-Workflows }
+    discovery = { Test-Discovery }
 }
 
 try

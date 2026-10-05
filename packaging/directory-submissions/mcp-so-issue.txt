@@ -1,0 +1,50 @@
+DRAFT. Not submitted. Review, then post by hand as a new issue on the mcp.so submissions tracker (confirm the current repository and form on https://mcp.so before posting).
+
+Title: Submit Pointframe MCP Server (Windows screenshots, OCR, redacted screen recording)
+
+Name: Pointframe MCP Server
+Registry name: io.github.dimitar-radenkov/pointframe-mcp
+Repository: https://github.com/dimitar-radenkov/Pointframe
+Homepage: https://dimitar-radenkov.github.io/Pointframe/windows-screenshot-mcp-server.html
+License: MIT
+Platform: Windows 10 and 11 (win-x64), interactive desktop session
+Transport: stdio (local)
+Category: Developer tools / Screenshots and screen capture (alternatives if the list differs: Computer use, Productivity)
+Author: Dimitar Radenkov
+
+Description:
+A free, local MCP server that lets an AI agent see and record the Windows desktop. It lists monitors and windows, captures a monitor, a sub-region, or one window (returned inline so the model can look at it), reads on-screen text with Windows OCR, searches previously saved captures, and records a monitor to MP4 with pixelated redaction regions. It is a self-contained executable; it needs neither the Pointframe desktop app nor the .NET runtime, and the bundle includes ffmpeg. The MCP server sends no telemetry. Tools that drive the desktop exist for UI testing but stay off unless enabled with a local policy file.
+
+Install:
+1. Claude Desktop: download and open https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb
+2. Claude Code:
+   claude mcp add --scope user pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
+3. Codex:
+   codex mcp add pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
+4. VS Code and Cursor: JSON snippets and the download-and-verify steps are in https://github.com/dimitar-radenkov/Pointframe#connect-your-mcp-client
+
+Server config (mcpServers format):
+{
+  "mcpServers": {
+    "pointframe": {
+      "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\Pointframe.Mcp\\Pointframe.Mcp.exe"
+    }
+  }
+}
+
+Tools (11):
+- list_displays: list monitors with names, pixel bounds, and DPI scales
+- list_windows: list visible top-level windows with handles, titles, processes, and bounds
+- capture_monitor: capture a monitor or sub-region to PNG and return the image inline
+- capture_window: capture a window by handle to PNG and return the image inline
+- read_text_from_monitor: capture a monitor or sub-region and return its text with Windows OCR
+- read_text_from_window: capture a window by handle and return its text with Windows OCR
+- search_captures: search saved screenshots by filename or indexed OCR text
+- get_capture: get a saved capture by ID with metadata and an optional preview
+- start_recording: start an MP4 recording of a monitor, with optional pixelated redaction regions
+- stop_recording: stop the recording and return the MP4 and its metadata
+- get_recording_status: report whether a recording is active
+
+Resources: pointframe://commands, pointframe://server-info
+
+Links: Docs https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server | llms.txt https://dimitar-radenkov.github.io/Pointframe/llms.txt | MCP Registry https://registry.modelcontextprotocol.io/v0/servers?search=pointframe | Releases https://github.com/dimitar-radenkov/Pointframe/releases/latest

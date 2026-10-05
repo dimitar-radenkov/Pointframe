@@ -103,6 +103,15 @@ jobs:
           ./scripts/check-workflow-scripts.ps1
           exit $LASTEXITCODE
 
+      - name: Agent discovery check
+        # Fails when the agent page, llms.txt, or the directory drafts drift from the README, packaging, or release assets.
+        shell: pwsh
+        run: |
+          ./scripts/check-agent-discovery.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/check-agent-discovery.ps1
+          exit $LASTEXITCODE
+
       - name: Test with coverage
         # Hosted CI stays on the unit-test lane only.
         # DesktopAutomation and InstallerSmoke run outside this workflow.
