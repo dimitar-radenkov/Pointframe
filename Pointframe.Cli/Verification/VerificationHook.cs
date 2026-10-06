@@ -99,11 +99,12 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
         }
 
         var status = verdict.Value.GetProperty("status").GetString();
+        var noBuildGate = verdict.Value.TryGetProperty("noBuildGate", out var noBuildGateElement) && noBuildGateElement.ValueKind == JsonValueKind.True;
         var errorCode = verdict.Value.TryGetProperty("errorCode", out var code) ? code.GetString() : null;
         var nextStep = verdict.Value.TryGetProperty("nextStep", out var nextStepElement)
             ? nextStepElement.Deserialize<VerificationNextStep>(VerificationApplication.VerdictJson)
             : VerificationNextSteps.For(status, errorCode, verdict.Value.TryGetProperty("error", out var messageElement) ? messageElement.GetString() : null);
-        if (status == VerificationStatus.Pass)
+        if (status == VerificationStatus.Pass && !noBuildGate)
         {
             var message = $"Pointframe verify: pass on tree {Short(tree.TreeHash)}.";
             if (command.Review && !Reviewed(outputDirectory, tree.TreeHash))

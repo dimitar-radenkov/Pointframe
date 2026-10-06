@@ -236,6 +236,8 @@ whose value is empty (null) is left out.
 | `gates` | One entry per gate that ran: `id`, `run`, `status` (`pass` or `fail`), `exitCode` (left out on a timeout or when the gate could not start), `seconds`, `log`, `details`. |
 | `scenarios` | One entry per scenario: `id`, `status` (`pass`, `fail`, or `skipped`), `reportVerdict`, `criteria`, `steps`, `bundleDirectory`, `proofValid`, `proofKeyId`, `problems`. |
 | `errorCode`, `error`, `details` | Present when the run could not finish, with a code such as `spec_untrusted`, `approver_unavailable`, `app_not_found`, `mcp_not_found`, or `desktop_busy`. |
+| `warnings` | Additive run notes. A scenario run with no gates warns that the app binary may not match the current files. |
+| `noBuildGate` | `true` when the spec has at least one scenario and no gates. Such a passing verdict is never fresh; add a build gate before relying on it. |
 
 ### `review.json`
 

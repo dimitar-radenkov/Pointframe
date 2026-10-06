@@ -197,6 +197,10 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         }
 
         context.SpecSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(specPath)));
+        context.NoBuildGate = spec.Scenarios.Count > 0 && spec.Gates.Count == 0;
+        context.Warnings = context.NoBuildGate
+            ? ["No gate ran before the scenarios, so the app binary may not match the current files; add a build gate."]
+            : null;
         context.OutputDirectory = Path.Combine(spec.RootDirectory, OutputRelativePath);
         var scenarios = spec.Scenarios;
         if (command.ScenarioId is not null)
@@ -323,7 +327,10 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         var status = failed ? VerificationStatus.Fail : filtered ? VerificationStatus.Partial : VerificationStatus.Pass;
         var failedId = gates.FirstOrDefault(gate => gate.Status != VerificationStatus.Pass)?.Id
             ?? results.FirstOrDefault(result => result.Status != VerificationStatus.Pass)?.Id;
-        var verdict = Verdict(context, status, gates, results, nextStep: VerificationNextSteps.For(status, null, failureId: failedId));
+        var nextStep = context.NoBuildGate
+            ? VerificationNextSteps.For("stale", "no_build_gate")
+            : VerificationNextSteps.For(status, null, failureId: failedId);
+        var verdict = Verdict(context, status, gates, results, nextStep: nextStep);
         await WriteVerdictAsync(verdict, context.OutputDirectory, cancellationToken);
         if (context.Task is { SpecChanged: true })
         {
@@ -371,12 +378,14 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         string? verdictSpecSha256 = null;
         string? verdictTaskId = null;
         string? verdictTaskSha256 = null;
+        var verdictNoBuildGate = false;
         DateTimeOffset? startedUtc = null;
         if (File.Exists(verdictPath))
         {
             using var document = JsonDocument.Parse(File.ReadAllText(verdictPath));
             var verdict = document.RootElement;
             status = verdict.GetProperty("status").GetString() ?? "none";
+            verdictNoBuildGate = verdict.TryGetProperty("noBuildGate", out var noBuildGate) && noBuildGate.ValueKind == JsonValueKind.True;
             verdictTree = verdict.TryGetProperty("provenance", out var provenance) && provenance.TryGetProperty("treeHash", out var tree)
                 ? tree.GetString()
                 : null;
@@ -401,8 +410,11 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         var treeMatches = verdictTree is not null && verdictTree == current.TreeHash;
         var specMatches = currentSpecSha256 is not null && verdictSpecSha256 == currentSpecSha256;
         var taskMatches = activeTask is null || (verdictTaskId == activeTask && verdictTaskSha256 == activeSnapshot.Value.Sha256);
-        var fresh = status == VerificationStatus.Pass && treeMatches && specMatches && taskMatches;
-        var freshnessReason = !specMatches && verdictSpecSha256 is not null
+        var noBuildGatePass = status == VerificationStatus.Pass && verdictNoBuildGate;
+        var fresh = !noBuildGatePass && status == VerificationStatus.Pass && treeMatches && specMatches && taskMatches;
+        var freshnessReason = noBuildGatePass
+            ? "no_build_gate"
+            : !specMatches && verdictSpecSha256 is not null
             ? "verdict_for_another_spec"
             : !treeMatches && verdictTree is not null
                 ? "tree_changed"
@@ -1009,10 +1021,12 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         string? errorCode = null,
         string? error = null,
         IReadOnlyList<string>? details = null,
-        VerificationNextStep? nextStep = null) => new(
+        VerificationNextStep? nextStep = null,
+        IReadOnlyList<string>? warnings = null,
+        bool? noBuildGate = null) => new(
         SchemaVersion, status, status == VerificationStatus.Pass, context.Started, Math.Round(context.Stopwatch.Elapsed.TotalSeconds, 1),
         context.SpecPath, context.SpecSha256, context.Provenance, context.Command.Only, context.Command.ScenarioId, context.Task,
-        gates, scenarios, errorCode, error, details, nextStep ?? VerificationNextSteps.For(status, errorCode, error));
+        gates, scenarios, errorCode, error, details, nextStep ?? VerificationNextSteps.For(status, errorCode, error), warnings ?? context.Warnings, noBuildGate ?? (context.NoBuildGate ? true : null));
 
     private async Task<int> ErrorAsync(
         RunContext context,
@@ -1076,6 +1090,10 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         internal VerificationProvenance Provenance { get; set; } = new(null, null, null, null, null);
 
         internal VerificationTaskInfo? Task { get; set; }
+
+        internal IReadOnlyList<string>? Warnings { get; set; }
+
+        internal bool NoBuildGate { get; set; }
     }
 }
 

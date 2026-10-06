@@ -114,6 +114,8 @@ public sealed class VerificationRunTests : IDisposable
         Assert.Equal(0, exitCode);
         var verdict = _fixture.ReadVerdict();
         Assert.Equal("pass", verdict.GetProperty("status").GetString());
+        Assert.True(verdict.GetProperty("noBuildGate").GetBoolean());
+        Assert.Contains("No gate ran before the scenarios", verdict.GetProperty("warnings")[0].GetString(), StringComparison.Ordinal);
         var provenance = verdict.GetProperty("provenance");
         Assert.Equal("TREE1", provenance.GetProperty("treeHash").GetString());
         Assert.Equal("HEAD1", provenance.GetProperty("head").GetString());
@@ -319,7 +321,24 @@ public sealed class VerificationRunTests : IDisposable
 
         Assert.Equal(0, exitCode);
         Assert.Equal("partial", _fixture.ReadVerdict().GetProperty("status").GetString());
+        Assert.False(_fixture.ReadVerdict().TryGetProperty("noBuildGate", out _));
         services.Factory.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Run_GatesOnlySpecDoesNotMarkMissingBuildGate()
+    {
+        var specPath = _fixture.WriteSpecWith(app: null, gates: """[ { "id": "build", "run": "dotnet build" } ]""");
+        TrustGates(specPath);
+        var services = new VerificationFixture.Services();
+
+        var exitCode = await services.Application(_fixture.Store, new StringWriter())
+            .RunAsync(Run(specPath), CancellationToken.None);
+
+        Assert.Equal(0, exitCode);
+        var verdict = _fixture.ReadVerdict();
+        Assert.False(verdict.TryGetProperty("noBuildGate", out _));
+        Assert.False(verdict.TryGetProperty("warnings", out _));
     }
 
     [Fact]
@@ -361,9 +380,11 @@ public sealed class VerificationRunTests : IDisposable
     [Fact]
     public async Task Status_IsFreshOnlyForAPassOnTheCurrentTree()
     {
-        var specPath = _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        var specPath = _fixture.WriteSpecWith(VerificationFixture.DefaultApp, """[ { "id": "build", "run": "dotnet build" } ]""", VerificationFixture.ValidScenario);
         _fixture.CreateAppAndMcp();
         var services = new VerificationFixture.Services(new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true)));
+        services.Commands.Setup(item => item.RunAsync("dotnet build", It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CommandResult(0, false, []));
         var application = services.Application(_fixture.Store, new StringWriter());
         await application.RunAsync(Run(specPath), CancellationToken.None);
 

@@ -244,7 +244,18 @@ internal sealed class VerificationInit(
         if (solution is not null)
         {
             var solutionName = Path.GetFileName(solution);
-            var gates = new List<VerificationGate> { Gate(rootDirectory, "build", $"dotnet build {Quote(solutionName)} -c Release") };
+            var buildTarget = solutionName;
+            var packagingProjects = fileSystem.EnumerateFiles(rootDirectory, "*.wapproj", SearchOption.AllDirectories).ToArray();
+            var appProjects = fileSystem.EnumerateFiles(rootDirectory, "*.csproj", SearchOption.AllDirectories)
+                .Where(project => IsSingleTargetWinExe(project))
+                .ToArray();
+            if (packagingProjects.Length > 0 && appProjects.Length == 1)
+            {
+                buildTarget = Path.GetRelativePath(rootDirectory, appProjects[0]).Replace('\\', '/');
+                warnings?.Add($"The solution includes a packaging project; the build gate targets its single WinExe app project instead: {buildTarget}.");
+            }
+
+            var gates = new List<VerificationGate> { Gate(rootDirectory, "build", $"dotnet build {Quote(buildTarget)} -c Release") };
             if (HasTestProject(rootDirectory, solution))
             {
                 gates.Add(Gate(rootDirectory, "tests", $"dotnet test {Quote(solutionName)} -c Release --no-build"));
@@ -283,6 +294,21 @@ internal sealed class VerificationInit(
         catch (JsonException)
         {
             return [];
+        }
+    }
+
+    private bool IsSingleTargetWinExe(string project)
+    {
+        try
+        {
+            var xml = XDocument.Parse(fileSystem.ReadAllText(project));
+            return string.Equals(xml.Descendants().FirstOrDefault(item => item.Name.LocalName == "OutputType")?.Value.Trim(), "WinExe", StringComparison.OrdinalIgnoreCase)
+                && xml.Descendants().Any(item => item.Name.LocalName == "TargetFramework")
+                && !xml.Descendants().Any(item => item.Name.LocalName == "TargetFrameworks");
+        }
+        catch (System.Xml.XmlException)
+        {
+            return false;
         }
     }
 

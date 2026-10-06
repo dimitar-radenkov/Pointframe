@@ -184,6 +184,21 @@ public sealed class VerificationInitTests
     }
 
     [Fact]
+    public void DetectGates_BuildsSingleWinExeProjectWhenSolutionHasPackagingProject()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("App.sln", "Project(\"{GUID}\") = \"App\", \"src/App.csproj\", \"{GUID}\"\nProject(\"{GUID}\") = \"Package\", \"packaging/App.wapproj\", \"{GUID}\"");
+        fixture.Write("src/App.csproj", "<Project><PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup></Project>");
+        fixture.Write("packaging/App.wapproj", "<Project />");
+        var warnings = new List<string>();
+
+        var gates = fixture.Init.DetectGates(fixture.Root, warnings);
+
+        Assert.Equal("dotnet build src/App.csproj -c Release", gates[0].Run);
+        Assert.Contains(warnings, warning => warning.Contains("single WinExe app project", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void DetectApp_ReportsNoAmbiguousAndMultiTargetCandidates()
     {
         using var fixture = new InitFixture();

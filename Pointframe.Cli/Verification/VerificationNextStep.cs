@@ -6,6 +6,11 @@ internal static class VerificationNextSteps
 {
     internal static VerificationNextStep For(string? status, string? errorCode, string? message = null, string? failureId = null, string? appBuildCommand = null, string? taskId = null)
     {
+        if (errorCode == "no_build_gate")
+        {
+            return new("fix_code", null, null, "Add a build gate for the app to .pointframe/verify.json (build the app project itself if the solution has packaging projects), then run `pointframe verify run`.");
+        }
+
         if (status == VerificationStatus.Pass || status == "fresh")
         {
             return new("none", null, null, "No further action is needed.");
@@ -22,6 +27,9 @@ internal static class VerificationNextSteps
             "task_not_found" or "task_not_covered" or "verdict_for_another_task" => new("run_command", taskId is null ? "pointframe verify run --task <active id>" : $"pointframe verify run --task {taskId}", null, "Run verification for the active task."),
             "tree_changed" or "verdict_for_another_spec" => new("run_command", "pointframe verify run", null, "Re-run verification for the current files and spec."),
             "examiner_failed" or "examiner_invalid" or "fail_before_rejected" => new("needs_person", null, null, message ?? "Review the examiner failure and decide how to proceed."),
+            // verify status with no fresh pass and no specific reason: there is no verdict for these files yet,
+            // or the last one failed. The agent can act on that itself.
+            null when status == "stale" => new("run_command", "pointframe verify run", null, "There is no fresh passing verdict for the current files; run verification."),
             null when status == VerificationStatus.Fail => new("fix_code", null, null, failureId is null
                 ? "Fix the failing gate/scenario shown above, then run `pointframe verify run`."
                 : $"Fix failing gate/scenario '{failureId}' shown above, then run `pointframe verify run`."),
