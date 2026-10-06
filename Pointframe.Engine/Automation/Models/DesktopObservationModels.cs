@@ -63,6 +63,10 @@ public sealed record DesktopObservationResult(
     DesktopUiSnapshot? UiAutomation,
     int TopologyGeneration);
 
+public sealed record DesktopObservedElement(
+    string ObservationRef,
+    DesktopUiElementSnapshot Element);
+
 public sealed record DesktopCoordinateTransform(
     string ImageRef,
     PixelBounds DesktopBoundsPixels,

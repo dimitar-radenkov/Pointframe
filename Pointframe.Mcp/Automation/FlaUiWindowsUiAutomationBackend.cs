@@ -10,11 +10,18 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
     IWindowsUiAutomationBackend,
     IWindowsUiAutomationCandidateBackend,
     IWindowsUiAutomationActionBackend,
+    IWindowsUiAutomationWarmupBackend,
     IDisposable
 {
     private readonly UIA3Automation _automation = new();
     private readonly Dictionary<string, AutomationElement> _elements = new(StringComparer.Ordinal);
     private int _generation;
+
+    public void Warmup()
+    {
+        var desktop = _automation.GetDesktop();
+        _ = desktop.Properties.Name.ValueOrDefault;
+    }
 
     public WindowsUiAutomationInspection Inspect(DesktopObservationRequest request)
     {
@@ -29,13 +36,16 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
         var captured = DateTimeOffset.UtcNow;
         try
         {
+            Pointframe.Engine.Automation.DesktopTrace.Write("UIA inspect before GetDesktop");
             var desktop = _automation.GetDesktop();
 
             // Scope the walk to the target's own top-level windows. Asking the desktop root for all
             // descendants of a process makes UI Automation walk every window on the machine, which
             // takes long enough to hang the caller outright on a busy desktop.
             var roots = desktop.FindAllChildren(condition => condition.ByProcessId(request.Process.ProcessId));
+            Pointframe.Engine.Automation.DesktopTrace.Write($"UIA inspect after FindAllChildren roots={roots.Length}");
             var (snapshots, truncated) = Walk(roots, request.Process.ProcessRef, generation);
+            Pointframe.Engine.Automation.DesktopTrace.Write($"UIA inspect after Walk elements={snapshots.Count} truncated={truncated}");
             return new WindowsUiAutomationInspection(
                 DesktopUiAutomationStatus.Available,
                 snapshots,
@@ -150,11 +160,11 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
             ? Describe(element, string.Empty, elementRef)
             : null;
 
-    public bool TryInvoke(string elementRef)
+    public UiInvokeOutcome TryInvoke(string elementRef)
     {
         if (!_elements.TryGetValue(elementRef, out var element))
         {
-            return false;
+            return UiInvokeOutcome.Failed;
         }
 
         try
@@ -169,11 +179,11 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
         }
         catch (Exception)
         {
-            return false;
+            return UiInvokeOutcome.Failed;
         }
     }
 
-    internal static bool TryInvokeOrToggle(
+    internal static UiInvokeOutcome TryInvokeOrToggle(
         bool hasInvokePattern,
         Action invoke,
         bool hasTogglePattern,
@@ -181,10 +191,41 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
     {
         if (hasInvokePattern)
         {
-            return Try(invoke);
+            return InvokeWithBoundedWait(invoke, DesktopTestingLimits.InvokeReturnMilliseconds);
         }
 
-        return hasTogglePattern && Try(toggle);
+        return hasTogglePattern
+            ? InvokeWithBoundedWait(toggle, DesktopTestingLimits.InvokeReturnMilliseconds)
+            : UiInvokeOutcome.Failed;
+    }
+
+    internal static UiInvokeOutcome InvokeWithBoundedWait(Action action, int waitMilliseconds)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        ArgumentOutOfRangeException.ThrowIfNegative(waitMilliseconds);
+
+        var succeeded = false;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                action();
+                succeeded = true;
+            }
+            catch (Exception)
+            {
+                succeeded = false;
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "Pointframe UI Automation invoke",
+        };
+        thread.SetApartmentState(ApartmentState.MTA);
+        thread.Start();
+        return thread.Join(waitMilliseconds)
+            ? succeeded ? UiInvokeOutcome.Completed : UiInvokeOutcome.Failed
+            : UiInvokeOutcome.Pending;
     }
 
     public bool TrySetValue(string elementRef, string value)

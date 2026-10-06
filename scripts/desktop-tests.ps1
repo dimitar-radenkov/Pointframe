@@ -27,6 +27,7 @@ $selection = @(
     [pscustomobject]@{ Class = 'McpOrdinaryStartupObservationTests'; Expected = 2 }
     [pscustomobject]@{ Class = 'RecordingOverlaySmokeTests'; Expected = 2 }
     [pscustomobject]@{ Class = 'RecordingHudInteractionTests'; Expected = 4 }
+    [pscustomobject]@{ Class = 'McpDesktopModalInvokeTests'; Expected = 1 }
 )
 $expectedPerRun = ($selection | Measure-Object -Property Expected -Sum).Sum
 $classFilters = @($selection | ForEach-Object { "FullyQualifiedName~Pointframe.AutomationTests.Smoke.$($_.Class)" })

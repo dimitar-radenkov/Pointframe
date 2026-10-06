@@ -59,7 +59,8 @@ public sealed record DesktopTestingActionResponse(
     McpCaptureError? Error = null,
     string? SessionRef = null,
     string? TargetRef = null,
-    IReadOnlyList<DesktopAppSummary>? Apps = null);
+    IReadOnlyList<DesktopAppSummary>? Apps = null,
+    string? Method = null);
 
 public sealed record DesktopAppSummary(string Id, string ExecutableName, int AllowedActionCount);
 

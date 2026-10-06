@@ -77,6 +77,8 @@ public interface IDesktopInputNativeAdapter
 
     bool IsPointVisible(PixelBounds bounds, int x, int y);
 
+    bool IsPointVisible(PixelBounds bounds, int x, int y, nint expectedWindow) => IsPointVisible(bounds, x, y);
+
     bool SendClick(int x, int y, bool rightButton, int count);
 
     bool SendKeys(IReadOnlyList<ushort> virtualKeys);
@@ -199,7 +201,11 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
             return validation;
         }
 
-        if (request.Target.BoundsPixels is not { } bounds || !_native.IsPointVisible(bounds, request.X, request.Y))
+        var pointVisible = request.Target.BoundsPixels is { } bounds
+            && (request.Target.Window is { } window
+                ? _native.IsPointVisible(bounds, request.X, request.Y, window.NativeHandle)
+                : _native.IsPointVisible(bounds, request.X, request.Y));
+        if (!pointVisible)
         {
             return DesktopInputPreflightResult.Invalid("OccludedOrOutOfBounds", "The click point is not visible within the approved target.");
         }
@@ -461,7 +467,22 @@ internal sealed class WindowsDesktopInputNativeAdapter : IDesktopInputNativeAdap
 
     public bool IsPointVisible(PixelBounds bounds, int x, int y)
     {
-        return x >= bounds.X && y >= bounds.Y && x < bounds.X + bounds.Width && y < bounds.Y + bounds.Height;
+        var virtualScreen = GetVirtualScreen();
+        return x >= bounds.X && y >= bounds.Y && x < bounds.X + bounds.Width && y < bounds.Y + bounds.Height
+            && x >= virtualScreen.X && y >= virtualScreen.Y
+            && x < virtualScreen.X + virtualScreen.Width && y < virtualScreen.Y + virtualScreen.Height;
+    }
+
+    public bool IsPointVisible(PixelBounds bounds, int x, int y, nint expectedWindow)
+    {
+        if (expectedWindow == nint.Zero || !IsPointVisible(bounds, x, y))
+        {
+            return false;
+        }
+
+        var hitWindow = WindowsDesktopNativeMethods.WindowFromPoint(new WindowsDesktopNativeMethods.POINT(x, y));
+        return hitWindow != nint.Zero
+            && WindowsDesktopNativeMethods.GetAncestor(hitWindow, WindowsDesktopNativeMethods.GetAncestorRoot) == expectedWindow;
     }
 
     internal const int MoveSettleMilliseconds = 16;

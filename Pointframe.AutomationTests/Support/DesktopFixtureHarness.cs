@@ -173,6 +173,50 @@ public sealed class DesktopFixtureHarness : IAsyncDisposable
             structured.GetRawText());
     }
 
+    public async Task<JsonElement> ObserveUiAsync(FixtureDisplay display, CancellationToken cancellationToken = default)
+    {
+        var result = await _client.CallToolAsync(
+            "desktop_observe_app",
+            new
+            {
+                sessionId = SessionId,
+                captureBoundsPixels = new[]
+                {
+                    new { x = display.X, y = display.Y, width = display.Width, height = display.Height },
+                },
+                includeUiAutomation = true,
+                includeImages = false,
+            },
+            TimeSpan.FromSeconds(60),
+            cancellationToken).ConfigureAwait(false);
+        return result.GetProperty("structuredContent");
+    }
+
+    public Task<JsonElement> InvokeAsync(string elementRef, TimeSpan? timeout = null, CancellationToken cancellationToken = default) =>
+        _client.CallToolAsync(
+            "desktop_invoke",
+            new { sessionId = SessionId, actionId = Guid.NewGuid().ToString(), elementRef },
+            timeout ?? TimeSpan.FromSeconds(30),
+            cancellationToken);
+
+    public Task<JsonElement> PressKeysAsync(
+        string observationRef,
+        string windowRef,
+        IReadOnlyList<ushort> virtualKeys,
+        CancellationToken cancellationToken = default) =>
+        _client.CallToolAsync(
+            "desktop_press_keys",
+            new
+            {
+                sessionId = SessionId,
+                actionId = Guid.NewGuid().ToString(),
+                observationRef,
+                windowRef,
+                virtualKeys,
+            },
+            TimeSpan.FromSeconds(30),
+            cancellationToken);
+
     public Task<JsonElement> ClickAsync(
         FixtureObservation observation,
         int imageX,

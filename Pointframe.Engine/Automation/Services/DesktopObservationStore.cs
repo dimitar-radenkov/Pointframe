@@ -8,6 +8,8 @@ public interface IDesktopObservationStore
 
     DesktopObservationResult Resolve(string observationRef);
 
+    DesktopObservedElement? ResolveElement(string elementRef, string processRef);
+
     void Invalidate(string observationRef);
 }
 
@@ -39,6 +41,31 @@ public sealed class DesktopObservationStore(TimeProvider? timeProvider = null) :
             }
 
             return item.Result;
+        }
+    }
+
+    public DesktopObservedElement? ResolveElement(string elementRef, string processRef)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(elementRef);
+        ArgumentException.ThrowIfNullOrWhiteSpace(processRef);
+        lock (_sync)
+        {
+            var now = _timeProvider.GetUtcNow();
+            foreach (var expired in _items.Where(pair => pair.Value.ExpiresUtc <= now).Select(pair => pair.Key).ToArray())
+            {
+                _items.Remove(expired);
+            }
+
+            var latest = _items.Values
+                .Select(item => item.Result)
+                .Where(result => string.Equals(result.Observation.Process.ProcessRef, processRef, StringComparison.Ordinal))
+                .OrderByDescending(result => result.Observation.PixelCapturedUtc)
+                .FirstOrDefault();
+            var element = latest?.UiAutomation?.Elements
+                .FirstOrDefault(snapshot => string.Equals(snapshot.ElementRef, elementRef, StringComparison.Ordinal));
+            return latest is null || element is null
+                ? null
+                : new DesktopObservedElement(latest.Observation.ObservationRef, element);
         }
     }
 

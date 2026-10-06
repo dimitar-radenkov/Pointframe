@@ -4,6 +4,7 @@ partial class Form1
 {
     private Button _saveButton = null!;
     private Button _closeButton = null!;
+    private Button _openModalButton = null!;
     private CheckBox _checkBox = null!;
     private TextBox _textBox = null!;
     private Panel _visualOnlyPanel = null!;
@@ -16,6 +17,7 @@ partial class Form1
     {
         _saveButton = new Button();
         _closeButton = new Button();
+        _openModalButton = new Button();
         _checkBox = new CheckBox();
         _textBox = new TextBox();
         _visualOnlyPanel = new Panel();
@@ -37,6 +39,12 @@ partial class Form1
         _closeButton.Text = "Close";
         _closeButton.UseVisualStyleBackColor = true;
         _closeButton.Click += (_, _) => Close();
+
+        _openModalButton.Location = new Point(264, 120);
+        _openModalButton.Name = "openModalButton";
+        _openModalButton.Size = new Size(110, 32);
+        _openModalButton.Text = "Open dialog";
+        _openModalButton.UseVisualStyleBackColor = true;
 
         _checkBox.AutoSize = true;
         _checkBox.Location = new Point(24, 172);
@@ -83,6 +91,7 @@ partial class Form1
         ClientSize = new Size(900, 510);
         Controls.Add(_saveButton);
         Controls.Add(_closeButton);
+        Controls.Add(_openModalButton);
         Controls.Add(_checkBox);
         Controls.Add(_textBox);
         Controls.Add(_visualOnlyPanel);

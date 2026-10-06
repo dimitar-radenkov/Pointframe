@@ -8,6 +8,8 @@ public interface IDesktopObservationService
 
     DesktopObservationResult Resolve(string observationRef);
 
+    DesktopObservedElement? ResolveElement(string elementRef, string processRef);
+
     PixelBounds ToDesktopPixels(string observationRef, string imageRef, int x, int y);
 }
 
@@ -108,6 +110,9 @@ public sealed class DesktopObservationService : IDesktopObservationService
     {
         return _store.Resolve(observationRef);
     }
+
+    public DesktopObservedElement? ResolveElement(string elementRef, string processRef) =>
+        _store.ResolveElement(elementRef, processRef);
 
     public PixelBounds ToDesktopPixels(string observationRef, string imageRef, int x, int y)
     {

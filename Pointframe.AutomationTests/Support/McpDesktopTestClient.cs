@@ -10,6 +10,7 @@ public sealed class McpDesktopTestClient : IAsyncDisposable
     private readonly StreamReader _reader;
     private readonly StreamWriter _writer;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
+    private readonly Task<string> _standardError;
     private int _nextRequestId;
     private bool _initialized;
 
@@ -18,6 +19,13 @@ public sealed class McpDesktopTestClient : IAsyncDisposable
         _process = process;
         _reader = process.StandardOutput;
         _writer = process.StandardInput;
+
+        // The server logs heavily to stderr. An unread pipe fills its buffer and then blocks the server
+        // mid-response, which looked like desktop_observe_app hanging (see lessons.md: a stdio client must
+        // drain the MCP server's stderr).
+        _standardError = process.StartInfo.RedirectStandardError
+            ? process.StandardError.ReadToEndAsync()
+            : Task.FromResult(string.Empty);
     }
 
     public int ProcessId => _process.Id;
@@ -275,12 +283,12 @@ public sealed class McpDesktopTestClient : IAsyncDisposable
 
     private async Task<string> ReadStandardErrorAsync()
     {
-        if (!_process.StartInfo.RedirectStandardError)
+        if (!_process.HasExited)
         {
             return string.Empty;
         }
 
-        return await _process.StandardError.ReadToEndAsync().ConfigureAwait(false);
+        return await _standardError.ConfigureAwait(false);
     }
 }
 

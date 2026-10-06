@@ -24,6 +24,8 @@ public static class DesktopTestingLimits
     public const int MinScrollDetents = -10;
     public const int MaxScrollDetents = 10;
     public const int MaxTextLength = 4096;
+    public const int InvokeReturnMilliseconds = 2000;
+    public const int WorkerWarmupMilliseconds = 5000;
 
     public static void ValidateSchemaVersion(int schemaVersion)
     {

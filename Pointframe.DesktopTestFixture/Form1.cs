@@ -55,6 +55,7 @@ public partial class Form1 : Form
             _lastEvent = "text";
             WriteState();
         };
+        _openModalButton.Click += (_, _) => MessageBox.Show(this, "Modal OK", "Fixture dialog");
     }
 
     private void ConfigureScrollingFixture()

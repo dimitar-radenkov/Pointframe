@@ -27,7 +27,7 @@ public sealed class DesktopUiProviderContractTests
         var backend = new FakeUiBackend();
         var provider = new WindowsUiAutomationProvider(backend);
 
-        Assert.True(provider.TryInvoke("element-1"));
+        Assert.Equal(UiInvokeOutcome.Completed, provider.TryInvoke("element-1"));
         Assert.True(provider.TrySetValue("element-1", "λ"));
         Assert.Equal("element-1", backend.InvokedElement);
         Assert.Equal(("element-1", "λ"), backend.SetValueRequest);
@@ -38,7 +38,7 @@ public sealed class DesktopUiProviderContractTests
     {
         var provider = new WindowsUiAutomationProvider(new FakeInspectionBackend());
 
-        Assert.False(provider.TryInvoke("element-1"));
+        Assert.Equal(UiInvokeOutcome.Failed, provider.TryInvoke("element-1"));
         Assert.False(provider.TrySetValue("element-1", "value"));
     }
 
@@ -54,9 +54,48 @@ public sealed class DesktopUiProviderContractTests
             hasTogglePattern: true,
             toggle: () => toggled = true);
 
-        Assert.True(result);
+        Assert.Equal(UiInvokeOutcome.Completed, result);
         Assert.False(invoked);
         Assert.True(toggled);
+    }
+
+    [Fact]
+    public void BoundedInvoke_ReturnsCompletedWhenActionReturns()
+    {
+        var result = FlaUiWindowsUiAutomationBackend.InvokeWithBoundedWait(() => { }, 500);
+
+        Assert.Equal(UiInvokeOutcome.Completed, result);
+    }
+
+    [Fact]
+    public void BoundedInvoke_ReturnsFailedWhenActionThrows()
+    {
+        var result = FlaUiWindowsUiAutomationBackend.InvokeWithBoundedWait(
+            () => throw new InvalidOperationException("provider failed"),
+            500);
+
+        Assert.Equal(UiInvokeOutcome.Failed, result);
+    }
+
+    [Fact]
+    public void BoundedInvoke_ReturnsPendingAndLeavesTheBackgroundThreadToFinish()
+    {
+        using var started = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var ended = new ManualResetEventSlim();
+
+        var result = FlaUiWindowsUiAutomationBackend.InvokeWithBoundedWait(() =>
+        {
+            started.Set();
+            release.Wait();
+            ended.Set();
+        }, 50);
+
+        Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
+        Assert.Equal(UiInvokeOutcome.Pending, result);
+        Assert.False(ended.IsSet);
+        release.Set();
+        Assert.True(ended.Wait(TimeSpan.FromSeconds(2)));
     }
 
     [Fact]
@@ -125,10 +164,10 @@ public sealed class DesktopUiProviderContractTests
 
         public (string ElementRef, string Value)? SetValueRequest { get; private set; }
 
-        public bool TryInvoke(string elementRef)
+        public UiInvokeOutcome TryInvoke(string elementRef)
         {
             InvokedElement = elementRef;
-            return true;
+            return UiInvokeOutcome.Completed;
         }
 
         public bool TrySetValue(string elementRef, string value)

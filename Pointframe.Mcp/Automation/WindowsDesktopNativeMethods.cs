@@ -6,6 +6,7 @@ internal static class WindowsDesktopNativeMethods
 {
     internal const uint InputMouse = 0;
     internal const uint InputKeyboard = 1;
+    internal const uint GetAncestorRoot = 2;
     internal const uint MouseEventAbsolute = 0x8000;
     // Without VIRTUALDESK, Windows maps normalized absolute coordinates onto the primary monitor
     // only, so every click aimed at a secondary monitor lands on the primary one instead.
@@ -52,6 +53,12 @@ internal static class WindowsDesktopNativeMethods
     internal static extern bool GetWindowRect(nint hWnd, out RECT rect);
 
     [DllImport("user32.dll")]
+    internal static extern nint WindowFromPoint(POINT point);
+
+    [DllImport("user32.dll")]
+    internal static extern nint GetAncestor(nint hWnd, uint flags);
+
+    [DllImport("user32.dll")]
     internal static extern int GetSystemMetrics(int index);
 
     [DllImport("user32.dll")]
@@ -85,6 +92,9 @@ internal static class WindowsDesktopNativeMethods
         internal uint Type;
         internal InputUnion Data;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal readonly record struct POINT(int X, int Y);
 
     [StructLayout(LayoutKind.Explicit)]
     internal struct InputUnion

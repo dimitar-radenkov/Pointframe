@@ -1225,6 +1225,38 @@ wrong (`true` versus UIA's `On`). Normalize documented natural values at the too
 unknown ones before waiting on the UI. Return the observed state with failed checks, while suppressing
 sensitive text, so an agent can distinguish a bad expectation from a broken feature in one call.
 
+## A pending UIA Invoke blocks every UIA client of that app
+
+### Problem
+
+Calling `desktop_invoke` on a control whose handler opens a modal dialog kept the worker's single MTA
+executor inside the UI Automation `Invoke` call until the dialog closed. The bounded wait let the tool
+return, but every later UIA call timed out, including a tree walk made by a separate process. WinForms
+services the synchronous Invoke on its UI thread and does not dispatch other incoming UIA COM calls
+while that call is active. A physical SendInput click opens the same dialog without blocking UIA.
+
+### Root cause
+
+Some UI Automation providers do not return from `Invoke` while the target application's synchronous
+event handler is displaying a modal window. The app's UI thread is servicing the incoming COM call, so
+other UIA clients cannot inspect the app even when the initiating client has stopped waiting.
+
+### What fixed it
+
+Use a physical center click when the element has usable on-screen bounds and a verified window in the
+session process. Foreground the window, release owned input, and use the worker's physical-input
+preflight; fall back to UIA Invoke or Toggle only when bounds are unusable or preflight rejects the
+target. For that fallback, run Invoke or Toggle on a background MTA thread and wait only for the
+configured bounded interval. Return `InvokePending` as a successful dispatch while the call continues,
+and never replay uncertain input. Keep the modal fixture and operator-gated smoke test to prove that
+the click path leaves UIA able to inspect and dismiss the dialog.
+
+### Takeaway
+
+An input API returning late does not prove that input was rejected. Physical input avoids the UIA COM
+reentrancy block; if a UIA pattern is necessary, bound the caller's wait without aborting the provider
+call, record delivery as successful-but-pending, and keep the action ledger from replaying it.
+
 ## GetWindowRect includes the invisible resize border, so window captures leak what lies behind
 
 ### Problem
@@ -1609,3 +1641,21 @@ The protocol limit is 8 MiB and the worker answers `SnapshotTooLarge` instead of
 ### Takeaway
 
 Size limits against real apps, not the fixture, and make an over-limit case an answer, never a closed pipe. Before claiming a framework works, run a fresh agent on a real app of that framework.
+
+## A first worker can hang on its first UI Automation call
+
+### Problem
+
+The first UI Automation inspection from a freshly started MCP worker could hang indefinitely. The parent timed out after 15 seconds and replaced the worker; the replacement then inspected the same desktop normally. This made the first observation of each server session appear empty and caused desktop scenarios to time out.
+
+### Root cause
+
+The worker had not yet completed its first UI Automation access. The first request paid that initialization cost inside `uia.inspect`, where a provider hang looked like an unavailable target and consumed the full inspection timeout.
+
+### What fixed it
+
+The parent now sends `uia.ping` immediately after starting each worker. The ping reads one property from the UI Automation desktop root on the worker's MTA executor. A worker that does not answer within five seconds is abandoned; startup tries at most three workers and then fails the request. Inspection traces identify progress before desktop acquisition, after target-window enumeration, and after the element walk.
+
+### Takeaway
+
+Warm up UI Automation in the worker before serving requests, and bound retries so one unresponsive provider cannot create an infinite startup loop.
