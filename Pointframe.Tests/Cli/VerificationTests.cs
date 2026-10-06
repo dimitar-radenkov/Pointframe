@@ -684,6 +684,41 @@ public sealed class VerificationTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_PressKeysFocusesWindowBeforeSendingKeys()
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true));
+        var scenario = VerificationSpecLoader.ParseScenario(
+            """{ "id": "keys", "steps": [ { "pressKeys": { "keys": [17, 83] } } ] }""",
+            "keys");
+
+        var result = await Runner(client.Mock.Object).RunAsync(scenario, CancellationToken.None);
+
+        Assert.Equal(VerificationStatus.Pass, result.Steps[0].Status);
+        Assert.Equal(1, client.Count("desktop_focus_window"));
+        Assert.Equal(1, client.Count("desktop_press_keys"));
+        client.Verify("desktop_focus_window", args => args.GetProperty("windowRef").GetString() == "win-1");
+    }
+
+    [Fact]
+    public async Task RunAsync_PressKeysFocusRefusalFailsWithForegroundGuidance()
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            FocusResponse = new { operationStatus = "Completed", dispatch = "NotStarted", error = new { code = "FocusDenied", message = "The foreground window could not be changed." } },
+        };
+        var scenario = VerificationSpecLoader.ParseScenario(
+            """{ "id": "keys", "steps": [ { "pressKeys": { "keys": [17, 83] } } ] }""",
+            "keys");
+
+        var result = await Runner(client.Mock.Object).RunAsync(scenario, CancellationToken.None);
+
+        Assert.Equal("FocusRequired", result.Steps[0].Code);
+        Assert.Contains("need the app in the foreground", result.Steps[0].Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("invoke steps with a role and name", result.Steps[0].Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, client.Count("desktop_press_keys"));
+    }
+
+    [Fact]
     public async Task RunAsync_StartToolReturnsOnlyAnErrorText_CarriesTheTextAsToolError()
     {
         const string text = "An error occurred invoking 'desktop_start_test_session'.";
@@ -710,6 +745,27 @@ public sealed class VerificationTests : IDisposable
 
         Assert.Equal("ElementNotFound", result.Steps[0].Code);
         Assert.Contains("\"role\": \"menu item\", \"name\": \"Options\"", result.Steps[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_MissingMenuItemCheckExplainsOpeningItsParentMenu()
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            CheckResponse = _ => new { error = new { code = "ElementNotFound", message = "No matching element." } },
+            ObserveResponse = _ => WindowWith(
+                new { elementRef = "menu-1", windowRef = "win-1", role = "menu bar", name = "Main menu" },
+                new { elementRef = "item-1", windowRef = "win-1", role = "menu item", name = "Import" }),
+        };
+        var scenario = VerificationSpecLoader.ParseScenario(
+            """{ "id": "menu", "steps": [ { "check": { "kind": "exists", "automationId": "Menu_Import" } } ] }""",
+            "menu");
+
+        var result = await Runner(client.Mock.Object).RunAsync(scenario, CancellationToken.None);
+
+        Assert.Equal("ElementNotFound", result.Steps[0].Code);
+        Assert.Contains("Menu items appear in UI Automation only after their parent menu is open", result.Steps[0].Message, StringComparison.Ordinal);
+        Assert.Contains("\"role\": \"menu item\", \"name\": \"Import\"", result.Steps[0].Message, StringComparison.Ordinal);
     }
 
     [Fact]

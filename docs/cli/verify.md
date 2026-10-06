@@ -36,7 +36,8 @@ The fields of the spec file are in the [spec reference](verify-spec.md).
 Real apps:
 
 - Keep a build gate. If the solution has packaging projects (MSIX/`.wapproj`) that fail, build the app's own project instead of removing the gate; a spec without gates is never fresh.
-- WinForms menu items may have no AutomationId. Locate them by role and name, for example `{ "role": "menu item", "name": "Options" }`.
+- Prefer `invoke` steps over `pressKeys`; keyboard steps need the app in the foreground.
+- Menu items may appear in UI Automation only after their parent menu is open. Invoke the parent first, for example `{ "invoke": { "role": "menu item", "name": "Options" } }`, then locate and invoke the submenu item by role and name.
 - Electron apps need `--force-renderer-accessibility` in the app arguments, before the app path.
 - `textEquals` on a label, TextBlock, or heading compares its displayed text.
 - `desktop_invoke` clicks elements like a user, so modal dialogs are fine. Check dialog text with role `Text` and its name, then dismiss it by invoking its button (for example, role `Button`, name `OK`). Never change app code to work around the verifier.
