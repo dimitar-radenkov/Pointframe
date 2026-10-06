@@ -309,7 +309,7 @@ internal sealed class DesktopTestingMcpTools(
         EnterTextCoreAsync(sessionId, actionId, observationRef, imageRef, x, y, text, semanticValue, elementRef, cancellationToken);
 
     [McpServerTool(Name = "desktop_invoke", Title = "Invoke desktop element", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
-    [Description("Clicks the center of the element like a user, moving the mouse and requiring its window to be foreground and unobstructed. If the element is off-screen or click preflight cannot target it, falls back to its UI Automation invoke or toggle pattern; a pattern invoke that opens a modal dialog leaves the app unreadable to UI Automation until the dialog closes.")]
+    [Description("Clicks the center of the element like a user. If its window cannot be foregrounded while another visible window of the app is already foreground (for example, a popup menu), it clicks only after same-process hit-test preflight. If click preflight cannot target it, falls back to its UI Automation invoke or toggle pattern.")]
     public async Task<DesktopTestingActionResponse> InvokeAsync(
         [Description("Session id from desktop_start_test_session.")] string sessionId,
         [Description("A UUID action identifier.")] string actionId,
@@ -353,13 +353,17 @@ internal sealed class DesktopTestingMcpTools(
                         new DesktopInputTarget(target.Window),
                         process,
                         cancellationToken).ConfigureAwait(false);
-                    var released = focus.IsValid && input.TryReleaseOwnedInput();
+                    var clickWithoutFocusingPopup = !focus.IsValid
+                        && focus.Code != "InputDispatchFailed"
+                        && focus.ApprovedProcessForeground;
+                    var released = (focus.IsValid || clickWithoutFocusingPopup) && input.TryReleaseOwnedInput();
                     var click = released
                         ? await input.ClickAsync(
                             new DesktopClickRequest(
                                 target,
                                 element.BoundsPixels.X + element.BoundsPixels.Width / 2,
-                                element.BoundsPixels.Y + element.BoundsPixels.Height / 2),
+                                element.BoundsPixels.Y + element.BoundsPixels.Height / 2,
+                                AcceptAnyVisibleWindowInProcess: clickWithoutFocusingPopup),
                             process,
                             cancellationToken).ConfigureAwait(false)
                         : focus.IsValid

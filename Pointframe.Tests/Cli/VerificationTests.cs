@@ -642,6 +642,27 @@ public sealed class VerificationTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_InvokePendingCountsAsDeliveredAndPassed()
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            InvokeResponse = new
+            {
+                operationStatus = "Completed",
+                dispatch = "Complete",
+                error = new { code = "InvokePending", message = "The invoke is still running." },
+            },
+        };
+
+        var result = await Runner(client.Mock.Object).RunAsync(InvokeScenario("""{ "automationId": "saveButton" }"""), CancellationToken.None);
+
+        var step = Assert.Single(result.Steps);
+        Assert.Equal(VerificationStatus.Pass, step.Status);
+        Assert.Equal("InvokePending", step.Code);
+        Assert.Contains("delivered; the app has not returned yet", step.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task RunAsync_StartToolReturnsOnlyAnErrorText_CarriesTheTextAsToolError()
     {
         const string text = "An error occurred invoking 'desktop_start_test_session'.";

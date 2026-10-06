@@ -42,6 +42,50 @@ public sealed class DesktopInvokeTests
     }
 
     [Fact]
+    public async Task FocusFailureWithForegroundOwnedByProcessClicksWithoutCallingPattern()
+    {
+        var fixture = new InvokeFixture(Bounds);
+        fixture.Input.Setup(input => input.FocusAsync(
+                It.IsAny<DesktopInputTarget>(),
+                It.IsAny<DesktopProcessIdentity>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DesktopInputPreflightResult.Invalid("FocusFailed", "The popup cannot be foregrounded.", approvedProcessForeground: true));
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), ElementRef);
+
+        Assert.Equal("click", response.Method);
+        Assert.Equal("Complete", response.Dispatch);
+        fixture.Input.Verify(input => input.ClickAsync(
+            It.Is<DesktopClickRequest>(click => click.AcceptAnyVisibleWindowInProcess),
+            It.IsAny<DesktopProcessIdentity>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Input.Verify(input => input.TryReleaseOwnedInput(), Times.Once);
+        fixture.UiAutomation.Verify(provider => provider.TryInvoke(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task FocusFailureWithForegroundOwnedByAnotherProcessFallsBackToPattern()
+    {
+        var fixture = new InvokeFixture(Bounds);
+        fixture.Input.Setup(input => input.FocusAsync(
+                It.IsAny<DesktopInputTarget>(),
+                It.IsAny<DesktopProcessIdentity>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DesktopInputPreflightResult.Invalid("FocusFailed", "The target could not be foregrounded."));
+        fixture.UiAutomation.Setup(provider => provider.TryInvoke(ElementRef)).Returns(UiInvokeOutcome.Completed);
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), ElementRef);
+
+        Assert.Equal("pattern", response.Method);
+        Assert.Equal("Complete", response.Dispatch);
+        fixture.Input.Verify(input => input.ClickAsync(
+            It.IsAny<DesktopClickRequest>(),
+            It.IsAny<DesktopProcessIdentity>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        fixture.UiAutomation.Verify(provider => provider.TryInvoke(ElementRef), Times.Once);
+    }
+
+    [Fact]
     public async Task ZeroSizeElementUsesPattern()
     {
         var fixture = new InvokeFixture(new PixelBounds(100, 200, 0, 20));

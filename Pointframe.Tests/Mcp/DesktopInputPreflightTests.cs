@@ -61,6 +61,51 @@ public sealed class DesktopInputPreflightTests
     }
 
     [Fact]
+    public async Task PopupClickAcceptsVisibleHitOnAnotherWindowInTheApprovedProcess()
+    {
+        var adapter = new FakeAdapter
+        {
+            Foreground = new nint(20),
+            ProcessForeground = true,
+            ProcessPointVisible = true,
+        };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var popup = new DesktopWindowIdentity("popup", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(
+                new DesktopInputTarget(popup, BoundsPixels: new PixelBounds(0, 0, 100, 100)),
+                10,
+                10,
+                AcceptAnyVisibleWindowInProcess: true),
+            process);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(1, adapter.Clicks);
+    }
+
+    [Fact]
+    public async Task FocusFailureReportsWhenApprovedProcessStillOwnsForeground()
+    {
+        var adapter = new FakeAdapter
+        {
+            Foreground = new nint(20),
+            ProcessForeground = true,
+            CanSetForeground = false,
+        };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var popup = new DesktopWindowIdentity("popup", process.ProcessRef, new nint(10));
+
+        var result = await service.FocusAsync(new DesktopInputTarget(popup), process);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("FocusFailed", result.Code);
+        Assert.True(result.ApprovedProcessForeground);
+    }
+
+    [Fact]
     public async Task KeyPressRejectsMoreThanFourKeys()
     {
         var service = new WindowsDesktopInputService(new FakeFactory(new FakeAdapter()));
@@ -109,16 +154,27 @@ public sealed class DesktopInputPreflightTests
         public int Scrolls { get; private set; }
         public int? ScrollX { get; private set; }
         public int? ScrollY { get; private set; }
+        public bool? ProcessForeground { get; set; }
+        public bool ProcessPointVisible { get; set; }
+        public bool CanSetForeground { get; set; } = true;
 
         public nint GetForegroundWindow() => Foreground;
+        // Unset keeps the interface default (any foreground window counts), which older tests rely on.
+        public bool IsForegroundForProcess(DesktopProcessIdentity expectedProcess) => ProcessForeground ?? Foreground != nint.Zero;
         public bool SetForeground(nint handle)
         {
+            if (!CanSetForeground)
+            {
+                return false;
+            }
+
             Foreground = handle;
             return true;
         }
         public bool IsWindowValid(nint handle) => true;
         public bool IsWindowVisible(nint handle) => true;
         public bool IsPointVisible(PixelBounds bounds, int x, int y) => x >= bounds.X && y >= bounds.Y && x < bounds.X + bounds.Width && y < bounds.Y + bounds.Height;
+        public bool IsPointVisibleForProcess(PixelBounds bounds, int x, int y, int processId, nint expectedWindow) => ProcessPointVisible && IsPointVisible(bounds, x, y);
         public bool SendClick(int x, int y, bool rightButton, int count)
         {
             Clicks += count;

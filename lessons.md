@@ -1245,11 +1245,14 @@ other UIA clients cannot inspect the app even when the initiating client has sto
 
 Use a physical center click when the element has usable on-screen bounds and a verified window in the
 session process. Foreground the window, release owned input, and use the worker's physical-input
-preflight; fall back to UIA Invoke or Toggle only when bounds are unusable or preflight rejects the
-target. For that fallback, run Invoke or Toggle on a background MTA thread and wait only for the
-configured bounded interval. Return `InvokePending` as a successful dispatch while the call continues,
-and never replay uncertain input. Keep the modal fixture and operator-gated smoke test to prove that
-the click path leaves UIA able to inspect and dismiss the dialog.
+preflight. If focus fails while another visible window of the target process is foreground, skip
+focusing and let preflight accept a hit on any visible top-level window of that process; this covers
+owned popup menus while preserving bounds and hit-test checks. Fall back to UIA Invoke or Toggle only
+when bounds are unusable or preflight rejects the target. For that fallback, run Invoke or Toggle on a
+background MTA thread and wait only for the configured bounded interval. Return `InvokePending` as a
+successful dispatch while the call continues, and never replay uncertain input. Verification treats
+that delivered pending dispatch as a passed invoke step, then relies on subsequent steps to inspect
+or dismiss the dialog.
 
 ### Takeaway
 
