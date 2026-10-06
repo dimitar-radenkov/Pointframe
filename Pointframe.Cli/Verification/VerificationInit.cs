@@ -118,7 +118,11 @@ internal sealed class VerificationInit(
                         {
                             var exploration = await ExploreAsync(rootDirectory, app, mcp, clientFactory, cancellationToken);
                             scenario = exploration.Scenario;
-                            if (exploration.AutomationIdCount is > 0 and < 3)
+                            if (exploration.UsesRoleAndName)
+                            {
+                                warnings.Add("The app exposes no automation ids (common in WinForms menus); the scenario uses role + name.");
+                            }
+                            else if (exploration.AutomationIdCount is > 0 and < 3)
                             {
                                 warnings.Add("The app exposed fewer than 3 automation ids; checks will be fragile. Give controls AutomationId or Name values.");
                             }
@@ -438,7 +442,7 @@ internal sealed class VerificationInit(
         return null;
     }
 
-    private async Task<(string Scenario, int AutomationIdCount)> ExploreAsync(string rootDirectory, string executable, string mcpPath, IMcpToolClientFactory factory, CancellationToken cancellationToken)
+    private async Task<(string Scenario, int AutomationIdCount, bool UsesRoleAndName)> ExploreAsync(string rootDirectory, string executable, string mcpPath, IMcpToolClientFactory factory, CancellationToken cancellationToken)
     {
         var id = AppIdFromPath(executable);
         var app = new VerificationApp(id, executable, [], Path.GetDirectoryName(executable)!);
@@ -451,20 +455,23 @@ internal sealed class VerificationInit(
             var displaysResponse = await client.CallToolAsync("list_displays", new { }, TimeSpan.FromSeconds(30), cancellationToken);
             var displays = displaysResponse.TryGetProperty("structuredContent", out var displayContent) ? displayContent : displaysResponse;
             var bounds = displays.GetProperty("displays").EnumerateArray().Select(display => display.GetProperty("boundsPixels")).ToArray();
-            var ids = await new DesktopScenarioRunner(client, id, bounds.Select(item => new CaptureRectangle(
+            var target = await new DesktopScenarioRunner(client, id, bounds.Select(item => new CaptureRectangle(
                 item.GetProperty("x").GetInt32(), item.GetProperty("y").GetInt32(), item.GetProperty("width").GetInt32(), item.GetProperty("height").GetInt32())).ToArray())
-                .ObserveAutomationIdsAsync(Guid.NewGuid().ToString("N"), cancellationToken);
-            if (ids.Count == 0)
+                .ObserveTargetsAsync(Guid.NewGuid().ToString("N"), cancellationToken);
+            if (target.AutomationIds.Count == 0 && (target.Role is null || target.Name is null))
             {
-                throw new InvalidOperationException("The app exposed no automation ids to use for a starter scenario.");
+                throw new InvalidOperationException("The app exposed no automation ids or named elements to use for a starter scenario.");
             }
 
+            var step = target.AutomationIds.Count > 0
+                ? (object)new { check = new { kind = "exists", automationId = target.AutomationIds[0] } }
+                : new { check = new { kind = "exists", role = target.Role, name = target.Name } };
             return (Scenario: JsonSerializer.Serialize(new
             {
                 id = "app-starts",
                 criteria = Array.Empty<string>(),
-                steps = new[] { new { check = new { kind = "exists", automationId = ids[0] } } },
-            }, JsonOptions), AutomationIdCount: ids.Count);
+                steps = new[] { step },
+            }, JsonOptions), AutomationIdCount: target.AutomationIds.Count, UsesRoleAndName: target.AutomationIds.Count == 0);
         }
         finally
         {

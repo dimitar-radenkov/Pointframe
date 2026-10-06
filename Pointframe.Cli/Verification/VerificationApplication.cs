@@ -21,7 +21,8 @@ internal sealed record VerificationServices(
     IPointframeCommandResolver? CommandResolver = null,
     IMcpServerHost? ServerHost = null,
     IMcpPackageInstaller? McpInstaller = null,
-    Func<string, string?>? EnvironmentVariable = null);
+    Func<string, string?>? EnvironmentVariable = null,
+    Func<string, IReadOnlyList<int>>? RunningAppProcessIds = null);
 
 internal sealed record McpResolution(string? Path, string? ErrorCode = null, string? Error = null);
 
@@ -160,6 +161,21 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
         context.Provenance = context.Provenance with { CommandsApprovedBy = approvedBy };
 
+        if (spec.App is not null)
+        {
+            var executablePath = Path.GetFullPath(spec.App.ExecutablePath);
+            var processIds = (services.RunningAppProcessIds ?? RunningAppProcessIds)(executablePath);
+            if (processIds.Count > 0)
+            {
+                return await ErrorAsync(
+                    context,
+                    1,
+                    "app_running",
+                    $"The app is already running as PID {processIds[0]}; close it (or end its desktop test session) and run again.",
+                    writeFile: false);
+            }
+        }
+
         var runDirectory = Path.Combine(context.OutputDirectory, "runs", started.ToString("yyyyMMdd-HHmmss-fff"));
         Directory.CreateDirectory(runDirectory);
         IReadOnlyList<VerificationGateResult> gates = [];
@@ -231,6 +247,29 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         }
 
         return status == VerificationStatus.Fail ? 1 : 0;
+    }
+
+    private static IReadOnlyList<int> RunningAppProcessIds(string executablePath)
+    {
+        var processIds = new List<int>();
+        foreach (var process in Process.GetProcesses())
+        {
+            using (process)
+            {
+                try
+                {
+                    if (string.Equals(Path.GetFullPath(process.MainModule?.FileName ?? string.Empty), executablePath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        processIds.Add(process.Id);
+                    }
+                }
+                catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException or ArgumentException)
+                {
+                }
+            }
+        }
+
+        return processIds;
     }
 
     private async Task<int> StatusAsync(CliCommand command)

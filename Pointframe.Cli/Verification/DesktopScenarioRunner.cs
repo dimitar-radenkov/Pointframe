@@ -38,7 +38,7 @@ internal sealed class DesktopScenarioRunner
         _restartWait = restartWait ?? TimeSpan.FromSeconds(10);
     }
 
-    internal async Task<IReadOnlyList<string>> ObserveAutomationIdsAsync(string cancellationActionId, CancellationToken cancellationToken)
+    internal async Task<(IReadOnlyList<string> AutomationIds, string? Role, string? Name)> ObserveTargetsAsync(string cancellationActionId, CancellationToken cancellationToken)
     {
         var startResult = await _client.CallToolAsync(
             "desktop_start_test_session",
@@ -74,7 +74,19 @@ internal sealed class DesktopScenarioRunner
                     .ToArray();
                 if (ids.Length > 0)
                 {
-                    return ids;
+                    return (ids, null, null);
+                }
+
+                var namedElement = observation.GetProperty("elements").EnumerateArray()
+                    .FirstOrDefault(item => item.TryGetProperty("name", out var name) && !string.IsNullOrWhiteSpace(name.GetString()));
+                if (namedElement.ValueKind == JsonValueKind.Object)
+                {
+                    var role = namedElement.TryGetProperty("role", out var roleValue) ? roleValue.GetString() : null;
+                    var name = namedElement.GetProperty("name").GetString();
+                    if (!string.IsNullOrWhiteSpace(role) && !string.IsNullOrWhiteSpace(name))
+                    {
+                        return (ids, role, name);
+                    }
                 }
 
                 if (DateTimeOffset.UtcNow >= deadline)
@@ -93,6 +105,12 @@ internal sealed class DesktopScenarioRunner
                 ActionTimeout,
                 cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    internal async Task<IReadOnlyList<string>> ObserveAutomationIdsAsync(string cancellationActionId, CancellationToken cancellationToken)
+    {
+        var targets = await ObserveTargetsAsync(cancellationActionId, cancellationToken).ConfigureAwait(false);
+        return targets.AutomationIds;
     }
 
     // continueAfterFailedChecks is the fail-before mode of `verify task start`: on unchanged code every
