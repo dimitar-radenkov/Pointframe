@@ -39,6 +39,10 @@ public sealed record DesktopTestCriterion(
     string Text,
     string Verdict);
 
+public sealed record DesktopScenarioRecordingEntry(int Index, string? Tool, string? Reason, JsonElement? Step);
+
+public sealed record DesktopScenarioRecording(string SessionRef, IReadOnlyList<string> Criteria, IReadOnlyList<DesktopScenarioRecordingEntry> Entries);
+
 public sealed record DesktopTestReport(
     int SchemaVersion,
     string SessionRef,
@@ -68,6 +72,10 @@ public interface IDesktopTestReportService
     void RecordAction(string sessionRef, DesktopTestActionReport action);
 
     void RecordCheck(string sessionRef, DesktopTestCheckReport check);
+
+    void RecordScenarioStep(string sessionRef, string tool, object? step, string? unsupportedReason = null);
+
+    DesktopScenarioRecording GetScenarioRecording(string sessionRef);
 
     DesktopTestReport Get(string sessionRef);
 
@@ -99,6 +107,31 @@ public sealed class DesktopTestReportService(TimeProvider? timeProvider = null, 
         lock (_sync)
         {
             GetOrCreate(sessionRef).Checks.Add(check);
+        }
+    }
+
+    public void RecordScenarioStep(string sessionRef, string tool, object? step, string? unsupportedReason = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tool);
+        if (unsupportedReason is null && step is null)
+        {
+            throw new ArgumentException("An exportable step or unsupported reason is required.", nameof(step));
+        }
+
+        var element = step is null ? (JsonElement?)null : JsonSerializer.SerializeToElement(step, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        lock (_sync)
+        {
+            var report = GetOrCreate(sessionRef);
+            report.ScenarioEntries.Add(new DesktopScenarioRecordingEntry(report.ScenarioEntries.Count, tool, unsupportedReason, element));
+        }
+    }
+
+    public DesktopScenarioRecording GetScenarioRecording(string sessionRef)
+    {
+        var report = GetOrCreate(sessionRef);
+        lock (_sync)
+        {
+            return new DesktopScenarioRecording(sessionRef, report.Criteria.Select(item => item.Text).ToArray(), report.ScenarioEntries.ToArray());
         }
     }
 
@@ -316,6 +349,7 @@ public sealed class DesktopTestReportService(TimeProvider? timeProvider = null, 
         public DateTimeOffset? CompletedUtc { get; set; }
         public List<DesktopTestActionReport> Actions { get; } = [];
         public List<DesktopTestCheckReport> Checks { get; } = [];
+        public List<DesktopScenarioRecordingEntry> ScenarioEntries { get; } = [];
         public List<(string Id, string Text)> Criteria { get; } = [];
         public string? CriteriaSha256 { get; set; }
         public string? EvidenceDirectory { get; set; }

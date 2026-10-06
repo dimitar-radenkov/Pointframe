@@ -35,6 +35,9 @@ public sealed class DesktopCheckReportingTests
         Assert.Equal("server-uia", check.OracleType);
         Assert.Equal("textEquals automationId=textBox expected=hello", check.Description);
         Assert.Equal("passed", report.Criteria[0].Verdict);
+        var recordedStep = Assert.Single(_reports.GetScenarioRecording(SessionId).Entries);
+        Assert.Equal("desktop_check_ui", recordedStep.Tool);
+        Assert.Equal("textEquals", recordedStep.Step!.Value.GetProperty("check").GetProperty("kind").GetString());
     }
 
     [Fact]
@@ -76,6 +79,21 @@ public sealed class DesktopCheckReportingTests
         Assert.True(check.NegativeControl);
         Assert.Equal(DesktopVerificationStatus.Passed, check.Verdict);
         Assert.Equal("not textEquals automationId=textBox expected=wrong", check.Description);
+        var exportStep = Assert.Single(_reports.GetScenarioRecording(SessionId).Entries).Step!.Value.GetProperty("check");
+        Assert.True(exportStep.GetProperty("expectFailure").GetBoolean());
+        Assert.Equal("wrong", exportStep.GetProperty("expected").GetString());
+    }
+
+    [Fact]
+    public async Task WindowScopedEvaluatedCheckIsRecordedAsUnsupported()
+    {
+        SetupEvaluation(new DesktopUiCheckEvaluation(true, true, 1));
+
+        await CreateTools().CheckUiAsync(SessionId, "exists", automationId: "saveButton", windowRef: "window-1");
+
+        var entry = Assert.Single(_reports.GetScenarioRecording(SessionId).Entries);
+        Assert.Equal("window refs are per session", entry.Reason);
+        Assert.Null(entry.Step);
     }
 
     [Fact]

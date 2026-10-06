@@ -31,4 +31,5 @@ internal sealed record CliCommand(
     bool AgentsMd = false,
     bool Explore = false,
     bool Force = false,
-    string? ProjectPath = null);
+    string? ProjectPath = null,
+    string? ScenarioFile = null);

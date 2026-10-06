@@ -178,6 +178,57 @@ public sealed class VerificationTests : IDisposable
     }
 
     [Fact]
+    public async Task ScenarioAdd_AppendsValidatedExportAndReportsNextStep()
+    {
+        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        var exported = _fixture.WriteScenarioExport("new-scenario", """[{ "restart": {} }]""");
+        var output = new StringWriter();
+        Assert.True(CliCommandParser.TryParse(["verify", "scenario", "add", "--from", exported, "--spec", _fixture.SpecPath], out var command, out var error), error);
+
+        var exitCode = await new VerificationFixture.Services().Application(_fixture.Store, output).RunAsync(command, CancellationToken.None);
+
+        Assert.Equal(0, exitCode);
+        using var result = JsonDocument.Parse(output.ToString());
+        Assert.Equal("added", result.RootElement.GetProperty("status").GetString());
+        Assert.Equal("new-scenario", result.RootElement.GetProperty("scenarioId").GetString());
+        Assert.Contains("changed specs need approval again", result.RootElement.GetProperty("nextStep").GetString(), StringComparison.Ordinal);
+        Assert.Equal(2, VerificationSpecLoader.Load(_fixture.SpecPath).Scenarios.Count);
+    }
+
+    [Fact]
+    public async Task ScenarioAdd_RefusesDuplicateAndForceReplacesIt()
+    {
+        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        var exported = _fixture.WriteScenarioExport("save-text", """[{ "restart": {} }]""");
+
+        var duplicateOutput = new StringWriter();
+        var duplicateCommand = new CliCommand("verify", VerifyAction: "scenario-add", ScenarioFile: exported, SpecPath: _fixture.SpecPath);
+        Assert.Equal(2, await new VerificationFixture.Services().Application(_fixture.Store, duplicateOutput).RunAsync(duplicateCommand, CancellationToken.None));
+        Assert.Contains("already exists", duplicateOutput.ToString(), StringComparison.Ordinal);
+
+        var forceOutput = new StringWriter();
+        var forceCommand = duplicateCommand with { Force = true };
+        Assert.Equal(0, await new VerificationFixture.Services().Application(_fixture.Store, forceOutput).RunAsync(forceCommand, CancellationToken.None));
+        Assert.Equal("replaced", JsonDocument.Parse(forceOutput.ToString()).RootElement.GetProperty("status").GetString());
+        Assert.IsType<VerificationStep.Restart>(Assert.Single(VerificationSpecLoader.Load(_fixture.SpecPath).Scenarios[0].Steps));
+    }
+
+    [Fact]
+    public async Task ScenarioAdd_InvalidScenarioDoesNotWriteSpec()
+    {
+        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        var original = File.ReadAllBytes(_fixture.SpecPath);
+        var exported = _fixture.WriteScenarioExport("bad", "[]");
+        var output = new StringWriter();
+
+        var exitCode = await new VerificationFixture.Services().Application(_fixture.Store, output).RunAsync(
+            new CliCommand("verify", VerifyAction: "scenario-add", ScenarioFile: exported, SpecPath: _fixture.SpecPath), CancellationToken.None);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(original, File.ReadAllBytes(_fixture.SpecPath));
+    }
+
+    [Fact]
     public async Task Status_ReportsCurrentHookCommandAndFailedReview()
     {
         var outputDirectory = Path.Combine(_fixture.Root, VerificationApplication.OutputRelativePath);
@@ -340,8 +391,8 @@ public sealed class VerificationTests : IDisposable
     }
 
     [Theory]
-    [InlineData(new[] { "verify" }, "The verify command requires an action: init, run, setup, status, trust, task start, hook stop, or agent.")]
-    [InlineData(new[] { "verify", "start" }, "The verify command requires an action: init, run, setup, status, trust, task start, hook stop, or agent.")]
+    [InlineData(new[] { "verify" }, "The verify command requires an action: init, run, scenario add, setup, status, trust, task start, hook stop, or agent.")]
+    [InlineData(new[] { "verify", "start" }, "The verify command requires an action: init, run, scenario add, setup, status, trust, task start, hook stop, or agent.")]
     [InlineData(new[] { "verify", "task", "start" }, "The verify task command requires: task start <task-file>.")]
     [InlineData(new[] { "verify", "run", "--fast" }, "Unrecognized verify run option '--fast'.")]
     [InlineData(new[] { "verify", "status", "--mcp", "x" }, "Unrecognized verify status option '--mcp'.")]

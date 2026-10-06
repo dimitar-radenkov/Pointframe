@@ -7,6 +7,24 @@ namespace Pointframe.Tests.Engine;
 public sealed class DesktopTestReportTests
 {
     [Fact]
+    public void ScenarioRecordingPreservesStepAndUnsupportedOrder()
+    {
+        var service = new DesktopTestReportService();
+        service.Initialize("session-export", "app.exe", "hash", ["criterion"]);
+        service.RecordScenarioStep("session-export", "desktop_invoke", new { invoke = new { automationId = "save" } });
+        service.RecordScenarioStep("session-export", "desktop_click", null, "coordinates are not portable");
+        service.RecordScenarioStep("session-export", "desktop_check_ui", new { check = new { kind = "exists" } });
+
+        var recording = service.GetScenarioRecording("session-export");
+
+        Assert.Equal(["criterion"], recording.Criteria);
+        Assert.Equal([0, 1, 2], recording.Entries.Select(item => item.Index));
+        Assert.Equal("save", recording.Entries[0].Step!.Value.GetProperty("invoke").GetProperty("automationId").GetString());
+        Assert.Equal("coordinates are not portable", recording.Entries[1].Reason);
+        Assert.Equal("desktop_check_ui", recording.Entries[2].Tool);
+    }
+
+    [Fact]
     public async Task FinalizeDistinguishesInconclusiveChecks()
     {
         var service = new DesktopTestReportService();

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Pointframe.Engine;
@@ -149,6 +150,10 @@ internal sealed class DesktopTestingMcpTools(
                 return new DesktopActionExecution(DesktopDispatchStatus.Complete);
             },
             cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (result.Dispatch == DesktopDispatchStatus.Complete && reports.IsActionUnannotated(sessionId, actionId))
+        {
+            reports.RecordScenarioStep(sessionId, "desktop_restart_app", new { restart = new { } });
+        }
         await AnnotateActionAsync(sessionId, actionId, "restart_app", result, cancellationToken).ConfigureAwait(false);
         return DesktopTestingResponseMapper.MapAction(result, sessionId, targetRef);
     }
@@ -325,6 +330,7 @@ internal sealed class DesktopTestingMcpTools(
         var process = session.Target.Process;
         var observed = observations.ResolveElement(elementRef, process.ProcessRef);
         var element = observed?.Element;
+        var exportLocator = observed is null ? null : BuildExportLocator(observed);
         var windowHandle = element is null ? nint.Zero : ResolveWindowHandle(element.WindowRef, process.ProcessRef);
         var hasUsableBounds = element is not null
             && element.BoundsPixels.Width > 0
@@ -381,6 +387,11 @@ internal sealed class DesktopTestingMcpTools(
             },
             observed is null ? null : [observed.ObservationRef],
             cancellationToken).ConfigureAwait(false);
+        if (result.Dispatch == DesktopDispatchStatus.Complete && reports.IsActionUnannotated(sessionId, actionId))
+        {
+            reports.RecordScenarioStep(sessionId, "desktop_invoke", exportLocator is null ? null : new { invoke = ExportElement(exportLocator) },
+                exportLocator is null ? "element has no stable locator" : null);
+        }
         await AnnotateActionAsync(sessionId, actionId, "invoke", result, cancellationToken).ConfigureAwait(false);
         return DesktopTestingResponseMapper.MapAction(result, sessionId) with { Method = method };
     }
@@ -479,6 +490,45 @@ internal sealed class DesktopTestingMcpTools(
             NegativeControl: expectFailure,
             Evidence: checkEvidence,
             Spec: spec));
+        var checkLocator = !string.IsNullOrWhiteSpace(spec.AutomationId)
+            ? new ExportLocator(spec.AutomationId, null, null)
+            : !string.IsNullOrWhiteSpace(spec.Role) && !string.IsNullOrWhiteSpace(spec.Name)
+                ? new ExportLocator(null, spec.Role, spec.Name)
+                : null;
+        var exportCheckKind = NormalizeScenarioCheckKind(spec.Kind);
+        if (spec.WindowRef is not null)
+        {
+            reports.RecordScenarioStep(sessionId, "desktop_check_ui", null, "window refs are per session");
+        }
+        else if (checkLocator is null
+            || exportCheckKind is null
+            || (exportCheckKind is "exists" or "absent") && spec.Expected is not null
+            || (exportCheckKind is "toggleEquals" or "selectionEquals" or "textEquals") && spec.Expected is null)
+        {
+            reports.RecordScenarioStep(sessionId, "desktop_check_ui", null, "check is not supported by verify spec v1");
+        }
+        else
+        {
+            var check = new Dictionary<string, object?>(ExportElement(checkLocator))
+            {
+                ["kind"] = exportCheckKind,
+                ["expectFailure"] = expectFailure,
+                ["timeoutSeconds"] = spec.TimeoutSeconds,
+            };
+            if (spec.Expected is not null)
+            {
+                check["expected"] = exportCheckKind == "enabled"
+                    ? bool.Parse(spec.Expected)
+                    : spec.Expected;
+            }
+
+            if (criterionId is not null)
+            {
+                check["criterion"] = criterionId;
+            }
+
+            reports.RecordScenarioStep(sessionId, "desktop_check_ui", new { check });
+        }
         return (response, verdict);
     }
 
@@ -731,6 +781,105 @@ internal sealed class DesktopTestingMcpTools(
         return result.Succeeded ? Ok(actionId) : Error(actionId, result.Code, result.Message);
     }
 
+    [McpServerTool(Name = "desktop_export_scenario", Title = "Export desktop scenario", ReadOnly = true, Destructive = false)]
+    [Description("Exports the portable steps recorded in a desktop test session as a verify.json scenario and saves scenario-<id>.json in the session report folder. Unsupported actions are listed with their step indexes.")]
+    public async Task<CallToolResult> ExportScenarioAsync(
+        [Description("Session id from desktop_start_test_session.")] string sessionId,
+        [Description("Scenario identifier using letters, digits, hyphens, underscores, and periods.")] string scenarioId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(scenarioId) || !Regex.IsMatch(scenarioId, "^[A-Za-z0-9._-]+$", RegexOptions.CultureInvariant))
+        {
+            return ExportResult(new { error = new { code = "InvalidScenarioId", message = "scenarioId must contain only letters, digits, '.' '_' or '-'." } }, isError: true);
+        }
+
+        var report = reports.Get(sessionId);
+        var recording = reports.GetScenarioRecording(sessionId);
+        var steps = recording.Entries.Where(entry => entry.Step.HasValue).Select(entry => entry.Step!.Value).ToArray();
+        var unsupported = recording.Entries.Where(entry => entry.Reason is not null)
+            .Select(entry => new { index = entry.Index, tool = entry.Tool, reason = entry.Reason }).ToArray();
+        var scenario = new { id = scenarioId, criteria = recording.Criteria, steps };
+        var result = new { scenario, unsupported, complete = unsupported.Length == 0 };
+        if (string.IsNullOrWhiteSpace(report.SessionDirectory))
+        {
+            return ExportResult(new { error = new { code = "ReportUnavailable", message = "The session report folder is unavailable." } }, isError: true);
+        }
+
+        Directory.CreateDirectory(report.SessionDirectory);
+        await File.WriteAllTextAsync(Path.Combine(report.SessionDirectory, $"scenario-{scenarioId}.json"),
+            JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }), cancellationToken).ConfigureAwait(false);
+        return ExportResult(result, isError: false);
+    }
+
+    // A typed CallToolResult keeps the export at the top level of structuredContent; returning a bare object
+    // made the SDK wrap it as { "result": ... }.
+    private static CallToolResult ExportResult(object payload, bool isError)
+    {
+        var json = JsonSerializer.SerializeToElement(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        return new CallToolResult
+        {
+            StructuredContent = json,
+            Content = [new TextContentBlock { Text = json.GetRawText() }],
+            IsError = isError,
+        };
+    }
+
+    private sealed record ExportLocator(string? AutomationId, string? Role, string? Name);
+
+    private static Dictionary<string, object?> ExportElement(ExportLocator locator)
+    {
+        var element = new Dictionary<string, object?>();
+        if (locator.AutomationId is not null)
+        {
+            element["automationId"] = locator.AutomationId;
+        }
+        else
+        {
+            element["role"] = locator.Role;
+            element["name"] = locator.Name;
+        }
+
+        return element;
+    }
+
+    private static string? NormalizeScenarioCheckKind(string kind) => kind.Trim().ToLowerInvariant() switch
+    {
+        "exists" => "exists",
+        "absent" => "absent",
+        "enabled" => "enabled",
+        "toggleequals" => "toggleEquals",
+        "selectionequals" => "selectionEquals",
+        "textequals" => "textEquals",
+        _ => null,
+    };
+
+    private ExportLocator? BuildExportLocator(DesktopObservedElement observed)
+    {
+        var resolvedObservation = observations.Resolve(observed.ObservationRef);
+        var snapshot = resolvedObservation?.UiAutomation;
+        if (snapshot is null)
+        {
+            return null;
+        }
+
+        var element = observed.Element;
+        if (!string.IsNullOrWhiteSpace(element.AutomationId)
+            && snapshot.Elements.Count(item => string.Equals(item.AutomationId, element.AutomationId, StringComparison.Ordinal)) == 1)
+        {
+            return new ExportLocator(element.AutomationId, null, null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(element.Role)
+            && !string.IsNullOrWhiteSpace(element.Name)
+            && snapshot.Elements.Count(item => string.Equals(item.Role, element.Role, StringComparison.Ordinal)
+                && string.Equals(item.Name, element.Name, StringComparison.Ordinal)) == 1)
+        {
+            return new ExportLocator(null, element.Role, element.Name);
+        }
+
+        return null;
+    }
+
     private static DesktopTestingObservationResponse InvalidObservationOption(string code, string message)
     {
         return SessionNotFoundObservation() with { Error = new McpCaptureError(code, message) };
@@ -800,7 +949,7 @@ internal sealed class DesktopTestingMcpTools(
                     session.Target.Process,
                     cancellationToken),
                 cancellationToken,
-                observation.Observation.ObservationRef).ConfigureAwait(false);
+                observationsToInvalidate: [observation.Observation.ObservationRef]).ConfigureAwait(false);
         }
         catch (DesktopOperationException exception)
         {
@@ -855,7 +1004,7 @@ internal sealed class DesktopTestingMcpTools(
         }
 
         var method = isGlobalHotkey ? DesktopInputMethod.GlobalHotkey : DesktopInputMethod.Physical;
-        return await ExecuteInputAsync(
+        var response = await ExecuteInputAsync(
             sessionId,
             actionId,
             "press_keys",
@@ -865,7 +1014,10 @@ internal sealed class DesktopTestingMcpTools(
                 session.Target.Process,
                 cancellationToken),
             cancellationToken,
-            consumed).ConfigureAwait(false);
+            exportStep: isGlobalHotkey ? null : new { pressKeys = new { keys = virtualKeys } },
+            unsupportedReason: isGlobalHotkey ? "global hotkeys are not portable" : null,
+            observationsToInvalidate: consumed).ConfigureAwait(false);
+        return response;
     }
 
     private (DesktopInputTarget? Target, string? ObservationRef, (string Code, string Message)? Error) ResolvePressKeysTarget(
@@ -944,7 +1096,7 @@ internal sealed class DesktopTestingMcpTools(
                     session.Target.Process,
                     cancellationToken),
                 cancellationToken,
-                observation.Observation.ObservationRef).ConfigureAwait(false);
+                observationsToInvalidate: [observation.Observation.ObservationRef]).ConfigureAwait(false);
         }
         catch (DesktopOperationException exception)
         {
@@ -980,6 +1132,17 @@ internal sealed class DesktopTestingMcpTools(
                     return Error(actionId, "ElementRequired", "Semantic ValuePattern entry requires a verified UI automation element reference.");
                 }
 
+                var observedSnapshot = observation.UiAutomation?.Elements.FirstOrDefault(item => string.Equals(item.ElementRef, elementRef, StringComparison.Ordinal));
+                var observedTarget = observedSnapshot is null
+                    ? null
+                    : new DesktopObservedElement(observation.Observation.ObservationRef, observedSnapshot);
+                var locator = observedTarget is null ? null : BuildExportLocator(observedTarget);
+                var enterText = locator is null ? null : ExportElement(locator);
+                if (enterText is not null)
+                {
+                    enterText["text"] = text;
+                }
+
                 return await ExecuteSemanticInputAsync(
                     sessionId,
                     actionId,
@@ -989,7 +1152,9 @@ internal sealed class DesktopTestingMcpTools(
                         ? UiInvokeOutcome.Completed
                         : UiInvokeOutcome.Failed,
                     cancellationToken,
-                    observation.Observation.ObservationRef).ConfigureAwait(false);
+                    observationsToInvalidate: [observation.Observation.ObservationRef],
+                    exportStep: enterText is null ? null : new { enterText },
+                    unsupportedReason: locator is null ? "element has no stable locator" : null).ConfigureAwait(false);
             }
 
             var image = observation.Observation.Images.Single(item => item.ImageRef == imageRef);
@@ -1009,7 +1174,7 @@ internal sealed class DesktopTestingMcpTools(
                     session.Target.Process,
                     cancellationToken),
                 cancellationToken,
-                observation.Observation.ObservationRef).ConfigureAwait(false);
+                observationsToInvalidate: [observation.Observation.ObservationRef]).ConfigureAwait(false);
         }
         catch (DesktopOperationException exception)
         {
@@ -1052,7 +1217,7 @@ internal sealed class DesktopTestingMcpTools(
                     session.Target.Process,
                     cancellationToken),
                 cancellationToken,
-                observation.Observation.ObservationRef).ConfigureAwait(false);
+                observationsToInvalidate: [observation.Observation.ObservationRef]).ConfigureAwait(false);
         }
         catch (DesktopOperationException exception)
         {
@@ -1067,7 +1232,9 @@ internal sealed class DesktopTestingMcpTools(
         object canonicalArguments,
         Func<Task<DesktopInputPreflightResult>> dispatch,
         CancellationToken cancellationToken,
-        params string[] observationsToInvalidate)
+        object? exportStep = null,
+        string? unsupportedReason = null,
+        IReadOnlyList<string>? observationsToInvalidate = null)
     {
         var result = await coordinator.ExecuteAsync(
             sessionId,
@@ -1086,6 +1253,22 @@ internal sealed class DesktopTestingMcpTools(
             },
             observationsToInvalidate,
             cancellationToken).ConfigureAwait(false);
+        if (result.Dispatch == DesktopDispatchStatus.Complete && reports.IsActionUnannotated(sessionId, actionId))
+        {
+            if (exportStep is not null)
+            {
+                reports.RecordScenarioStep(sessionId, $"desktop_{operation}", exportStep);
+            }
+            else if (unsupportedReason is not null)
+            {
+                reports.RecordScenarioStep(sessionId, $"desktop_{operation}", null, unsupportedReason);
+            }
+            else if (operation is "click" or "drag" or "scroll" or "enter_text")
+            {
+                reports.RecordScenarioStep(sessionId, $"desktop_{operation}", null, "coordinates are not portable");
+            }
+        }
+
         await AnnotateActionAsync(sessionId, actionId, operation, result, cancellationToken).ConfigureAwait(false);
         return DesktopTestingResponseMapper.MapAction(result, sessionId);
     }
@@ -1128,7 +1311,9 @@ internal sealed class DesktopTestingMcpTools(
         object canonicalArguments,
         Func<UiInvokeOutcome> dispatch,
         CancellationToken cancellationToken,
-        params string[] observationsToInvalidate)
+        IReadOnlyList<string>? observationsToInvalidate = null,
+        object? exportStep = null,
+        string? unsupportedReason = null)
     {
         var result = await coordinator.ExecuteAsync(
             sessionId,
@@ -1137,6 +1322,11 @@ internal sealed class DesktopTestingMcpTools(
             _ => Task.FromResult(CreateSemanticInputExecution(dispatch(), operation)),
             observationsToInvalidate,
             cancellationToken).ConfigureAwait(false);
+        if (result.Dispatch == DesktopDispatchStatus.Complete && reports.IsActionUnannotated(sessionId, actionId))
+        {
+            reports.RecordScenarioStep(sessionId, $"desktop_{operation}", exportStep, unsupportedReason);
+        }
+
         await AnnotateActionAsync(sessionId, actionId, operation, result, cancellationToken).ConfigureAwait(false);
         return DesktopTestingResponseMapper.MapAction(result, sessionId);
     }
