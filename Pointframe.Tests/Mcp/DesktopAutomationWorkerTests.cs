@@ -89,6 +89,24 @@ public sealed class DesktopAutomationWorkerTests
     }
 
     [Fact]
+    public async Task ProviderMapsPendingInvokeToSuccessfulWorkerResponse()
+    {
+        var provider = new DesktopAutomationWorkerProvider(
+            new RecordingInputService(),
+            new RecordingUiProvider(UiInvokeOutcome.Pending));
+        var request = new DesktopAutomationWorkerRequest(
+            1,
+            "invoke-request",
+            DesktopAutomationWorkerProtocol.Operations.Invoke,
+            JsonSerializer.Serialize(new { elementRef = "element-1" }));
+
+        var response = await provider.HandleAsync(request, CancellationToken.None);
+
+        Assert.True(response.Succeeded);
+        Assert.Equal("InvokePending", response.Code);
+    }
+
+    [Fact]
     public async Task ProviderPreservesNativeWindowHandleAcrossTheWorkerBoundary()
     {
         var input = new RecordingInputService();
@@ -143,6 +161,64 @@ public sealed class DesktopAutomationWorkerTests
 
         Assert.False(response.Succeeded);
         Assert.Equal("InputReleaseFailed", response.Code);
+    }
+
+    [Fact]
+    public async Task ProviderPingTouchesUiAutomationWarmupProvider()
+    {
+        var ui = new RecordingWarmupUiProvider();
+        var provider = new DesktopAutomationWorkerProvider(new RecordingInputService(), ui);
+
+        var response = await provider.HandleAsync(
+            new DesktopAutomationWorkerRequest(1, "ping-1", DesktopAutomationWorkerProtocol.Operations.Ping),
+            CancellationToken.None);
+
+        Assert.True(response.Succeeded);
+        Assert.Equal("Ok", response.Code);
+        Assert.Equal(1, ui.WarmupCalls);
+    }
+
+    [Fact]
+    public void FirstWorkerPingTimeoutAbandonsItAndRequestUsesSecondWorker()
+    {
+        var host = new FakeWorkerHost(failingWarmups: 1);
+        var service = new WorkerDesktopAutomationService(host, warmupMilliseconds: 30);
+
+        var payload = service.InspectUi(CreateObservationRequest());
+
+        Assert.Equal("{}", payload);
+        Assert.Equal(2, host.StartCalls);
+        Assert.Equal(1, host.AbandonCalls);
+        Assert.Equal(2, host.PingCalls);
+        Assert.Equal(1, host.InspectCalls);
+    }
+
+    [Fact]
+    public void AllThreeWorkerWarmupsFailAndRequestFailsWithoutRetryingForever()
+    {
+        var host = new FakeWorkerHost(failingWarmups: 3);
+        var service = new WorkerDesktopAutomationService(host, warmupMilliseconds: 30);
+
+        Assert.Throws<IOException>(() => service.InspectUi(CreateObservationRequest()));
+
+        Assert.Equal(3, host.StartCalls);
+        Assert.Equal(3, host.AbandonCalls);
+        Assert.Equal(3, host.PingCalls);
+        Assert.Equal(0, host.InspectCalls);
+    }
+
+    [Fact]
+    public void HealthyFirstWorkerIsPingedExactlyOnce()
+    {
+        var host = new FakeWorkerHost(failingWarmups: 0);
+        var service = new WorkerDesktopAutomationService(host, warmupMilliseconds: 30);
+
+        Assert.Equal("{}", service.InspectUi(CreateObservationRequest()));
+
+        Assert.Equal(1, host.StartCalls);
+        Assert.Equal(0, host.AbandonCalls);
+        Assert.Equal(1, host.PingCalls);
+        Assert.Equal(1, host.InspectCalls);
     }
 
     private sealed class BlockingProvider : IDesktopAutomationWorkerProvider
@@ -255,9 +331,64 @@ public sealed class DesktopAutomationWorkerTests
             JsonSerializer.Serialize(new DesktopObservationRequest(process, [new PixelBounds(0, 0, 100, 100)])));
     }
 
+    private static DesktopObservationRequest CreateObservationRequest()
+    {
+        var process = new DesktopProcessIdentity("process-1", 1, DateTimeOffset.UtcNow, "target.exe", "hash");
+        return new DesktopObservationRequest(process, [new PixelBounds(0, 0, 100, 100)]);
+    }
+
+    private sealed class FakeWorkerHost(int failingWarmups) : IDesktopAutomationWorkerHost
+    {
+        private int _activeWorker;
+
+        public int StartCalls { get; private set; }
+
+        public int AbandonCalls { get; private set; }
+
+        public int PingCalls { get; private set; }
+
+        public int InspectCalls { get; private set; }
+
+        public Task StartAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            StartCalls++;
+            _activeWorker = StartCalls;
+            return Task.CompletedTask;
+        }
+
+        public async Task<DesktopAutomationWorkerResponse> DispatchAsync(
+            DesktopAutomationWorkerRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (request.Operation == DesktopAutomationWorkerProtocol.Operations.Ping)
+            {
+                PingCalls++;
+                if (_activeWorker <= failingWarmups)
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }
+            }
+            else if (request.Operation == DesktopAutomationWorkerProtocol.Operations.Inspect)
+            {
+                InspectCalls++;
+            }
+
+            return new DesktopAutomationWorkerResponse(1, request.RequestId, true, "Ok", "{}");
+        }
+
+        public ValueTask AbandonAsync()
+        {
+            AbandonCalls++;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     private sealed class SnapshotUiProvider(IReadOnlyList<DesktopUiElementSnapshot> elements) : IWindowsUiAutomationActionProvider, IDesktopUiObservationProvider
     {
-        public bool TryInvoke(string elementRef) => true;
+        public UiInvokeOutcome TryInvoke(string elementRef) => UiInvokeOutcome.Completed;
 
         public bool TrySetValue(string elementRef, string value) => true;
 
@@ -265,9 +396,20 @@ public sealed class DesktopAutomationWorkerTests
             new(DesktopUiAutomationStatus.Available, elements, DateTimeOffset.UtcNow);
     }
 
-    private sealed class RecordingUiProvider : IWindowsUiAutomationActionProvider
+    private sealed class RecordingWarmupUiProvider : IWindowsUiAutomationActionProvider, IWindowsUiAutomationWarmupProvider
     {
-        public bool TryInvoke(string elementRef) => true;
+        public int WarmupCalls { get; private set; }
+
+        public UiInvokeOutcome TryInvoke(string elementRef) => UiInvokeOutcome.Completed;
+
+        public bool TrySetValue(string elementRef, string value) => true;
+
+        public void Warmup() => WarmupCalls++;
+    }
+
+    private sealed class RecordingUiProvider(UiInvokeOutcome invokeOutcome = UiInvokeOutcome.Completed) : IWindowsUiAutomationActionProvider
+    {
+        public UiInvokeOutcome TryInvoke(string elementRef) => invokeOutcome;
 
         public bool TrySetValue(string elementRef, string value) => true;
     }

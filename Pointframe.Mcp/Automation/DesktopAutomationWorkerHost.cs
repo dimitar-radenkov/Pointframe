@@ -13,7 +13,16 @@ public interface IDesktopAutomationWorkerProvider
         CancellationToken cancellationToken);
 }
 
-public sealed class DesktopAutomationWorkerHost : IAsyncDisposable
+public interface IDesktopAutomationWorkerHost : IAsyncDisposable
+{
+    Task StartAsync(CancellationToken cancellationToken = default);
+
+    Task<DesktopAutomationWorkerResponse> DispatchAsync(DesktopAutomationWorkerRequest request, CancellationToken cancellationToken = default);
+
+    ValueTask AbandonAsync();
+}
+
+public sealed class DesktopAutomationWorkerHost : IDesktopAutomationWorkerHost
 {
     private readonly string _executablePath;
     private readonly string _assemblyPath;

@@ -72,6 +72,13 @@ public enum DesktopDispatchStatus
     Unknown,
 }
 
+public enum UiInvokeOutcome
+{
+    Failed,
+    Completed,
+    Pending,
+}
+
 public enum DesktopVerificationStatus
 {
     NotRequested,

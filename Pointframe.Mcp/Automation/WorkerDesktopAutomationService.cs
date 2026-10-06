@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using Pointframe.Engine.Automation.Models;
@@ -10,8 +11,9 @@ public sealed class WorkerDesktopAutomationService :
     IWindowsUiAutomationActionProvider,
     IAsyncDisposable
 {
-    private readonly DesktopAutomationWorkerHost _host;
+    private readonly IDesktopAutomationWorkerHost _host;
     private readonly DesktopControlGuard _controlGuard;
+    private readonly int _warmupMilliseconds;
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private bool _started;
 
@@ -24,6 +26,19 @@ public sealed class WorkerDesktopAutomationService :
         var executable = Environment.ProcessPath
             ?? throw new InvalidOperationException("The MCP worker executable path is unavailable.");
         _host = new DesktopAutomationWorkerHost(executable, Assembly.GetExecutingAssembly().Location);
+        _warmupMilliseconds = DesktopTestingLimits.WorkerWarmupMilliseconds;
+    }
+
+    internal WorkerDesktopAutomationService(
+        IDesktopAutomationWorkerHost host,
+        int warmupMilliseconds = DesktopTestingLimits.WorkerWarmupMilliseconds,
+        DesktopControlGuard? controlGuard = null)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(warmupMilliseconds);
+        _host = host;
+        _warmupMilliseconds = warmupMilliseconds;
+        _controlGuard = controlGuard ?? new DesktopControlGuard();
     }
 
     public Task<DesktopInputPreflightResult> FocusAsync(DesktopInputTarget target, DesktopProcessIdentity expectedProcess, CancellationToken cancellationToken = default) =>
@@ -73,8 +88,26 @@ public sealed class WorkerDesktopAutomationService :
         return _controlGuard.TryReleaseOwnedInput();
     }
 
-    public bool TryInvoke(string elementRef) =>
-        DispatchUi(DesktopAutomationWorkerProtocol.Operations.Invoke, new { elementRef });
+    public UiInvokeOutcome TryInvoke(string elementRef)
+    {
+        var response = DispatchAsync(
+                DesktopAutomationWorkerProtocol.Operations.Invoke,
+                new { elementRef },
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        if (!response.Succeeded)
+        {
+            return UiInvokeOutcome.Failed;
+        }
+
+        return response.Code switch
+        {
+            "InvokePending" => UiInvokeOutcome.Pending,
+            "Ok" => UiInvokeOutcome.Completed,
+            _ => UiInvokeOutcome.Failed,
+        };
+    }
 
     public bool TrySetValue(string elementRef, string value) =>
         DispatchUi(DesktopAutomationWorkerProtocol.Operations.SetValue, new { elementRef, value });
@@ -184,8 +217,47 @@ public sealed class WorkerDesktopAutomationService :
         {
             if (!_started)
             {
-                await _host.StartAsync(cancellationToken).ConfigureAwait(false);
+                for (var attempt = 1; attempt <= 3; attempt++)
+                {
+                    var stopwatch = Stopwatch.StartNew();
+                    try
+                    {
+                        await _host.StartAsync(cancellationToken).ConfigureAwait(false);
+                        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        timeout.CancelAfter(_warmupMilliseconds);
+                        var response = await _host.DispatchAsync(
+                            new DesktopAutomationWorkerRequest(
+                                DesktopAutomationWorkerProtocol.Version,
+                                Guid.NewGuid().ToString("N"),
+                                DesktopAutomationWorkerProtocol.Operations.Ping,
+                                "{}"),
+                            timeout.Token).ConfigureAwait(false);
+                        if (response.Succeeded)
+                        {
+                            _started = true;
+                            stopwatch.Stop();
+                            Pointframe.Engine.Automation.DesktopTrace.Write($"worker warmup ok attempt={attempt} ms={stopwatch.ElapsedMilliseconds}");
+                            return;
+                        }
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception) when (exception is OperationCanceledException
+                        or IOException
+                        or InvalidOperationException
+                        or TimeoutException)
+                    {
+                    }
+
+                    stopwatch.Stop();
+                    Pointframe.Engine.Automation.DesktopTrace.Write($"worker warmup failed attempt={attempt}");
+                    await _host.AbandonAsync().ConfigureAwait(false);
+                }
+
                 _started = true;
+                throw new IOException("The desktop automation worker did not pass its UI Automation warmup.");
             }
         }
         finally

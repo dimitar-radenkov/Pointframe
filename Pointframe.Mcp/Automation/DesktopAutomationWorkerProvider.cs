@@ -59,9 +59,9 @@ public sealed class DesktopAutomationWorkerProvider : IDesktopAutomationWorkerPr
                     (input, process) => _input.ScrollAsync(input, process, cancellationToken),
                     cancellationToken).ConfigureAwait(false),
                 DesktopAutomationWorkerProtocol.Operations.Release => HandleRelease(request, cancellationToken),
+                DesktopAutomationWorkerProtocol.Operations.Ping => HandlePing(request, cancellationToken),
                 DesktopAutomationWorkerProtocol.Operations.Inspect => HandleInspect(request, cancellationToken),
-                DesktopAutomationWorkerProtocol.Operations.Invoke => HandleUiAction(request, static (provider, elementRef, _) =>
-                    provider.TryInvoke(elementRef), cancellationToken),
+                DesktopAutomationWorkerProtocol.Operations.Invoke => HandleInvoke(request, cancellationToken),
                 DesktopAutomationWorkerProtocol.Operations.SetValue => HandleUiAction(request, static (provider, elementRef, payload) =>
                     provider.TrySetValue(elementRef, payload.GetProperty("value").GetString() ?? string.Empty), cancellationToken),
                 _ => Failure(request, "UnsupportedOperation", "The worker operation is not supported."),
@@ -76,6 +76,24 @@ public sealed class DesktopAutomationWorkerProvider : IDesktopAutomationWorkerPr
         {
             return Failure(request, "InvalidPayload", exception.Message);
         }
+    }
+
+    private DesktopAutomationWorkerResponse HandlePing(
+        DesktopAutomationWorkerRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_uiAutomation is not IWindowsUiAutomationWarmupProvider warmupProvider)
+        {
+            return Failure(request, "ProviderUnavailable", "The worker has no UI Automation warmup provider.");
+        }
+
+        warmupProvider.Warmup();
+        return new DesktopAutomationWorkerResponse(
+            DesktopAutomationWorkerProtocol.Version,
+            request.RequestId,
+            true,
+            "Ok");
     }
 
     private DesktopAutomationWorkerResponse HandleRelease(
@@ -171,6 +189,29 @@ public sealed class DesktopAutomationWorkerProvider : IDesktopAutomationWorkerPr
             request.RequestId,
             succeeded,
             succeeded ? "Ok" : "InputDispatchFailed");
+    }
+
+    private DesktopAutomationWorkerResponse HandleInvoke(
+        DesktopAutomationWorkerRequest request,
+        CancellationToken cancellationToken)
+    {
+        var payload = Deserialize<JsonElement>(request.Payload);
+        var elementRef = payload.GetProperty("elementRef").GetString();
+        if (string.IsNullOrWhiteSpace(elementRef))
+        {
+            return Failure(request, "InvalidPayload", "An element reference is required.");
+        }
+
+        var outcome = _uiAutomation.TryInvoke(elementRef);
+        cancellationToken.ThrowIfCancellationRequested();
+        return outcome switch
+        {
+            UiInvokeOutcome.Completed => new DesktopAutomationWorkerResponse(
+                DesktopAutomationWorkerProtocol.Version, request.RequestId, true, "Ok"),
+            UiInvokeOutcome.Pending => new DesktopAutomationWorkerResponse(
+                DesktopAutomationWorkerProtocol.Version, request.RequestId, true, "InvokePending"),
+            _ => Failure(request, "InputDispatchFailed", "The UI automation invoke was not accepted."),
+        };
     }
 
     private static T Deserialize<T>(string? payload)

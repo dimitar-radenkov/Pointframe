@@ -26,21 +26,32 @@ public interface IWindowsUiAutomationCandidateBackend
 
 public interface IWindowsUiAutomationActionBackend
 {
-    bool TryInvoke(string elementRef);
+    UiInvokeOutcome TryInvoke(string elementRef);
 
     bool TrySetValue(string elementRef, string value);
 }
 
 public interface IWindowsUiAutomationActionProvider
 {
-    bool TryInvoke(string elementRef);
+    UiInvokeOutcome TryInvoke(string elementRef);
 
     bool TrySetValue(string elementRef, string value);
 }
 
+public interface IWindowsUiAutomationWarmupProvider
+{
+    void Warmup();
+}
+
+public interface IWindowsUiAutomationWarmupBackend
+{
+    void Warmup();
+}
+
 public sealed class WindowsUiAutomationProvider :
     IDesktopUiObservationProvider,
-    IWindowsUiAutomationActionProvider
+    IWindowsUiAutomationActionProvider,
+    IWindowsUiAutomationWarmupProvider
 {
     private readonly IWindowsUiAutomationBackend? _backend;
 
@@ -63,6 +74,16 @@ public sealed class WindowsUiAutomationProvider :
             Elements = result.Elements.Take(DesktopTestingLimits.MaxUiAutomationElements).ToArray(),
             IsTruncated = result.IsTruncated || result.Elements.Count > DesktopTestingLimits.MaxUiAutomationElements,
         };
+    }
+
+    public void Warmup()
+    {
+        if (_backend is not IWindowsUiAutomationWarmupBackend warmupBackend)
+        {
+            throw new InvalidOperationException("The UI Automation backend cannot be warmed up.");
+        }
+
+        warmupBackend.Warmup();
     }
 
     public DesktopUiElementSnapshot? ResolveLocator(DesktopLocator locator)
@@ -93,10 +114,11 @@ public sealed class WindowsUiAutomationProvider :
         return _backend?.ResolveElement(elementRef);
     }
 
-    public bool TryInvoke(string elementRef)
+    public UiInvokeOutcome TryInvoke(string elementRef)
     {
         return _backend is IWindowsUiAutomationActionBackend actionBackend
-            && actionBackend.TryInvoke(elementRef);
+            ? actionBackend.TryInvoke(elementRef)
+            : UiInvokeOutcome.Failed;
     }
 
     public bool TrySetValue(string elementRef, string value)

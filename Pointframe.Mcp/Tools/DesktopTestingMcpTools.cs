@@ -304,7 +304,7 @@ internal sealed class DesktopTestingMcpTools(
         EnterTextCoreAsync(sessionId, actionId, observationRef, imageRef, x, y, text, semanticValue, elementRef, cancellationToken);
 
     [McpServerTool(Name = "desktop_invoke", Title = "Invoke desktop element", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
-    [Description("Activates a UI Automation element through its invoke pattern, without moving the mouse or synthesizing input. Prefer it over desktop_click for buttons and menu items that expose an element_ref: it does not depend on visibility, occlusion, or pixel mapping.")]
+    [Description("Clicks the center of the element like a user, moving the mouse and requiring its window to be foreground and unobstructed. If the element is off-screen or click preflight cannot target it, falls back to its UI Automation invoke or toggle pattern; a pattern invoke that opens a modal dialog leaves the app unreadable to UI Automation until the dialog closes.")]
     public async Task<DesktopTestingActionResponse> InvokeAsync(
         [Description("Session id from desktop_start_test_session.")] string sessionId,
         [Description("A UUID action identifier.")] string actionId,
@@ -322,13 +322,67 @@ internal sealed class DesktopTestingMcpTools(
             return Error(actionId, "ElementRequired", "A verified UI automation element reference is required.");
         }
 
-        return await ExecuteSemanticInputAsync(
+        var process = session.Target.Process;
+        var observed = observations.ResolveElement(elementRef, process.ProcessRef);
+        var element = observed?.Element;
+        var windowHandle = element is null ? nint.Zero : ResolveWindowHandle(element.WindowRef, process.ProcessRef);
+        var hasUsableBounds = element is not null
+            && element.BoundsPixels.Width > 0
+            && element.BoundsPixels.Height > 0
+            && windowHandle != nint.Zero;
+        var method = hasUsableBounds ? "click" : "pattern";
+        var canonicalArguments = new { sessionId, elementRef };
+        var result = await coordinator.ExecuteAsync(
             sessionId,
             actionId,
-            "invoke",
-            new { sessionId, elementRef },
-            () => uiAutomationActions.TryInvoke(elementRef),
+            canonicalArguments,
+            async _ =>
+            {
+                if (hasUsableBounds)
+                {
+                    var target = new DesktopInputTarget(
+                        new DesktopWindowIdentity(element!.WindowRef, process.ProcessRef, windowHandle),
+                        BoundsPixels: element.BoundsPixels);
+                    var focus = await input.FocusAsync(
+                        new DesktopInputTarget(target.Window),
+                        process,
+                        cancellationToken).ConfigureAwait(false);
+                    var released = focus.IsValid && input.TryReleaseOwnedInput();
+                    var click = released
+                        ? await input.ClickAsync(
+                            new DesktopClickRequest(
+                                target,
+                                element.BoundsPixels.X + element.BoundsPixels.Width / 2,
+                                element.BoundsPixels.Y + element.BoundsPixels.Height / 2),
+                            process,
+                            cancellationToken).ConfigureAwait(false)
+                        : focus.IsValid
+                            ? DesktopInputPreflightResult.Invalid("InputReleaseFailed", "Previously owned input could not be released before clicking.")
+                            : focus;
+                    if (click.IsValid)
+                    {
+                        method = "click";
+                        return new DesktopActionExecution(DesktopDispatchStatus.Complete);
+                    }
+
+                    if (!CanFallBackToPattern(click.Code))
+                    {
+                        method = "click";
+                        return new DesktopActionExecution(
+                            click.Code == "InputDispatchFailed" ? DesktopDispatchStatus.Unknown : DesktopDispatchStatus.NotStarted,
+                            click.Code == "InputDispatchFailed" ? DesktopVerificationStatus.Inconclusive : DesktopVerificationStatus.Failed,
+                            DesktopObservationStatus.NotRequested,
+                            new DesktopOperationError(click.Code, click.Message));
+                    }
+                }
+
+                method = "pattern";
+                return CreateSemanticInputExecution(uiAutomationActions.TryInvoke(elementRef), "invoke");
+            },
+            observed is null ? null : [observed.ObservationRef],
             cancellationToken).ConfigureAwait(false);
+        await AnnotateActionAsync(sessionId, actionId, "invoke", result, cancellationToken).ConfigureAwait(false);
+        return DesktopTestingResponseMapper.MapAction(result, sessionId) with { Method = method };
     }
 
     [McpServerTool(Name = "desktop_check_ui", Title = "Check desktop UI", ReadOnly = true, Destructive = false, UseStructuredContent = true)]
@@ -931,7 +985,9 @@ internal sealed class DesktopTestingMcpTools(
                     actionId,
                     "enter_text",
                     new { sessionId, observationRef, imageRef, text, semanticValue, elementRef },
-                    () => uiAutomationActions.TrySetValue(elementRef, text),
+                    () => uiAutomationActions.TrySetValue(elementRef, text)
+                        ? UiInvokeOutcome.Completed
+                        : UiInvokeOutcome.Failed,
                     cancellationToken,
                     observation.Observation.ObservationRef).ConfigureAwait(false);
             }
@@ -1070,7 +1126,7 @@ internal sealed class DesktopTestingMcpTools(
         string actionId,
         string operation,
         object canonicalArguments,
-        Func<bool> dispatch,
+        Func<UiInvokeOutcome> dispatch,
         CancellationToken cancellationToken,
         params string[] observationsToInvalidate)
     {
@@ -1078,18 +1134,31 @@ internal sealed class DesktopTestingMcpTools(
             sessionId,
             actionId,
             canonicalArguments,
-            _ => Task.FromResult(dispatch()
-                ? new DesktopActionExecution(DesktopDispatchStatus.Complete)
-                : new DesktopActionExecution(
-                    DesktopDispatchStatus.NotStarted,
-                    DesktopVerificationStatus.Failed,
-                    DesktopObservationStatus.NotRequested,
-                    new DesktopOperationError("InputDispatchFailed", $"The UI automation {operation} was not accepted."))),
+            _ => Task.FromResult(CreateSemanticInputExecution(dispatch(), operation)),
             observationsToInvalidate,
             cancellationToken).ConfigureAwait(false);
         await AnnotateActionAsync(sessionId, actionId, operation, result, cancellationToken).ConfigureAwait(false);
         return DesktopTestingResponseMapper.MapAction(result, sessionId);
     }
+
+    internal static DesktopActionExecution CreateSemanticInputExecution(UiInvokeOutcome outcome, string operation) =>
+        outcome switch
+        {
+            UiInvokeOutcome.Completed => new DesktopActionExecution(DesktopDispatchStatus.Complete),
+            UiInvokeOutcome.Pending => new DesktopActionExecution(
+                DesktopDispatchStatus.Complete,
+                Error: new DesktopOperationError(
+                    "InvokePending",
+                    "The invoke was delivered; the app has not returned yet (it may be showing a modal dialog). UI Automation may be unable to inspect the app until the call returns; wait for the dialog to close before observing it again.")),
+            _ => new DesktopActionExecution(
+                DesktopDispatchStatus.NotStarted,
+                DesktopVerificationStatus.Failed,
+                DesktopObservationStatus.NotRequested,
+                new DesktopOperationError("InputDispatchFailed", $"The UI automation {operation} was not accepted.")),
+        };
+
+    private static bool CanFallBackToPattern(string errorCode) =>
+        errorCode is not "InputDispatchFailed" and not "DispatchTimeout" and not "DispatchFailed";
 
     private static DesktopTestingActionResponse Ok(string actionId, string? sessionRef = null, string? targetRef = null) =>
         DesktopTestingResponseMapper.MapAction(new DesktopActionResult(
