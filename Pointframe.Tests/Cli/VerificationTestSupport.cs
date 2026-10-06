@@ -180,10 +180,12 @@ internal sealed class VerificationFixture : IDisposable
             IMcpServerHost? serverHost = null,
             IMcpPackageInstaller? installer = null,
             Func<string?>? installedMcp = null,
-            string? verifierVersion = null) => new(
+            string? verifierVersion = null,
+            Func<string, IReadOnlyList<int>>? runningAppProcessIds = null) => new(
             Factory.Object, installedMcp ?? (() => null), Commands.Object, WorkingTree.Object, store, Confirmation.Object, Examiner.Object, LockName, verifierVersion ?? "test-1.0",
             Reviewer.Object, hookInput is null ? null : new StringReader(hookInput), Approver?.Object, CommandResolver.Object, serverHost, installer,
-            EnvironmentVariable: name => Environment.TryGetValue(name, out var value) ? value : null);
+            EnvironmentVariable: name => Environment.TryGetValue(name, out var value) ? value : null,
+            RunningAppProcessIds: runningAppProcessIds);
 
         // The machine's own variables (POINTFRAME_MCP_EXECUTABLE) must not reach a test.
         internal Dictionary<string, string> Environment { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -238,6 +240,10 @@ internal sealed class FakeMcp
 
     internal string[] ElementIds { get; set; } = ["textBox", "saveButton"];
 
+    internal string?[] ElementNames { get; set; } = [null, null];
+
+    internal (string Role, string Name)[] NamedElementsWithoutIds { get; set; } = [];
+
     internal Func<int, object> RestartResponse { get; set; } = _ => Done;
 
     internal Func<int, object>? ObserveResponse { get; set; }
@@ -272,7 +278,9 @@ internal sealed class FakeMcp
     {
         observationRef = "obs-1",
         images = new[] { new { imageRef = "img-1" } },
-        elements = ElementIds.Select(id => new { elementRef = $"el-{id}", windowRef = "win-1", role = "Edit", automationId = id }).ToArray(),
+        elements = ElementIds.Length == 0
+            ? NamedElementsWithoutIds.Select((element, index) => (object)new { elementRef = $"named-{index}", windowRef = "win-1", role = element.Role, name = element.Name }).ToArray()
+            : ElementIds.Select((id, index) => (object)new { elementRef = $"el-{id}", windowRef = "win-1", role = "Edit", automationId = id, name = index < ElementNames.Length ? ElementNames[index] : null }).ToArray(),
     };
 
     private static JsonElement Wrap(object structured) =>

@@ -130,6 +130,11 @@ alone, the gates, `warnings`, and `nextSteps`. Running it again is safe: the hoo
 and the `AGENTS.md` section are not duplicated, and an existing spec is left alone
 unless you pass `--force`. If nothing changed, `status` is `unchanged`.
 
+Pass `--app <path> --explore` to start a built desktop app and seed an
+`app-starts` scenario. Exploration uses the first automation id; if the app has
+none, it uses the first named element's role and name and warns that it used this
+fallback.
+
 Commit `.pointframe/verify.json` and the hook files so the whole team gets them.
 
 ### Recipe: a .NET solution with tests
@@ -176,6 +181,10 @@ run. Standard commands such as `dotnet build`, `dotnet test`, `npm test`, and
 `npm run <script>` are approved automatically by policy, offline. A nonstandard
 command goes to the approver agent. If that agent refuses or is not available, you
 approve it yourself:
+
+Policy approves a command's form (for example, `pwsh -File .pointframe/x.ps1`),
+not what the script does; a script run by a gate can delete files, so review
+changes under `.pointframe/` like code.
 
 ```powershell
 pointframe verify trust
@@ -423,6 +432,9 @@ then restart the agent:
   checks still passed, but the work was not reviewed. Run `verify status` and read
   `review.error`.
 - **`spec_untrusted` or `approver_unavailable`.** Run `pointframe verify trust`.
+- **`app_running` (exit 1).** Close the spec's app (or end its desktop test
+  session) and run `pointframe verify run` again. The check happens before any
+  gate runs.
 - **A scenario step fails with `NoVisibleWindow`.** After the launch and after a
   `restart`, the runner waits up to 15 seconds for a visible window with UI
   elements. The app showed none in that time; check that it starts on this

@@ -447,6 +447,28 @@ public sealed class VerificationInitTests
         Assert.Equal(1, mcp.Count("desktop_end_test_session"));
     }
 
+    [Fact]
+    public async Task RunAsync_ExploreUsesRoleAndNameWhenNoAutomationIdsExist()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("Pointframe.sln", "Project(\"{GUID}\") = \"A\", \"a.csproj\", \"{GUID}\"\nEndProject");
+        fixture.Write("bin/App.exe", "exe");
+        var mcp = new FakeMcp(Path.Combine(fixture.Root, "proof"))
+        {
+            ElementIds = [],
+            NamedElementsWithoutIds = [("MenuItem", "File")],
+        };
+        var command = Command(appPath: "bin/App.exe", explore: true, hooks: "none");
+
+        Assert.Equal(0, await fixture.RunAsync(command, new VerificationFixture.Services(mcp), fixture.McpPath));
+
+        var spec = JsonDocument.Parse(fixture.Read(".pointframe/verify.json")).RootElement;
+        var check = spec.GetProperty("scenarios")[0].GetProperty("steps")[0].GetProperty("check");
+        Assert.Equal("MenuItem", check.GetProperty("role").GetString());
+        Assert.Equal("File", check.GetProperty("name").GetString());
+        Assert.True(fixture.Output.ToString().Contains("The app exposes no automation ids", StringComparison.Ordinal), fixture.Output.ToString());
+    }
+
     private static CliCommand Command(string? appPath = null, string hooks = "none", bool agentsMd = false, bool explore = false, bool force = false, string? mcpPath = null) =>
         new("verify", VerifyAction: "init", AppPath: appPath, McpExecutablePath: mcpPath, Hooks: hooks, AgentsMd: agentsMd, Explore: explore, Force: force);
 

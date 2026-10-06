@@ -62,12 +62,41 @@ public sealed class VerificationRunTests : IDisposable
     public async Task Run_AppNotBuilt_ExitsOneAndWritesVerdict()
     {
         var specPath = _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        var services = new VerificationFixture.Services();
+        var appPath = Path.Combine(_fixture.Root, "bin", "App.exe");
+        var application = new VerificationApplication(services.Build(_fixture.Store, runningAppProcessIds: path =>
+        {
+            Assert.Equal(appPath, path);
+            return [];
+        }), TextWriter.Null, TextWriter.Null);
 
-        var exitCode = await new VerificationFixture.Services().Application(_fixture.Store, new StringWriter())
-            .RunAsync(Run(specPath), CancellationToken.None);
+        var exitCode = await application.RunAsync(Run(specPath), CancellationToken.None);
 
         Assert.Equal(1, exitCode);
         Assert.Equal("app_not_found", _fixture.ReadVerdict().GetProperty("errorCode").GetString());
+    }
+
+    [Fact]
+    public async Task Run_AppAlreadyRunning_FailsBeforeGates()
+    {
+        var specPath = _fixture.WriteSpecWith(VerificationFixture.DefaultApp, """[ { "id": "build", "run": "dotnet build" } ]""", VerificationFixture.ValidScenario);
+        var services = new VerificationFixture.Services();
+        var output = new StringWriter();
+        var appPath = Path.Combine(_fixture.Root, "bin", "App.exe");
+        var application = new VerificationApplication(services.Build(_fixture.Store, runningAppProcessIds: path =>
+        {
+            Assert.Equal(appPath, path);
+            return [4321];
+        }), output, TextWriter.Null);
+        var exitCode = await application.RunAsync(
+            Run(specPath), CancellationToken.None);
+
+        Assert.Equal(1, exitCode);
+        using var verdict = JsonDocument.Parse(output.ToString());
+        Assert.Equal("app_running", verdict.RootElement.GetProperty("errorCode").GetString());
+        Assert.Contains("PID 4321", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("close it (or end its desktop test session) and run again", output.ToString(), StringComparison.Ordinal);
+        services.Commands.Verify(item => item.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
