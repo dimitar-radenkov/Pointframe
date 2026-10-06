@@ -88,9 +88,8 @@ public sealed class ScrollingCaptureDesktopTests : IClassFixture<DesktopAutomati
         {
             try
             {
-                var progressWindow = automation.GetDesktop()
-                    .FindAllChildren(criteria => criteria.ByProcessId(app.Application.ProcessId))
-                    .FirstOrDefault(window => window.AutomationId == "ScrollingCaptureProgressWindow.Root");
+                var progressWindow = AutomationApp.GetProcessWindows(app.Application.ProcessId, automation)
+                    .FirstOrDefault(window => window.Properties.AutomationId.ValueOrDefault == "ScrollingCaptureProgressWindow.Root");
                 var status = progressWindow?.FindFirstDescendant(
                     criteria => criteria.ByAutomationId("ScrollingCaptureProgressWindow.Status"));
                 if (status is not null && Regex.IsMatch(status.Name, @"^Captured (?:[2-9]|[1-9]\d+) frames"))
@@ -99,6 +98,9 @@ public sealed class ScrollingCaptureDesktopTests : IClassFixture<DesktopAutomati
                 }
             }
             catch (System.Runtime.InteropServices.COMException)
+            {
+            }
+            catch (FlaUI.Core.Exceptions.ElementNotAvailableException)
             {
             }
 

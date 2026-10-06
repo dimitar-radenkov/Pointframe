@@ -104,7 +104,7 @@ public sealed class McpDesktopModalInvokeTests
 
             if (DateTime.UtcNow >= deadline)
             {
-                throw new Xunit.Sdk.XunitException($"No single element with {property} '{expected}' within 15 seconds; matches: {matches.Length}.");
+                throw new Xunit.Sdk.XunitException($"No single element with {property} '{expected}' within 15 seconds; matches: {matches.Length}; uiaStatus {(observation.TryGetProperty("uiaStatus", out var status) ? status.ToString() : "n/a")}; elements {(observation.TryGetProperty("elements", out var seen) ? seen.GetArrayLength() : -1)}.");
             }
 
             await Task.Delay(500);
