@@ -129,6 +129,7 @@ the caller with two indistinguishable `click` tools.
 | `desktop_get_test_report` | Finalize the signed session report and write its proof bundle |
 | `desktop_replay_checks` | Re-run a signed report's checks in a fresh session and compare verdicts |
 | `desktop_end_test_session` | Ask the target to close normally, then terminate its session-launched process tree if it does not exit |
+| `desktop_export_scenario` | Export the session's portable actions and evaluated checks to a verify.json scenario |
 
 ### For agents: verify your own work
 

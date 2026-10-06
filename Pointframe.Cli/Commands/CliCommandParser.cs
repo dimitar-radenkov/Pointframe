@@ -4,7 +4,7 @@ namespace Pointframe.Cli;
 
 internal static class CliCommandParser
 {
-    internal const string Usage = "Usage: Pointframe.Cli.exe install | displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | mcp install|status|doctor --client vscode [--dry-run] | mcp serve [--project <dir>] [--mcp <file>] | verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios] | verify init [--app <path>] [--mcp <file>] [--hooks claude|codex|both|none] [--agents-md] [--explore] [--force] | verify setup [--client claude-code|codex|vscode|all] [--spec <file>] [--mcp <file>] | verify status|trust [--spec <file>] [--revoke] | verify task start <task-file> [--id <id>] [--replace] | verify hook stop [--review] [--max-blocks <n>] | verify agent [--use claude|codex|auto] | --help | --version";
+    internal const string Usage = "Usage: Pointframe.Cli.exe install | displays | windows | capture --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | ocr --monitor <exact Windows device name> [--region <x,y,width,height>] [--output <file>] | capture-window --window-id <id> [--output <file>] | ocr-window --window-id <id> [--output <file>] | record --monitor <exact Windows device name> --seconds <positive integer> [--fps <1-60>] [--redact <x,y,width,height>]... [--output <file>] | mcp install|status|doctor --client vscode [--dry-run] | mcp serve [--project <dir>] [--mcp <file>] | verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios] | verify scenario add --from <file> [--spec <file>] [--force] | verify init [--app <path>] [--mcp <file>] [--hooks claude|codex|both|none] [--agents-md] [--explore] [--force] | verify setup [--client claude-code|codex|vscode|all] [--spec <file>] [--mcp <file>] | verify status|trust [--spec <file>] [--revoke] | verify task start <task-file> [--id <id>] [--replace] | verify hook stop [--review] [--max-blocks <n>] | verify agent [--use claude|codex|auto] | --help | --version";
 
     internal const string HelpText = """
         Pointframe CLI - standalone screen capture, OCR, and recording automation.
@@ -23,6 +23,7 @@ internal static class CliCommandParser
           Pointframe.Cli.exe mcp doctor --client vscode
           Pointframe.Cli.exe mcp serve [--project <dir>] [--mcp <file>]
           Pointframe.Cli.exe verify run [--spec <file>] [--mcp <file>] [--scenario <id>] [--task <id>] [--only gates|scenarios]
+          Pointframe.Cli.exe verify scenario add --from <file> [--spec <file>] [--force]
           Pointframe.Cli.exe verify init [--app <path>] [--mcp <file>] [--hooks claude|codex|both|none] [--agents-md] [--explore] [--force]
           Pointframe.Cli.exe verify setup [--client claude-code|codex|vscode|all] [--spec <file>] [--mcp <file>]
           Pointframe.Cli.exe verify status [--spec <file>]
@@ -53,6 +54,7 @@ internal static class CliCommandParser
                           init creates a starter spec and optional Stop hooks for a new project;
                           setup approves the spec and writes the project's agent config so the agent gets
                           interactive desktop tools for the spec's app;
+                          scenario add merges an exported desktop scenario into verify.json after validation;
                           agent shows or picks the AI (Claude Code, Codex, or a command) for those roles.
 
         Options:
@@ -75,6 +77,7 @@ internal static class CliCommandParser
                                             (default POINTFRAME_MCP_EXECUTABLE, then the CLI-installed server)
               --scenario <id>               verify: run one scenario only; the verdict is then "partial"
               --task <id>                   verify run: also run the frozen criteria of this task
+              --from <file>                 verify scenario add: exported scenario JSON or a bare scenario object
               --only <gates|scenarios>      verify run: run only the gates or only the scenarios ("partial")
               --revoke                      verify trust: withdraw the approval of the spec's gate commands
               --id <id>                     verify task start: the task id (default: the task file's name)
@@ -87,6 +90,7 @@ internal static class CliCommandParser
               --agents-md                   verify init: add verification instructions to AGENTS.md
               --explore                     verify init: inspect the app once to create a starter scenario
               --force                       verify init: overwrite an existing verification spec
+              --force                       verify scenario add: replace a scenario with the same id
           -h, --help                        Show this help text and exit
           -v, --version                     Show the CLI version and exit
 
@@ -345,6 +349,11 @@ internal static class CliCommandParser
             action = "hook-stop";
             index = 3;
         }
+        else if (action == "scenario" && args.Length >= 3 && string.Equals(args[2], "add", StringComparison.OrdinalIgnoreCase))
+        {
+            action = "scenario-add";
+            index = 3;
+        }
         else if (action == "init")
         {
             index = 2;
@@ -353,6 +362,7 @@ internal static class CliCommandParser
         string[] allowed = action switch
         {
             "run" => ["--spec", "--mcp", "--scenario", "--task", "--only"],
+            "scenario-add" => ["--from", "--spec", "--force"],
             "setup" => ["--spec", "--mcp", "--client"],
             "status" => ["--spec"],
             "trust" => ["--spec", "--revoke"],
@@ -364,12 +374,13 @@ internal static class CliCommandParser
         };
         if (allowed.Length == 0)
         {
-            error = "The verify command requires an action: init, run, setup, status, trust, task start, hook stop, or agent.";
+            error = "The verify command requires an action: init, run, scenario add, setup, status, trust, task start, hook stop, or agent.";
             return false;
         }
 
         string? specPath = null;
         string? mcpPath = null;
+        string? scenarioFile = null;
         string? scenarioId = null;
         string? taskId = null;
         string? only = null;
@@ -419,6 +430,9 @@ internal static class CliCommandParser
                     break;
                 case "--mcp":
                     mcpPath = value;
+                    break;
+                case "--from":
+                    scenarioFile = value;
                     break;
                 case "--scenario":
                     scenarioId = value;
@@ -479,6 +493,12 @@ internal static class CliCommandParser
             index += 2;
         }
 
+        if (action == "scenario-add" && string.IsNullOrWhiteSpace(scenarioFile))
+        {
+            error = "The verify scenario add command requires --from <file>.";
+            return false;
+        }
+
         command = new CliCommand(
             "verify",
             SpecPath: specPath,
@@ -498,6 +518,7 @@ internal static class CliCommandParser
             AgentsMd: agentsMd,
             Explore: explore,
             Force: force,
+            ScenarioFile: scenarioFile,
             McpClient: action == "setup" ? setupClient ?? "claude-code" : null);
         error = null;
         return true;

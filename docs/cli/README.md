@@ -293,6 +293,7 @@ pointframe verify run --spec .pointframe\verify.json --mcp C:\tools\Pointframe.M
 pointframe verify run --scenario save-text
 pointframe verify run --only gates
 pointframe verify run --task keep-text
+pointframe verify scenario add --from artifacts\scenario-save-text.json
 ```
 
 ### Verify Pointframe's real settings window
@@ -316,6 +317,11 @@ keyboard until it finishes; close editor-started `Pointframe.Mcp.exe` processes 
 | `--scenario <id>` | Run one scenario only | every scenario |
 | `--only <gates\|scenarios>` | Run only the gates, or only the scenarios | both |
 | `--task <id>` | Also run the frozen criteria of a task (see [Freeze a task's criteria](#freeze-a-tasks-criteria-before-work-starts)) | none |
+
+To capture a session as a repeatable scenario, call `desktop_export_scenario` from the interactive
+desktop tools, then merge the exported file with `pointframe verify scenario add --from <file>`.
+Use `--spec <file>` for a non-default spec. A duplicate scenario id is refused unless `--force`
+replaces it. The command validates the merged spec before writing and prints the next step as JSON.
 
 ### Initialize verification for a project
 

@@ -47,6 +47,7 @@ public static class TelemetryAllowlist
         "desktop_get_action_result",
         "desktop_get_test_report",
         "desktop_end_test_session",
+        "desktop_export_scenario",
     };
 
     public static IReadOnlyCollection<string> CliCommands => _cliCommands;

@@ -72,8 +72,11 @@ did not pass; `None` stores none.
    is refused while the app is still running.
 7. **Get the report.** Call `desktop_get_test_report`. It returns `verdict`, the per-criterion
    verdicts, the `proof`, and `sessionDirectory`, a folder with the signed `report.json`, the
-   `evidence/` screenshots, and `index.html`, a readable timeline.
-8. **End the session.** Call `desktop_end_test_session`. It asks the app to close its main window,
+    `evidence/` screenshots, and `index.html`, a readable timeline.
+8. **Export a repeatable scenario (optional).** Call `desktop_export_scenario` with `sessionId` and a
+   spec-compatible `scenarioId`. It writes `scenario-<id>.json` beside the report and returns the
+   portable steps plus any unsupported coordinate actions or session-scoped checks.
+9. **End the session.** Call `desktop_end_test_session`. It asks the app to close its main window,
    waits briefly, and terminates the session-launched process tree only if the app does not exit.
    Attached processes are never terminated. A second end call returns `SessionNotFound`.
 

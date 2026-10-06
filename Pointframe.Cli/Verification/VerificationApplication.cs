@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Pointframe.Cli;
@@ -57,6 +58,11 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    private static readonly JsonSerializerOptions CompactJson = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     private static readonly string[] AllowedActions =
     [
         "StartTestSession", "RestartApp", "ObserveApp", "FocusWindow", "PressKeys", "EnterText", "Invoke",
@@ -66,6 +72,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
     internal Task<int> RunAsync(CliCommand command, CancellationToken cancellationToken) => command.VerifyAction switch
     {
         "init" => InitAsync(command, cancellationToken),
+        "scenario-add" => AddScenarioAsync(command, cancellationToken),
         "status" => StatusAsync(command),
         "trust" => TrustAsync(command),
         "task-start" => TaskStartAsync(command, cancellationToken),
@@ -81,6 +88,80 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
     private Task<int> InitAsync(CliCommand command, CancellationToken cancellationToken) => new VerificationInit(
         new PhysicalVerificationInitFileSystem(), standardOutput, standardError, services.CommandResolver, services.VerifierVersion)
         .RunAsync(command, Environment.CurrentDirectory, ResolveMcpExecutableAsync, services.ClientFactory, services.DesktopLockName, TrustFailureCodeAsync, cancellationToken);
+
+    private async Task<int> AddScenarioAsync(CliCommand command, CancellationToken cancellationToken)
+    {
+        var specPath = SpecPathOf(command);
+        try
+        {
+            if (string.IsNullOrWhiteSpace(command.ScenarioFile))
+            {
+                throw new VerificationSpecException("verify scenario add requires --from <file>.");
+            }
+
+            if (!File.Exists(specPath))
+            {
+                throw new VerificationSpecException($"No verification spec at {Path.GetFullPath(specPath)}; create one with verify init first.");
+            }
+
+            using var exported = JsonDocument.Parse(await File.ReadAllTextAsync(command.ScenarioFile, cancellationToken).ConfigureAwait(false));
+            var source = exported.RootElement.TryGetProperty("scenario", out var wrapped) ? wrapped : exported.RootElement;
+            var scenario = VerificationSpecLoader.ParseScenario(source.GetRawText(), "scenario");
+            var specNode = JsonNode.Parse(await File.ReadAllTextAsync(specPath, cancellationToken).ConfigureAwait(false), documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip }) as JsonObject
+                ?? throw new VerificationSpecException("The verification spec top level must be an object.");
+            var scenarios = specNode["scenarios"] as JsonArray ?? new JsonArray();
+            var existingIndex = -1;
+            for (var index = 0; index < scenarios.Count; index++)
+            {
+                if (string.Equals(scenarios[index]?["id"]?.GetValue<string>(), scenario.Id, StringComparison.OrdinalIgnoreCase))
+                {
+                    existingIndex = index;
+                    break;
+                }
+            }
+
+            if (existingIndex >= 0 && !command.Force)
+            {
+                throw new VerificationSpecException($"Scenario id '{scenario.Id}' already exists; pass --force to replace it.");
+            }
+
+            if (specNode["scenarios"] is null)
+            {
+                specNode["scenarios"] = scenarios;
+            }
+
+            var nodeScenario = JsonNode.Parse(source.GetRawText())!;
+            if (existingIndex >= 0)
+            {
+                scenarios[existingIndex] = nodeScenario;
+            }
+            else
+            {
+                scenarios.Add(nodeScenario);
+            }
+
+            var merged = specNode.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+            using (var document = JsonDocument.Parse(merged))
+            {
+                _ = VerificationSpecLoader.Parse(document.RootElement, Path.GetFullPath(specPath), VerificationSpecLoader.RootDirectoryFor(Path.GetFullPath(specPath)));
+            }
+
+            await File.WriteAllTextAsync(specPath, merged + Environment.NewLine, cancellationToken).ConfigureAwait(false);
+            await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new
+            {
+                status = existingIndex >= 0 ? "replaced" : "added",
+                scenarioId = scenario.Id,
+                specPath = Path.GetFullPath(specPath),
+                nextStep = "run `pointframe verify run`; changed specs need approval again",
+            }, CompactJson));
+            return 0;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or VerificationSpecException or InvalidOperationException or ArgumentException)
+        {
+            await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new { status = "error", error = exception.Message }, CompactJson));
+            return 2;
+        }
+    }
 
     private async Task<string?> TrustFailureCodeAsync(VerificationSpec spec, CancellationToken cancellationToken)
     {

@@ -55,6 +55,7 @@ internal static class VerificationSpecLoader
 
     internal static VerificationSpec Parse(JsonElement root, string specPath, string rootDirectory)
     {
+        RequireUniqueProperties(root, "spec");
         RequireObject(root, "spec");
         RequireOnly(root, "spec", "schemaVersion", "app", "gates", "scenarios");
         var schemaVersion = RequireInt(root, "schemaVersion", "spec");

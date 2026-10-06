@@ -499,4 +499,20 @@ criteria before work begins. These need the Pointframe MCP server and take over 
 mouse and keyboard while they run. See
 [Verify a desktop app from a spec](README.md#verify-a-desktop-app-from-a-spec).
 
+### Record a scenario instead of writing it
+
+During an interactive desktop session, call `desktop_export_scenario` with its `sessionId` and a
+scenario id. The MCP server writes `scenario-<id>.json` beside the signed session report and returns
+the scenario with the session's criteria. `invoke`, semantic text entry, physical keys, restarts, and
+evaluated checks become spec v1 steps. Coordinate actions and checks tied to a session window are
+listed as unsupported, so review the export before adding it:
+
+```powershell
+pointframe verify scenario add --from artifacts\scenario-save-text.json
+```
+
+The command also accepts a bare scenario object and `--spec <file>`. It validates the merged spec
+before writing. Duplicate ids are refused; use `--force` to replace one. A successful response says
+to run `pointframe verify run`; changed specs need approval again.
+
 When the CLI-installed MCP server is older than the CLI, verification updates it to the latest release; if that fails, install it with `pointframe mcp install --client vscode` or pass `--mcp <path>`. A newer installed server is used with a warning.

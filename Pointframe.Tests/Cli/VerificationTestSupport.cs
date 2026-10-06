@@ -54,6 +54,14 @@ internal sealed class VerificationFixture : IDisposable
     internal string WriteSpec(params string[] scenarios) =>
         WriteSpecWith(app: DefaultApp, gates: null, scenarios);
 
+    internal string WriteScenarioExport(string id, string steps)
+    {
+        var path = Path.Combine(Root, "scenario-export.json");
+        Directory.CreateDirectory(Root);
+        File.WriteAllText(path, $$"""{ "scenario": { "id": "{{id}}", "steps": {{steps}} }, "unsupported": [], "complete": true }""");
+        return path;
+    }
+
     // Written specs are approved (verify trust) unless a test is about approval: most tests are about what a
     // run does once a person has approved the spec's commands.
     internal string WriteSpecWith(string? app, string? gates, params string[] scenarios) =>

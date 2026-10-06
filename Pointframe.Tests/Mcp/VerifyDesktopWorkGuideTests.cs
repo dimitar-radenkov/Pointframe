@@ -43,6 +43,7 @@ public sealed class VerifyDesktopWorkGuideTests : IDisposable
     [InlineData("desktop_get_test_report")]
     [InlineData("desktop_end_test_session")]
     [InlineData("desktop_replay_checks")]
+    [InlineData("desktop_export_scenario")]
     [InlineData("expectFailure")]
     [InlineData("criterionId")]
     public void GuideCoversTheVerificationWorkflow(string term)
