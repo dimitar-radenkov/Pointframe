@@ -104,6 +104,23 @@ public sealed class McpServerVersionTests : IDisposable
     }
 
     [Fact]
+    public async Task ResolveMcpExecutableAsync_EnvironmentPathOlderThanCli_WarnsAndStillUsesIt()
+    {
+        var versionedPath = typeof(VerificationApplication).Assembly.Location;
+        var installer = new Mock<IMcpPackageInstaller>();
+        var services = CreateServices(installer);
+        services.Environment[VerificationApplication.McpExecutableVariable] = versionedPath;
+        var error = new StringWriter();
+        var application = new VerificationApplication(services.Build(_fixture.Store, installer: installer.Object, verifierVersion: "Pointframe CLI 999.0.0"), TextWriter.Null, error);
+
+        var resolution = await application.ResolveMcpExecutableAsync(null);
+
+        Assert.Equal(Path.GetFullPath(versionedPath), resolution.Path);
+        Assert.Contains($"warning: the MCP server from {VerificationApplication.McpExecutableVariable}", error.ToString());
+        Assert.Contains("older than CLI 999.0.0", error.ToString());
+    }
+
+    [Fact]
     public async Task ResolveMcpExecutableAsync_EnvironmentPath_ReturnsItWithoutQueryingInstaller()
     {
         var configuredPath = CreateFile();

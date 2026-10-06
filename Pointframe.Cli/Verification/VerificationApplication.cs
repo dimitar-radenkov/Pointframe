@@ -911,7 +911,18 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         var configured = explicitPath ?? (services.EnvironmentVariable ?? Environment.GetEnvironmentVariable)(McpExecutableVariable);
         if (configured is not null)
         {
-            return ResolvePath(configured);
+            var resolved = ResolvePath(configured);
+            if (resolved.Path is not null
+                && FileVersionInfo.GetVersionInfo(resolved.Path).ProductVersion is { } configuredVersion
+                && TryVersion(configuredVersion, out var configuredServer)
+                && TryVersion(CliVersion(), out var cli)
+                && configuredServer < cli)
+            {
+                var source = explicitPath is null ? McpExecutableVariable : "--mcp";
+                await standardError.WriteLineAsync($"Pointframe verify: warning: the MCP server from {source} is {configuredVersion.Split('+')[0]}, older than CLI {CliVersion().Split('+')[0]}; older servers can miss desktop fixes. Unset {McpExecutableVariable} to use the installed server.");
+            }
+
+            return resolved;
         }
 
         var installed = services.McpInstaller?.GetCurrent();
