@@ -2,7 +2,7 @@
   "name": "pointframe",
   "displayName": "Pointframe",
   "description": "Windows screenshots, OCR, and redacted screen recording for Claude, plus a skill for verifying desktop work with signed proof. Windows only.",
-  "version": "6.7.74",
+  "version": "6.7.76",
   "author": {
     "name": "Dimitar Radenkov",
     "url": "https://github.com/dimitar-radenkov/Pointframe"
