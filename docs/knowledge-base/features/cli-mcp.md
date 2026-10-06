@@ -236,11 +236,11 @@ Partly superseded by D-011 for standard commands.
 
 **Decided.** 2026-10-04.
 
-**Decision.** CLI release numbers, the spec's `schemaVersion`, and the hook command are independent. An unknown `schemaVersion` is rejected as `spec_invalid`; the CLI never silently migrates an unknown schema. The hook command `pointframe verify hook stop [--review]` is a stable contract across CLI upgrades. A CLI/hook version mismatch produces a warning only. For the CLI-installed fallback, a server older than the CLI is updated to the latest release or refused with `mcp_version_mismatch`; a newer server is used with a warning. Explicit server paths and `POINTFRAME_MCP_EXECUTABLE` are honored as chosen.
+**Decision.** CLI release numbers, the spec's `schemaVersion`, and the hook command are independent. An unknown `schemaVersion` is rejected as `spec_invalid`; the CLI never silently migrates an unknown schema. The hook command `pointframe verify hook stop [--review]` is a stable contract across CLI upgrades. A CLI/hook version mismatch produces a warning only. For the CLI-installed fallback, a server older than the CLI is updated to the latest release or refused with `mcp_version_mismatch`; a newer server is used with a warning. Explicit server paths and `POINTFRAME_MCP_EXECUTABLE` are honored as chosen, with a stderr warning when that server's file version is older than the CLI (a stale variable from an old install silently ran a 6.7.71 server under CLI 6.7.85 in 2026-10 trials).
 
 **Alternatives rejected.** Lockstep numbering; silent acceptance of unknown fields; automatic migrations; a version negotiation protocol.
 
-**Files.** `Pointframe.Cli/Verification/VerificationSpecLoader.cs`, `Pointframe.Cli/Commands/CliCommandParser.cs`, `Pointframe.Cli/Verification/VerificationInit.cs`, `Pointframe.Tests/Cli/VerificationRunTests.cs`, `Pointframe.Tests/Cli/VerificationInitTests.cs`, `Pointframe.Tests/Cli/VerificationTests.cs`.
+**Files.** `Pointframe.Cli/Verification/VerificationSpecLoader.cs`, `Pointframe.Cli/Commands/CliCommandParser.cs`, `Pointframe.Cli/Verification/VerificationInit.cs`, `Pointframe.Cli/Verification/VerificationApplication.cs`, `Pointframe.Tests/Cli/McpServerVersionTests.cs`, `Pointframe.Tests/Cli/VerificationRunTests.cs`, `Pointframe.Tests/Cli/VerificationInitTests.cs`, `Pointframe.Tests/Cli/VerificationTests.cs`.
 
 See [D-013](#d-013-verification-spec-v1-is-frozen) for the frozen input contract and output compatibility rule.
 
