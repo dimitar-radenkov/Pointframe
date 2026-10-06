@@ -19,7 +19,8 @@ public sealed record DesktopClickRequest(
     int X,
     int Y,
     int Count = 1,
-    bool RightButton = false);
+    bool RightButton = false,
+    bool AcceptAnyVisibleWindowInProcess = false);
 
 public sealed record DesktopKeyPressRequest(
     DesktopInputTarget? Target,
@@ -48,11 +49,13 @@ public sealed record DesktopScrollRequest(
 public sealed record DesktopInputPreflightResult(
     bool IsValid,
     string Code,
-    string Message)
+    string Message,
+    bool ApprovedProcessForeground = false)
 {
     public static DesktopInputPreflightResult Valid() => new(true, "Ok", "Input preflight passed.");
 
-    public static DesktopInputPreflightResult Invalid(string code, string message) => new(false, code, message);
+    public static DesktopInputPreflightResult Invalid(string code, string message, bool approvedProcessForeground = false) =>
+        new(false, code, message, approvedProcessForeground);
 }
 
 public interface IDesktopInputNativeAdapter
@@ -78,6 +81,9 @@ public interface IDesktopInputNativeAdapter
     bool IsPointVisible(PixelBounds bounds, int x, int y);
 
     bool IsPointVisible(PixelBounds bounds, int x, int y, nint expectedWindow) => IsPointVisible(bounds, x, y);
+
+    bool IsPointVisibleForProcess(PixelBounds bounds, int x, int y, int processId, nint expectedWindow) =>
+        IsPointVisible(bounds, x, y, expectedWindow);
 
     bool SendClick(int x, int y, bool rightButton, int count);
 
@@ -164,22 +170,31 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
         var result = ValidateTarget(target, expectedProcess, requireForeground: false);
         if (!result.IsValid)
         {
-            return Task.FromResult(result);
+            return Task.FromResult(result with { ApprovedProcessForeground = _native.IsForegroundForProcess(expectedProcess) });
         }
 
         if (target.Window is null || !_native.IsWindowValid(target.Window.NativeHandle))
         {
-            return Task.FromResult(DesktopInputPreflightResult.Invalid("WindowUnavailable", "The target window is no longer valid."));
+            return Task.FromResult(DesktopInputPreflightResult.Invalid(
+                "WindowUnavailable",
+                "The target window is no longer valid.",
+                _native.IsForegroundForProcess(expectedProcess)));
         }
 
         if (!_native.SetForeground(target.Window.NativeHandle))
         {
-            return Task.FromResult(DesktopInputPreflightResult.Invalid("FocusFailed", "The target window could not be focused."));
+            return Task.FromResult(DesktopInputPreflightResult.Invalid(
+                "FocusFailed",
+                "The target window could not be focused.",
+                _native.IsForegroundForProcess(expectedProcess)));
         }
 
         return Task.FromResult(_native.GetForegroundWindow() == target.Window.NativeHandle
             ? DesktopInputPreflightResult.Valid()
-            : DesktopInputPreflightResult.Invalid("FocusFailed", "The target window did not become foreground."));
+            : DesktopInputPreflightResult.Invalid(
+                "FocusFailed",
+                "The target window did not become foreground.",
+                _native.IsForegroundForProcess(expectedProcess)));
     }
 
     public async Task<DesktopInputPreflightResult> ClickAsync(
@@ -195,15 +210,25 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
             return DesktopInputPreflightResult.Invalid("InvalidClickCount", "Click count must be one or two.");
         }
 
-        var validation = ValidateTarget(request.Target, expectedProcess, requireForeground: true);
+        var validation = ValidateTarget(
+            request.Target,
+            expectedProcess,
+            requireForeground: !request.AcceptAnyVisibleWindowInProcess);
         if (!validation.IsValid)
         {
             return validation;
         }
 
+        if (request.AcceptAnyVisibleWindowInProcess && !_native.IsForegroundForProcess(expectedProcess))
+        {
+            return DesktopInputPreflightResult.Invalid("FocusRequired", "The approved process is not foreground.");
+        }
+
         var pointVisible = request.Target.BoundsPixels is { } bounds
             && (request.Target.Window is { } window
-                ? _native.IsPointVisible(bounds, request.X, request.Y, window.NativeHandle)
+                ? request.AcceptAnyVisibleWindowInProcess
+                    ? _native.IsPointVisibleForProcess(bounds, request.X, request.Y, expectedProcess.ProcessId, window.NativeHandle)
+                    : _native.IsPointVisible(bounds, request.X, request.Y, window.NativeHandle)
                 : _native.IsPointVisible(bounds, request.X, request.Y));
         if (!pointVisible)
         {
@@ -483,6 +508,22 @@ internal sealed class WindowsDesktopInputNativeAdapter : IDesktopInputNativeAdap
         var hitWindow = WindowsDesktopNativeMethods.WindowFromPoint(new WindowsDesktopNativeMethods.POINT(x, y));
         return hitWindow != nint.Zero
             && WindowsDesktopNativeMethods.GetAncestor(hitWindow, WindowsDesktopNativeMethods.GetAncestorRoot) == expectedWindow;
+    }
+
+    public bool IsPointVisibleForProcess(PixelBounds bounds, int x, int y, int processId, nint expectedWindow)
+    {
+        if (expectedWindow == nint.Zero || !IsPointVisible(bounds, x, y))
+        {
+            return false;
+        }
+
+        var hitWindow = WindowsDesktopNativeMethods.WindowFromPoint(new WindowsDesktopNativeMethods.POINT(x, y));
+        var topLevelWindow = hitWindow == nint.Zero
+            ? nint.Zero
+            : WindowsDesktopNativeMethods.GetAncestor(hitWindow, WindowsDesktopNativeMethods.GetAncestorRoot);
+        return topLevelWindow != nint.Zero
+            && WindowsDesktopNativeMethods.IsWindowVisible(topLevelWindow)
+            && IsWindowOwnedByProcess(topLevelWindow, processId);
     }
 
     internal const int MoveSettleMilliseconds = 16;

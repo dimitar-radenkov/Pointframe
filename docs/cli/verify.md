@@ -38,7 +38,7 @@ Real apps:
 - WinForms menu items may have no AutomationId. Locate them by role and name, for example `{ "role": "menu item", "name": "Options" }`.
 - Electron apps need `--force-renderer-accessibility` in the app arguments, before the app path.
 - `textEquals` on a label, TextBlock, or heading compares its displayed text.
-- A gate that resets app state is fine. A modal opened by `invoke` can block the step; show it with BeginInvoke or check it in the next step.
+- `desktop_invoke` clicks elements like a user, so modal dialogs are fine. Check dialog text with role `Text` and its name, then dismiss it by invoking its button (for example, role `Button`, name `OK`). Never change app code to work around the verifier.
 
 ## What it does, and what it does not
 

@@ -246,6 +246,8 @@ internal sealed class FakeMcp
 
     internal Func<JsonElement, object> CheckResponse { get; set; } = _ => Passed("hello");
 
+    internal object InvokeResponse { get; set; } = Done;
+
     internal string[] ElementIds { get; set; } = ["textBox", "saveButton"];
 
     internal string?[] ElementNames { get; set; } = [null, null];
@@ -270,6 +272,7 @@ internal sealed class FakeMcp
         "list_displays" => new { displays = new[] { new { boundsPixels = new { x = 0, y = 0, width = 1920, height = 1080 } } } },
         "desktop_start_test_session" => StartResponse,
         "desktop_observe_app" => Observe(Count("desktop_observe_app")),
+        "desktop_invoke" => InvokeResponse,
         "desktop_check_ui" => CheckResponse(arguments),
         "desktop_get_test_report" => JsonSerializer.SerializeToElement(
             JsonSerializer.Deserialize<DesktopTestReport>(

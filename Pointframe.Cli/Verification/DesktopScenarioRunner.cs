@@ -581,6 +581,17 @@ internal sealed class DesktopScenarioRunner
         var response = Structured(result);
         var (code, message) = ErrorOf(result);
         var dispatch = response.TryGetProperty("dispatch", out var value) ? value.GetString() : null;
+        if (step is VerificationStep.Invoke && dispatch == "Complete" && code == "InvokePending")
+        {
+            return new VerificationStepResult(
+                index,
+                step.Kind,
+                VerificationStatus.Pass,
+                description,
+                code,
+                "Invoke was delivered; the app has not returned yet.");
+        }
+
         return code is null && dispatch == "Complete"
             ? new VerificationStepResult(index, step.Kind, VerificationStatus.Pass, description)
             : new VerificationStepResult(index, step.Kind, VerificationStatus.Fail, description, code ?? $"Dispatch{dispatch ?? "Unknown"}", message);

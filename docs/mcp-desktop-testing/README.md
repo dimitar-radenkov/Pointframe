@@ -122,7 +122,7 @@ the caller with two indistinguishable `click` tools.
 | `desktop_press_keys` | Send bounded physical keys to an observed foreground window (`windowRef` and/or `observationRef`, consumed) or an approved global hotkey |
 | `desktop_drag` | Send a bounded drag |
 | `desktop_enter_text` | Send physical Unicode text or verified ValuePattern text |
-| `desktop_invoke` | Physically click the center of an observed on-screen element after foregrounding its window; it moves the mouse and requires an unobstructed target. If bounds are unusable or click preflight cannot target it, fall back to the UI Automation invoke/toggle pattern. A pattern invoke that opens a modal dialog leaves the app unreadable to UI Automation until the dialog closes. The response reports `method: "click"` or `method: "pattern"`. |
+| `desktop_invoke` | Physically click the center of an observed on-screen element. If its window cannot be foregrounded while another visible window of the app is foreground (for example, a popup menu), it clicks only after same-process hit-test preflight. If bounds are unusable or click preflight cannot target it, fall back to the UI Automation invoke/toggle pattern. The response reports `method: "click"` or `method: "pattern"`. Modal dialogs opened by a click are fine: check their text with role `Text` and the text as its name, then invoke the dismiss button (for example, role `Button`, name `OK`). Do not change app code to work around the verifier. |
 | `desktop_check_ui` | Evaluate bounded UI conditions |
 | `desktop_scroll` | Send bounded mouse-wheel input |
 | `desktop_get_action_result` | Read an action result |
