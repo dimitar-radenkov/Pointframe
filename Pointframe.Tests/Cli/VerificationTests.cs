@@ -307,6 +307,8 @@ public sealed class VerificationTests : IDisposable
         Assert.Equal(1, exitCode);
         Assert.False(result.RootElement.GetProperty("fresh").GetBoolean());
         Assert.Equal("tree_changed", result.RootElement.GetProperty("freshnessReason").GetString());
+        Assert.Equal("run_command", result.RootElement.GetProperty("nextStep").GetProperty("kind").GetString());
+        Assert.Equal("pointframe verify run", result.RootElement.GetProperty("nextStep").GetProperty("command").GetString());
     }
 
     private static void WritePassingVerdict(string root, string specPath, string treeHash, string? specSha256 = null, object? task = null)

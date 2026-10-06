@@ -220,6 +220,17 @@ they are now? It prints:
 - `hookCommand`: where `pointframe` resolves to on `PATH`. `hookCommand.ok` should
   be `true`.
 - `review`: `status` is `none`, `reviewed`, or `failed`.
+- `nextStep`: a structured recommendation on run, status, task start, and setup outcomes:
+
+  | Kind | Meaning |
+  |---|---|
+  | `fix_code` | Fix the failing code or spec/task file. |
+  | `run_command` | Run the supplied `command`. |
+  | `wait` | Wait `retryAfterSeconds`, then retry. |
+  | `needs_person` | A person must review or approve the outcome. |
+  | `none` | No verification action remains. |
+
+  The record also includes nullable `command` and `retryAfterSeconds`, plus explanatory `text`.
 
 Files are written under the project folder:
 

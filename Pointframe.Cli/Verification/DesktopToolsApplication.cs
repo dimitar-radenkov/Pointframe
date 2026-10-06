@@ -18,7 +18,7 @@ internal sealed record DesktopSetupResponse(
     bool ServerInstalled,
     IReadOnlyList<string>? Tools,
     IReadOnlyList<string> Warnings,
-    string? NextStep);
+    VerificationNextStep? NextStep);
 
 // `mcp serve` and `verify setup`: interactive desktop tools for the app a project's verification spec
 // declares, under the same approval as `verify run` (the spec's commands are trusted, or nothing starts).
@@ -31,7 +31,6 @@ internal sealed class DesktopToolsApplication(
     TextWriter standardError)
 {
     private const int SchemaVersion = 1;
-    private const string NextStepText = "Restart your agent session so it loads the 'pointframe' MCP server (Claude Code asks you to approve a project server on first use), then call desktop_list_apps.";
 
     private sealed record Refusal(int ExitCode, string Code, string Message);
 
@@ -218,7 +217,9 @@ internal sealed class DesktopToolsApplication(
             installed,
             tools,
             warnings,
-            success ? NextStepText : null));
+            success
+                ? new VerificationNextStep("none", null, null, "Restart your agent session, then call desktop_list_apps.")
+                : VerificationNextSteps.For("error", failureCode, failureMessage)));
         if (!success)
         {
             await standardError.WriteLineAsync($"Pointframe verify setup failed [{failureCode}]: {failureMessage}");
@@ -319,7 +320,9 @@ internal sealed class DesktopToolsApplication(
 
     private async Task<int> RefuseServeAsync(Refusal refusal)
     {
-        await standardError.WriteLineAsync($"Pointframe mcp serve failed [{refusal.Code}]: {refusal.Message}");
+        var nextStep = VerificationNextSteps.For("error", refusal.Code, refusal.Message);
+        var command = nextStep.Command is null ? string.Empty : $" Command: `{nextStep.Command}`.";
+        await standardError.WriteLineAsync($"Pointframe mcp serve failed [{refusal.Code}]: {refusal.Message} Next step: {nextStep.Text}{command}");
         return 1;
     }
 
@@ -344,7 +347,7 @@ internal sealed class DesktopToolsApplication(
     }
 
     private static DesktopSetupResponse Failure(string code, string message, IReadOnlyList<string> clients) =>
-        new(SchemaVersion, false, "error", code, message, clients, [], [], null, null, null, false, null, [], null);
+        new(SchemaVersion, false, "error", code, message, clients, [], [], null, null, null, false, null, [], VerificationNextSteps.For("error", code, message));
 
     private static string? FileVersionOf(string path)
     {

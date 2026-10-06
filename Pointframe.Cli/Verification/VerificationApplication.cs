@@ -37,7 +37,8 @@ internal sealed record TaskStartResponse(
     string? Notes = null,
     TaskFailBefore? FailBefore = null,
     string? ErrorCode = null,
-    string? Error = null);
+    string? Error = null,
+    VerificationNextStep? NextStep = null);
 
 // `verify run|status|trust|task start`. A run executes the spec's gates, then (when every gate passed) each
 // scenario in its own MCP server and desktop session, and writes artifacts/pointframe-verify/verdict.json.
@@ -239,7 +240,9 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             || results.Any(result => result.Status != VerificationStatus.Pass);
         var filtered = command.Only is not null || command.ScenarioId is not null;
         var status = failed ? VerificationStatus.Fail : filtered ? VerificationStatus.Partial : VerificationStatus.Pass;
-        var verdict = Verdict(context, status, gates, results);
+        var failedId = gates.FirstOrDefault(gate => gate.Status != VerificationStatus.Pass)?.Id
+            ?? results.FirstOrDefault(result => result.Status != VerificationStatus.Pass)?.Id;
+        var verdict = Verdict(context, status, gates, results, nextStep: VerificationNextSteps.For(status, null, failureId: failedId));
         await WriteVerdictAsync(verdict, context.OutputDirectory, cancellationToken);
         if (context.Task is { SpecChanged: true })
         {
@@ -348,6 +351,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             verdictPath,
             hookCommand = new { path = hookCommand.Path, version = hookCommand.Version, ok = hookCommand.Ok },
             review,
+            nextStep = VerificationNextSteps.For(fresh ? "fresh" : "stale", freshnessReason, taskId: activeTask),
         }, VerdictJson));
         return fresh ? 0 : 1;
     }
@@ -463,7 +467,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         if (!services.Confirmation.CanAsk)
         {
             await standardError.WriteLineAsync("Approval needs a person at an interactive terminal; this input is redirected.");
-            await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new { schemaVersion = SchemaVersion, status = "not_approved", errorCode = "trust_needs_terminal" }, VerdictJson));
+            await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new { schemaVersion = SchemaVersion, status = "not_approved", errorCode = "trust_needs_terminal", nextStep = VerificationNextSteps.For("not_approved", "trust_needs_terminal") }, VerdictJson));
             return 1;
         }
 
@@ -597,7 +601,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new TaskStartResponse(
                 SchemaVersion, "rejected", taskId, Criteria: proposal.Criteria, RequiredAutomationIds: proposal.RequiredAutomationIds,
                 Notes: proposal.Notes, FailBefore: failBefore, ErrorCode: "fail_before_rejected",
-                Error: string.Join(" ", failBefore.Problems)), VerdictJson));
+                Error: string.Join(" ", failBefore.Problems), NextStep: VerificationNextSteps.For("rejected", "fail_before_rejected", string.Join(" ", failBefore.Problems))), VerdictJson));
             return 1;
         }
 
@@ -923,10 +927,11 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         IReadOnlyList<VerificationScenarioResult> scenarios,
         string? errorCode = null,
         string? error = null,
-        IReadOnlyList<string>? details = null) => new(
+        IReadOnlyList<string>? details = null,
+        VerificationNextStep? nextStep = null) => new(
         SchemaVersion, status, status == VerificationStatus.Pass, context.Started, Math.Round(context.Stopwatch.Elapsed.TotalSeconds, 1),
         context.SpecPath, context.SpecSha256, context.Provenance, context.Command.Only, context.Command.ScenarioId, context.Task,
-        gates, scenarios, errorCode, error, details);
+        gates, scenarios, errorCode, error, details, nextStep ?? VerificationNextSteps.For(status, errorCode, error));
 
     private async Task<int> ErrorAsync(
         RunContext context,
@@ -959,7 +964,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
     private async Task<int> TaskErrorAsync(string taskId, int exitCode, string code, string message)
     {
         await standardError.WriteLineAsync($"Pointframe verify failed: {message}");
-        await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new TaskStartResponse(SchemaVersion, "error", taskId, ErrorCode: code, Error: message), VerdictJson));
+        await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new TaskStartResponse(SchemaVersion, "error", taskId, ErrorCode: code, Error: message, NextStep: VerificationNextSteps.For("error", code, message, taskId: taskId)), VerdictJson));
         return exitCode;
     }
 

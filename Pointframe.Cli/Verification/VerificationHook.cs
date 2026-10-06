@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace Pointframe.Cli;
 
 internal sealed record HookState(string? SessionId, int Blocks);
-internal sealed record LastStop(int SchemaVersion, string Outcome, string? Reason, string? ErrorCode, string? TreeHash, string? SpecSha256, string? TaskId, DateTimeOffset Utc);
+internal sealed record LastStop(int SchemaVersion, string Outcome, string? Reason, string? ErrorCode, string? TreeHash, string? SpecSha256, string? TaskId, DateTimeOffset Utc, VerificationNextStep? NextStep);
 
 // `verify hook stop`: the Claude Code (and Codex) Stop hook. It lets the agent finish only when the project's
 // verdict is a pass for the files as they are now. A failure the agent can fix (a gate, a scenario, the frozen
@@ -41,7 +41,7 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
                 var root = VerificationSpecLoader.RootDirectoryFor(specPath);
                 var treeHash = services.WorkingTree.Read(root).TreeHash;
                 var specHash = File.Exists(specPath) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(specPath))) : null;
-                WriteLastStop(Path.Combine(root, VerificationApplication.OutputRelativePath), "unverified", "hook_error", null, treeHash, specHash, services.Store.ReadActiveTask(root));
+                WriteLastStop(Path.Combine(root, VerificationApplication.OutputRelativePath), "unverified", "hook_error", null, treeHash, specHash, services.Store.ReadActiveTask(root), VerificationNextSteps.For("error", "unknown", exception.Message));
             }
             catch (Exception)
             {
@@ -50,7 +50,7 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
 
             await output.WriteLineAsync(JsonSerializer.Serialize(new
             {
-                systemMessage = $"UNVERIFIED: Pointframe verify hook failed, so this work was NOT verified: {exception.GetType().Name}: {exception.Message}",
+                systemMessage = $"UNVERIFIED: Pointframe verify hook failed, so this work was NOT verified: {exception.GetType().Name}: {exception.Message} Next step: {VerificationNextSteps.For("error", "unknown", exception.Message).Text}",
             }));
             return 0;
         }
@@ -94,11 +94,15 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
 
         if (verdict is null)
         {
-            return await AllowAsync(outputDirectory, state with { Blocks = 0 }, $"UNVERIFIED: Pointframe verify produced no verdict; the stop was not checked.", "no_verdict", null, tree.TreeHash, specSha256, activeTask);
+            var noVerdictNextStep = VerificationNextSteps.For("error", "unknown", "No verification verdict was produced.");
+            return await AllowAsync(outputDirectory, state with { Blocks = 0 }, $"UNVERIFIED: Pointframe verify produced no verdict; the stop was not checked. Next step: {noVerdictNextStep.Text}", "no_verdict", null, tree.TreeHash, specSha256, activeTask, noVerdictNextStep);
         }
 
         var status = verdict.Value.GetProperty("status").GetString();
         var errorCode = verdict.Value.TryGetProperty("errorCode", out var code) ? code.GetString() : null;
+        var nextStep = verdict.Value.TryGetProperty("nextStep", out var nextStepElement)
+            ? nextStepElement.Deserialize<VerificationNextStep>(VerificationApplication.VerdictJson)
+            : VerificationNextSteps.For(status, errorCode, verdict.Value.TryGetProperty("error", out var messageElement) ? messageElement.GetString() : null);
         if (status == VerificationStatus.Pass)
         {
             var message = $"Pointframe verify: pass on tree {Short(tree.TreeHash)}.";
@@ -113,7 +117,7 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
         if (errorCode is not null && NeedsAPerson.Contains(errorCode))
         {
             var error = verdict.Value.TryGetProperty("error", out var text) ? text.GetString() : errorCode;
-            return await AllowAsync(outputDirectory, state with { Blocks = 0 }, $"UNVERIFIED: Pointframe verify could not check this work and needs you ({errorCode}), so this work was NOT verified: {error}", "needs_person", errorCode, tree.TreeHash, specSha256, activeTask);
+            return await AllowAsync(outputDirectory, state with { Blocks = 0 }, $"UNVERIFIED: Pointframe verify could not check this work and needs you ({errorCode}), so this work was NOT verified: {error}. Next step: {nextStep.Text}{CommandSuffix(nextStep)}", "needs_person", errorCode, tree.TreeHash, specSha256, activeTask, nextStep);
         }
 
         var maxBlocks = command.MaxBlocks ?? DefaultMaxBlocks;
@@ -123,14 +127,14 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
         {
             return await AllowAsync(
                 outputDirectory, state with { Blocks = 0 },
-                $"UNVERIFIED: Pointframe verify still fails after {maxBlocks} blocked attempts, so the agent was allowed to stop and this work was NOT verified. Run `pointframe verify status` before trusting a done message. {summary}", "block_limit", errorCode, tree.TreeHash, specSha256, activeTask);
+                $"UNVERIFIED: Pointframe verify still fails after {maxBlocks} blocked attempts, so the agent was allowed to stop and this work was NOT verified. Run `pointframe verify status` before trusting a done message. {summary} Next step: {nextStep.Text}{CommandSuffix(nextStep)}", "block_limit", errorCode, tree.TreeHash, specSha256, activeTask, nextStep);
         }
 
         WriteState(outputDirectory, state with { Blocks = blocks });
         var reason = new StringBuilder()
             .AppendLine($"Pointframe verify failed (block {blocks} of {maxBlocks}), so this work is not done yet.")
             .AppendLine(summary)
-            .AppendLine("Fix the cause in the code, then finish again: this hook re-runs the verification. Do not edit .pointframe/verify.json or the frozen task to make it pass; a person reviews those changes.")
+            .Append($"Next step: {nextStep.Text}{CommandSuffix(nextStep)}")
             .ToString();
         await output.WriteLineAsync(JsonSerializer.Serialize(new { decision = "block", reason }));
         return 0;
@@ -267,20 +271,23 @@ internal sealed class VerificationHook(VerificationServices services, TextReader
         }
     }
 
-    private async Task<int> AllowAsync(string outputDirectory, HookState state, string message, string? reason, string? errorCode, string? treeHash, string? specSha256, string? taskId)
+    private async Task<int> AllowAsync(string outputDirectory, HookState state, string message, string? reason, string? errorCode, string? treeHash, string? specSha256, string? taskId, VerificationNextStep? nextStep = null)
     {
+        nextStep ??= VerificationNextSteps.For(reason is null ? "pass" : "error", errorCode);
         WriteState(outputDirectory, state);
-        WriteLastStop(outputDirectory, reason is null ? "verified" : "unverified", reason, errorCode, treeHash, specSha256, taskId);
+        WriteLastStop(outputDirectory, reason is null ? "verified" : "unverified", reason, errorCode, treeHash, specSha256, taskId, nextStep);
         await output.WriteLineAsync(JsonSerializer.Serialize(new { systemMessage = message }));
         return 0;
     }
 
-    private static void WriteLastStop(string outputDirectory, string outcome, string? reason, string? errorCode, string? treeHash, string? specSha256, string? taskId)
+    private static void WriteLastStop(string outputDirectory, string outcome, string? reason, string? errorCode, string? treeHash, string? specSha256, string? taskId, VerificationNextStep? nextStep)
     {
         Directory.CreateDirectory(outputDirectory);
         File.WriteAllText(Path.Combine(outputDirectory, LastStopFileName), JsonSerializer.Serialize(
-            new LastStop(1, outcome, reason, errorCode, treeHash, specSha256, taskId, DateTimeOffset.UtcNow), VerificationStore.Json));
+            new LastStop(1, outcome, reason, errorCode, treeHash, specSha256, taskId, DateTimeOffset.UtcNow, nextStep), VerificationStore.Json));
     }
+
+    private static string CommandSuffix(VerificationNextStep step) => step.Command is null ? string.Empty : $" Command: `{step.Command}`.";
 
     private async Task<(string? SessionId, string? Cwd)> ReadHookInputAsync()
     {

@@ -60,6 +60,7 @@ public sealed class VerificationHookTests : IDisposable
         Assert.Contains("block 1 of 2", reason, StringComparison.Ordinal);
         Assert.Contains("Scenario 'save-text' failed at step 2", reason, StringComparison.Ordinal);
         Assert.Contains("Expected 'hello', found 'hullo'", reason, StringComparison.Ordinal);
+        Assert.EndsWith("run `pointframe verify run`.", reason.Trim(), StringComparison.Ordinal);
         Assert.Equal("block", second.GetProperty("decision").GetString());
         Assert.False(third.TryGetProperty("decision", out _));
         var stoppedMessage = third.GetProperty("systemMessage").GetString()!;
@@ -141,6 +142,8 @@ public sealed class VerificationHookTests : IDisposable
         Assert.Equal(outcome, record.RootElement.GetProperty("outcome").GetString());
         Assert.Equal(reason, record.RootElement.GetProperty("reason").ValueKind == JsonValueKind.Null ? null : record.RootElement.GetProperty("reason").GetString());
         Assert.Equal(errorCode, record.RootElement.GetProperty("errorCode").ValueKind == JsonValueKind.Null ? null : record.RootElement.GetProperty("errorCode").GetString());
+        Assert.True(record.RootElement.TryGetProperty("nextStep", out var nextStep));
+        Assert.Contains(nextStep.GetProperty("kind").GetString(), new[] { "none", "fix_code", "needs_person" });
         Assert.True(record.RootElement.TryGetProperty("utc", out _));
     }
 

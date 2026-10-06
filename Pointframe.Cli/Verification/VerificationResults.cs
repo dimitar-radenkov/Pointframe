@@ -66,4 +66,5 @@ internal sealed record VerificationVerdict(
     IReadOnlyList<VerificationScenarioResult> Scenarios,
     string? ErrorCode = null,
     string? Error = null,
-    IReadOnlyList<string>? Details = null);
+    IReadOnlyList<string>? Details = null,
+    VerificationNextStep? NextStep = null);
