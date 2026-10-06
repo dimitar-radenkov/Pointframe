@@ -94,23 +94,38 @@ public sealed class ScreenRecordingServiceTests
         }
     }
 
-    private sealed class SignalingFrameCapture : IRawFrameCapture
+    private sealed class SignalingFrameCapture(bool holdAfterSecondFrame = false) : IRawFrameCapture
     {
+        private readonly ManualResetEventSlim _resumeCaptures = new();
         private int _captureCount;
 
         public ManualResetEventSlim SecondFrameCaptured { get; } = new();
 
+        // With holdAfterSecondFrame, captures after the second wait here until ResumeCaptures, so a slow test thread between "second
+        // frame captured" and "release the writer" cannot let the timer fill the buffer pool and drop frames.
         public void Capture(byte[] frameData)
         {
             Array.Clear(frameData);
-            if (Interlocked.Increment(ref _captureCount) == 2)
+            var count = Interlocked.Increment(ref _captureCount);
+            if (count == 2)
             {
                 SecondFrameCaptured.Set();
             }
+            else if (count > 2 && holdAfterSecondFrame)
+            {
+                _resumeCaptures.Wait(TimeSpan.FromSeconds(30));
+            }
+        }
+
+        public void ResumeCaptures()
+        {
+            _resumeCaptures.Set();
         }
 
         public void Dispose()
         {
+            _resumeCaptures.Set();
+            _resumeCaptures.Dispose();
             SecondFrameCaptured.Dispose();
         }
     }
@@ -809,7 +824,7 @@ public sealed class ScreenRecordingServiceTests
     public void Stop_WhenWriterBackpressureOccurs_LogsZeroDroppedFrames()
     {
         var writer = new BlockingVideoWriter();
-        var capture = new SignalingFrameCapture();
+        var capture = new SignalingFrameCapture(holdAfterSecondFrame: true);
         var mockFactory = new Mock<IVideoWriterFactory>();
         mockFactory
             .Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()))
@@ -823,6 +838,7 @@ public sealed class ScreenRecordingServiceTests
         Assert.True(writer.FirstWriteStarted.Wait(TimeSpan.FromSeconds(10)), "The first frame write did not start.");
         Assert.True(capture.SecondFrameCaptured.Wait(TimeSpan.FromSeconds(10)), "The second frame was not captured while the writer was blocked.");
         writer.ReleaseWrites();
+        capture.ResumeCaptures();
         svc.Stop();
 
         var statsMessage = logger.Messages.Last(message => message.StartsWith("Recording session stats:", StringComparison.Ordinal));
@@ -835,7 +851,7 @@ public sealed class ScreenRecordingServiceTests
     {
         var logger = new ListLogger<ScreenRecordingService>();
         var writer = new BlockingVideoWriter();
-        var capture = new SignalingFrameCapture();
+        var capture = new SignalingFrameCapture(holdAfterSecondFrame: true);
         var mockFactory = new Mock<IVideoWriterFactory>();
         mockFactory
             .Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>()))
@@ -848,6 +864,7 @@ public sealed class ScreenRecordingServiceTests
         Assert.True(writer.FirstWriteStarted.Wait(TimeSpan.FromSeconds(10)), "The first frame write did not start.");
         Assert.True(capture.SecondFrameCaptured.Wait(TimeSpan.FromSeconds(10)), "The second frame was not captured while the writer was blocked.");
         writer.ReleaseWrites();
+        capture.ResumeCaptures();
         svc.Stop();
 
         var sessionStats = logger.Messages.Last(message => message.StartsWith("Recording session stats:", StringComparison.Ordinal));
