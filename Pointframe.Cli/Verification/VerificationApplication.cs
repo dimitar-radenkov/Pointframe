@@ -409,7 +409,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
         var treeMatches = verdictTree is not null && verdictTree == current.TreeHash;
         var specMatches = currentSpecSha256 is not null && verdictSpecSha256 == currentSpecSha256;
-        var taskMatches = activeTask is null || (verdictTaskId == activeTask && verdictTaskSha256 == activeSnapshot.Value.Sha256);
+        var taskMatches = activeTask is null || (verdictTaskId == activeTask && verdictTaskSha256 == activeSnapshot?.Sha256);
         var noBuildGatePass = status == VerificationStatus.Pass && verdictNoBuildGate;
         var fresh = !noBuildGatePass && status == VerificationStatus.Pass && treeMatches && specMatches && taskMatches;
         var freshnessReason = noBuildGatePass

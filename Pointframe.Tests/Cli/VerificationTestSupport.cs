@@ -248,6 +248,8 @@ internal sealed class FakeMcp
 
     internal object InvokeResponse { get; set; } = Done;
 
+    internal object FocusResponse { get; set; } = Done;
+
     internal string[] ElementIds { get; set; } = ["textBox", "saveButton"];
 
     internal string?[] ElementNames { get; set; } = [null, null];
@@ -273,6 +275,7 @@ internal sealed class FakeMcp
         "desktop_start_test_session" => StartResponse,
         "desktop_observe_app" => Observe(Count("desktop_observe_app")),
         "desktop_invoke" => InvokeResponse,
+        "desktop_focus_window" => FocusResponse,
         "desktop_check_ui" => CheckResponse(arguments),
         "desktop_get_test_report" => JsonSerializer.SerializeToElement(
             JsonSerializer.Deserialize<DesktopTestReport>(

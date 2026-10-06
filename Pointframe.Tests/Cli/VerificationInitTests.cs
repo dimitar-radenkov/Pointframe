@@ -184,6 +184,61 @@ public sealed class VerificationInitTests
     }
 
     [Fact]
+    public void DetectApp_UsesRuntimeIdentifierFromProjectAndDirectoryBuildProps()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("Directory.Build.props", "<Project><PropertyGroup><RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers></PropertyGroup></Project>");
+        fixture.Write("src/App.csproj", "<Project><PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup></Project>");
+        var warnings = new List<string>();
+
+        var detected = fixture.Init.DetectApp(fixture.Root, warnings);
+
+        Assert.Equal(Path.Combine(fixture.Root, "src", "bin", "Release", "net10.0-windows", "win-x64", "App.exe"), detected);
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void DetectApp_UsesRuntimeIdentifierFromProjectWhenOutputDoesNotExist()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("src/App.csproj", "<Project><PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><RuntimeIdentifier>win-x64</RuntimeIdentifier></PropertyGroup></Project>");
+        var warnings = new List<string>();
+
+        var detected = fixture.Init.DetectApp(fixture.Root, warnings);
+
+        Assert.Equal(Path.Combine(fixture.Root, "src", "bin", "Release", "net10.0-windows", "win-x64", "App.exe"), detected);
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void DetectApp_PrefersExistingPlatformOutputAndUsesPlatformTarget()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("src/App.csproj", "<Project><PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><PlatformTarget>x64</PlatformTarget></PropertyGroup></Project>");
+        fixture.Write("src/bin/x64/Release/net10.0-windows/App.exe", "app");
+        var warnings = new List<string>();
+
+        var detected = fixture.Init.DetectApp(fixture.Root, warnings);
+
+        Assert.Equal(Path.Combine(fixture.Root, "src", "bin", "x64", "Release", "net10.0-windows", "App.exe"), detected);
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void DetectApp_PrefersExistingPlainFrameworkOutput()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("src/App.csproj", "<Project><PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup></Project>");
+        fixture.Write("src/bin/Release/net10.0-windows/App.exe", "app");
+        var warnings = new List<string>();
+
+        var detected = fixture.Init.DetectApp(fixture.Root, warnings);
+
+        Assert.Equal(Path.Combine(fixture.Root, "src", "bin", "Release", "net10.0-windows", "App.exe"), detected);
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
     public void DetectGates_BuildsSingleWinExeProjectWhenSolutionHasPackagingProject()
     {
         using var fixture = new InitFixture();

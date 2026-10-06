@@ -306,7 +306,13 @@ internal sealed class DesktopScenarioRunner
                         cancellationToken).ConfigureAwait(false));
                     if (focus.Status != VerificationStatus.Pass)
                     {
-                        return focus;
+                        return new VerificationStepResult(
+                            index,
+                            step.Kind,
+                            VerificationStatus.Fail,
+                            description,
+                            "FocusRequired",
+                            $"Keyboard steps need the app in the foreground. {focus.Message ?? "Window focus was refused."} Use invoke steps with a role and name locator instead.");
                     }
 
                     return ActionResult(index, step, description, await _client.CallToolAsync(
@@ -372,6 +378,15 @@ internal sealed class DesktopScenarioRunner
                         ? actualValue.GetString()
                         : null;
                     var (code, message) = ErrorOf(checkResult);
+                    if (code == "ElementNotFound")
+                    {
+                        var observed = await ObserveAsync(sessionId, cancellationToken).ConfigureAwait(false);
+                        var elements = Structured(observed).TryGetProperty("elements", out var observedElements)
+                            ? observedElements.EnumerateArray().ToArray()
+                            : [];
+                        message = AppendMenuHint($"{message}{NameHint(check.Locator, elements)}", check.Locator, elements);
+                    }
+
                     return new VerificationStepResult(
                         index,
                         step.Kind,
@@ -442,7 +457,7 @@ internal sealed class DesktopScenarioRunner
                 var hint = seen.Count == 0 ? "The app exposed no automation ids." : $"Automation ids seen: {string.Join(", ", seen)}.";
                 return ResolvedElement.Failed(
                     "ElementNotFound",
-                    $"No element matched {target} within {_elementTimeout.TotalSeconds:0} seconds. {hint}{NameHint(locator, observed)}");
+                    AppendMenuHint($"No element matched {target} within {_elementTimeout.TotalSeconds:0} seconds. {hint}{NameHint(locator, observed)}", locator, observed));
             }
 
             await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
@@ -524,6 +539,23 @@ internal sealed class DesktopScenarioRunner
         }
 
         return string.Empty;
+    }
+
+    private static string AppendMenuHint(string? message, ElementLocator? locator, IReadOnlyList<JsonElement> observed)
+    {
+        var isMenuItem = string.Equals(locator?.Role, "menu item", StringComparison.OrdinalIgnoreCase);
+        var menuBarIsPresent = observed.Any(element =>
+            element.TryGetProperty("role", out var role)
+            && role.ValueKind == JsonValueKind.String
+            && role.GetString() is { } value
+            && (string.Equals(value, "menu bar", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "menubar", StringComparison.OrdinalIgnoreCase)));
+        if (!isMenuItem && !menuBarIsPresent)
+        {
+            return message ?? string.Empty;
+        }
+
+        return $"{message} Menu items appear in UI Automation only after their parent menu is open: invoke the parent first, e.g. {{ \"invoke\": {{ \"role\": \"menu item\", \"name\": \"Options\" }} }}, then the item.";
     }
 
     private static string StripPrefix(string automationId)

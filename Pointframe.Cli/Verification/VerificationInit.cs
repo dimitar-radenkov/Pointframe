@@ -443,7 +443,26 @@ internal sealed class VerificationInit(
 
                 var assembly = xml.Descendants().FirstOrDefault(item => item.Name.LocalName == "AssemblyName")?.Value.Trim();
                 var name = string.IsNullOrWhiteSpace(assembly) ? Path.GetFileNameWithoutExtension(project) : assembly;
-                candidates.Add(Path.Combine(Path.GetDirectoryName(project)!, "bin", "Release", framework, name + ".exe"));
+                var projectDirectory = Path.GetDirectoryName(project)!;
+                var properties = ReadBuildProperties(rootDirectory, projectDirectory, xml);
+                var runtimeIdentifier = FirstProperty(properties, "RuntimeIdentifier")
+                    ?? FirstListProperty(properties, "RuntimeIdentifiers");
+                var platform = FirstProperty(properties, "PlatformTarget")
+                    ?? FirstProperty(properties, "Platform");
+                var outputCandidates = new List<string>();
+                if (!string.IsNullOrWhiteSpace(platform) && platform.Equals("x64", StringComparison.OrdinalIgnoreCase))
+                {
+                    outputCandidates.Add(Path.Combine(projectDirectory, "bin", "x64", "Release", framework, name + ".exe"));
+                }
+
+                if (!string.IsNullOrWhiteSpace(runtimeIdentifier))
+                {
+                    outputCandidates.Add(Path.Combine(projectDirectory, "bin", "Release", framework, runtimeIdentifier, name + ".exe"));
+                }
+
+                outputCandidates.Add(Path.Combine(projectDirectory, "bin", "Release", framework, name + ".exe"));
+                candidates.Add(outputCandidates.FirstOrDefault(fileSystem.FileExists)
+                    ?? (!string.IsNullOrWhiteSpace(runtimeIdentifier) ? outputCandidates[outputCandidates.Count - 2] : outputCandidates[0]));
             }
             catch (System.Xml.XmlException)
             {
@@ -467,6 +486,65 @@ internal sealed class VerificationInit(
 
         return null;
     }
+
+    private Dictionary<string, List<string>> ReadBuildProperties(string rootDirectory, string projectDirectory, XDocument project)
+    {
+        var values = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var directories = new Stack<string>();
+        var directory = projectDirectory;
+        var root = Path.GetFullPath(rootDirectory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        while (string.Equals(directory, rootDirectory, StringComparison.OrdinalIgnoreCase)
+            || directory.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        {
+            directories.Push(directory);
+            if (string.Equals(directory, rootDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            directory = Path.GetDirectoryName(directory)!;
+        }
+
+        foreach (var current in directories)
+        {
+            var propsPath = Path.Combine(current, "Directory.Build.props");
+            if (fileSystem.FileExists(propsPath))
+            {
+                AddProperties(XDocument.Parse(fileSystem.ReadAllText(propsPath)), values);
+            }
+        }
+
+        AddProperties(project, values);
+        return values;
+    }
+
+    private static void AddProperties(XDocument document, Dictionary<string, List<string>> properties)
+    {
+        foreach (var property in document.Descendants().Where(item => item.Parent?.Name.LocalName == "PropertyGroup"))
+        {
+            var value = property.Value.Trim();
+            if (value.Length == 0)
+            {
+                continue;
+            }
+
+            if (!properties.TryGetValue(property.Name.LocalName, out var values))
+            {
+                values = [];
+                properties.Add(property.Name.LocalName, values);
+            }
+
+            values.Add(value);
+        }
+    }
+
+    private static string? FirstProperty(Dictionary<string, List<string>> properties, string name) =>
+        properties.TryGetValue(name, out var values) ? values.LastOrDefault() : null;
+
+    private static string? FirstListProperty(Dictionary<string, List<string>> properties, string name) =>
+        properties.TryGetValue(name, out var values)
+            ? values.LastOrDefault()?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()
+            : null;
 
     private async Task<(string Scenario, int AutomationIdCount, bool UsesRoleAndName)> ExploreAsync(string rootDirectory, string executable, string mcpPath, IMcpToolClientFactory factory, CancellationToken cancellationToken)
     {
