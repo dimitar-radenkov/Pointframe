@@ -334,7 +334,8 @@ public sealed class DesktopToolsTests : IDisposable
         Assert.Equal("claude-code", Assert.Single(response.GetProperty("clients").EnumerateArray()).GetString());
         Assert.Equal("fixture", response.GetProperty("profileId").GetString());
         Assert.Equal(_fixture.McpPath, response.GetProperty("serverPath").GetString());
-        Assert.Contains("Restart your agent session", response.GetProperty("nextStep").GetString(), StringComparison.Ordinal);
+        Assert.Equal("none", response.GetProperty("nextStep").GetProperty("kind").GetString());
+        Assert.Contains("Restart your agent session", response.GetProperty("nextStep").GetProperty("text").GetString(), StringComparison.Ordinal);
         Assert.Contains("desktop_start_test_session", response.GetProperty("tools").EnumerateArray().Select(item => item.GetString()));
         Assert.False(File.Exists(Path.Combine(_fixture.Root, ".codex", "config.toml")));
         using var config = JsonDocument.Parse(File.ReadAllText(Path.Combine(_fixture.Root, ".mcp.json")));

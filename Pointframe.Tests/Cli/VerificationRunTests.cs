@@ -73,7 +73,10 @@ public sealed class VerificationRunTests : IDisposable
         var exitCode = await application.RunAsync(Run(specPath), CancellationToken.None);
 
         Assert.Equal(1, exitCode);
-        Assert.Equal("app_not_found", _fixture.ReadVerdict().GetProperty("errorCode").GetString());
+        var verdict = _fixture.ReadVerdict();
+        Assert.Equal("app_not_found", verdict.GetProperty("errorCode").GetString());
+        Assert.Equal("run_command", verdict.GetProperty("nextStep").GetProperty("kind").GetString());
+        Assert.Contains("Build the app first", verdict.GetProperty("nextStep").GetProperty("text").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -284,7 +287,24 @@ public sealed class VerificationRunTests : IDisposable
         Assert.Contains("error CS1002", gates[0].GetProperty("details")[0].GetString(), StringComparison.Ordinal);
         Assert.Equal("pass", gates[1].GetProperty("status").GetString());
         Assert.Equal("skipped", verdict.GetProperty("scenarios")[0].GetProperty("status").GetString());
+        Assert.Equal("fix_code", verdict.GetProperty("nextStep").GetProperty("kind").GetString());
+        Assert.Contains("build", verdict.GetProperty("nextStep").GetProperty("text").GetString(), StringComparison.Ordinal);
         services.Factory.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Run_McpNotFound_RecommendsInstallCommand()
+    {
+        var specPath = _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        _fixture.CreateAppAndMcp();
+
+        var exitCode = await new VerificationFixture.Services().Application(_fixture.Store, new StringWriter())
+            .RunAsync(Run(specPath) with { McpExecutablePath = null }, CancellationToken.None);
+
+        Assert.Equal(1, exitCode);
+        var nextStep = _fixture.ReadVerdict().GetProperty("nextStep");
+        Assert.Equal("run_command", nextStep.GetProperty("kind").GetString());
+        Assert.Equal("pointframe mcp install --client vscode", nextStep.GetProperty("command").GetString());
     }
 
     [Fact]
