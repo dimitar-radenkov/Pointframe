@@ -300,6 +300,9 @@ deciding to repeat anything.
 
 ## Local validation
 
+After every release, the coordinator runs `pwsh scripts/check-released-desktop.ps1 -Version <x.y.z>` on an unlocked interactive Windows desktop.
+It verifies the published CLI and MCP packages by checksum, then runs the fixture-backed desktop smoke and verification workflow against those released executables.
+
 Build and publish the MCP executable:
 
 ```powershell
