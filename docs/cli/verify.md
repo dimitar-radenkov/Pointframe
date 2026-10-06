@@ -35,6 +35,7 @@ The fields of the spec file are in the [spec reference](verify-spec.md).
 
 Real apps:
 
+- Keep a build gate. If the solution has packaging projects (MSIX/`.wapproj`) that fail, build the app's own project instead of removing the gate; a spec without gates is never fresh.
 - WinForms menu items may have no AutomationId. Locate them by role and name, for example `{ "role": "menu item", "name": "Options" }`.
 - Electron apps need `--force-renderer-accessibility` in the app arguments, before the app path.
 - `textEquals` on a label, TextBlock, or heading compares its displayed text.

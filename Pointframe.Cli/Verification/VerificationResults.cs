@@ -67,4 +67,6 @@ internal sealed record VerificationVerdict(
     string? ErrorCode = null,
     string? Error = null,
     IReadOnlyList<string>? Details = null,
-    VerificationNextStep? NextStep = null);
+    VerificationNextStep? NextStep = null,
+    IReadOnlyList<string>? Warnings = null,
+    bool? NoBuildGate = null);

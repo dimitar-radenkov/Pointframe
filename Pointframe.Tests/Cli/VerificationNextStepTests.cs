@@ -8,6 +8,7 @@ public sealed class VerificationNextStepTests
     [Theory]
     [InlineData("pass", null, "none")]
     [InlineData("fail", null, "fix_code")]
+    [InlineData("stale", null, "run_command")]
     [InlineData("error", "mcp_not_found", "run_command")]
     [InlineData("error", "desktop_busy", "wait")]
     [InlineData("error", "spec_untrusted", "needs_person")]
@@ -53,5 +54,14 @@ public sealed class VerificationNextStepTests
     {
         var result = VerificationNextSteps.For("stale", "tree_changed");
         Assert.Equal("pointframe verify run", result.Command);
+    }
+
+    [Fact]
+    public void For_MissingBuildGateProvidesFixCodeStep()
+    {
+        var result = VerificationNextSteps.For("stale", "no_build_gate");
+
+        Assert.Equal("fix_code", result.Kind);
+        Assert.Equal("Add a build gate for the app to .pointframe/verify.json (build the app project itself if the solution has packaging projects), then run `pointframe verify run`.", result.Text);
     }
 }

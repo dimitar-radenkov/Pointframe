@@ -29,9 +29,11 @@ public sealed class VerificationHookTests : IDisposable
     [Fact]
     public async Task Stop_Pass_AllowsAndReusesTheVerdictWhileTheTreeIsUnchanged()
     {
-        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        _fixture.WriteSpecWith(VerificationFixture.DefaultApp, """[ { "id": "build", "run": "dotnet build" } ]""", VerificationFixture.ValidScenario);
         _fixture.CreateAppAndMcp();
         var services = new VerificationFixture.Services(new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true)));
+        services.Commands.Setup(item => item.RunAsync("dotnet build", It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CommandResult(0, false, []));
 
         var first = await StopAsync(services, "s1");
         var second = await StopAsync(services, "s1");
@@ -41,6 +43,22 @@ public sealed class VerificationHookTests : IDisposable
         Assert.Contains("pass", second.GetProperty("systemMessage").GetString(), StringComparison.Ordinal);
         Assert.Single(services.Launches);
         AssertLastStop("verified", null, null);
+    }
+
+    [Fact]
+    public async Task Stop_PassWithoutBuildGate_BlocksWithBuildGateNextStep()
+    {
+        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        _fixture.CreateAppAndMcp();
+        var services = new VerificationFixture.Services(new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true)));
+
+        var result = await StopAsync(services, "s1");
+
+        Assert.Equal("block", result.GetProperty("decision").GetString());
+        var reason = result.GetProperty("reason").GetString()!;
+        Assert.Contains("Add a build gate for the app to .pointframe/verify.json", reason, StringComparison.Ordinal);
+        Assert.Contains("then run `pointframe verify run`.", reason, StringComparison.Ordinal);
+        Assert.Single(services.Launches);
     }
 
     [Fact]
@@ -89,9 +107,10 @@ public sealed class VerificationHookTests : IDisposable
     [Fact]
     public async Task Stop_ChangedFiles_RunTheVerificationAgain()
     {
-        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        WriteGatedScenario();
         _fixture.CreateAppAndMcp();
         var services = new VerificationFixture.Services(new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true)));
+        SetupBuildGatePass(services);
         await StopAsync(services, "s1");
 
         services.CurrentTree = "TREE2";
@@ -202,9 +221,10 @@ public sealed class VerificationHookTests : IDisposable
     [Fact]
     public async Task Stop_PassWithReview_RunsTheReviewerOnceAndReportsItsFlags()
     {
-        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        WriteGatedScenario();
         _fixture.CreateAppAndMcp();
         var services = new VerificationFixture.Services(new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true)));
+        SetupBuildGatePass(services);
         services.Reviewer.Setup(item => item.ReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Review("A test was weakened.", [new ReviewFlag("Tests/A.cs", 12, "high", "Assertion removed.")], "fake"));
 
@@ -221,9 +241,10 @@ public sealed class VerificationHookTests : IDisposable
     [Fact]
     public async Task Stop_ReviewerRetriesAgentFailureThenSucceeds()
     {
-        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        WriteGatedScenario();
         _fixture.CreateAppAndMcp();
         var services = new VerificationFixture.Services(new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true)));
+        SetupBuildGatePass(services);
         services.Reviewer.SetupSequence(item => item.ReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new AgentException("invalid structured output"))
             .ReturnsAsync(new Review("Reviewed after retry.", [], "fake"));
@@ -237,9 +258,10 @@ public sealed class VerificationHookTests : IDisposable
     [Fact]
     public async Task Stop_TwoReviewerFailuresAreRecordedAndNotRepeatedForTheTree()
     {
-        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        WriteGatedScenario();
         _fixture.CreateAppAndMcp();
         var services = new VerificationFixture.Services(new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true)));
+        SetupBuildGatePass(services);
         services.Reviewer.Setup(item => item.ReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new AgentException("invalid structured output"));
 
@@ -268,9 +290,10 @@ public sealed class VerificationHookTests : IDisposable
     [Fact]
     public async Task Stop_PassFromTheAgentsOwnRun_IsStillReviewed()
     {
-        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        WriteGatedScenario();
         _fixture.CreateAppAndMcp();
         var services = new VerificationFixture.Services(new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true)));
+        SetupBuildGatePass(services);
         services.Reviewer.Setup(item => item.ReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Review("Fine.", [], "fake"));
         await services.Application(_fixture.Store, new StringWriter())
@@ -370,6 +393,17 @@ public sealed class VerificationHookTests : IDisposable
         Assert.Equal("reviewer", sent!.Role);
         Assert.Null(sent.McpServer);
         Assert.Contains("diff", sent.Input, StringComparison.Ordinal);
+    }
+
+    private string WriteGatedScenario() => _fixture.WriteSpecWith(
+        VerificationFixture.DefaultApp,
+        """[ { "id": "build", "run": "dotnet build" } ]""",
+        VerificationFixture.ValidScenario);
+
+    private static void SetupBuildGatePass(VerificationFixture.Services services)
+    {
+        services.Commands.Setup(item => item.RunAsync("dotnet build", It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CommandResult(0, false, []));
     }
 
     private async Task<JsonElement> StopAsync(VerificationFixture.Services services, string sessionId, int? maxBlocks = null, bool review = false)

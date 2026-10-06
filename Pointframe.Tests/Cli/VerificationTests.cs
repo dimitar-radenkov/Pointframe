@@ -268,6 +268,26 @@ public sealed class VerificationTests : IDisposable
     }
 
     [Fact]
+    public async Task Status_NoBuildGatePassIsNotFresh()
+    {
+        _fixture.WriteSpec();
+        WritePassingVerdict(_fixture.Root, _fixture.SpecPath, "TREE1", noBuildGate: true);
+
+        var output = new StringWriter();
+        var exitCode = await new VerificationFixture.Services(treeHash: "TREE1")
+            .Application(_fixture.Store, output)
+            .RunAsync(new CliCommand("verify", SpecPath: _fixture.SpecPath, VerifyAction: "status"), CancellationToken.None);
+
+        using var result = JsonDocument.Parse(output.ToString());
+        Assert.Equal(1, exitCode);
+        Assert.False(result.RootElement.GetProperty("fresh").GetBoolean());
+        Assert.Equal("no_build_gate", result.RootElement.GetProperty("freshnessReason").GetString());
+        var nextStep = result.RootElement.GetProperty("nextStep");
+        Assert.Equal("fix_code", nextStep.GetProperty("kind").GetString());
+        Assert.Equal("Add a build gate for the app to .pointframe/verify.json (build the app project itself if the solution has packaging projects), then run `pointframe verify run`.", nextStep.GetProperty("text").GetString());
+    }
+
+    [Fact]
     public async Task Status_ActiveTaskRequiresMatchingVerdictSnapshot()
     {
         _fixture.WriteSpec();
@@ -362,7 +382,7 @@ public sealed class VerificationTests : IDisposable
         Assert.Equal("pointframe verify run", result.RootElement.GetProperty("nextStep").GetProperty("command").GetString());
     }
 
-    private static void WritePassingVerdict(string root, string specPath, string treeHash, string? specSha256 = null, object? task = null)
+    private static void WritePassingVerdict(string root, string specPath, string treeHash, string? specSha256 = null, object? task = null, bool noBuildGate = false)
     {
         var outputDirectory = Path.Combine(root, VerificationApplication.OutputRelativePath);
         Directory.CreateDirectory(outputDirectory);
@@ -372,6 +392,7 @@ public sealed class VerificationTests : IDisposable
             JsonSerializer.Serialize(new
             {
                 status = "pass",
+                noBuildGate,
                 task,
                 specSha256,
                 startedUtc = DateTimeOffset.UtcNow,
