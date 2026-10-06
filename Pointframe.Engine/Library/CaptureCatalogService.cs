@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pointframe.Data.Abstractions;
 using Pointframe.Data.Context;
 using Pointframe.Data.Entities;
+using Pointframe.Data.Services;
 
 namespace Pointframe.Engine;
 
@@ -239,7 +240,7 @@ public sealed class CaptureCatalogService : ICaptureCatalogService
         {
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<PointframeDataContext>();
-            await context.Database.MigrateAsync().ConfigureAwait(false);
+            await StaleLockSafeMigrator.MigrateAsync(context).ConfigureAwait(false);
         }
         finally
         {

@@ -37,13 +37,16 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
         try
         {
             Pointframe.Engine.Automation.DesktopTrace.Write("UIA inspect before GetDesktop");
-            var desktop = _automation.GetDesktop();
 
             // Scope the walk to the target's own top-level windows. Asking the desktop root for all
             // descendants of a process makes UI Automation walk every window on the machine, which
-            // takes long enough to hang the caller outright on a busy desktop.
-            var roots = desktop.FindAllChildren(condition => condition.ByProcessId(request.Process.ProcessId));
-            Pointframe.Engine.Automation.DesktopTrace.Write($"UIA inspect after FindAllChildren roots={roots.Length}");
+            // takes long enough to hang the caller outright on a busy desktop. A desktop-level
+            // ByProcessId search is no better: it asks every top-level window's provider for its
+            // process id, so one window that is starting or closing, in any process, blocks it for
+            // the whole UI Automation timeout. Native enumeration reads the owning process without
+            // calling any provider, and only the target's own windows are then touched.
+            var roots = GetProcessWindows(request.Process.ProcessId);
+            Pointframe.Engine.Automation.DesktopTrace.Write($"UIA inspect after FindAllChildren roots={roots.Count}");
             var (snapshots, truncated) = Walk(roots, request.Process.ProcessRef, generation);
             Pointframe.Engine.Automation.DesktopTrace.Write($"UIA inspect after Walk elements={snapshots.Count} truncated={truncated}");
             return new WindowsUiAutomationInspection(
@@ -62,6 +65,39 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
         }
     }
 
+    private List<AutomationElement> GetProcessWindows(int processId)
+    {
+        var handles = new List<nint>();
+        WindowsDesktopNativeMethods.EnumWindows(
+            (handle, _) =>
+            {
+                if (WindowsDesktopNativeMethods.GetWindowThreadProcessId(handle, out var owner) != 0
+                    && owner == (uint)processId
+                    && WindowsDesktopNativeMethods.IsWindowVisible(handle))
+                {
+                    handles.Add(handle);
+                }
+
+                return true;
+            },
+            0);
+
+        var roots = new List<AutomationElement>();
+        foreach (var handle in handles)
+        {
+            try
+            {
+                roots.Add(_automation.FromHandle(handle));
+            }
+            catch (FlaUI.Core.Exceptions.ElementNotAvailableException)
+            {
+                // The window closed between enumeration and lookup.
+            }
+        }
+
+        return roots;
+    }
+
     private (IReadOnlyList<DesktopUiElementSnapshot> Elements, bool Truncated) Walk(
         IReadOnlyList<AutomationElement> roots,
         string processRef,
@@ -71,6 +107,7 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
         // interactive ones a caller actually addresses, rather than the first deep branch walked.
         var budget = System.Diagnostics.Stopwatch.StartNew();
         var snapshots = new List<DesktopUiElementSnapshot>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
 
         // Each root is one top-level window, and every element inherits the ref of the window it was
         // reached through. Elements previously all carried the *process* ref, which made
@@ -95,6 +132,14 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
             var (element, depth, windowRef) = queue.Dequeue();
             try
             {
+                // An owned window, such as a message box, is a top-level root and also a child of its
+                // owner. Roots are queued first, so it is reported once, under its own window ref.
+                var runtimeId = element.Properties.RuntimeId.ValueOrDefault;
+                if (runtimeId is { Length: > 0 } && !seen.Add(string.Join('.', runtimeId)))
+                {
+                    continue;
+                }
+
                 snapshots.Add(AddElement(element, windowRef, $"el-{generation}-{snapshots.Count}"));
                 if (depth >= DesktopTestingLimits.MaxUiAutomationDepth)
                 {

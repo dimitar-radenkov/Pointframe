@@ -37,7 +37,7 @@ internal sealed class MigrationService : IMigrationService
             string.Join(", ", pendingList));
 
         _logger.LogDebug("Applying database migrations...");
-        await _context.Database.MigrateAsync();
+        await StaleLockSafeMigrator.MigrateAsync(_context, _logger);
 
         _logger.LogDebug("Database migrations applied successfully.");
     }

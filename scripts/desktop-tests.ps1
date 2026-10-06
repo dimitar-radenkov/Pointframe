@@ -142,6 +142,9 @@ $env:POINTFRAME_MCP_TEST_DEDICATED_ENVIRONMENT = '1'
 $env:SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH = $settingsPath
 $env:SNIPPINGTOOL_AUTOMATION_OUTPUT_DIRECTORY = $automationOutput
 $env:POINTFRAME_FIXTURE_EXECUTABLE = $fixtureExe
+$appDataDirectory = Join-Path $runRoot 'app-data'
+New-Item -ItemType Directory -Path $appDataDirectory -Force | Out-Null
+$env:SNIPPINGTOOL_AUTOMATION_DATA_DIRECTORY = $appDataDirectory
 
 Write-Host "Required desktop selection ($expectedPerRun tests per run):"
 $selection | ForEach-Object { Write-Host "  $($_.Class): $($_.Expected)" }

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Exceptions;
 using FlaUI.Core.Input;
 using FlaUI.UIA3;
 
@@ -11,6 +12,7 @@ namespace Pointframe.AutomationTests.Support;
 public sealed class AutomationApp : IDisposable
 {
     private const string AutomationSettingsPathEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH";
+    private const string AutomationDataDirectoryEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_DATA_DIRECTORY";
     private static readonly TimeSpan WindowTimeout = TimeSpan.FromSeconds(10);
     private readonly int _processId;
     private readonly UIA3Automation _automation;
@@ -70,8 +72,43 @@ public sealed class AutomationApp : IDisposable
 
         var application = Application.Launch(startInfo);
         var automation = new UIA3Automation();
-        var mainWindow = WaitForMainWindow(application, automation);
-        return new AutomationApp(application, automation, mainWindow);
+        try
+        {
+            var mainWindow = WaitForMainWindow(application, automation);
+            return new AutomationApp(application, automation, mainWindow);
+        }
+        catch
+        {
+            automation.Dispose();
+            KillLaunchedProcess(application);
+            throw;
+        }
+    }
+
+    private static void KillLaunchedProcess(Application application)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(application.ProcessId);
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
+            }
+        }
+        catch (ArgumentException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (Win32Exception)
+        {
+        }
+        finally
+        {
+            application.Dispose();
+        }
     }
 
     public static AutomationApp LaunchNormally(IReadOnlyDictionary<string, string>? environmentVariables = null) =>
@@ -97,17 +134,15 @@ public sealed class AutomationApp : IDisposable
         return Process.Start(startInfo) ?? throw new InvalidOperationException("Pointframe did not start.");
     }
 
-    public bool HasWindowAutomationId(string automationId) => _automation.GetDesktop()
-        .FindAllChildren(criteria => criteria.ByProcessId(_processId))
-        .Any(window => string.Equals(window.AutomationId, automationId, StringComparison.Ordinal));
+    public bool HasWindowAutomationId(string automationId) => GetProcessWindows(_processId, _automation)
+        .Any(window => string.Equals(window.Properties.AutomationId.ValueOrDefault, automationId, StringComparison.Ordinal));
 
     public void WaitForWindowTitle(string title)
     {
         var stopwatch = Stopwatch.StartNew();
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            var candidate = _automation.GetDesktop()
-                .FindAllChildren(criteria => criteria.ByProcessId(_processId))
+            var candidate = GetProcessWindows(_processId, _automation)
                 .FirstOrDefault(window => string.Equals(window.Name, title, StringComparison.Ordinal));
             if (candidate is not null)
             {
@@ -118,7 +153,8 @@ public sealed class AutomationApp : IDisposable
             Thread.Sleep(100);
         }
 
-        throw new TimeoutException($"Timed out waiting for window '{title}'.");
+        var seen = string.Join(", ", GetProcessWindows(_processId, _automation).Select(window => $"'{window.Properties.Name.ValueOrDefault}'"));
+        throw new TimeoutException($"Timed out waiting for window '{title}'. Process windows: [{seen}].");
     }
 
     public void WaitForWindowTitleToClose(string title)
@@ -126,8 +162,7 @@ public sealed class AutomationApp : IDisposable
         var stopwatch = Stopwatch.StartNew();
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            var isOpen = _automation.GetDesktop()
-                .FindAllChildren(criteria => criteria.ByProcessId(_processId))
+            var isOpen = GetProcessWindows(_processId, _automation)
                 .Any(window => string.Equals(window.Name, title, StringComparison.Ordinal));
             if (!isOpen)
             {
@@ -143,11 +178,14 @@ public sealed class AutomationApp : IDisposable
     public static AutomationApp LaunchSettingsWindow(string settingsPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(settingsPath);
+        var dataDirectory = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(settingsPath))!, "Data");
+        Directory.CreateDirectory(dataDirectory);
         return Launch(
             "--automation-open-settings",
             new Dictionary<string, string>
             {
                 [AutomationSettingsPathEnvironmentVariable] = settingsPath,
+                [AutomationDataDirectoryEnvironmentVariable] = dataDirectory,
             });
     }
 
@@ -339,6 +377,52 @@ public sealed class AutomationApp : IDisposable
         }
     }
 
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    internal static AutomationElement[] GetProcessWindows(int processId, UIA3Automation automation)
+    {
+        var windows = new List<AutomationElement>();
+        foreach (var handle in GetTopLevelWindowHandles(processId))
+        {
+            try
+            {
+                windows.Add(automation.FromHandle(handle));
+            }
+            catch (ElementNotAvailableException)
+            {
+            }
+            catch (COMException)
+            {
+            }
+        }
+
+        return [.. windows];
+    }
+
+    private static List<IntPtr> GetTopLevelWindowHandles(int processId)
+    {
+        var handles = new List<IntPtr>();
+        EnumWindows(
+            (handle, _) =>
+            {
+                GetWindowThreadProcessId(handle, out var owner);
+                if (owner == (uint)processId)
+                {
+                    handles.Add(handle);
+                }
+
+                return true;
+            },
+            IntPtr.Zero);
+        return handles;
+    }
+
     private static Window WaitForMainWindow(Application application, UIA3Automation automation)
     {
         return WaitForTopLevelWindow(application.ProcessId, automation);
@@ -347,33 +431,72 @@ public sealed class AutomationApp : IDisposable
     private static Window WaitForTopLevelWindow(int processId, UIA3Automation automation, params string[] automationIds)
     {
         var stopwatch = Stopwatch.StartNew();
+        var attempts = 0;
+        var failures = 0;
+        var lastWindowCount = -1;
+        string? lastFailure = null;
+        string lastWindows = string.Empty;
 
         while (stopwatch.Elapsed < WindowTimeout)
         {
+            attempts++;
             try
             {
-                var windows = automation.GetDesktop()
-                    .FindAllChildren(criteria => criteria.ByProcessId(processId));
+                var handles = GetTopLevelWindowHandles(processId);
+                var windows = handles
+                    .Select(handle => automation.FromHandle(handle))
+                    .Where(element => element is not null)
+                    .ToArray();
+                lastWindowCount = windows.Length;
+                lastWindows = $"{handles.Count} native handle(s); " + string.Join(", ", windows.Select(candidate => $"'{candidate.Properties.AutomationId.ValueOrDefault}'"));
                 var window = automationIds.Length == 0
-                    ? windows.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate.AutomationId))
+                    ? windows.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate.Properties.AutomationId.ValueOrDefault))
                     : windows.FirstOrDefault(candidate =>
-                        automationIds.Contains(candidate.AutomationId, StringComparer.Ordinal));
+                        automationIds.Contains(candidate.Properties.AutomationId.ValueOrDefault, StringComparer.Ordinal));
                 if (window is not null)
                 {
                     return window.AsWindow();
                 }
             }
-            catch (COMException)
+            catch (COMException ex)
             {
+                failures++;
+                lastFailure = $"{ex.GetType().Name} 0x{ex.HResult:X8} {ex.Message}";
             }
-            catch (Win32Exception)
+            catch (ElementNotAvailableException ex)
             {
+                failures++;
+                lastFailure = $"{ex.GetType().Name} {ex.InnerException?.Message ?? ex.Message}";
+            }
+            catch (TimeoutException ex)
+            {
+                failures++;
+                lastFailure = $"{ex.GetType().Name} {ex.InnerException?.Message ?? ex.Message}";
+            }
+            catch (Win32Exception ex)
+            {
+                failures++;
+                lastFailure = $"{ex.GetType().Name} {ex.Message}";
             }
 
             Thread.Sleep(100);
         }
 
-        throw new TimeoutException("Timed out waiting for SnippingTool to open its automation window.");
+        var exited = false;
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            exited = process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            exited = true;
+        }
+
+        throw new TimeoutException(
+            $"Timed out waiting for SnippingTool to open its automation window. Process {processId} exited={exited}; "
+            + $"{attempts} attempts, {failures} UIA failures (last: {lastFailure ?? "none"}); "
+            + $"last enumeration saw {lastWindowCount} window(s) [{lastWindows}]; wanted [{string.Join(", ", automationIds)}].");
     }
 
     private Button FindButton(string automationId)

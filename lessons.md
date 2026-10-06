@@ -1659,3 +1659,17 @@ The parent now sends `uia.ping` immediately after starting each worker. The ping
 ### Takeaway
 
 Warm up UI Automation in the worker before serving requests, and bound retries so one unresponsive provider cannot create an infinite startup loop.
+
+## A desktop-wide UI Automation search by process id hangs on any other window
+
+### Problem
+
+The required desktop tests failed intermittently with "Timed out waiting for SnippingTool to open its automation window" and, in the MCP worker, `uiaStatus Unavailable` with zero elements. A diagnostic message showed the wait loop had made one attempt in ten seconds: `desktop.FindAllChildren(ByProcessId(pid))` was a single blocked call, not a series of failures. UI Automation asks every top-level window on the desktop for its process id, so one window that is starting or closing, in any process, stalls the whole search for the provider timeout. Separately, `Pointframe.exe` launched by `AutomationApp.LaunchSettingsWindow` had no `SNIPPINGTOOL_AUTOMATION_DATA_DIRECTORY`, so it migrated the user's real `pointframe.db`, and an app killed mid-migration left a row in `__EFMigrationsLock` that made EF Core wait forever on every later launch.
+
+### What fixed it
+
+Windows are found with `EnumWindows` and `GetWindowThreadProcessId` and only the target's own handles go through `FromHandle` (`AutomationApp.GetProcessWindows`, `FlaUiWindowsUiAutomationBackend.GetProcessWindows`). A freshly created window can still throw `PropertyNotSupportedException`, `ElementNotAvailableException` or a UIA `TimeoutException`, so wait loops read properties with `ValueOrDefault` and retry. An owned window such as a message box is both a root and a child of its owner, so the walk skips runtime ids it has seen. `AutomationApp.Launch` kills the app when the window wait fails. `StaleLockSafeMigrator` waits five seconds for a migration lock row and then clears it. `scripts/desktop-tests.ps1` gives every run its own data directory.
+
+### Takeaway
+
+Never search the UI Automation desktop root by a process condition; enumerate native windows and look up only the target's handles. Give every test-launched app an isolated data directory, and kill an app the harness could not drive so it cannot block the next test.
