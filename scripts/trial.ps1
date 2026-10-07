@@ -48,6 +48,7 @@ $script:AllowedEnvironment = @(
     'DOTNET_ROOT', 'DOTNET_ROOT(x86)', 'DOTNET_CLI_HOME', 'DOTNET_NOLOGO', 'DOTNET_CLI_TELEMETRY_OPTOUT',
     'NUGET_PACKAGES', 'NUGET_HTTP_CACHE_PATH'
 )
+$script:BuildServerNames = @('dotnet.exe', 'VBCSCompiler.exe', 'MSBuild.exe', 'conhost.exe')
 $script:ForbiddenPattern = '^(POINTFRAME_.*|ELECTRON_RUN_AS_NODE)$'
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -621,7 +622,7 @@ function Exit-DesktopLock {
 
 function Invoke-Git {
     param([string]$WorkingDirectory, [string[]]$Arguments, [switch]$AllowFailure)
-    $output = @(& git -C $WorkingDirectory @Arguments 2>&1 | ForEach-Object { "$_" })
+    $output = @(& git -c core.longpaths=true -C $WorkingDirectory @Arguments 2>&1 | ForEach-Object { "$_" })
     if ($LASTEXITCODE -ne 0 -and -not $AllowFailure) { throw "git $($Arguments -join ' ') failed (exit $LASTEXITCODE): $($output -join ' ')" }
     return ($output -join "`n")
 }
@@ -643,7 +644,7 @@ function New-TrialClone {
         if ($has.Trim() -eq 'commit') { $source = $cache; $fromCache = $true }
     }
     if (Test-Path $Destination) { Remove-Item -Recurse -Force $Destination }
-    & git clone -q --no-checkout $source $Destination 2>&1 | Out-Null
+    & git -c core.longpaths=true clone -q --no-checkout -c core.longpaths=true $source $Destination 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "git clone from $source failed." }
     Invoke-Git $Destination @('checkout', '-q', '--detach', $AppEntry.commit) | Out-Null
     $head = (Invoke-Git $Destination @('rev-parse', 'HEAD')).Trim()
@@ -915,7 +916,9 @@ function Invoke-Trial {
         $recordedAll = @(Find-TrialProcesses (Get-ProcessTable) 0 $null @($trialDirectory) $run.Recorded)
         $leftover = @(Select-ProcessesToKill $recordedAll (Get-ProcessTable))
         if (-not $run.TimedOut) {
-            $facts.leftoverProcesses = $leftover.Count
+            # dotnet build servers (MSBuild nodes, Roslyn) and their console hosts outlive any `dotnet build` by design;
+            # they are still stopped below but do not count as the agent leaving its app running.
+            $facts.leftoverProcesses = @($leftover | Where-Object { $script:BuildServerNames -notcontains $_.Name }).Count
             $record.leftover = @($leftover | ForEach-Object { [ordered]@{ pid = $_.Pid; start = $_.Start; name = $_.Name; path = $_.Path } })
         }
         [void](Stop-RecordedProcesses $leftover)
