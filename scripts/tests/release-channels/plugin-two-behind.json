@@ -1,0 +1,11 @@
+{
+  "file": "plugin-two-behind.json",
+  "expected": "failed",
+  "input": {
+    "previous": "6.7.87",
+    "current": "6.7.86",
+    "version": "6.7.88"
+  },
+  "kind": "plugin",
+  "expectedDetail": ""
+}
