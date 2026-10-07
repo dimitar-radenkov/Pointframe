@@ -14,7 +14,7 @@ Last full review against the code: 2026-09-05.
 | A decision that spans areas | `docs/knowledge-base/decisions.md` |
 | One area's features, flows, entry points, area-only invariants, recipes, and decisions, its lessons | `docs/knowledge-base/features/<area>.md` |
 | Bug post-mortems (Problem, Root cause, What fixed it, Takeaway) | `lessons.md`, then a `- Lesson:` line in the owning section |
-| Roadmap, plans, task status | `plan/` (local-only, not in git) |
+| Roadmap, plans, task status, executor cost records | `plan/` |
 | Contributor setup | `docs/developer-guide.md` |
 | Per-session instructions | `CLAUDE.md`, one line per topic pointing here |
 | Test counts, PR numbers, "verified on my machine" | The PR description |
@@ -112,6 +112,7 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 | `scripts/usage-report.ps1`, `scripts/tests/usage-report/**` | Usage report from Application Insights (activation, cohorts, retention, onboarding, failures, website) and the offline fixtures its `-SelfTest` shapes | [Telemetry](features/telemetry.md#telemetry-pipeline) |
 | `scripts/measure-mcp-payloads.ps1` | Offline self-test and MCP stdio payload inventory with a per-run fixture desktop policy | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
 | `scripts/merge-pr.ps1`, `scripts/tests/merge-pr/**` | Agent merge tool: receipt-gated checked-head merge, `-PinOnly`, optional auto-merge wait and cleanup; offline fixtures for decisions and receipts | [CI, CD, and versioning](#ci-cd-and-versioning) |
+| `scripts/agent-run.ps1`, `scripts/tests/agent-run/**` | Checked Codex executor launcher with brief and policy validation, runtime budgets, token accounting, and cost records; offline decision fixtures | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/status.ps1`, `scripts/tests/status/**` | Authoritative status store, GitHub #186 and handoff renderer; offline rendering fixtures | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/lib/tree-hash.ps1` | Shared working-tree hash and verify receipt freshness decisions used by verify and merge scripts | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/check-agent-discovery.ps1`, `scripts/tests/agent-discovery/**` | Offline check of the agent page, llms.txt, and directory drafts against README, packaging, and the CD asset list; `-Online`, `-Snapshot`; its good fixture tree | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
@@ -438,6 +439,8 @@ pwsh scripts/verify.ps1 -Skip kb,format                    # leave gates out whi
 **Merging a pull request.** Order: commit work -> `pwsh scripts/merge-pr.ps1 -PinOnly -Worktree <path>` -> `pwsh scripts/verify.ps1` -> push and `gh pr create` -> `pwsh scripts/merge-pr.ps1 -Pr <number|branch> -Worktree <path> -Auto`. `-PinOnly` updates and commits the plugin pin locally before verification. With a worktree, both waiting merge and `-Auto` require artifacts/verify/verdict.json to be complete/pass and match the PR head and current working-tree hash; `-NoReceipt` bypasses this with a warning. Waiting mode requires every configured check to be present with none pending, then squash-merges with `--match-head-commit`; cleanup occurs only after GitHub says MERGED. `-Auto` refuses a stale plugin pin and prints `AUTO-MERGE ENABLED (not merged yet)` on success. Add `-WaitMerged` to poll through merge and clean up; it stops on CLOSED, failed/cancelled checks, or timeout. Exit 1: receipt refusal, failed/cancelled check, timeout, closed PR, or merge not completed; 2: gh missing or unauthenticated; 3: conflicting PR; 4: `git pull --ff-only` failed after merge. `-SelfTest` covers decision and receipt fixtures under `scripts/tests/merge-pr/`.
 
 Status lives in plan/status.json; `scripts/status.ps1 -Publish` renders GitHub issue #186 and the owned handoff region. Publish at every stage change.
+
+Every Codex executor run goes through `scripts/agent-run.ps1`; Sonnet subagent briefs are checked with `-ValidateOnly`. Each run appends one cost record to the local, gitignored agent-runs.jsonl under plan/, the cost source for the weekly retro.
 
 - Lesson: PowerShell variable names are case-insensitive, so a local can collide with a switch parameter
 
