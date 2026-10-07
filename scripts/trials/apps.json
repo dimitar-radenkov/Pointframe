@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "workaroundPatterns": [
+    "BeginInvoke",
+    "Thread\\.Sleep",
+    "Application\\.DoEvents",
+    "SendKeys",
+    "Task\\.Delay",
+    "PostMessage"
+  ],
+  "sourceExtensions": [".cs", ".vb", ".fs", ".xaml", ".cpp", ".h", ".js", ".ts", ".html"],
+  "preservePaths": [".pointframe", ".mcp.json", ".claude", ".codex"],
+  "ignoredPaths": [".pointframe", ".mcp.json", ".claude", ".codex", "AGENTS.md", "artifacts", "bin", "obj", "node_modules", "package-lock.json"],
+  "apps": {
+    "pkhex": {
+      "repoUrl": "https://github.com/kwsch/PKHeX",
+      "commit": "2da87edbfd4e43a35b45500d15876165538bd769",
+      "cacheName": "PKHeX",
+      "change": "Add a new menu item with the text \"About Trial\" to the application's main menu (under an existing top-level menu such as Help or Options). Clicking it must show a message box whose text is exactly \"Trial OK\".",
+      "changeMarkers": ["About Trial", "Trial OK"],
+      "expectedDefectFailure": { "codes": ["ElementNotFound", "CheckFailed"], "mention": "About Trial" },
+      "workaroundPatterns": []
+    },
+    "dngrep": {
+      "repoUrl": "https://github.com/dnGrep/dnGrep",
+      "commit": "86d9f934a4032470a4809af22071d50420c6bf35",
+      "cacheName": "dnGrep",
+      "change": "Add a new button with the text \"Trial\" to the main window, next to the existing search controls. Clicking it must change the window's status bar text (or show a message box if there is no status bar) to exactly \"Trial OK\".",
+      "changeMarkers": ["Trial"],
+      "expectedDefectFailure": { "codes": ["ElementNotFound", "CheckFailed"], "mention": "Trial" },
+      "workaroundPatterns": []
+    },
+    "electron": {
+      "repoUrl": "https://github.com/electron/minimal-repro",
+      "commit": "82dbb35bb939f5263917e17cd8cf59bb95561dba",
+      "cacheName": "minimal-repro",
+      "change": "Add a button with the visible label \"Trial\" to the page. Clicking it must change the main heading text to exactly \"Trial OK\".",
+      "changeMarkers": ["Trial"],
+      "expectedDefectFailure": { "codes": ["ElementNotFound", "CheckFailed"], "mention": "Trial" },
+      "workaroundPatterns": ["setTimeout", "setImmediate"]
+    }
+  }
+}
