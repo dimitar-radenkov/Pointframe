@@ -12,7 +12,7 @@ Gates, in order: preflight (no running process locks the Release output), build 
 format (dotnet format --verify-no-changes on the main project), tests (unit lane, Category!=Integration),
 kb (scripts/kb.ps1 check -NoFix), workflows (scripts/check-workflow-scripts.ps1: its self-test, then every pwsh
 run: block in .github/workflows must parse), discovery (scripts/check-agent-discovery.ps1: its self-test, then the offline
-checks of the agent page, llms.txt, directory drafts, install commands, and release asset names). Tests are skipped when the build fails; every other gate always
+checks of the agent page, llms.txt, directory drafts, install commands, and release asset names), scripts (scripts/test-scripts.ps1: every coordinator script's offline self-test, and no ignored fixture). Tests are skipped when the build fails; every other gate always
 runs, so one pass reports every problem.
 
 Writes artifacts/verify/verdict.json (status, gates, failure details, working-tree hash, and environment fingerprint)
@@ -31,7 +31,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'lib/tree-hash.ps1')
 
-$GateNames = @('preflight', 'build', 'format', 'tests', 'kb', 'workflows', 'discovery')
+$GateNames = @('preflight', 'build', 'format', 'tests', 'kb', 'workflows', 'discovery', 'scripts')
 $Skip = @($Skip | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $unknown = @($Skip | Where-Object { $GateNames -notcontains $_ })
 if ($unknown.Count -gt 0)
@@ -247,6 +247,18 @@ function Test-Discovery
     New-Gate 'discovery' 'fail' "$($problems.Count) agent discovery problem(s)." $details $run.Log
 }
 
+function Test-Scripts
+{
+    $run = Invoke-Logged 'scripts' 'pwsh' @('-NoProfile', '-NonInteractive', '-File', (Join-Path $RepoRoot 'scripts' 'test-scripts.ps1'))
+    if ($run.ExitCode -eq 0)
+    {
+        return New-Gate 'scripts' 'pass' ($run.Lines | Select-Object -Last 1) -Log $run.Log
+    }
+    $problems = @($run.Lines | Where-Object { $_ -match '^FAIL ' } | ForEach-Object { $_.Trim() })
+    $details = @('Fix the script or its fixtures, then run pwsh scripts/test-scripts.ps1.') + $problems
+    New-Gate 'scripts' 'fail' "$($problems.Count) script self-test problem(s)." $details $run.Log
+}
+
 $started = Get-Date
 $gates = [System.Collections.Generic.List[object]]::new()
 $checks = [ordered]@{
@@ -257,6 +269,7 @@ $checks = [ordered]@{
     kb = { Test-Kb }
     workflows = { Test-Workflows }
     discovery = { Test-Discovery }
+    scripts = { Test-Scripts }
 }
 
 try
