@@ -32,6 +32,7 @@
 !docs/cli/verify-spec.md
 !Pointframe.Mcp/Guides/*.md
 !plugin/**/*.md
+!scripts/tests/**/*.md
 
 # Claude Code per-user settings
 .claude/settings.local.json
@@ -399,3 +400,7 @@ MigrationBackup/
 
 # Built installers — 100+ MB artifacts, produced by installer/build-installer.ps1
 installer/output/
+
+# Local coordination state written by scripts/status.ps1 and scripts/agent-run.ps1
+plan/*.json
+plan/*.jsonl
