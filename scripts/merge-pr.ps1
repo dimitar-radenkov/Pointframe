@@ -25,8 +25,10 @@ Rules, each from a past incident:
   - -Auto does not wait and does not clean up. It refuses a CONFLICTING, closed or failing pull request, otherwise runs
     gh pr merge --auto --squash --delete-branch and exits 0; GitHub merges once the repository's required checks pass.
     A -Worktree is NOT removed in this mode (it is still needed until the merge); remove it afterwards by hand.
-  - Pin before verify: commit work -> -PinOnly -Worktree -> verify.ps1 -> push + gh pr create -> -Auto -Worktree.
-    Auto requires a complete passing receipt for the PR head and current worktree. Use -NoReceipt only for non-worktree PRs.
+  - Order: commit work -> -PinOnly -Worktree -> verify.ps1 -> push + gh pr create -> -Auto -Worktree.
+    Auto requires a complete passing receipt for the PR head and current worktree, or for an ancestor whose only later
+    change is the plugin pin (then check-agent-discovery.ps1 must pass). If a release lands after verify, -Auto commits and
+    pushes the pin itself, so no second verify.ps1 is needed. Use -NoReceipt only for non-worktree PRs.
 
 Exit codes: 0 merged and cleaned up (or -DryRun finished, or -Auto enabled auto-merge / found the PR merged), 1 check failed, timeout, closed PR, or merge did not
 complete, 2 gh missing or not authenticated or bad arguments, 3 merge conflict, 4 pull after merge failed.
@@ -216,6 +218,18 @@ function Invoke-SelfTest
         if ($got.Ok -ne [bool]$fx.expect.ok -or ($expectReason -and $got.Reason -notlike "*$expectReason*"))
         { $failures.Add("receipt/$($file.Name): expected $($fx.expect.ok) '$expectReason', got $($got.Ok) '$($got.Reason)'") }
     }
+    $pinOnlyDir = Join-Path $fixtureDir 'pin-only'
+    foreach ($file in @(Get-ChildItem -LiteralPath $pinOnlyDir -Filter '*.json' -File | Sort-Object Name))
+    {
+        $fx = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+        $got = Test-PinOnlyChange $fx.receipt ([string]$fx.verifiedCommitTree) ([bool]$fx.isAncestor) ([string]$fx.headTree) ([string]$fx.currentTree) @($fx.changed)
+        $count++
+        $expectReason = if ($fx.expect.PSObject.Properties['reason']) { [string]$fx.expect.reason } else { '' }
+        if ($got.Ok -ne [bool]$fx.expect.ok -or ($expectReason -and $got.Reason -notlike "*$expectReason*"))
+        {
+            $failures.Add("pin-only/$($file.Name): expected $($fx.expect.ok) '$expectReason', got $($got.Ok) '$($got.Reason)'")
+        }
+    }
     $count++
     if ((Get-PostMergeDecision 'OPEN') -ne 'Stop' -or (Get-PostMergeDecision 'CLOSED') -ne 'Stop' -or (Get-PostMergeDecision 'MERGED') -ne 'Cleanup')
     {
@@ -341,6 +355,66 @@ function Invoke-MergedCleanup([string]$Branch)
     exit 0
 }
 
+function Test-MergeReceipt([string]$WorktreePath, [string]$PrHead)
+{
+    # The receipt must describe the PR head's tree, or an ancestor whose only later change is the plugin pin
+    # (then the offline discovery check, which validates the pin files, must pass too).
+    $root = (Resolve-Path -LiteralPath $WorktreePath).Path
+    $currentTree = Get-WorkingTreeHash $root
+    $receipt = Read-VerifyReceipt (Join-Path $root 'artifacts' 'verify' 'verdict.json')
+    $exact = Test-VerifyReceiptObject $receipt $PrHead $currentTree
+    if ($exact.Ok -or -not $receipt -or $exact.Reason -notmatch '^(head|tree) mismatch')
+    {
+        return $exact
+    }
+
+    $verified = [string]$receipt.head
+    $verifiedTree = [string](& git -C $root rev-parse "$verified^{tree}" 2>$null)
+    & git -C $root merge-base --is-ancestor $verified $PrHead 2>$null
+    $isAncestor = $LASTEXITCODE -eq 0
+    $headTree = [string](& git -C $root rev-parse "$PrHead^{tree}" 2>$null)
+    $changed = @(& git -C $root diff --name-only $verified $PrHead 2>$null)
+    $pinOnly = Test-PinOnlyChange $receipt $verifiedTree.Trim() $isAncestor $headTree.Trim() $currentTree $changed
+    if (-not $pinOnly.Ok)
+    {
+        return $pinOnly
+    }
+
+    $discovery = & pwsh -NoProfile -NonInteractive -File (Join-Path $root 'scripts' 'check-agent-discovery.ps1') 2>&1
+    if ($LASTEXITCODE -ne 0)
+    {
+        return [pscustomobject]@{ Ok = $false; Reason = "pin-only change, but check-agent-discovery.ps1 failed: $(@($discovery)[-1])" }
+    }
+    [pscustomobject]@{ Ok = $true; Reason = "$($pinOnly.Reason); discovery check passed" }
+}
+
+function Push-PluginPin([string]$WorktreePath, [string]$PullRequest)
+{
+    # -Auto moves a stale pin itself: commit, push, and wait until GitHub reports the pushed commit as the PR head.
+    $root = (Resolve-Path -LiteralPath $WorktreePath).Path
+    if (-not (Update-PluginPin $root))
+    {
+        return
+    }
+    & git -C $root push -q 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Host 'ERROR pushing the plugin pin failed; not enabling auto-merge.'
+        exit 1
+    }
+    $pushed = (& git -C $root rev-parse HEAD).Trim()
+    for ($attempt = 0; $attempt -lt 30; $attempt++)
+    {
+        if ((& gh pr view $PullRequest --json headRefOid -q .headRefOid) -eq $pushed)
+        {
+            return
+        }
+        Start-Sleep -Seconds 2
+    }
+    Write-Host "ERROR the pull request head did not reach the pushed pin commit $pushed; not enabling auto-merge."
+    exit 1
+}
+
 function Get-PrJson
 {
     $text = & gh pr view $Pr --json number,state,headRefName,headRefOid,mergeable,mergeStateStatus 2>&1
@@ -373,17 +447,20 @@ function Get-ChecksJson
 if ($Auto)
 {
     $prInfo = Get-PrJson
+    if ($Worktree -and -not $NoPluginPin -and $prInfo.state -eq 'OPEN' -and (Test-PluginPinBehind $Worktree))
+    {
+        # A release landed after verify.ps1 ran; a pin-only commit does not need another full verify.
+        Push-PluginPin $Worktree $Pr
+        $prInfo = Get-PrJson
+    }
     if ($Worktree -and -not $NoReceipt -and $prInfo.state -eq 'OPEN')
     {
-        try { $currentTree = Get-WorkingTreeHash (Resolve-Path -LiteralPath $Worktree).Path }
-        catch { Write-Host "RECEIPT REFUSED: tree hash failed: $_"; exit 1 }
-        $receiptPath = Join-Path $Worktree 'artifacts' 'verify' 'verdict.json'
-        $receiptCheck = Test-VerifyReceiptObject (Read-VerifyReceipt $receiptPath) ([string]$prInfo.headRefOid) $currentTree
+        try { $receiptCheck = Test-MergeReceipt $Worktree ([string]$prInfo.headRefOid) }
+        catch { Write-Host "RECEIPT REFUSED: receipt check failed: $_"; exit 1 }
         if (-not $receiptCheck.Ok) { Write-Host "RECEIPT REFUSED: $($receiptCheck.Reason)"; exit 1 }
+        Write-Host "Receipt: $($receiptCheck.Reason)"
     }
     elseif ($NoReceipt) { Write-Host 'WARNING: -NoReceipt skips the verify receipt gate.' }
-    if ($Worktree -and -not $NoPluginPin -and $prInfo.state -eq 'OPEN' -and (Test-PluginPinBehind $Worktree))
-    { Write-Host 'plugin pin is behind: run -PinOnly, then verify.ps1 again'; exit 1 }
     $checks = if ($prInfo.state -eq 'OPEN') { Get-ChecksJson } else { @() }
     $decision = Get-AutoDecision $prInfo $checks $Required
     Write-Host "PR #$($prInfo.number) $($prInfo.headRefName) @ $($decision.Head): $($decision.Action) - $($decision.Reason)"
@@ -475,9 +552,8 @@ while ($true)
     $decision = Get-MergeDecision $prInfo $checks $Required
     if ($Worktree -and -not $NoReceipt -and $prInfo.state -eq 'OPEN')
     {
-        try { $currentTree = Get-WorkingTreeHash (Resolve-Path -LiteralPath $Worktree).Path }
-        catch { Write-Host "RECEIPT REFUSED: tree hash failed: $_"; exit 1 }
-        $receiptCheck = Test-VerifyReceiptObject (Read-VerifyReceipt (Join-Path $Worktree 'artifacts' 'verify' 'verdict.json')) ([string]$prInfo.headRefOid) $currentTree
+        try { $receiptCheck = Test-MergeReceipt $Worktree ([string]$prInfo.headRefOid) }
+        catch { Write-Host "RECEIPT REFUSED: receipt check failed: $_"; exit 1 }
         if (-not $receiptCheck.Ok) { Write-Host "RECEIPT REFUSED: $($receiptCheck.Reason)"; exit 1 }
     }
     Write-Host "PR #$($prInfo.number) $($prInfo.headRefName) @ $($decision.Head): $($decision.Action) - $($decision.Reason)"
