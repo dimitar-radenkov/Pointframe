@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "version": "6.7.86",
-  "asset": "Pointframe.Mcp-6.7.86-win-x64.mcpb",
-  "url": "https://github.com/dimitar-radenkov/Pointframe/releases/download/v6.7.86/Pointframe.Mcp-6.7.86-win-x64.mcpb",
-  "sha256": "d782e34a0f816e7f5f3d133cf324a252ae7c5aa0a968e4e94971618658444628"
+  "version": "6.7.87",
+  "asset": "Pointframe.Mcp-6.7.87-win-x64.mcpb",
+  "url": "https://github.com/dimitar-radenkov/Pointframe/releases/download/v6.7.87/Pointframe.Mcp-6.7.87-win-x64.mcpb",
+  "sha256": "39e17199beab46b00dd39262ee980cffa3147e207e8a7330a13c8a75e73701b6"
 }

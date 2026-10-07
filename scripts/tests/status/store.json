@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "jobs": [
+    {"id":"live","objective":"pipe a|b","accountable":"Claude","stage":"working","artifact":"abc","evidence":"evidence","next":"continue","blocker":"","state":"active","updatedUtc":"2026-10-07T00:00:00Z","history":[{"utc":"2026-10-07T00:00:00Z","stage":"working","note":"step"}]},
+    {"id":"done-job","objective":"finished","accountable":"Claude","stage":"done","artifact":"","evidence":"","next":"","blocker":"","state":"done","updatedUtc":"2026-10-07T00:00:00Z","history":[]}
+  ],
+  "decisions": [
+    {"utc":"2026-10-07","objective":"decision row","accountable":"Claude","decision":"keep","scope":"scripts","evidence":"proof","recovery":"revert","outcome":"done","published":false}
+  ]
+}
