@@ -452,7 +452,7 @@ if ($Publish)
     Remove-Item $temporaryPath -Force
     if ($LASTEXITCODE -ne 0) { throw 'gh issue edit failed.' }
     [IO.File]::WriteAllText($handoffFullPath, $newHandoff, [Text.UTF8Encoding]::new($false))
-    foreach ($decision in @($store.decisions | Where-Object { -not $_.published })) { $decision.published = $true }
+    foreach ($publishedDecision in @($store.decisions | Where-Object { -not $_.published })) { $publishedDecision.published = $true }
     Save-Store $store $StorePath
     exit 0
 }
