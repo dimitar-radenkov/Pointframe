@@ -44,6 +44,7 @@ param(
     [switch]$PinOnly,
     [switch]$NoReceipt,
     [switch]$WaitMerged,
+    [string]$StatusId,
     [switch]$SelfTest
 )
 
@@ -138,6 +139,20 @@ function Test-ReceiptFixture
     if ($Fixture.PSObject.Properties['missing'] -and $Fixture.missing) { $receipt = $null }
     $environment = if ($Fixture.PSObject.Properties['environment']) { $Fixture.environment } else { $null }
     Test-VerifyReceiptObject $receipt 'head-a' 'tree-a' $environment
+}
+
+function Update-Status([string]$Stage, [string]$Artifact, [string]$Blocker)
+{
+    if (-not $StatusId) { return }
+    $statusScript = Join-Path $PSScriptRoot 'status.ps1'
+    # Success stages pass no blocker, which clears an earlier one ('none').
+    $statusArguments = @('-NoProfile', '-File', $statusScript, '-Set', '-Id', $StatusId, '-Stage', $Stage)
+    $statusArguments += @('-Blocker', $(if ($Blocker) { $Blocker } else { 'none' }))
+    if ($Artifact)
+    {
+        $statusArguments += @('-Artifact', $Artifact)
+    }
+    & pwsh @statusArguments
 }
 
 # ------------------------------------------------------------------------- self-test
@@ -379,11 +394,13 @@ if ($Auto)
     }
     if ($decision.Action -eq 'Conflict')
     {
+        Update-Status "auto-merge refused #$($prInfo.number)" '' $decision.Reason
         exit 3
     }
     if ($decision.Action -in 'Fail', 'Closed')
     {
         Write-Host 'NOT ENABLING AUTO-MERGE.'
+        Update-Status "auto-merge refused #$($prInfo.number)" '' $decision.Reason
         exit 1
     }
     $mergeArgs = @('pr', 'merge', [string]$prInfo.number, '--auto', '--squash', '--delete-branch')
@@ -404,6 +421,7 @@ if ($Auto)
     }
     $out | Select-Object -Last 3 | ForEach-Object { Write-Host $_ }
     Write-Host 'AUTO-MERGE ENABLED (not merged yet)'
+    Update-Status "auto-merge enabled #$($prInfo.number)" ([string]$decision.Head) ''
     if ($Worktree)
     {
         Write-Host "Worktree '$Worktree' was NOT removed; clean it up after the merge (git worktree remove, git branch -D, git pull --ff-only)."
@@ -420,15 +438,16 @@ if ($Auto)
                 Write-Host 'WAIT state=MERGED pending=0 failed=0'
                 $mergeSha = [string](& gh pr view $waitPr.number --json mergeCommit -q .mergeCommit.oid)
                 Write-Host "MERGED $mergeSha"
+                Update-Status "merged #$($waitPr.number)" $mergeSha ''
                 Invoke-MergedCleanup ([string]$waitPr.headRefName)
             }
-            if ($waitPr.state -eq 'CLOSED') { Write-Host 'WAIT STOPPED: PR is CLOSED.'; exit 1 }
+            if ($waitPr.state -eq 'CLOSED') { Write-Host 'WAIT STOPPED: PR is CLOSED.'; Update-Status "wait stopped #$($waitPr.number)" '' 'PR is CLOSED'; exit 1 }
             $waitChecks = Get-ChecksJson
             $failedChecks = @($waitChecks | Where-Object { $_.bucket -in 'fail', 'cancel' })
             $pendingChecks = @($waitChecks | Where-Object { $_.bucket -eq 'pending' })
             Write-Host "WAIT state=$($waitPr.state) pending=$($pendingChecks.Count) failed=$($failedChecks.Count)"
-            if ($failedChecks.Count -gt 0) { Write-Host "WAIT STOPPED: failed/cancelled checks: $(($failedChecks | ForEach-Object { $_.name }) -join ', ')"; exit 1 }
-            if ((Get-Date) -ge $deadline) { Write-Host "WAIT STOPPED: timeout after $TimeoutMinutes minutes."; exit 1 }
+            if ($failedChecks.Count -gt 0) { $reason = "failed/cancelled checks: $(($failedChecks | ForEach-Object { $_.name }) -join ', ')"; Write-Host "WAIT STOPPED: $reason"; Update-Status "wait stopped #$($waitPr.number)" '' $reason; exit 1 }
+            if ((Get-Date) -ge $deadline) { $reason = "timeout after $TimeoutMinutes minutes"; Write-Host "WAIT STOPPED: $reason."; Update-Status "wait stopped #$($waitPr.number)" '' $reason; exit 1 }
         }
     }
     exit 0
@@ -465,15 +484,18 @@ while ($true)
 
     if ($decision.Action -eq 'Conflict')
     {
+        Update-Status "merge refused #$($prInfo.number)" '' $decision.Reason
         exit 3
     }
     if ($decision.Action -eq 'Fail')
     {
         Write-Host 'NOT MERGING: a check failed.'
+        Update-Status "merge refused #$($prInfo.number)" '' $decision.Reason
         exit 1
     }
     if ($decision.Action -eq 'Closed')
     {
+        Update-Status "merge refused #$($prInfo.number)" '' $decision.Reason
         exit 1
     }
     if ($decision.Action -ne 'Wait')
@@ -517,7 +539,11 @@ Write-Host "#$($prInfo.number) state: $state"
 if ((Get-PostMergeDecision $state) -ne 'Cleanup')
 {
     Write-Host 'NOT CLEANING UP: the pull request is not MERGED (the head may have changed after the checks, or the merge was refused). Nothing was deleted.'
+    Update-Status "merge refused #$($prInfo.number)" '' "PR state is $state after merge attempt"
     exit 1
 }
+
+$mergeSha = [string](& gh pr view $prInfo.number --json mergeCommit -q .mergeCommit.oid)
+Update-Status "merged #$($prInfo.number)" $mergeSha ''
 
 Invoke-MergedCleanup ([string]$prInfo.headRefName)
