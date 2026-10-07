@@ -1,0 +1,1 @@
+{"receipt":{"status":"pass","complete":true,"head":"v1","treeHash":"tree-v1"},"verifiedCommitTree":"tree-v1","isAncestor":true,"headTree":"tree-h","currentTree":"tree-h","changed":["plugin/pointframe/server.lock.json","plugin/pointframe/.claude-plugin/plugin.json"],"expect":{"ok":true,"reason":"only the plugin pin"}}

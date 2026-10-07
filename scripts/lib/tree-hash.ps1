@@ -82,3 +82,52 @@ function Read-VerifyReceipt([string]$Path)
         $null
     }
 }
+
+# The two files the Claude plugin pin rewrites. After every release the next PR must move the pin, and verify.ps1 does
+# not need to run again for that change alone (check-agent-discovery.ps1 validates those files offline).
+$script:PluginPinFiles = @('plugin/pointframe/server.lock.json', 'plugin/pointframe/.claude-plugin/plugin.json')
+
+function Test-PinOnlyChange
+{
+    # Pure decision: does a receipt for the verified commit still cover the PR head? Only when verify.ps1 hashed exactly
+    # that commit's tree (no uncommitted changes), the commit is an ancestor of the head, the worktree is the head's
+    # tree, and every path changed since then is a plugin pin file.
+    param(
+        $Receipt,
+        [string]$VerifiedCommitTree,
+        [bool]$IsAncestor,
+        [string]$HeadTree,
+        [string]$CurrentTree,
+        [string[]]$ChangedPaths
+    )
+
+    $result = { param($ok, $reason) [pscustomobject]@{ Ok = $ok; Reason = $reason } }
+    $base = Test-VerifyReceiptObject $Receipt ([string]$Receipt.head) ([string]$Receipt.treeHash)
+    if (-not $base.Ok)
+    {
+        return & $result $false $base.Reason
+    }
+    if ([string]$Receipt.treeHash -ne $VerifiedCommitTree)
+    {
+        return & $result $false 'tree mismatch (the verified tree had uncommitted changes)'
+    }
+    if (-not $IsAncestor)
+    {
+        return & $result $false 'head mismatch (the verified commit is not an ancestor of the PR head)'
+    }
+    if ($CurrentTree -ne $HeadTree)
+    {
+        return & $result $false 'tree mismatch (the worktree differs from the PR head)'
+    }
+    $changed = @($ChangedPaths | Where-Object { $_ })
+    if ($changed.Count -eq 0)
+    {
+        return & $result $false 'head mismatch (no change since the verified commit, yet a different head)'
+    }
+    $other = @($changed | Where-Object { $script:PluginPinFiles -notcontains $_ })
+    if ($other.Count -gt 0)
+    {
+        return & $result $false "head mismatch (changed since verify: $($other -join ', '))"
+    }
+    & $result $true 'only the plugin pin changed since the verified commit'
+}

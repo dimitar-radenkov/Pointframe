@@ -1,0 +1,1 @@
+{"receipt":{"status":"fail","complete":false,"head":"v1","treeHash":"tree-v1"},"verifiedCommitTree":"tree-v1","isAncestor":true,"headTree":"tree-h","currentTree":"tree-h","changed":["plugin/pointframe/server.lock.json"],"expect":{"ok":false,"reason":"not pass"}}
