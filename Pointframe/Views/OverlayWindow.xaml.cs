@@ -99,7 +99,7 @@ public partial class OverlayWindow : Window
                 SyncToolbarToSelectedTool();
                 AnnotationCanvas.Cursor = _vm.SelectedTool == AnnotationTool.Text ? Cursors.IBeam : Cursors.Cross;
                 var hex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
-                System.Windows.Clipboard.SetText(hex);
+                _vm.CopyText(hex);
                 ShowOcrToast($"Copied {hex}");
             },
             onLoupePositionChanged: pt => UpdateLoupe(pt));

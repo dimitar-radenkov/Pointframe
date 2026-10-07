@@ -68,6 +68,8 @@ public partial class OverlayViewModel : AnnotationViewModel
 
     public string ShareButtonLabel => IsSharing ? "Uploading…" : "Upload & copy link";
 
+    public void CopyText(string text) => _clipboardService.SetText(text);
+
     public string ShareButtonIcon => IsSharing ? "…" : "\uE72A";
 
     public string OverlayCopyHotkeyDisplayName => new HotkeyBinding(_settings.Current.OverlayCopyHotkey, _settings.Current.OverlayCopyHotkeyModifiers).DisplayName;

@@ -154,7 +154,7 @@ internal sealed class OcrLassoController
             return;
         }
 
-        System.Windows.Clipboard.SetText(text);
+        _viewModel.CopyText(text);
         _telemetry.TrackEvent(TelemetryEvents.OcrUsed, ocrProps);
         _showToast("✓ Text copied to clipboard");
     }
