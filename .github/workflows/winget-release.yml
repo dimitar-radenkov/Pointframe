@@ -166,7 +166,9 @@ jobs:
 
       - name: Submit to winget
         if: steps.upstream.outputs.exists == 'true'
-        uses: vedantmgoyal9/winget-releaser@v2
+        # Pinned to a commit: the floating v2 tag moved on 2026-10-07 to a composite action that GitHub rejects
+        # ("Required property is missing: shell"), which failed every Winget Release from v6.7.87 on.
+        uses: vedantmgoyal9/winget-releaser@a8fff44b123f115ce4c21543edf8b677376fc7e0 # v2 as of 2026-09-20
         with:
           identifier: ${{ matrix.identifier }}
           version: ${{ steps.version.outputs.display }}

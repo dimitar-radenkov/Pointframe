@@ -1676,3 +1676,21 @@ Windows are found with `EnumWindows` and `GetWindowThreadProcessId` and only the
 ### Takeaway
 
 Never search the UI Automation desktop root by a process condition; enumerate native windows and look up only the target's handles. Give every test-launched app an isolated data directory, and kill an app the harness could not drive so it cannot block the next test.
+
+## A floating action tag moved upstream and broke every release
+
+### Problem
+
+Winget Release failed for v6.7.87 and v6.7.88 with `vedantmgoyal9\winget-releaser\v2\action.yml (Line: 51, Col: 7): Required property is missing: shell`, before any step of ours ran. Nothing in this repository had changed.
+
+### Root cause
+
+The workflow used `vedantmgoyal9/winget-releaser@v2`. On 2026-10-07 the maintainer moved the `v2` tag to a rewrite whose composite action GitHub rejects, so every run picked up the broken action at once.
+
+### What fixed it
+
+The step pins the last working commit (`@a8fff44b123f115ce4c21543edf8b677376fc7e0 # v2 as of 2026-09-20`). `scripts/check-release-channels.ps1` reports a failed winget channel with the failing line, so a broken release channel is seen the same day.
+
+### Takeaway
+
+Pin third-party actions that publish or hold secrets to a full commit SHA with the tag in a comment; a floating tag can change under you without a commit in this repository.
