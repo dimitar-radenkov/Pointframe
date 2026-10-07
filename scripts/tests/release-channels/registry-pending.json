@@ -1,0 +1,11 @@
+{
+  "file": "registry-pending.json",
+  "expected": "pending",
+  "input": {
+    "versionPresent": false,
+    "error": "",
+    "publishFailed": false
+  },
+  "kind": "registry",
+  "expectedDetail": ""
+}

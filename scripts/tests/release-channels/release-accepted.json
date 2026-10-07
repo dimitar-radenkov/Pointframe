@@ -1,0 +1,18 @@
+{
+  "file": "release-accepted.json",
+  "expected": "accepted",
+  "input": {
+    "expectedAssets": [
+      "a",
+      "b"
+    ],
+    "exists": true,
+    "draft": false,
+    "assets": [
+      "a",
+      "b"
+    ]
+  },
+  "kind": "release",
+  "expectedDetail": ""
+}

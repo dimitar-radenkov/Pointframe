@@ -115,7 +115,8 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 | `scripts/status.ps1`, `scripts/tests/status/**` | Authoritative status store, GitHub #186 and handoff renderer; offline rendering fixtures | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/lib/tree-hash.ps1` | Shared working-tree hash and verify receipt freshness decisions used by verify and merge scripts | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/check-agent-discovery.ps1`, `scripts/tests/agent-discovery/**` | Offline check of the agent page, llms.txt, and directory drafts against README, packaging, and the CD asset list; `-Online`, `-Snapshot`; its good fixture tree | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
-| `scripts/check-released-desktop.ps1` | Coordinator's post-release check of checksum-verified CLI/MCP packages on an interactive desktop; offline `-SelfTest` | [Packaging and configuration](features/cli-mcp.md#packaging-and-configuration) |
+| `scripts/check-released-desktop.ps1` | Coordinator's post-release or candidate desktop qualification of CLI/MCP packages; offline `-SelfTest` | [Packaging and configuration](features/cli-mcp.md#packaging-and-configuration) |
+| `scripts/release-impact.ps1`, `scripts/check-release-channels.ps1`, `scripts/tests/release-channels/**` | Release risk classification and channel state tracking with offline fixtures | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/check-workflow-scripts.ps1`, `scripts/tests/workflow-scripts/**` | Parses the PowerShell in workflow `run:` blocks, and the good and bad fixtures its self-test runs | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/verify.ps1` | The one local verify command: build, format, unit tests, kb check, workflow script check, JSON verdict with environment fingerprint, and `-ReuseIfFresh` | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/desktop-tests.ps1` | Interactive Windows Release desktop regression selection, repeated TRX evidence, and optional real-app verification | [CI, CD, and versioning](#ci-cd-and-versioning) |
@@ -441,6 +442,8 @@ Status lives in plan/status.json; `scripts/status.ps1 -Publish` renders GitHub i
 - Lesson: PowerShell variable names are case-insensitive, so a local can collide with a switch parameter
 
 The format gate covers the main project only. Do not run `dotnet format` on `Pointframe.Tests`; it would rewrite many unrelated files.
+
+**Release qualification.** Every merge to master cuts a release, so qualify risky changes before merging and watch the channels after. Before merging a PR, run `pwsh scripts/release-impact.ps1`; it prints `desktop-qualification: required` when the diff touches the shipping projects, `packaging/**`, `cd.yml`, project files, or central build configuration. When required, run `pwsh scripts/check-released-desktop.ps1 -BuildCandidate` on the interactive desktop: it builds both packages as version `0.0.0-candidate` (ffmpeg from `$env:FFMPEG_PATH` or `PATH`), hashes them, and runs the same desktop steps as a release check, labelled `candidate` in `result.json`. `-CandidateDirectory <dir>` tests packages you already have, and `-PackageOnly` stops after the packages are built or located and hashed, without touching the desktop. After each release, run `pwsh scripts/check-release-channels.ps1 -Version <x> -Watch` under a watchdog. It reports one state per channel (the GitHub release, each winget package, the MCP Registry, the plugin pin) and exits 1 on any failed channel, so report a failed channel at once: a failed Winget Release run otherwise goes unnoticed.
 
 **Versioning.**
 

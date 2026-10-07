@@ -1,0 +1,12 @@
+{
+  "file": "draft-pending.json",
+  "expected": "pending",
+  "input": {
+    "expectedAssets": [],
+    "exists": true,
+    "draft": true,
+    "assets": []
+  },
+  "kind": "release",
+  "expectedDetail": ""
+}

@@ -1,0 +1,1 @@
+{"kind":"registry","expected":"failed","input":{"versionPresent":false,"publishFailed":true,"error":"CD step failed"},"expectedDetail":"CD step failed"}

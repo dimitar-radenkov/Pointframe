@@ -1,0 +1,12 @@
+{
+  "file": "winget-failed.json",
+  "expected": "failed",
+  "input": {
+    "workflowConclusion": "failure",
+    "name": "winget:test",
+    "prState": "",
+    "errorLine": "failed creating branch"
+  },
+  "kind": "winget",
+  "expectedDetail": "failed creating branch"
+}
