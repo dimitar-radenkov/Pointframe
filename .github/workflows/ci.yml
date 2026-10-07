@@ -183,6 +183,14 @@ jobs:
           ./scripts/check-agent-discovery.ps1
           exit $LASTEXITCODE
 
+      - name: Script self-tests
+        # Every coordinator and release script's offline -SelfTest on a clean checkout, so a fixture that git
+        # ignores (and only exists in the worktree that wrote it) fails here.
+        shell: pwsh
+        run: |
+          ./scripts/test-scripts.ps1
+          exit $LASTEXITCODE
+
   # Not a required check: a Codecov outage or slow upload must not delay or fail a merge.
   coverage:
     needs: unit-tests
