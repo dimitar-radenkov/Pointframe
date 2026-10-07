@@ -5,7 +5,9 @@ Waits for a pull request's checks, squash-merges the exact head that was checked
   pwsh scripts/merge-pr.ps1 -Pr 190                          # PR number or branch name
   pwsh scripts/merge-pr.ps1 -Pr 190 -Worktree ..\Pointframe-wt-x   # also remove that worktree after the merge
   pwsh scripts/merge-pr.ps1 -Pr 190 -DryRun                  # evaluate once and report; never merges or deletes
+  pwsh scripts/merge-pr.ps1 -PinOnly -Worktree <path>        # pin plugin locally before verify; commit work -> PinOnly -> verify -> push + gh pr create -> -Auto
   pwsh scripts/merge-pr.ps1 -Pr 190 -Auto                    # enable GitHub auto-merge (squash, delete branch) and return at once
+  pwsh scripts/merge-pr.ps1 -Pr 190 -Auto -WaitMerged        # enable, wait, and clean up after merge
   pwsh scripts/merge-pr.ps1 -Pr 190 -Required unit-tests,CodeQL -TimeoutMinutes 20 -PollSeconds 15
   pwsh scripts/merge-pr.ps1 -SelfTest                        # offline: decision logic on scripts/tests/merge-pr fixtures
 
@@ -23,10 +25,8 @@ Rules, each from a past incident:
   - -Auto does not wait and does not clean up. It refuses a CONFLICTING, closed or failing pull request, otherwise runs
     gh pr merge --auto --squash --delete-branch and exits 0; GitHub merges once the repository's required checks pass.
     A -Worktree is NOT removed in this mode (it is still needed until the merge); remove it afterwards by hand.
-  - -Auto with -Worktree first pins the Claude plugin (plugin/pointframe) to the latest release when it is behind:
-    scripts/update-plugin-pin.ps1 verifies the asset against the release .sha256, and the pin is committed and pushed
-    to the same pull request, so it passes the same required checks. Every release comes from a merged pull request,
-    so the plugin trails by at most one release and no token or bot PR is needed. -NoPluginPin skips this.
+  - Pin before verify: commit work -> -PinOnly -Worktree -> verify.ps1 -> push + gh pr create -> -Auto -Worktree.
+    Auto requires a complete passing receipt for the PR head and current worktree. Use -NoReceipt only for non-worktree PRs.
 
 Exit codes: 0 merged and cleaned up (or -DryRun finished, or -Auto enabled auto-merge / found the PR merged), 1 check failed, timeout, closed PR, or merge did not
 complete, 2 gh missing or not authenticated or bad arguments, 3 merge conflict, 4 pull after merge failed.
@@ -41,12 +41,16 @@ param(
     [switch]$DryRun,
     [switch]$Auto,
     [switch]$NoPluginPin,
+    [switch]$PinOnly,
+    [switch]$NoReceipt,
+    [switch]$WaitMerged,
     [switch]$SelfTest
 )
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'lib/tree-hash.ps1')
 
 # ------------------------------------------------------------- pure decision logic
 
@@ -127,6 +131,15 @@ function Get-PostMergeDecision([string]$State)
     'Stop'
 }
 
+function Test-ReceiptFixture
+{
+    param($Fixture)
+    $receipt = if ($Fixture.PSObject.Properties['receipt']) { $Fixture.receipt } else { $null }
+    if ($Fixture.PSObject.Properties['missing'] -and $Fixture.missing) { $receipt = $null }
+    $environment = if ($Fixture.PSObject.Properties['environment']) { $Fixture.environment } else { $null }
+    Test-VerifyReceiptObject $receipt 'head-a' 'tree-a' $environment
+}
+
 # ------------------------------------------------------------------------- self-test
 
 function Invoke-SelfTest
@@ -178,6 +191,16 @@ function Invoke-SelfTest
             }
         }
     }
+    $receiptDir = Join-Path $fixtureDir 'receipts'
+    foreach ($file in @(Get-ChildItem -LiteralPath $receiptDir -Filter '*.json' -File | Sort-Object Name))
+    {
+        $fx = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+        $got = Test-ReceiptFixture $fx
+        $count++
+        $expectReason = if ($fx.expect.PSObject.Properties['reason']) { [string]$fx.expect.reason } else { '' }
+        if ($got.Ok -ne [bool]$fx.expect.ok -or ($expectReason -and $got.Reason -notlike "*$expectReason*"))
+        { $failures.Add("receipt/$($file.Name): expected $($fx.expect.ok) '$expectReason', got $($got.Ok) '$($got.Reason)'") }
+    }
     $count++
     if ((Get-PostMergeDecision 'OPEN') -ne 'Stop' -or (Get-PostMergeDecision 'CLOSED') -ne 'Stop' -or (Get-PostMergeDecision 'MERGED') -ne 'Cleanup')
     {
@@ -199,7 +222,7 @@ if ($SelfTest)
 
 # ----------------------------------------------------------------------------- main
 
-if (-not $Pr)
+if (-not $Pr -and -not $PinOnly)
 {
     Write-Host 'ERROR -Pr is required (a pull request number or branch name).'
     exit 2
@@ -225,22 +248,21 @@ function Update-PluginPin
     $pinScript = Join-Path $root 'scripts' 'update-plugin-pin.ps1'
     if (-not (Test-Path -LiteralPath $lockPath) -or -not (Test-Path -LiteralPath $pinScript))
     {
-        return
+        throw "Plugin pin files are missing from '$root'."
     }
 
     $latest = (gh release view --json tagName -q .tagName 2>$null)
     if ($LASTEXITCODE -ne 0 -or -not $latest)
     {
-        Write-Host 'Plugin pin: could not read the latest release; leaving the pin as it is.'
-        return
+        throw 'Plugin pin: could not read the latest release.'
     }
 
     $latest = $latest.Trim() -replace '^v', ''
     $pinned = (Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json).version
     if ($pinned -eq $latest)
     {
-        Write-Host "Plugin pin: already v$latest."
-        return
+        Write-Host "Plugin pin: already v$latest"
+        return $false
     }
 
     Write-Host "Plugin pin: v$pinned -> v$latest."
@@ -252,29 +274,56 @@ function Update-PluginPin
     }
 
     git -C $root add -- plugin/pointframe/server.lock.json plugin/pointframe/.claude-plugin/plugin.json
-    git -C $root commit -q -m "Pin the Claude plugin to v$latest"
-    git -C $root push -q
+    git -C $root commit -q -m "Pin the Claude plugin to v$latest" -- plugin/pointframe/server.lock.json plugin/pointframe/.claude-plugin/plugin.json
     if ($LASTEXITCODE -ne 0)
     {
-        Write-Host 'ERROR pushing the plugin pin failed; not enabling auto-merge.'
+        Write-Host 'ERROR committing the plugin pin failed.'
         exit 1
     }
+    $commit = (git -C $root rev-parse HEAD).Trim()
+    Write-Host "Plugin pin: committed $commit"
+    return $true
+}
 
-    # GitHub needs a moment to move the pull request's head to the pushed commit; auto-merge is enabled for the
-    # head we read next, so wait until it is the pin commit.
-    $pushed = (git -C $root rev-parse HEAD).Trim()
-    for ($attempt = 0; $attempt -lt 30; $attempt++)
+function Test-PluginPinBehind([string]$WorktreePath)
+{
+    $root = (Resolve-Path -LiteralPath $WorktreePath).Path
+    $lockPath = Join-Path $root 'plugin' 'pointframe' 'server.lock.json'
+    if (-not (Test-Path -LiteralPath $lockPath)) { return $false }
+    $latest = (& gh release view --json tagName -q .tagName 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $latest) { throw 'Plugin pin: could not read the latest release.' }
+    $latest = $latest.Trim() -replace '^v', ''
+    $pinned = [string](Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json).version
+    return ([version]$pinned -lt [version]$latest)
+}
+
+function Invoke-MergedCleanup([string]$Branch)
+{
+    # Only after GitHub reported MERGED: remove the worktree and both branches, then fast-forward the main tree.
+    $mainTree = ((& git worktree list --porcelain | Select-Object -First 1) -replace '^worktree ', '')
+    if ($Worktree -and (Test-Path -LiteralPath $Worktree))
     {
-        if ((gh pr view $Pr --json headRefOid -q .headRefOid) -eq $pushed)
+        $removed = & git -C $mainTree worktree remove $Worktree 2>&1
+        if ($LASTEXITCODE -ne 0)
         {
-            return
+            Write-Host "WARNING worktree not removed (uncommitted changes? still in use?): $removed"
         }
-
-        Start-Sleep -Seconds 2
     }
+    & git -C $mainTree push origin --delete $Branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
+    & git -C $mainTree branch -D $Branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
 
-    Write-Host "ERROR the pull request head did not reach the pushed pin commit $pushed; not enabling auto-merge."
-    exit 1
+    $pull = & git -C $mainTree pull -q --ff-only 2>&1
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Host "ERROR git pull --ff-only failed in ${mainTree}: $pull"
+        Write-Host 'The merge and the branch cleanup are done. Recover by hand:'
+        Write-Host "  git -C `"$mainTree`" fetch origin --prune"
+        Write-Host "  git -C `"$mainTree`" pull --ff-only"
+        Write-Host '  If fetch reports a bad or empty ref, delete that empty file under .git/refs/remotes/origin and fetch again.'
+        exit 4
+    }
+    & git -C $mainTree log --oneline -1
+    exit 0
 }
 
 function Get-PrJson
@@ -308,12 +357,18 @@ function Get-ChecksJson
 
 if ($Auto)
 {
-    if ($Worktree -and -not $NoPluginPin -and -not $DryRun)
-    {
-        Update-PluginPin $Worktree
-    }
-
     $prInfo = Get-PrJson
+    if ($Worktree -and -not $NoReceipt -and $prInfo.state -eq 'OPEN')
+    {
+        try { $currentTree = Get-WorkingTreeHash (Resolve-Path -LiteralPath $Worktree).Path }
+        catch { Write-Host "RECEIPT REFUSED: tree hash failed: $_"; exit 1 }
+        $receiptPath = Join-Path $Worktree 'artifacts' 'verify' 'verdict.json'
+        $receiptCheck = Test-VerifyReceiptObject (Read-VerifyReceipt $receiptPath) ([string]$prInfo.headRefOid) $currentTree
+        if (-not $receiptCheck.Ok) { Write-Host "RECEIPT REFUSED: $($receiptCheck.Reason)"; exit 1 }
+    }
+    elseif ($NoReceipt) { Write-Host 'WARNING: -NoReceipt skips the verify receipt gate.' }
+    if ($Worktree -and -not $NoPluginPin -and $prInfo.state -eq 'OPEN' -and (Test-PluginPinBehind $Worktree))
+    { Write-Host 'plugin pin is behind: run -PinOnly, then verify.ps1 again'; exit 1 }
     $checks = if ($prInfo.state -eq 'OPEN') { Get-ChecksJson } else { @() }
     $decision = Get-AutoDecision $prInfo $checks $Required
     Write-Host "PR #$($prInfo.number) $($prInfo.headRefName) @ $($decision.Head): $($decision.Action) - $($decision.Reason)"
@@ -348,20 +403,64 @@ if ($Auto)
         exit 1
     }
     $out | Select-Object -Last 3 | ForEach-Object { Write-Host $_ }
-    Write-Host "Auto-merge enabled for #$($prInfo.number): GitHub squash-merges and deletes the remote branch once the required checks pass."
+    Write-Host 'AUTO-MERGE ENABLED (not merged yet)'
     if ($Worktree)
     {
         Write-Host "Worktree '$Worktree' was NOT removed; clean it up after the merge (git worktree remove, git branch -D, git pull --ff-only)."
     }
+    if ($WaitMerged)
+    {
+        $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+        while ($true)
+        {
+            Start-Sleep -Seconds $PollSeconds
+            $waitPr = Get-PrJson
+            if ($waitPr.state -eq 'MERGED')
+            {
+                Write-Host 'WAIT state=MERGED pending=0 failed=0'
+                $mergeSha = [string](& gh pr view $waitPr.number --json mergeCommit -q .mergeCommit.oid)
+                Write-Host "MERGED $mergeSha"
+                Invoke-MergedCleanup ([string]$waitPr.headRefName)
+            }
+            if ($waitPr.state -eq 'CLOSED') { Write-Host 'WAIT STOPPED: PR is CLOSED.'; exit 1 }
+            $waitChecks = Get-ChecksJson
+            $failedChecks = @($waitChecks | Where-Object { $_.bucket -in 'fail', 'cancel' })
+            $pendingChecks = @($waitChecks | Where-Object { $_.bucket -eq 'pending' })
+            Write-Host "WAIT state=$($waitPr.state) pending=$($pendingChecks.Count) failed=$($failedChecks.Count)"
+            if ($failedChecks.Count -gt 0) { Write-Host "WAIT STOPPED: failed/cancelled checks: $(($failedChecks | ForEach-Object { $_.name }) -join ', ')"; exit 1 }
+            if ((Get-Date) -ge $deadline) { Write-Host "WAIT STOPPED: timeout after $TimeoutMinutes minutes."; exit 1 }
+        }
+    }
     exit 0
 }
 
+if ($PinOnly)
+{
+    if (-not $Worktree) { Write-Host 'ERROR -PinOnly requires -Worktree.'; exit 2 }
+    try { $changed = Update-PluginPin $Worktree }
+    catch { Write-Host "ERROR $_"; exit 1 }
+    exit 0
+}
+if ($WaitMerged -and -not $Auto)
+{
+    Write-Host 'ERROR -WaitMerged requires -Auto.'
+    exit 2
+}
+
 $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+if ($NoReceipt) { Write-Host 'WARNING: -NoReceipt skips the verify receipt gate.' }
 while ($true)
 {
     $prInfo = Get-PrJson
     $checks = if ($prInfo.state -eq 'OPEN') { Get-ChecksJson } else { @() }
     $decision = Get-MergeDecision $prInfo $checks $Required
+    if ($Worktree -and -not $NoReceipt -and $prInfo.state -eq 'OPEN')
+    {
+        try { $currentTree = Get-WorkingTreeHash (Resolve-Path -LiteralPath $Worktree).Path }
+        catch { Write-Host "RECEIPT REFUSED: tree hash failed: $_"; exit 1 }
+        $receiptCheck = Test-VerifyReceiptObject (Read-VerifyReceipt (Join-Path $Worktree 'artifacts' 'verify' 'verdict.json')) ([string]$prInfo.headRefOid) $currentTree
+        if (-not $receiptCheck.Ok) { Write-Host "RECEIPT REFUSED: $($receiptCheck.Reason)"; exit 1 }
+    }
     Write-Host "PR #$($prInfo.number) $($prInfo.headRefName) @ $($decision.Head): $($decision.Action) - $($decision.Reason)"
 
     if ($decision.Action -eq 'Conflict')
@@ -421,27 +520,4 @@ if ((Get-PostMergeDecision $state) -ne 'Cleanup')
     exit 1
 }
 
-$mainTree = ((& git worktree list --porcelain | Select-Object -First 1) -replace '^worktree ', '')
-if ($Worktree -and (Test-Path -LiteralPath $Worktree))
-{
-    $removed = & git -C $mainTree worktree remove $Worktree 2>&1
-    if ($LASTEXITCODE -ne 0)
-    {
-        Write-Host "WARNING worktree not removed (uncommitted changes? still in use?): $removed"
-    }
-}
-& git -C $mainTree push origin --delete $branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
-& git -C $mainTree branch -D $branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
-
-$pull = & git -C $mainTree pull -q --ff-only 2>&1
-if ($LASTEXITCODE -ne 0)
-{
-    Write-Host "ERROR git pull --ff-only failed in ${mainTree}: $pull"
-    Write-Host 'The merge and the branch cleanup are done. Recover by hand:'
-    Write-Host "  git -C `"$mainTree`" fetch origin --prune"
-    Write-Host "  git -C `"$mainTree`" pull --ff-only"
-    Write-Host '  If fetch reports a bad or empty ref, delete that empty file under .git/refs/remotes/origin and fetch again.'
-    exit 4
-}
-& git -C $mainTree log --oneline -1
-exit 0
+Invoke-MergedCleanup ([string]$prInfo.headRefName)
