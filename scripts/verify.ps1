@@ -6,6 +6,7 @@ so an agent can act on them. Run it before saying a task is done; a task is done
   pwsh scripts/verify.ps1                                    # every gate; exit 0 only when all pass
   pwsh scripts/verify.ps1 -Filter "FullyQualifiedName~Foo"   # narrow the unit tests while iterating
   pwsh scripts/verify.ps1 -Skip kb                           # leave gates out while iterating (never for the final run)
+  pwsh scripts/verify.ps1 -ReuseIfFresh                      # reuse an identical complete receipt when environment and tree match
 
 Gates, in order: preflight (no running process locks the Release output), build (Release, like CI),
 format (dotnet format --verify-no-changes on the main project), tests (unit lane, Category!=Integration),
@@ -14,18 +15,21 @@ run: block in .github/workflows must parse), discovery (scripts/check-agent-disc
 checks of the agent page, llms.txt, directory drafts, install commands, and release asset names). Tests are skipped when the build fails; every other gate always
 runs, so one pass reports every problem.
 
-Writes artifacts/verify/verdict.json (status, gates, failure details, and the working-tree hash it verified)
-and a log per gate next to it. Exit 0 when every gate passed, 1 when any failed, 2 on bad arguments.
+Writes artifacts/verify/verdict.json (status, gates, failure details, working-tree hash, and environment fingerprint)
+and a log per gate next to it. -ReuseIfFresh skips gates only when the complete passing receipt matches head, tree,
+dotnet SDK version, pwsh version, and this script's SHA-256. Exit 0 when every gate passed, 1 when any failed, 2 on bad arguments.
 #>
 [CmdletBinding()]
 param(
     [string]$Filter,
-    [string[]]$Skip = @()
+    [string[]]$Skip = @(),
+    [switch]$ReuseIfFresh
 )
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'lib/tree-hash.ps1')
 
 $GateNames = @('preflight', 'build', 'format', 'tests', 'kb', 'workflows', 'discovery')
 $Skip = @($Skip | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -42,6 +46,25 @@ $VerdictPath = Join-Path $OutDir 'verdict.json'
 $TestProject = 'Pointframe.Tests/Pointframe.Tests.csproj'
 $MainProject = 'Pointframe/Pointframe.csproj'
 $MaxDetails = 20
+
+$started = Get-Date
+$environment = [ordered]@{
+    dotnet = (& dotnet --version).Trim()
+    pwsh = $PSVersionTable.PSVersion.ToString()
+    verifySha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+$currentHead = (git -C $RepoRoot rev-parse HEAD).Trim()
+$treeHash = Get-WorkingTreeHash $RepoRoot
+if ($ReuseIfFresh -and (Test-Path -LiteralPath $VerdictPath))
+{
+    $existing = Read-VerifyReceipt $VerdictPath
+    $fresh = Test-VerifyReceiptObject $existing $currentHead $treeHash ([pscustomobject]$environment)
+    if ($fresh.Ok)
+    {
+        Write-Host "VERIFY PASSED (reused receipt from $($existing.startedAt); tree unchanged)"
+        exit 0
+    }
+}
 
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 Get-ChildItem -Path $OutDir -File | Remove-Item -Force
@@ -78,27 +101,6 @@ function New-Gate([string]$Name, [string]$Status, [string]$Summary, [string[]]$D
         $shown += "... $($all.Count - $MaxDetails) more, see $Log"
     }
     [ordered]@{ name = $Name; status = $Status; summary = $Summary; details = $shown; log = $Log; seconds = 0 }
-}
-
-function Get-WorkingTreeHash
-{
-    $index = git rev-parse --git-path index
-    $tempIndex = Join-Path $OutDir 'tree.index'
-    if (Test-Path $index)
-    {
-        Copy-Item $index $tempIndex -Force
-    }
-    $env:GIT_INDEX_FILE = $tempIndex
-    try
-    {
-        git add -A 2>$null | Out-Null
-        (git write-tree).Trim()
-    }
-    finally
-    {
-        Remove-Item Env:GIT_INDEX_FILE
-        Remove-Item $tempIndex -Force -ErrorAction SilentlyContinue
-    }
 }
 
 function Test-Preflight
@@ -246,7 +248,6 @@ function Test-Discovery
 }
 
 $started = Get-Date
-$treeHash = Get-WorkingTreeHash
 $gates = [System.Collections.Generic.List[object]]::new()
 $checks = [ordered]@{
     preflight = { Test-Preflight }
@@ -300,6 +301,7 @@ $verdict = [ordered]@{
     seconds = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
     head = (git -C $RepoRoot rev-parse HEAD).Trim()
     treeHash = $treeHash
+    environment = $environment
     filter = $Filter
     gates = $gates
 }

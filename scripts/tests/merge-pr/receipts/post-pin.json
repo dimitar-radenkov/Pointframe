@@ -1,0 +1,1 @@
+{"receipt":{"status":"pass","complete":true,"head":"head-a","treeHash":"tree-after-pin"},"expect":{"ok":false,"reason":"tree mismatch"}}
