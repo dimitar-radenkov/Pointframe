@@ -593,9 +593,29 @@ diff --git a/notes.md b/notes.md
 # ---------------------------------------------------------------------------------------------------------------
 # Real run
 
+# A LogonUI process can outlive the lock screen by hours, so its presence is not a lock. The input desktop
+# refuses DESKTOP_SWITCHDESKTOP while the session is locked, on the secure desktop, or without a session.
+function Test-InputDesktopAvailable {
+    if (-not ('PointframeInputDesktop' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class PointframeInputDesktop {
+    [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+    [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr desktop);
+}
+'@
+    }
+
+    $desktop = [PointframeInputDesktop]::OpenInputDesktop(0, $false, 0x0100)
+    if ($desktop -eq [IntPtr]::Zero) { return $false }
+    [void][PointframeInputDesktop]::CloseDesktop($desktop)
+    return $true
+}
+
 function Assert-InteractiveDesktop {
-    if (Get-Process -Name LogonUI -ErrorAction SilentlyContinue) {
-        throw 'The Windows session is locked (LogonUI is present). Sign in and rerun this trial on the interactive desktop.'
+    if (-not (Test-InputDesktopAvailable)) {
+        throw 'The Windows session is locked or has no interactive desktop. Sign in and rerun this trial on the interactive desktop.'
     }
 }
 

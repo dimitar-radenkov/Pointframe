@@ -102,6 +102,7 @@ CI publishes the CLI and MCP executables and runs `packaging/test-mcp-stdio.ps1`
 **Lessons.**
 
 - Lesson: The VS Code Pointframe MCP connector must be stopped before running desktop automation tests
+- Lesson: A LogonUI process is not a locked session
 - Lesson: DI silently binds null to an unregistered optional constructor parameter
 - Lesson: A physical key press needs the observed target, not a null one
 - Lesson: PowerShell variable names are case-insensitive, so a local can shadow a script-level path
