@@ -46,7 +46,7 @@ public sealed class AutoUpdateServiceTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_NoUpdateAvailable_DoesNotPublishMessage()
+    public async Task ExecuteAsync_NoUpdateAvailable_PublishesLatestCheckResult()
     {
         var eventAggregator = new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance);
         var updateService = new Mock<IUpdateService>();
@@ -62,7 +62,8 @@ public sealed class AutoUpdateServiceTests
         await Task.Delay(50);
         await sut.StopAsync(CancellationToken.None);
 
-        Assert.Null(recorder.Message);
+        Assert.NotNull(recorder.Message);
+        Assert.False(recorder.Message!.Result.IsUpdateAvailable);
     }
 
     [Fact]
@@ -170,6 +171,47 @@ public sealed class AutoUpdateServiceTests
                 UpdateAvailable.DownloadUrl,
                 It.Is<string>(p => p.Contains("setup.exe"))),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task InstallWithoutConfirmation_DoesNotShowConfirmDialog()
+    {
+        var downloadService = new Mock<IUpdateDownloadService>();
+        downloadService.Setup(d => d.Show(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
+        var messageBox = new Mock<IMessageBoxService>();
+        var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), new Mock<IUpdateService>(), SettingsMock(), downloadService, messageBox);
+
+        await sut.InstallWithoutConfirmation(UpdateAvailable);
+
+        messageBox.Verify(m => m.Confirm(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        downloadService.Verify(d => d.Show(UpdateAvailable.DownloadUrl, It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public void ShouldCheckAtStartup_UsesConfiguredIntervalAndNeverDisablesChecks()
+    {
+        var lastCheck = new DateTime(2026, 10, 9, 10, 0, 0, DateTimeKind.Utc);
+        var now = lastCheck.AddHours(6);
+        var method = typeof(AutoUpdateService).GetMethod("ShouldCheckAtStartup", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.NotNull(method);
+
+        Assert.False((bool)method.Invoke(null, [lastCheck, UpdateCheckInterval.EveryTwelveHours, now])!);
+        Assert.True((bool)method.Invoke(null, [lastCheck, UpdateCheckInterval.EverySixHours, now])!);
+        Assert.False((bool)method.Invoke(null, [null, UpdateCheckInterval.Never, now])!);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RecentCheckHonorsStartupInterval()
+    {
+        var settings = SettingsMock(UpdateCheckInterval.EveryTwoHours);
+        settings.Object.Update(value => value.LastAutoUpdateCheckUtc = DateTime.UtcNow.AddMinutes(-30));
+        var updateService = new Mock<IUpdateService>();
+        var sut = CreateService(new DefaultEventAggregator(NullLogger<DefaultEventAggregator>.Instance), updateService, settings, new Mock<IUpdateDownloadService>(), new Mock<IMessageBoxService>());
+
+        await sut.StartAsync(CancellationToken.None);
+        await sut.StopAsync(CancellationToken.None);
+
+        updateService.Verify(service => service.CheckForUpdates(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

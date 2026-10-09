@@ -13,24 +13,18 @@ namespace Pointframe.Tests.Services;
 public sealed class TrayIconManagerTests
 {
     [Fact]
-    public void HandleUpdateAvailable_ThenOnTrayBalloonClicked_InstallsUpdate()
+    public void ShowTranscriptBalloon_DoesNotClearKnownUpdate()
     {
         StaTestHelper.Run(() =>
         {
-            var autoUpdateMock = new Mock<IAutoUpdateService>();
-            autoUpdateMock.Setup(service => service.ConfirmAndInstall(It.IsAny<UpdateCheckResult>()))
-                .Returns(Task.CompletedTask);
-            var manager = CreateManager(autoUpdate: autoUpdateMock.Object);
+            var updateState = new UpdateStateService();
+            var manager = CreateManager(updateState: updateState);
             var update = new UpdateCheckResult(true, new Version(1, 2, 3), "https://example.com/download");
 
             manager.HandleUpdateAvailable(update);
-            var pending = (UpdateCheckResult?)GetField(manager, "_pendingUpdate");
-            Assert.Same(update, pending);
+            manager.ShowTranscriptBalloon("Transcript ready", "Transcript created", isError: false);
 
-            InvokePrivate(manager, "OnTrayBalloonClicked", manager, new RoutedEventArgs());
-
-            autoUpdateMock.Verify(service => service.ConfirmAndInstall(update), Times.Once);
-            Assert.Null(GetField(manager, "_pendingUpdate"));
+            Assert.Same(update, updateState.Current);
         });
     }
 
@@ -229,12 +223,12 @@ public sealed class TrayIconManagerTests
 
             manager.HandleUpdateAvailable(new UpdateCheckResult(true, new Version(2, 4, 1), "https://example.com/download"));
 
-            Assert.Equal("Install Update (2.4.1)", checkForUpdatesItem!.Header?.ToString());
+            Assert.Equal("Install update v2.4.1", checkForUpdatesItem!.Header?.ToString());
         });
     }
 
     [Fact]
-    public void CheckForUpdates_Click_WhenPendingUpdate_InstallsPendingAndResetsHeader()
+    public void CheckForUpdates_Click_WhenUpdateKnown_InstallsPendingAndKeepsHeader()
     {
         StaTestHelper.RunAsync(async () =>
         {
@@ -255,8 +249,7 @@ public sealed class TrayIconManagerTests
             await WaitForCondition(() => checkForUpdatesItem!.IsEnabled, TimeSpan.FromSeconds(3));
 
             autoUpdateMock.Verify(service => service.ConfirmAndInstall(pendingUpdate), Times.Once);
-            Assert.Equal("Check for Updates", checkForUpdatesItem.Header?.ToString());
-            Assert.Null(GetField(manager, "_pendingUpdate"));
+            Assert.Equal("Install update v3.1.0", checkForUpdatesItem.Header?.ToString());
         });
     }
 
@@ -700,6 +693,7 @@ public sealed class TrayIconManagerTests
         IUpdateService? updateService = null,
         IAppVersionService? appVersionService = null,
         IAutoUpdateService? autoUpdate = null,
+        IUpdateStateService? updateState = null,
         IUserSettingsService? userSettings = null,
         IGifExportService? gifExportService = null,
         ICaptureLaunchService? captureLaunch = null,
@@ -712,6 +706,7 @@ public sealed class TrayIconManagerTests
             updateService ?? Mock.Of<IUpdateService>(),
             appVersionService ?? Mock.Of<IAppVersionService>(),
             autoUpdate ?? Mock.Of<IAutoUpdateService>(),
+            updateState ?? new UpdateStateService(),
             userSettings ?? Mock.Of<IUserSettingsService>(),
             gifExportService ?? Mock.Of<IGifExportService>(),
             Mock.Of<ITelemetryService>(),

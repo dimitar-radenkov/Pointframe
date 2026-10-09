@@ -76,6 +76,8 @@ public sealed class UserSettings
 
     public UpdateCheckInterval AutoUpdateCheckInterval { get; set; } = UpdateCheckInterval.EveryTwoHours;
     public DateTime? LastAutoUpdateCheckUtc { get; set; } = null;
+    public DateTime? LastUpdateOfferUtc { get; set; }
+    public string? LastRunVersion { get; set; }
 
     public AppTheme Theme { get; set; } = AppTheme.System;
 

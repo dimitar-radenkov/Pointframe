@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Moq;
 using Pointframe.Engine;
 using Pointframe.Services;
@@ -67,6 +68,7 @@ public sealed class AppTests
 
             SetField(app, "_telemetry", telemetry.Object);
             SetField(app, "_trayIconManager", trayIconManager.Object);
+            SetField(app, "_userSettings", SettingsMock());
 
             InvokeHandleUpdateAvailable(app, new UpdateAvailableMessage(update, IsStartupCheck: true));
 
@@ -76,8 +78,11 @@ public sealed class AppTests
                     "update_available",
                     It.Is<IReadOnlyDictionary<string, string>?>(props =>
                         props != null
-                        && props.ContainsKey("version")
-                        && props["version"] == "1.2.3")),
+                        && props.ContainsKey("from_version")
+                        && props["from_version"] == "unknown"
+                        && props.ContainsKey("target_version")
+                        && props["target_version"] == "1.2.3"
+                        && !props.ContainsKey("version"))),
                 Times.Once);
         });
     }
@@ -94,6 +99,7 @@ public sealed class AppTests
 
             SetField(app, "_telemetry", telemetry.Object);
             SetField(app, "_trayIconManager", trayIconManager.Object);
+            SetField(app, "_userSettings", SettingsMock());
 
             InvokeHandleUpdateAvailable(app, new UpdateAvailableMessage(update, IsStartupCheck: false));
 
@@ -103,8 +109,11 @@ public sealed class AppTests
                     "update_available",
                     It.Is<IReadOnlyDictionary<string, string>?>(props =>
                         props != null
-                        && props.ContainsKey("version")
-                        && props["version"] == "1.2.3")),
+                        && props.ContainsKey("from_version")
+                        && props["from_version"] == "unknown"
+                        && props.ContainsKey("target_version")
+                        && props["target_version"] == "1.2.3"
+                        && !props.ContainsKey("version"))),
                 Times.Once);
         });
     }
@@ -147,6 +156,39 @@ public sealed class AppTests
         });
     }
 
+    [Fact]
+    public void TrackAppliedUpdate_EmitsOnceWhenCurrentVersionIsNewer()
+    {
+        var app = CreateAppWithoutRunning();
+        var settings = new UserSettings { LastRunVersion = "1.2.3" };
+        var settingsService = new Mock<IUserSettingsService>();
+        settingsService.SetupGet(service => service.Current).Returns(() => settings);
+        settingsService.Setup(service => service.Update(It.IsAny<Action<UserSettings>>()))
+            .Callback<Action<UserSettings>>(update => update(settings));
+        var telemetry = new Mock<ITelemetryService>();
+        var serviceProvider = new ServiceCollection()
+            .AddSingleton(Mock.Of<IAppVersionService>(service => service.Current == new Version(1, 2, 4)))
+            .BuildServiceProvider();
+        var host = Host.CreateDefaultBuilder().ConfigureServices(services => services.AddSingleton<IAppVersionService>(serviceProvider.GetRequiredService<IAppVersionService>())).Build();
+
+        SetField(app, "_host", host);
+        SetField(app, "_userSettings", settingsService.Object);
+        SetField(app, "_telemetry", telemetry.Object);
+        var method = typeof(App).GetMethod("TrackAppliedUpdate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        method.Invoke(app, null);
+        method.Invoke(app, null);
+
+        telemetry.Verify(service => service.TrackEvent(
+            "update_applied",
+            It.Is<IReadOnlyDictionary<string, string>?>(properties =>
+                properties != null && properties["from_version"] == "1.2.3" && properties["target_version"] == "1.2.4")), Times.Once);
+        Assert.Equal("1.2.4", settings.LastRunVersion);
+        host.Dispose();
+        serviceProvider.Dispose();
+    }
+
     private static App CreateAppWithoutRunning()
     {
         return (App)RuntimeHelpers.GetUninitializedObject(typeof(App));
@@ -181,5 +223,15 @@ public sealed class AppTests
         var field = target.GetType().GetField(fieldName, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         Assert.NotNull(field);
         field.SetValue(target, value);
+    }
+
+    private static IUserSettingsService SettingsMock()
+    {
+        var settings = new UserSettings();
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(service => service.Current).Returns(() => settings);
+        mock.Setup(service => service.Update(It.IsAny<Action<UserSettings>>()))
+            .Callback<Action<UserSettings>>(update => update(settings));
+        return mock.Object;
     }
 }

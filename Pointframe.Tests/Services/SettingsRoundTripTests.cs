@@ -141,6 +141,8 @@ public sealed class SettingsRoundTripTests : IDisposable
             OverlayCloseHotkeyModifiers = HotkeyModifiers.Alt,
             AutoUpdateCheckInterval = UpdateCheckInterval.EveryDay,
             LastAutoUpdateCheckUtc = new DateTime(2026, 5, 4, 3, 2, 1, DateTimeKind.Utc),
+            LastUpdateOfferUtc = new DateTime(2026, 5, 5, 3, 2, 1, DateTimeKind.Utc),
+            LastRunVersion = "1.2.3",
             Theme = AppTheme.Dark,
             StylePresets =
             [

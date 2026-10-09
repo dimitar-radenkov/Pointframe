@@ -162,4 +162,26 @@ public sealed class TelemetryEventCatalogTests
         Assert.Equal(TelemetryChannel.Diagnostic, recordingFailed.Channel);
         Assert.Equal([TelemetryPropertyKeys.Phase, TelemetryPropertyKeys.Reason, TelemetryPropertyKeys.InnerTypes], recordingFailed.RequiredProperties);
     }
+
+    [Fact]
+    public void UpdateEvents_AllowOnlyVersionAndReasonBuckets()
+    {
+        Assert.True(TelemetryEventCatalog.TryGetDefinition(TelemetryEvents.UpdateAvailable, out var available));
+        Assert.Equal(["from_version", "target_version"], available.RequiredProperties);
+
+        Assert.True(TelemetryEventCatalog.TryGetDefinition(TelemetryEvents.UpdateInstallerLaunched, out var launched));
+        Assert.Equal(["from_version", "target_version"], launched.RequiredProperties);
+
+        Assert.True(TelemetryEventCatalog.TryGetDefinition(TelemetryEvents.UpdateDownloadFailed, out var failed));
+        Assert.Equal(["reason"], failed.RequiredProperties);
+
+        var payload = TelemetryEventCatalog.Validate(TelemetryEvents.UpdateAvailable, new Dictionary<string, string>
+        {
+            ["from_version"] = "1.2.3",
+            ["target_version"] = "1.2.4",
+            ["version"] = "1.2.4",
+            ["file_path"] = "private",
+        });
+        Assert.Equal(["file_path", "version"], payload.UnknownProperties.Order(StringComparer.Ordinal).ToArray());
+    }
 }

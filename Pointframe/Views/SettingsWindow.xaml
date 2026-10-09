@@ -245,6 +245,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
                                 <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,16,0">
@@ -299,6 +300,7 @@
                                     <ColumnDefinition Width="320"/>
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
@@ -1527,6 +1529,14 @@
                                             </Style>
                                         </TextBlock.Style>
                                     </TextBlock>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,14,0,0"
+                                            Visibility="{Binding IsUpdateAvailable, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding UpdateAvailableText}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                    <Button Content="Install" Style="{StaticResource PrimaryBtn}"
+                                            Command="{Binding InstallUpdateCommand}"
+                                            AutomationProperties.AutomationId="SettingsWindow.InstallUpdate"/>
                                 </StackPanel>
                             </Grid>
                         </StackPanel>
