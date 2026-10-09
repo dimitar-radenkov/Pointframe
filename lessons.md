@@ -1694,3 +1694,21 @@ The step pins the last working commit (`@a8fff44b123f115ce4c21543edf8b677376fc7e
 ### Takeaway
 
 Pin third-party actions that publish or hold secrets to a full commit SHA with the tag in a comment; a floating tag can change under you without a commit in this repository.
+
+## A LogonUI process is not a locked session
+
+### Problem
+
+On 2026-10-09 `scripts/check-released-desktop.ps1` refused to check v6.7.96 with "The Windows session is locked (LogonUI is present)", and a session wait looped on the same signal for 15 minutes. The session was unlocked: windows were listed, captured, and driven through UI Automation the same hour.
+
+### Root cause
+
+The preflight treated any `LogonUI` process as a lock. `LogonUI.exe` had been started at the previous evening's lock and was still running long after sign-in.
+
+### What fixed it
+
+`Test-InputDesktopAvailable` in `scripts/check-released-desktop.ps1` and `scripts/trial.ps1` opens the input desktop with `DESKTOP_SWITCHDESKTOP` (`OpenInputDesktop`). Windows refuses it while the session is locked, on the secure desktop, or without an interactive session.
+
+### Takeaway
+
+Ask Windows whether the input desktop is usable instead of inferring the lock state from a process list.
