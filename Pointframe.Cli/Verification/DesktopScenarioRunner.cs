@@ -340,6 +340,19 @@ internal sealed class DesktopScenarioRunner
                             continue;
                         }
 
+                        // Agents read "restart" as "start over" and put it first; the server's own message does
+                        // not tell them that the step never closes the app.
+                        if (restart.Code == "TargetStillRunning")
+                        {
+                            var fix = index == 0
+                                ? "Each scenario already starts with a fresh launch, so remove this step, or put a step before it that closes the app."
+                                : "Make the step before it close the app, for example an invoke of its own Close or Exit control.";
+                            return restart with
+                            {
+                                Message = $"The app was still running after {_restartWait.TotalSeconds:0} s. A restart step only relaunches an app that has already exited; it never closes it. {fix}",
+                            };
+                        }
+
                         if (restart.Status != VerificationStatus.Pass)
                         {
                             return restart;

@@ -499,6 +499,30 @@ public sealed class VerificationTests : IDisposable
         Assert.Equal(3, client.Count("desktop_restart_app"));
     }
 
+    [Theory]
+    [InlineData("""[ { "restart": {} } ]""", "remove this step")]
+    [InlineData("""[ { "invoke": { "automationId": "saveButton" } }, { "restart": {} } ]""", "close the app")]
+    public async Task RunAsync_AppNeverExitsBeforeRestart_FailsWithHowToCloseIt(string steps, string advice)
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            ObserveResponse = _ => WindowWith(new { elementRef = "el-1", windowRef = "win-1", role = "Button", automationId = "saveButton" }),
+            RestartResponse = _ => new { operationStatus = "Completed", dispatch = "NotStarted", error = new { code = "TargetStillRunning", message = "still running" } },
+        };
+        var scenario = VerificationSpecLoader.ParseScenario($$"""{ "id": "r", "steps": {{steps}} }""", "r");
+
+        var runner = new DesktopScenarioRunner(
+            client.Mock.Object, "fixture", [new CaptureRectangle(0, 0, 1920, 1080)], TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50));
+
+        var result = await runner.RunAsync(scenario, CancellationToken.None);
+
+        var restart = result.Steps.Single(step => step.Kind == "restart");
+        Assert.Equal(VerificationStatus.Fail, restart.Status);
+        Assert.Equal("TargetStillRunning", restart.Code);
+        Assert.Contains("never closes it", restart.Message, StringComparison.Ordinal);
+        Assert.Contains(advice, restart.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task RunAsync_ElementNeverAppears_FailsWithTheIdsTheAppExposes()
     {

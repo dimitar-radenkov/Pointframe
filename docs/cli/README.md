@@ -509,7 +509,7 @@ Steps, each an object with exactly one property:
 | `enterText` | Sets an edit field's value through UI Automation | element, `text` |
 | `invoke` | Activates a button or menu item | element |
 | `pressKeys` | Focuses the app's window and presses a chord | `keys`: 1 to 4 virtual-key codes, modifiers first |
-| `restart` | Relaunches the app in the same session. Close it first with an `invoke` of its own Close or Exit control | nothing |
+| `restart` | Relaunches the app in the same session. Close it first with an `invoke` of its own Close or Exit control; `restart` never closes the app, and the step fails if the app is still running after 10 seconds. Not needed as a first step: every scenario starts with a fresh launch | nothing |
 | `check` | Waits until a condition holds | `kind`, element, `expected`, `criterion` or `expectFailure`, `timeoutSeconds` (1-30, default 10) |
 
 An element is `automationId`, or both `role` and `name`. Check kinds are
