@@ -44,17 +44,10 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
             return;
         }
 
-        _logger.LogInformation("Auto-update: running startup check");
-        try
+        if (ShouldCheckAtStartup(_userSettings.Current.LastAutoUpdateCheckUtc, interval, DateTime.UtcNow))
         {
-            await CheckAndNotifyAsync(isStartupCheck: true, stoppingToken).ConfigureAwait(false);
+            await CheckAndRecordAsync(isStartupCheck: true, stoppingToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogError(ex, "Auto-update: startup check failed");
-        }
-
-        UpdateLastCheckedUtc();
 
         _logger.LogInformation("Auto-update: periodic loop started");
 
@@ -63,16 +56,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
             while (await WaitForNextCheckAsync(stoppingToken).ConfigureAwait(false))
             {
                 _logger.LogInformation("Auto-update: running periodic check");
-                try
-                {
-                    await CheckAndNotifyAsync(isStartupCheck: false, stoppingToken).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    _logger.LogError(ex, "Auto-update: periodic check failed");
-                }
-
-                UpdateLastCheckedUtc();
+                await CheckAndRecordAsync(isStartupCheck: false, stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -88,27 +72,90 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
                 $"Version {v.Major}.{v.Minor}.{v.Build} is available. Download and install now?",
                 "Update Available"))
         {
-            _telemetry.TrackEvent(TelemetryEvents.UpdateDismissed, new Dictionary<string, string>
-            {
-                [TelemetryPropertyKeys.Version] = $"{v.Major}.{v.Minor}.{v.Build}",
-            });
+            _telemetry.TrackEvent(TelemetryEvents.UpdateDismissed, VersionProperties(_userSettings.Current.LastRunVersion ?? "unknown", v));
             return;
         }
 
-        _telemetry.TrackEvent(TelemetryEvents.UpdateConfirmed, new Dictionary<string, string>
-        {
-            [TelemetryPropertyKeys.Version] = $"{v.Major}.{v.Minor}.{v.Build}",
-        });
+        await DownloadAndInstallAsync(result).ConfigureAwait(false);
+    }
+
+    public Task InstallWithoutConfirmation(UpdateCheckResult result) => DownloadAndInstallAsync(result);
+
+    private async Task DownloadAndInstallAsync(UpdateCheckResult result)
+    {
+        var v = result.LatestVersion;
+        var from = _userSettings.Current.LastRunVersion ?? "unknown";
+        _telemetry.TrackEvent(TelemetryEvents.UpdateConfirmed, VersionProperties(from, v));
         var fileName = ResolveInstallerFileName(result.DownloadUrl, v);
         var destPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
-        var succeeded = await _downloadService.Show(result.DownloadUrl, destPath);
+        bool succeeded;
+        try
+        {
+            succeeded = await _downloadService.Show(result.DownloadUrl, destPath);
+        }
+        catch (Exception ex)
+        {
+            _telemetry.TrackEvent(TelemetryEvents.UpdateDownloadFailed, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.Reason] = "exception",
+            });
+            _logger.LogWarning(ex, "Update download failed");
+            throw;
+        }
+
         if (succeeded)
         {
+            _telemetry.TrackEvent(TelemetryEvents.UpdateInstallerLaunched, VersionProperties(from, v));
             _logger.LogInformation(
                 "Update installer launched from {Path}; leaving application running for installer handoff",
                 destPath);
         }
+        else
+        {
+            _telemetry.TrackEvent(TelemetryEvents.UpdateDownloadFailed, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.Reason] = "download_or_cancelled",
+            });
+        }
     }
+
+    internal static bool ShouldCheckAtStartup(DateTime? lastCheckedUtc, UpdateCheckInterval interval, DateTime nowUtc)
+    {
+        if (interval == UpdateCheckInterval.Never)
+        {
+            return false;
+        }
+
+        if (lastCheckedUtc is null)
+        {
+            return true;
+        }
+
+        var elapsed = nowUtc - lastCheckedUtc.Value;
+        return elapsed >= GetTimerInterval(interval) || elapsed < TimeSpan.Zero;
+    }
+
+    private async Task CheckAndRecordAsync(bool isStartupCheck, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await CheckAndNotifyAsync(isStartupCheck, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Auto-update check failed");
+        }
+
+        UpdateLastCheckedUtc();
+    }
+
+    private Dictionary<string, string> VersionProperties(string from, Version target) => new()
+    {
+        [TelemetryPropertyKeys.FromVersion] = from,
+        [TelemetryPropertyKeys.TargetVersion] = FormatVersion(target),
+    };
+
+    private static string FormatVersion(Version version) => $"{version.Major}.{version.Minor}.{version.Build}";
 
     private async Task CheckAndNotifyAsync(bool isStartupCheck, CancellationToken cancellationToken)
     {
@@ -122,6 +169,7 @@ public sealed class AutoUpdateService : BackgroundService, IAutoUpdateService
         else
         {
             _logger.LogDebug("Auto-update: already up to date");
+            await _eventAggregator.Publish(new UpdateAvailableMessage(result, isStartupCheck)).ConfigureAwait(false);
         }
     }
 

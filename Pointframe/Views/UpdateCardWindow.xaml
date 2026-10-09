@@ -1,0 +1,21 @@
+<Window x:Class="Pointframe.UpdateCardWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pointframe update"
+        AutomationProperties.AutomationId="UpdateCardWindow"
+        Width="360" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStyle="ToolWindow" ShowInTaskbar="False" ShowActivated="False"
+        Topmost="True" Background="{DynamicResource WindowBackground}">
+    <StackPanel Margin="20">
+        <TextBlock x:Name="VersionText" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"
+                   Foreground="{DynamicResource PrimaryText}"/>
+        <TextBlock Text="Windows will ask for administrator approval." Margin="0,8,0,18" TextWrapping="Wrap"
+                   Foreground="{DynamicResource SecondaryText}"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="LaterButton" Content="Later" AutomationProperties.AutomationId="UpdateCardLaterButton"
+                    Style="{StaticResource AppSecondaryButton}" Margin="0,0,8,0" Click="Later_Click"/>
+            <Button x:Name="UpdateNowButton" Content="Update now" AutomationProperties.AutomationId="UpdateCardUpdateNowButton"
+                    Style="{StaticResource AppPrimaryButton}" Click="UpdateNow_Click"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

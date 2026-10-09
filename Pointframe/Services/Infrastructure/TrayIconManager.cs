@@ -17,6 +17,7 @@ internal sealed class TrayIconManager : ITrayIconManager
     private readonly IUpdateService _updateService;
     private readonly IAppVersionService _appVersionService;
     private readonly IAutoUpdateService _autoUpdate;
+    private readonly IUpdateStateService _updateState;
     private readonly IUserSettingsService _userSettings;
     private readonly IGifExportService _gifExportService;
     private readonly ITelemetryService _telemetry;
@@ -29,7 +30,6 @@ internal sealed class TrayIconManager : ITrayIconManager
     private WpfMenuItem? _recentRecordingsMenuItem;
     private WpfMenuItem? _recentCapturesMenuItem;
     private WpfMenuItem? _checkForUpdatesMenuItem;
-    private UpdateCheckResult? _pendingUpdate;
     private string? _pendingRecordingBalloonPath;
     private readonly List<RecentRecordingItem> _recentRecordings = [];
     private readonly List<string> _recentCaptures = [];
@@ -41,6 +41,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         IUpdateService updateService,
         IAppVersionService appVersionService,
         IAutoUpdateService autoUpdate,
+        IUpdateStateService updateState,
         IUserSettingsService userSettings,
         IGifExportService gifExportService,
         ITelemetryService telemetry,
@@ -53,6 +54,7 @@ internal sealed class TrayIconManager : ITrayIconManager
         _updateService = updateService;
         _appVersionService = appVersionService;
         _autoUpdate = autoUpdate;
+        _updateState = updateState;
         _userSettings = userSettings;
         _gifExportService = gifExportService;
         _telemetry = telemetry;
@@ -77,14 +79,7 @@ internal sealed class TrayIconManager : ITrayIconManager
 
     public void HandleUpdateAvailable(UpdateCheckResult result)
     {
-        _pendingRecordingBalloonPath = null;
-        _pendingUpdate = result;
-        var v = result.LatestVersion;
-
-        _trayIcon?.ShowBalloonTip(
-            "Update Available",
-            $"Version {v.Major}.{v.Minor}.{v.Build} is ready to download.",
-            BalloonIcon.Info);
+        _updateState.Replace(result);
         UpdateCheckForUpdatesMenuItemHeader();
     }
 
@@ -113,7 +108,6 @@ internal sealed class TrayIconManager : ITrayIconManager
         // click handler, so leaving these set would make a click on this balloon open
         // the previous recording or run the pending update instead.
         _pendingRecordingBalloonPath = null;
-        _pendingUpdate = null;
         _trayIcon.ShowBalloonTip(title, message, isError ? BalloonIcon.Warning : BalloonIcon.Info);
     }
 
@@ -480,12 +474,9 @@ internal sealed class TrayIconManager : ITrayIconManager
 
         try
         {
-            if (_pendingUpdate is not null)
+            if (_updateState.Current is { } knownUpdate)
             {
-                var pendingUpdate = _pendingUpdate;
-                _pendingUpdate = null;
-                UpdateCheckForUpdatesMenuItemHeader();
-                await _autoUpdate.ConfirmAndInstall(pendingUpdate);
+                await _autoUpdate.ConfirmAndInstall(knownUpdate);
                 return;
             }
 
@@ -494,6 +485,8 @@ internal sealed class TrayIconManager : ITrayIconManager
 
             if (!result.IsUpdateAvailable)
             {
+                _updateState.Replace(null);
+                UpdateCheckForUpdatesMenuItemHeader();
                 var current = _appVersionService.Current;
                 _messageBox.ShowInformation(
                     $"You're already on the latest version (v{current.Major}.{current.Minor}.{current.Build}).",
@@ -501,11 +494,9 @@ internal sealed class TrayIconManager : ITrayIconManager
                 return;
             }
 
-            _pendingUpdate = result;
+            _updateState.Replace(result);
             UpdateCheckForUpdatesMenuItemHeader();
             await _autoUpdate.ConfirmAndInstall(result);
-            _pendingUpdate = null;
-            UpdateCheckForUpdatesMenuItemHeader();
         }
         catch (Exception ex)
         {
@@ -611,15 +602,6 @@ internal sealed class TrayIconManager : ITrayIconManager
 
     private async void OnTrayBalloonClicked(object sender, RoutedEventArgs e)
     {
-        if (_pendingUpdate is not null)
-        {
-            var update = _pendingUpdate;
-            _pendingUpdate = null;
-            UpdateCheckForUpdatesMenuItemHeader();
-            await _autoUpdate.ConfirmAndInstall(update);
-            return;
-        }
-
         if (string.IsNullOrWhiteSpace(_pendingRecordingBalloonPath))
         {
             return;
@@ -739,14 +721,14 @@ internal sealed class TrayIconManager : ITrayIconManager
             return;
         }
 
-        if (_pendingUpdate is null)
+        if (_updateState.Current is not { } update)
         {
             _checkForUpdatesMenuItem.Header = "Check for Updates";
             return;
         }
 
-        var version = _pendingUpdate.LatestVersion;
-        _checkForUpdatesMenuItem.Header = $"Install Update ({version.Major}.{version.Minor}.{version.Build})";
+        var version = update.LatestVersion;
+        _checkForUpdatesMenuItem.Header = $"Install update v{version.Major}.{version.Minor}.{version.Build}";
     }
 
     private void SimulateUiError_Click(object sender, RoutedEventArgs e)

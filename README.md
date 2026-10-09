@@ -840,9 +840,14 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 | Event | Properties |
 |---|---|
 | `update_check_manual` | — |
-| `update_available` | `version` |
-| `update_confirmed` | `version` |
-| `update_dismissed` | `version` |
+| `update_available` | `from_version`, `target_version` |
+| `update_confirmed` | `from_version`, `target_version` |
+| `update_dismissed` | `from_version`, `target_version` |
+| `update_card_shown` | `target_version` |
+| `update_card_dismissed` | `target_version` |
+| `update_download_failed` | `reason` |
+| `update_installer_launched` | `from_version`, `target_version` |
+| `update_applied` | `from_version`, `target_version` |
 | `unhandled_exception` | `exception_type`, `context`, `last_action` when available |
 
 Every event includes an app `version`, a per-run `session_id`, a `telemetry_channel` (`product` or `diagnostic`), a `telemetry_schema_version` (currently `2`), and an `install_id` when one is available. The install ID is a random GUID generated once on first launch and stored locally. It is used only to count unique installs; it is not tied to an account or identity. Azure may derive country and city from the IP address used to connect to Application Insights.

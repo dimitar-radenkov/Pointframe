@@ -23,6 +23,7 @@ public static class TelemetryPropertyKeys
     public const string ExceptionType = "exception_type";
     public const string FfmpegExitCode = "ffmpeg_exit_code";
     public const string FirstAction = "first_action";
+    public const string FromVersion = "from_version";
     public const string InnerTypes = "inner_types";
     public const string LastAction = "last_action";
     public const string OsBuild = "os_build";
@@ -40,6 +41,7 @@ public static class TelemetryPropertyKeys
     public const string State = "state";
     public const string Success = "success";
     public const string TimeFromInstallMinutes = "time_from_install_minutes";
+    public const string TargetVersion = "target_version";
     public const string Tool = "tool";
     public const string Type = "type";
     public const string UptimeMinutes = "uptime_minutes";
@@ -106,6 +108,11 @@ public static class TelemetryEvents
     public const string UpdateCheckManual = "update_check_manual";
     public const string UpdateConfirmed = "update_confirmed";
     public const string UpdateDismissed = "update_dismissed";
+    public const string UpdateCardShown = "update_card_shown";
+    public const string UpdateCardDismissed = "update_card_dismissed";
+    public const string UpdateDownloadFailed = "update_download_failed";
+    public const string UpdateInstallerLaunched = "update_installer_launched";
+    public const string UpdateApplied = "update_applied";
     public const string VideoTrimCompleted = "video_trim_completed";
     public const string VideoTrimOpened = "video_trim_opened";
     public const string VideoTrimStarted = "video_trim_started";
@@ -201,10 +208,15 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.SnipStarted] = Product(TelemetryEvents.SnipStarted, TelemetryPropertyKeys.Type, TelemetryPropertyKeys.Source),
             [TelemetryEvents.StartupCompleted] = Diagnostic(TelemetryEvents.StartupCompleted, TelemetryPropertyKeys.DurationMilliseconds),
             [TelemetryEvents.UnhandledException] = Diagnostic(TelemetryEvents.UnhandledException, TelemetryPropertyKeys.ExceptionType).WithOptional(TelemetryPropertyKeys.Context, TelemetryPropertyKeys.LastAction),
-            [TelemetryEvents.UpdateAvailable] = Product(TelemetryEvents.UpdateAvailable, TelemetryPropertyKeys.Version),
+            [TelemetryEvents.UpdateAvailable] = Product(TelemetryEvents.UpdateAvailable, TelemetryPropertyKeys.FromVersion, TelemetryPropertyKeys.TargetVersion),
+            [TelemetryEvents.UpdateApplied] = Product(TelemetryEvents.UpdateApplied, TelemetryPropertyKeys.FromVersion, TelemetryPropertyKeys.TargetVersion),
+            [TelemetryEvents.UpdateCardDismissed] = Product(TelemetryEvents.UpdateCardDismissed, TelemetryPropertyKeys.TargetVersion),
+            [TelemetryEvents.UpdateCardShown] = Product(TelemetryEvents.UpdateCardShown, TelemetryPropertyKeys.TargetVersion),
             [TelemetryEvents.UpdateCheckManual] = Product(TelemetryEvents.UpdateCheckManual),
-            [TelemetryEvents.UpdateConfirmed] = Product(TelemetryEvents.UpdateConfirmed, TelemetryPropertyKeys.Version),
-            [TelemetryEvents.UpdateDismissed] = Product(TelemetryEvents.UpdateDismissed, TelemetryPropertyKeys.Version),
+            [TelemetryEvents.UpdateConfirmed] = Product(TelemetryEvents.UpdateConfirmed, TelemetryPropertyKeys.FromVersion, TelemetryPropertyKeys.TargetVersion),
+            [TelemetryEvents.UpdateDismissed] = Product(TelemetryEvents.UpdateDismissed, TelemetryPropertyKeys.FromVersion, TelemetryPropertyKeys.TargetVersion),
+            [TelemetryEvents.UpdateDownloadFailed] = Product(TelemetryEvents.UpdateDownloadFailed, TelemetryPropertyKeys.Reason),
+            [TelemetryEvents.UpdateInstallerLaunched] = Product(TelemetryEvents.UpdateInstallerLaunched, TelemetryPropertyKeys.FromVersion, TelemetryPropertyKeys.TargetVersion),
             [TelemetryEvents.VideoTrimCompleted] = Product(TelemetryEvents.VideoTrimCompleted, TelemetryPropertyKeys.Success, TelemetryPropertyKeys.Canceled),
             [TelemetryEvents.VideoTrimOpened] = Product(TelemetryEvents.VideoTrimOpened),
             [TelemetryEvents.VideoTrimStarted] = Product(TelemetryEvents.VideoTrimStarted),

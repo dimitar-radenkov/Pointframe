@@ -63,6 +63,8 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IUserSettingsService _settingsService;
     private readonly ITelemetryService _telemetry;
     private readonly IThemeService _themeService;
+    private readonly IUpdateStateService? _updateStateService;
+    private readonly IAutoUpdateService? _autoUpdateService;
     private readonly AppTheme _originalTheme;
     private readonly IReadOnlyList<string> _availableMicrophoneDevices;
     private int _recordingFps;
@@ -95,7 +97,9 @@ public partial class SettingsViewModel : ObservableObject
         IDialogService dialogService,
         IMicrophoneDeviceService microphoneDeviceService,
         ITelemetryService telemetry,
-        ITranscriptModelService transcriptModelService)
+        ITranscriptModelService transcriptModelService,
+        IUpdateStateService? updateStateService = null,
+        IAutoUpdateService? autoUpdateService = null)
     {
         _transcriptModelService = transcriptModelService;
         _transcriptModelInstalled = transcriptModelService.IsModelInstalled;
@@ -104,6 +108,8 @@ public partial class SettingsViewModel : ObservableObject
         _settingsService = settingsService;
         _telemetry = telemetry;
         _themeService = themeService;
+        _updateStateService = updateStateService;
+        _autoUpdateService = autoUpdateService;
         _availableMicrophoneDevices = microphoneDeviceService.GetAvailableCaptureDeviceNames();
 
         var s = settingsService.Current;
@@ -158,6 +164,11 @@ public partial class SettingsViewModel : ObservableObject
         _recordingFps = s.RecordingFps;
         _hudGapPixels = s.HudGapPixels;
         _lastAutoUpdateCheckUtc = s.LastAutoUpdateCheckUtc;
+        if (updateStateService?.Current is { } update)
+        {
+            UpdateAvailableText = $"Update available: v{update.LatestVersion.Major}.{update.LatestVersion.Minor}.{update.LatestVersion.Build}";
+            IsUpdateAvailable = true;
+        }
 
         var watermark = s.ScreenshotWatermark ?? new ScreenshotWatermarkSettings();
         _watermarkHiddenStyle = watermark;
@@ -181,6 +192,21 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     public IReadOnlyList<SettingsSectionItem> Sections => SectionItems;
+
+    [ObservableProperty]
+    private string _updateAvailableText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isUpdateAvailable;
+
+    [RelayCommand]
+    private async Task InstallUpdate()
+    {
+        if (_updateStateService?.Current is { } update && _autoUpdateService is not null)
+        {
+            await _autoUpdateService.ConfirmAndInstall(update);
+        }
+    }
 
     [ObservableProperty]
     private string _screenshotSavePath;
@@ -625,6 +651,8 @@ public partial class SettingsViewModel : ObservableObject
             OverlayCloseHotkeyModifiers = OverlayCloseHotkeyModifiers,
             AutoUpdateCheckInterval = AutoUpdateCheckInterval,
             LastAutoUpdateCheckUtc = _lastAutoUpdateCheckUtc,
+            LastUpdateOfferUtc = currentSettings.LastUpdateOfferUtc,
+            LastRunVersion = currentSettings.LastRunVersion,
             Theme = AppTheme,
             InstallId = currentSettings.InstallId,
             InstallCreatedUtc = currentSettings.InstallCreatedUtc,

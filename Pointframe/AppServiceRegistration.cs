@@ -37,6 +37,7 @@ internal static class AppServiceRegistration
         services.AddSingleton<IActivationTelemetryService, ActivationTelemetryService>();
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<IAppVersionService, AppVersionService>();
+        services.AddSingleton<IUpdateStateService, UpdateStateService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
         services.AddSingleton<IShareService>(sp => new ShareService(
             ShareService.SharedHttpClient,
@@ -104,7 +105,9 @@ internal static class AppServiceRegistration
             sp.GetRequiredService<IDialogService>(),
             sp.GetRequiredService<IMicrophoneDeviceService>(),
             sp.GetRequiredService<ITelemetryService>(),
-            sp.GetRequiredService<ITranscriptModelService>()));
+            sp.GetRequiredService<ITranscriptModelService>(),
+            sp.GetRequiredService<IUpdateStateService>(),
+            sp.GetRequiredService<IAutoUpdateService>()));
         services.AddTransient<SettingsWindow>();
         services.AddTransient<WelcomeViewModel>();
         services.AddTransient<WelcomeWindow>(sp => new WelcomeWindow(

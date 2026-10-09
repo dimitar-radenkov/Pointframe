@@ -43,6 +43,13 @@ public partial class App : Application
     private SettingsWindow? _settingsWindow;
     private AboutWindow? _aboutWindow;
     private LibraryWindow? _libraryWindow;
+    private IUpdateStateService _updateState = null!;
+    private IAutoUpdateService _autoUpdateService = null!;
+    private UpdateCardWindow? _updateCardWindow;
+    private DispatcherTimer? _updateOfferRetryTimer;
+    private UpdateOfferPolicy? _updateOfferPolicy;
+    private static readonly TimeSpan UpdateOfferStartupDelay = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan UpdateOfferRetryDelay = TimeSpan.FromSeconds(30);
 
     private const string AutomationOpenImagePathEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_OPEN_IMAGE_PATH";
 
@@ -87,6 +94,8 @@ public partial class App : Application
         _logger = _host.Services.GetRequiredService<ILogger<App>>();
         _messageBox = _host.Services.GetRequiredService<IMessageBoxService>();
         _userSettings = _host.Services.GetRequiredService<IUserSettingsService>();
+        _updateState = _host.Services.GetRequiredService<IUpdateStateService>();
+        _autoUpdateService = _host.Services.GetRequiredService<IAutoUpdateService>();
         _themeService = _host.Services.GetRequiredService<IThemeService>();
         _dialogService = _host.Services.GetRequiredService<IDialogService>();
         _imageFileService = _host.Services.GetRequiredService<IImageFileService>();
@@ -119,6 +128,7 @@ public partial class App : Application
         }
 
         _themeService.Apply(_userSettings.Current.Theme);
+        TrackAppliedUpdate();
         if (!automationLaunchOptions.IsAutomationMode)
         {
             var eventAggregator = _host.Services.GetRequiredService<IEventAggregator>();
@@ -165,6 +175,21 @@ public partial class App : Application
 
         _trayIconManager = _host.Services.GetRequiredService<ITrayIconManager>();
         _trayIconManager.Initialize();
+        _updateOfferPolicy = new UpdateOfferPolicy();
+        _updateOfferRetryTimer = new DispatcherTimer { Interval = UpdateOfferRetryDelay };
+        _updateOfferRetryTimer.Tick += (_, _) =>
+        {
+            _updateOfferRetryTimer.Stop();
+            TryShowUpdateCard();
+        };
+        var startupOfferTimer = new DispatcherTimer { Interval = UpdateOfferStartupDelay };
+        startupOfferTimer.Tick += (_, _) =>
+        {
+            startupOfferTimer.Stop();
+            _updateOfferPolicy.MarkOfferDue();
+            TryShowUpdateCard();
+        };
+        startupOfferTimer.Start();
         startupTimer.Stop();
         _telemetry.TrackEvent(TelemetryEvents.StartupCompleted, new Dictionary<string, string>
         {
@@ -444,6 +469,7 @@ public partial class App : Application
 
     private async ValueTask HandleUpdateAvailable(UpdateAvailableMessage message)
     {
+        _updateState?.Replace(message.Result);
         var dispatcher = Current?.Dispatcher;
         if (dispatcher is null || dispatcher.CheckAccess())
         {
@@ -454,11 +480,16 @@ public partial class App : Application
             await dispatcher.InvokeAsync(() => _trayIconManager?.HandleUpdateAvailable(message.Result));
         }
 
-        var v = message.Result.LatestVersion;
-        _telemetry.TrackEvent(TelemetryEvents.UpdateAvailable, new Dictionary<string, string>
+        if (message.Result.IsUpdateAvailable)
         {
-            [TelemetryPropertyKeys.Version] = $"{v.Major}.{v.Minor}.{v.Build}",
-        });
+            var v = message.Result.LatestVersion;
+            _telemetry.TrackEvent(TelemetryEvents.UpdateAvailable, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.FromVersion] = _userSettings.Current.LastRunVersion ?? "unknown",
+                [TelemetryPropertyKeys.TargetVersion] = FormatVersion(v),
+            });
+            RunOnUi(TryShowUpdateCard);
+        }
     }
 
     private ValueTask HandleOpenImageRequested(OpenImageRequestedMessage message)
@@ -620,12 +651,98 @@ public partial class App : Application
         }
 
         _activationTelemetry.TrackCaptureCompleted(message.CaptureAction);
+        _updateOfferPolicy?.MarkOfferDue();
+        RunOnUi(TryShowUpdateCard);
 
         if (!string.IsNullOrWhiteSpace(message.OutputPath))
         {
             await RegisterSavedImageAsync(message.OutputPath, message.CaptureAction);
         }
     }
+
+    private void TrackAppliedUpdate()
+    {
+        var current = _host.Services.GetRequiredService<IAppVersionService>().Current;
+        var currentText = FormatVersion(current);
+        var previousText = _userSettings.Current.LastRunVersion;
+        if (Version.TryParse(previousText, out var previous) && current > previous)
+        {
+            _telemetry.TrackEvent(TelemetryEvents.UpdateApplied, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.FromVersion] = previousText!,
+                [TelemetryPropertyKeys.TargetVersion] = currentText,
+            });
+        }
+
+        _userSettings.Update(settings => settings.LastRunVersion = currentText);
+    }
+
+    // The card never interrupts a capture or a recording: while one is on screen the offer stays due and is
+    // retried shortly after. The overlay is also the editor, so an open overlay covers unsaved annotations.
+    private void TryShowUpdateCard()
+    {
+        if (_updateOfferPolicy is null
+            || _updateState?.Current is not { } update
+            || _updateCardWindow is not null
+            || !_updateOfferPolicy.IsOfferDue(_userSettings.Current.LastUpdateOfferUtc, DateTime.UtcNow))
+        {
+            return;
+        }
+
+        var captureOrRecordingOnScreen = Current.Windows.OfType<Window>().Any(window => window.IsVisible &&
+            window is OverlayWindow or ScrollingCaptureProgressWindow or RecordingOverlayWindow);
+        if (captureOrRecordingOnScreen)
+        {
+            _updateOfferRetryTimer?.Stop();
+            _updateOfferRetryTimer?.Start();
+            return;
+        }
+
+        _updateOfferPolicy.MarkOffered();
+        _userSettings.Update(settings => settings.LastUpdateOfferUtc = DateTime.UtcNow);
+        _updateCardWindow = new UpdateCardWindow(update.LatestVersion, () =>
+        {
+            _updateCardWindow = null;
+            _ = InstallUpdateFromCardAsync(update);
+        });
+        _updateCardWindow.Dismissed += () => _telemetry.TrackEvent(TelemetryEvents.UpdateCardDismissed, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.TargetVersion] = FormatVersion(update.LatestVersion),
+        });
+        _updateCardWindow.Closed += (_, _) => _updateCardWindow = null;
+        _telemetry.TrackEvent(TelemetryEvents.UpdateCardShown, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.TargetVersion] = FormatVersion(update.LatestVersion),
+        });
+        _updateCardWindow.Show();
+    }
+
+    private async Task InstallUpdateFromCardAsync(UpdateCheckResult update)
+    {
+        try
+        {
+            await _autoUpdateService.InstallWithoutConfirmation(update);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Update installation failed");
+            _messageBox.ShowError("The update could not be downloaded. Please try again later.", "Update Failed");
+        }
+    }
+
+    private static void RunOnUi(Action action)
+    {
+        var dispatcher = Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        dispatcher.BeginInvoke(action);
+    }
+
+    private static string FormatVersion(Version version) => $"{version.Major}.{version.Minor}.{version.Build}";
 
     private ValueTask HandleSavedImage(SavedImageMessage message) =>
         RegisterSavedImageAsync(message.OutputPath, message.Source);
