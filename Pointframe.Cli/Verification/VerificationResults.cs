@@ -29,7 +29,8 @@ internal sealed record VerificationScenarioResult(
     string? BundleDirectory,
     bool ProofValid,
     string? ProofKeyId,
-    IReadOnlyList<string> Problems);
+    IReadOnlyList<string> Problems,
+    [property: System.Text.Json.Serialization.JsonIgnore] bool InfrastructureFailure = false);
 
 // What a reviewer needs to tie the verdict to the inputs: the source tree it ran on, the spec, and the
 // verifier and server that produced it. The signature in each bundle covers only that bundle.

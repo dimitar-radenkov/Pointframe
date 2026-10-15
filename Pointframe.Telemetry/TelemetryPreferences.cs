@@ -7,8 +7,8 @@ public sealed class TelemetryPreferences
     public const string OptOutEnvironmentVariable = "POINTFRAME_TELEMETRY_OPTOUT";
     public const string DoNotTrackEnvironmentVariable = "DO_NOT_TRACK";
     public const string ConfigFileName = "agent-telemetry.json";
-    // v2: the notice changed when the anonymous install ID was added, so everyone sees it once more.
-    public const string NoticeFileName = "agent-telemetry-notice-v2";
+    // v3: the notice changed when the verification_failed and invalid_request outcomes were added, so everyone sees it once more.
+    public const string NoticeFileName = "agent-telemetry-notice-v3";
     public const string InstallIdFileName = "agent-install-id";
 
     private readonly string _directory;

@@ -26,6 +26,7 @@ param(
     [string]$To,
     [string]$ExcludeRoleInstance = 'MITKO-ROG-STRIX',
     [string[]]$ExcludeInstallId = @(),
+    [string]$InternalAgentIdsFile,
     [switch]$SandboxView,
     [switch]$Json,
     [string]$OutFile,
@@ -59,6 +60,8 @@ function Expand-Kql([string]$Template, [hashtable]$Ctx)
     $ids = @($Ctx.ExcludeInstallId | Where-Object { $_ } | ForEach-Object { ConvertTo-KqlString $_ })
     $idList = if ($ids.Count -gt 0) { $ids -join ', ' } else { '""' }
     $text = $Template.Replace('{{EXCLUDE_IDS}}', $idList)
+    $internalIds = @(if ($Ctx.ContainsKey('InternalAgentIds')) { @($Ctx.InternalAgentIds | Where-Object { $_ } | ForEach-Object { ConvertTo-KqlString $_ }) })
+    $text = $text.Replace('{{INTERNAL_AGENT_IDS}}', $(if ($internalIds.Count -gt 0) { $internalIds -join ', ' } else { '""' }))
     $text = $text.Replace('{{EXCLUDE_ROLE}}', (ConvertTo-KqlString ([string]$Ctx.ExcludeRoleInstance)))
     $text = $text.Replace('{{FROM}}', (ConvertTo-KqlDatetime $Ctx.From))
     $text = $text.Replace('{{TO}}', (ConvertTo-KqlDatetime $Ctx.To))
@@ -266,6 +269,27 @@ customEvents
     ctaSessions = dcountif(tostring(customDimensions.session_id), name == "website_cta_clicked")
 '@ $Ctx
     }
+    # Agent telemetry (CLI and MCP) carries agent_install_id, not install_id, so it never enters AppEvents.
+    agentTotal = {
+        param($Ctx)
+        Expand-Kql @'
+customEvents
+| where timestamp > ago(30d) and name == "agent_operation"
+| summarize events = count()
+'@ $Ctx
+    }
+    agent = {
+        param($Ctx)
+        Expand-Kql @'
+let internalIds = dynamic([{{INTERNAL_AGENT_IDS}}]);
+customEvents
+| where timestamp > ago(30d) and name == "agent_operation"
+| extend agentId = tostring(customDimensions.agent_install_id)
+| extend cohort = case(isempty(agentId), "unidentified", agentId in (internalIds), "internal", "external")
+| summarize events = count() by cohort, op = tostring(customDimensions.name), outcome = tostring(customDimensions.outcome), version = tostring(customDimensions.version)
+| order by cohort asc, events desc
+'@ $Ctx
+    }
 }
 
 # ------------------------------------------------------------ transport and parsing
@@ -358,6 +382,42 @@ function Resolve-Window([string]$From, [string]$To, [datetime]$Now)
         throw "-From ($fromValue) must be earlier than -To ($toValue)."
     }
     @{ From = $fromValue; To = $toValue }
+}
+
+# The private list of agent install IDs that belong to this project's own CLI and MCP runs. Only the count ever
+# leaves this function's callers; IDs are embedded in the query but never printed.
+function Read-InternalAgentIds([string]$Path)
+{
+    $result = @{ Found = $false; Ids = @(); Skipped = 0 }
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path))
+    {
+        return $result
+    }
+    $result.Found = $true
+    try
+    {
+        $document = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+        $listed = if ($null -ne $document.PSObject.Properties['agentInstallIds']) { @($document.agentInstallIds) } else { @() }
+    }
+    catch
+    {
+        $result.Skipped = 1
+        return $result
+    }
+    $valid = [Collections.Generic.List[string]]::new()
+    foreach ($id in $listed)
+    {
+        if ($id -is [string] -and $id -match '^[0-9a-fA-F]{32}$')
+        {
+            $valid.Add($id.ToLowerInvariant())
+        }
+        else
+        {
+            $result.Skipped++
+        }
+    }
+    $result.Ids = @($valid | Select-Object -Unique)
+    $result
 }
 
 function Get-Percent($Part, $Whole)
@@ -543,6 +603,41 @@ function New-Report([scriptblock]$Runner, [hashtable]$Ctx, [datetime]$Now)
             ctaSessionPct = Get-Percent (Get-Value $r 'ctaSessions') (Get-Value $r 'sessions')
         }
     }
+    $report.agent = Get-Section {
+        $raw = [int](Get-Value (Get-Single (& $q 'agentTotal')) 'events')
+        $rows = @(& $q 'agent' | ForEach-Object {
+                [pscustomobject][ordered]@{
+                    cohort = [string](Get-Value $_ 'cohort')
+                    op = [string](Get-Value $_ 'op')
+                    outcome = [string](Get-Value $_ 'outcome')
+                    version = [string](Get-Value $_ 'version')
+                    events = [int](Get-Value $_ 'events')
+                }
+            })
+        $sum = { param($cohort) $total = 0; foreach ($r in $rows) { if ($r.cohort -eq $cohort) { $total += $r.events } }; $total }
+        $internal = & $sum 'internal'
+        $external = & $sum 'external'
+        $unidentified = & $sum 'unidentified'
+        $warnings = [Collections.Generic.List[string]]::new()
+        if (-not $Ctx.InternalAgentIdsFound)
+        {
+            $warnings.Add('plan/telemetry-internal-agent-ids.json is absent: every identified agent is counted as external (provisional).')
+        }
+        elseif (@($Ctx.InternalAgentIds | Where-Object { $_ }).Count -eq 0)
+        {
+            $warnings.Add('The internal agent id list is empty or unreadable: every identified agent is counted as external (provisional).')
+        }
+        [ordered]@{
+            raw = $raw
+            internal = $internal
+            external = $external
+            unidentified = $unidentified
+            reconciled = (($internal + $external + $unidentified) -eq $raw)
+            internalIdsConfigured = @($Ctx.InternalAgentIds | Where-Object { $_ }).Count
+            warnings = @($warnings)
+            rows = $rows
+        }
+    }
     $report
 }
 
@@ -675,6 +770,20 @@ function Format-ReportText($Report, [bool]$SandboxView)
         param($d)
         "  sessions $($d.sessions), CTA clicks $($d.ctaClicks), sessions with a CTA click $($d.ctaSessions) ($(Format-Percent $d.ctaSessionPct))"
     }
+    & $section '10. Agent operations (CLI and MCP, last 30 days)' $Report.agent {
+        param($d)
+        $lines = @($d.warnings | ForEach-Object { "  WARNING: $_" })
+        $lines += "  raw $($d.raw) = internal $($d.internal) + external (provisional) $($d.external) + unidentified $($d.unidentified)$(if (-not $d.reconciled) { '  (DOES NOT RECONCILE)' })"
+        $lines += '  external (provisional) = has an agent_install_id that is not in the internal list; unidentified = no agent_install_id.'
+        foreach ($cohort in @(@('internal', 'internal'), @('external', 'external (provisional)'), @('unidentified', 'unidentified')))
+        {
+            $cohortRows = @($d.rows | Where-Object { $_.cohort -eq $cohort[0] })
+            $lines += ''
+            $lines += "  $($cohort[1]):"
+            $lines += $(if ($cohortRows.Count -eq 0) { '  none' } else { Format-TextTable $cohortRows @('op', 'outcome', 'version', 'events') { param($r) @($r.op, $r.outcome, $r.version, $r.events) } })
+        }
+        $lines -join "`n"
+    }
     $sb.ToString().TrimEnd()
 }
 
@@ -694,7 +803,8 @@ function Invoke-SelfTest
 
     $now = & $utc 2026 10 5 12 0 0
     $window = Resolve-Window '' '' $now
-    $ctx = @{ From = $window.From; To = $window.To; ExcludeRoleInstance = 'HOST-1'; ExcludeInstallId = @('abc123', 'def456') }
+    $internalAgentId = '0123456789abcdef0123456789abcdef'
+    $ctx = @{ From = $window.From; To = $window.To; ExcludeRoleInstance = 'HOST-1'; ExcludeInstallId = @('abc123', 'def456'); InternalAgentIds = @($internalAgentId); InternalAgentIdsFound = $true }
 
     # UTC boundaries
     & $check ($window.To -eq (& $utc 2026 10 5 0 0 0)) 'default To is Monday 2026-10-05 UTC'
@@ -719,7 +829,7 @@ function Invoke-SelfTest
         & $check ($open -eq $close) "$name has balanced parentheses"
         & $check (($quotes % 2) -eq 0) "$name has balanced quotes"
         & $check ($kql -notmatch '\b(first|real)\s*=') "$name does not name a column with a KQL reserved word"
-        if ($name -ne 'website')
+        if ($name -notin @('website', 'agent', 'agentTotal'))
         {
             & $check ($kql.Contains('"abc123", "def456"') -and $kql.Contains('"HOST-1"')) "$name embeds both exclusions"
             & $check ($kql.Contains('name !startswith "website"')) "$name keeps website events out of app queries"
@@ -780,6 +890,46 @@ function Invoke-SelfTest
     $roundTrip = $report | ConvertTo-Json -Depth 8 | ConvertFrom-Json
     & $check ($roundTrip.totals.data.installs -eq 706) 'report serializes to JSON'
 
+    # Agent section: internal / external / unidentified split that reconciles with the raw count
+    $agent = $report.agent
+    & $check ($agent.ok -and $agent.data.raw -eq 41) 'agent raw count read from fixture'
+    & $check ($agent.data.internal -eq 25 -and $agent.data.external -eq 7 -and $agent.data.unidentified -eq 9) 'agent events split into internal, external, and unidentified'
+    & $check ($agent.data.reconciled -and ($agent.data.internal + $agent.data.external + $agent.data.unidentified) -eq $agent.data.raw) 'agent split reconciles with the raw count'
+    & $check (@($agent.data.warnings).Count -eq 0 -and $agent.data.internalIdsConfigured -eq 1) 'a present internal list gives no warning'
+    $agentKql = & $QueryBuilders['agent'] $ctx
+    & $check ($agentKql.Contains("`"$internalAgentId`"") -and $agentKql.Contains('name == "agent_operation"')) 'agent query embeds the internal id list'
+    & $check ($agentKql -match 'isempty\(agentId\), "unidentified"') 'an event without agent_install_id is unidentified'
+    $agentText = Format-ReportText $report $false
+    & $check ($agentText -match 'external \(provisional\)' -and $agentText -match 'raw 41 = internal 25 \+ external \(provisional\) 7 \+ unidentified 9') 'text labels the external cohort provisional and shows the reconciliation'
+    & $check ($agentText -match 'verification_failed' -and $agentText -match 'desktop_restart_app') 'text lists agent operations by op and outcome'
+    & $check (-not $agentText.Contains($internalAgentId) -and -not ($report | ConvertTo-Json -Depth 8).Contains($internalAgentId)) 'agent install ids are never printed'
+    $missingCtx = $ctx.Clone()
+    $missingCtx.InternalAgentIds = @()
+    $missingCtx.InternalAgentIdsFound = $false
+    $missingReport = New-Report $runner $missingCtx $now
+    & $check ($missingReport.agent.data.warnings[0] -match 'absent' -and (Format-ReportText $missingReport $false) -match 'WARNING: plan/telemetry-internal-agent-ids.json is absent') 'an absent internal list gives a warning'
+    $mismatchRunner = { param($name, $kql) if ($name -eq 'agentTotal') { [pscustomobject]@{ tables = @([pscustomobject]@{ name = 'PrimaryResult'; columns = @([pscustomobject]@{ name = 'events'; type = 'long' }); rows = @(, @(42)) }) } } else { & $load $name } }
+    $mismatch = New-Report $mismatchRunner $ctx $now
+    & $check (-not $mismatch.agent.data.reconciled -and (Format-ReportText $mismatch $false) -match 'DOES NOT RECONCILE') 'a split that does not add up to the raw count is flagged'
+    $idsDir = Join-Path ([IO.Path]::GetTempPath()) ('usage-report-ids-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $idsDir | Out-Null
+    try
+    {
+        $idsFile = Join-Path $idsDir 'ids.json'
+        [IO.File]::WriteAllText($idsFile, ('{"agentInstallIds":["' + $internalAgentId.ToUpperInvariant() + '","' + $internalAgentId + '","not an id","x\" | drop"]}'))
+        $loaded = Read-InternalAgentIds $idsFile
+        & $check ($loaded.Found -and @($loaded.Ids).Count -eq 1 -and $loaded.Ids[0] -eq $internalAgentId -and $loaded.Skipped -eq 2) 'the id list is validated, lower-cased, and de-duplicated'
+        [IO.File]::WriteAllText($idsFile, '{ broken')
+        $broken = Read-InternalAgentIds $idsFile
+        & $check ($broken.Found -and @($broken.Ids).Count -eq 0) 'an unreadable id list yields no ids'
+        $absent = Read-InternalAgentIds (Join-Path $idsDir 'absent.json')
+        & $check (-not $absent.Found -and @($absent.Ids).Count -eq 0) 'an absent id list is reported as absent'
+    }
+    finally
+    {
+        Remove-Item -LiteralPath $idsDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
     # Empty results: every section degrades to zeros or "no data", never an error
     $emptyRunner = { param($n, $k) [pscustomobject]@{ tables = @([pscustomobject]@{ name = 'PrimaryResult'; columns = @(); rows = @() }) } }
     $empty = New-Report $emptyRunner $ctx $now
@@ -833,7 +983,13 @@ try
 {
     $now = [datetime]::UtcNow
     $window = Resolve-Window $From $To $now
-    $ctx = @{ From = $window.From; To = $window.To; ExcludeRoleInstance = $ExcludeRoleInstance; ExcludeInstallId = @($ExcludeInstallId) }
+    $internalFile = if ($InternalAgentIdsFile) { $InternalAgentIdsFile } else { Join-Path $PSScriptRoot '../plan/telemetry-internal-agent-ids.json' }
+    $internal = Read-InternalAgentIds $internalFile
+    if (-not $internal.Found)
+    {
+        Write-Warning 'plan/telemetry-internal-agent-ids.json is absent: agent operations cannot be split into internal and external.'
+    }
+    $ctx = @{ From = $window.From; To = $window.To; ExcludeRoleInstance = $ExcludeRoleInstance; ExcludeInstallId = @($ExcludeInstallId); InternalAgentIds = @($internal.Ids); InternalAgentIdsFound = $internal.Found }
     foreach ($name in $QueryBuilders.Keys) { [void](& $QueryBuilders[$name] $ctx) }
 }
 catch

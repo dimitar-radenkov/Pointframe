@@ -11,7 +11,7 @@ public static class OperationTelemetryFactory
 
     public static string NoticeText(string configPath) =>
         "Pointframe sends anonymous usage counts from the CLI and MCP server: the command or tool name, " +
-        "success or failure, a coarse duration bucket, cli or mcp, the MCP client type, the version, and a random install ID " +
+        "the outcome (success, error, cancelled, denied, verification_failed, or invalid_request), a coarse duration bucket, cli or mcp, the MCP client type, the version, and a random install ID " +
         "that is stored in this folder and is not tied to your name, account, or machine. " +
         "It never sends arguments, paths, screenshots, text, error messages, or user or machine names. " +
         "Application Insights masks IP addresses. " +

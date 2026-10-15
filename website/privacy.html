@@ -41,10 +41,10 @@
                     <p>The project never collects screenshots, recordings, OCR text, file names, or file paths. They stay on your machine under <code>%LOCALAPPDATA%\Pointframe</code>, apart from what you choose to send somewhere yourself. An MCP capture tool returns the image to your MCP client, which passes it to your model; pass <code>includeImage: false</code> to return metadata only. Upload &amp; copy link in the desktop app sends one capture to the HTTPS destination you configured.</p>
 
                     <h2>Usage telemetry of the CLI and the MCP server</h2>
-                    <p>Official release builds of the CLI and the MCP server send one anonymous event per MCP tool call or CLI command to Azure Application Insights. The event holds only these fixed values:</p>
+                    <p>Official release builds of the CLI and the MCP server send one anonymous event per MCP tool call or CLI command to Azure Application Insights (from this version, a scenario's wait for the app to exit before a restart counts as one call). The event holds only these fixed values:</p>
                     <ul>
                         <li><code>name</code>: the MCP tool or CLI command, taken from a fixed list; any other value is reported as <code>other</code>.</li>
-                        <li><code>outcome</code>: <code>success</code>, <code>error</code>, <code>cancelled</code>, or <code>denied</code>. Error text is never sent.</li>
+                        <li><code>outcome</code>: <code>success</code>, <code>error</code>, <code>cancelled</code>, <code>denied</code>, <code>verification_failed</code> (a verification that ran and reported a failing or not-fresh result), or <code>invalid_request</code> (the call was rejected as malformed or invalid input). Error text is never sent.</li>
                         <li><code>duration_bucket</code>: <code>lt_1s</code>, <code>1_5s</code>, <code>5_30s</code>, or <code>gt_30s</code>.</li>
                         <li><code>host</code>: <code>cli</code> or <code>mcp</code>.</li>
                         <li><code>client</code> (MCP only): <code>claude-desktop</code>, <code>claude-code</code>, <code>codex</code>, <code>vscode</code>, <code>cursor</code>, or <code>other</code>, mapped from the client name in the MCP initialize request.</li>

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Pointframe.Telemetry;
 
 namespace Pointframe.Cli;
 
@@ -51,6 +52,15 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
     internal const string McpExecutableVariable = "POINTFRAME_MCP_EXECUTABLE";
     internal static readonly string OutputRelativePath = Path.Combine("artifacts", "pointframe-verify");
     private const int SchemaVersion = 1;
+    private static readonly HashSet<string> _invalidRequestErrorCodes = new(StringComparer.Ordinal)
+    {
+        "spec_invalid",
+        "scenario_not_found",
+        "task_not_found",
+        "task_file_not_found",
+        "task_id_invalid",
+    };
+
 
     internal static readonly JsonSerializerOptions VerdictJson = new(JsonSerializerDefaults.Web)
     {
@@ -68,6 +78,9 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         "StartTestSession", "RestartApp", "ObserveApp", "FocusWindow", "PressKeys", "EnterText", "Invoke",
         "CheckUi", "GetActionResult", "GetTestReport", "EndTestSession",
     ];
+
+    // Typed provenance for agent telemetry; null leaves a failing exit code classified as an error.
+    internal TelemetryOutcome? Outcome { get; private set; }
 
     internal Task<int> RunAsync(CliCommand command, CancellationToken cancellationToken) => command.VerifyAction switch
     {
@@ -158,6 +171,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or VerificationSpecException or InvalidOperationException or ArgumentException)
         {
+            Outcome = exception is IOException or UnauthorizedAccessException or InvalidOperationException ? null : TelemetryOutcome.InvalidRequest;
             await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new { status = "error", error = exception.Message }, CompactJson));
             return 2;
         }
@@ -337,7 +351,13 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             await standardError.WriteLineAsync($"Note: the spec changed since task '{context.Task.Id}' started: {string.Join("; ", context.Task.SpecChanges)}.");
         }
 
-        return status == VerificationStatus.Fail ? 1 : 0;
+        if (status == VerificationStatus.Fail)
+        {
+            Outcome = results.Any(item => item.InfrastructureFailure) || gates.Any(gate => gate.InfrastructureFailure) ? null : TelemetryOutcome.VerificationFailed;
+            return 1;
+        }
+
+        return 0;
     }
 
     private static IReadOnlyList<int> RunningAppProcessIds(string executablePath)
@@ -446,6 +466,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             review,
             nextStep = VerificationNextSteps.For(fresh ? "fresh" : "stale", freshnessReason, taskId: activeTask),
         }, VerdictJson));
+        Outcome = fresh ? null : TelemetryOutcome.VerificationFailed;
         return fresh ? 0 : 1;
     }
 
@@ -533,6 +554,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         }
         catch (VerificationSpecException exception)
         {
+            Outcome = TelemetryOutcome.InvalidRequest;
             await standardError.WriteLineAsync($"Pointframe verify failed: {exception.Message}");
             return 2;
         }
@@ -779,7 +801,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         catch (Exception exception) when (exception is IOException or InvalidOperationException or TimeoutException or JsonException or KeyNotFoundException or FormatException or IndexOutOfRangeException or System.ComponentModel.Win32Exception)
         {
             result = new VerificationScenarioResult(
-                scenario.Id, VerificationStatus.Fail, null, [], [], null, false, null, [$"The Pointframe MCP server failed: {exception.Message}"]);
+                scenario.Id, VerificationStatus.Fail, null, [], [], null, false, null, [$"The Pointframe MCP server failed: {exception.Message}"], InfrastructureFailure: true);
         }
 
         if (dataDirectory is not null)
@@ -793,6 +815,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
                 result = result with
                 {
                     Status = VerificationStatus.Fail,
+                    InfrastructureFailure = true,
                     Problems = [.. result.Problems, $"The isolated data folder could not be deleted: {exception.Message}"],
                 };
             }
@@ -1048,6 +1071,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         IReadOnlyList<string>? details = null,
         IReadOnlyList<VerificationGateResult>? gates = null)
     {
+        Outcome = _invalidRequestErrorCodes.Contains(code) ? TelemetryOutcome.InvalidRequest : null;
         await standardError.WriteLineAsync($"Pointframe verify failed: {message}");
         foreach (var line in details ?? [])
         {
@@ -1069,6 +1093,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
     private async Task<int> TaskErrorAsync(string taskId, int exitCode, string code, string message)
     {
+        Outcome = _invalidRequestErrorCodes.Contains(code) ? TelemetryOutcome.InvalidRequest : null;
         await standardError.WriteLineAsync($"Pointframe verify failed: {message}");
         await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new TaskStartResponse(SchemaVersion, "error", taskId, ErrorCode: code, Error: message, NextStep: VerificationNextSteps.For("error", code, message, taskId: taskId)), VerdictJson));
         return exitCode;
