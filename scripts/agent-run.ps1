@@ -29,6 +29,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'lib/codex.ps1')
 
 function Test-Brief
 {
@@ -56,21 +57,7 @@ function Test-Brief
 function Test-RunPolicy
 {
     param([string]$Model, [string]$Effort, [string]$EscalationReason, [string]$Sandbox)
-    $reasons = [Collections.Generic.List[string]]::new()
-    if ($Model -notin @('gpt-6-luna', 'gpt-6.1-sol'))
-    {
-        if ($Model -match 'astra|5\.') { $reasons.Add("model '$Model' is refused; the owner must approve it") }
-        else { $reasons.Add("model '$Model' is not allowed") }
-    }
-    if (($Effort -in @('high', 'xhigh', 'max') -or $Model -eq 'gpt-6.1-sol') -and [string]::IsNullOrWhiteSpace($EscalationReason))
-    {
-        $reasons.Add('high effort and gpt-6.1-sol require -EscalationReason')
-    }
-    if ($Sandbox -notin @('workspace-write', 'read-only'))
-    {
-        $reasons.Add("sandbox '$Sandbox' is not accepted")
-    }
-    [pscustomobject]@{ Ok = ($reasons.Count -eq 0); Reasons = @($reasons) }
+    Test-CodexRunPolicy $Model $Effort $EscalationReason $Sandbox $false
 }
 
 function Get-TokenUsage
@@ -103,6 +90,13 @@ function Get-BudgetDecision
     return ''
 }
 
+function Test-GitWorktree([string]$Path)
+{
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return $false }
+    $inside = ([string](& git -C $Path rev-parse --is-inside-work-tree 2>$null)).Trim()
+    return ($LASTEXITCODE -eq 0 -and $inside -eq 'true')
+}
+
 function Invoke-SelfTest
 {
     $fixtureDir = Join-Path $PSScriptRoot 'tests/agent-run'
@@ -122,6 +116,20 @@ function Invoke-SelfTest
     if ($usage.Input -ne 30 -or $usage.Cached -ne 5 -or $usage.Output -ne 7) { $failures.Add('token usage sum mismatch') }
     if ((Get-BudgetDecision 30 0 30 100) -ne 'time') { $failures.Add('time budget decision mismatch') }
     if ((Get-BudgetDecision 1 101 30 100) -ne 'tokens') { $failures.Add('token budget decision mismatch') }
+    $tempRepo = Join-Path ([IO.Path]::GetTempPath()) "agent-run-e2e-$([guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Path $tempRepo | Out-Null
+    try
+    {
+        & git -C $tempRepo init -q
+        & git -C $tempRepo -c user.name=SelfTest -c user.email=selftest@example.invalid commit --allow-empty -qm initial
+        if ($LASTEXITCODE -ne 0 -or -not (Test-GitWorktree $tempRepo)) { $failures.Add('temporary repository failed real worktree check') }
+        $runRecord = Join-Path $tempRepo 'run-record.json'
+        [IO.File]::WriteAllText($runRecord, (@{ head = (& git -C $tempRepo rev-parse HEAD).Trim(); outcome = 'self-test' } | ConvertTo-Json -Compress))
+        $loaded = Get-Content -LiteralPath $runRecord -Raw | ConvertFrom-Json
+        if ($loaded.outcome -ne 'self-test' -or -not $loaded.head) { $failures.Add('temporary run record could not be read back') }
+    }
+    catch { $failures.Add("end-to-end repository test failed: $($_.Exception.Message)") }
+    finally { Remove-Item -LiteralPath $tempRepo -Recurse -Force -ErrorAction SilentlyContinue }
     if ($failures.Count)
     {
         $failures | ForEach-Object { Write-Host "ERROR self-test: $_" }
@@ -150,34 +158,13 @@ function Resolve-RepositoryPath([string]$Path)
 }
 
 $resolvedWorktree = (Resolve-Path -LiteralPath $Worktree -ErrorAction SilentlyContinue).Path
-if (-not $resolvedWorktree -or -not (Test-Path (Join-Path $resolvedWorktree '.git')))
-{
-    $gitCheck = & git -C $Worktree rev-parse --is-work-tree 2>$null
-    if ($LASTEXITCODE -ne 0 -or $gitCheck -ne 'true') { Write-Host 'Refused: worktree is not a git worktree'; exit 2 }
-    $resolvedWorktree = (Resolve-Path -LiteralPath $Worktree).Path
-}
+if (-not $resolvedWorktree -or -not (Test-GitWorktree $resolvedWorktree)) { Write-Host 'Refused: worktree is not a git worktree'; exit 2 }
 # The npm install puts codex.ps1/codex.cmd shims on PATH, which Start-Process cannot start with redirected streams;
 # run node on the package's codex.js instead (a real codex.exe is used as is).
-$codexCommand = Get-Command codex -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $codexCommand)
-{
-    Write-Host 'Refused: codex is not on PATH'
-    exit 2
-}
-$codexFile = $codexCommand.Source
-$codexPrefix = @()
-if ([IO.Path]::GetExtension($codexFile) -ne '.exe')
-{
-    $codexScript = Join-Path (Split-Path $codexFile -Parent) 'node_modules/@openai/codex/bin/codex.js'
-    $node = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not (Test-Path -LiteralPath $codexScript) -or -not $node)
-    {
-        Write-Host "Refused: cannot resolve the codex npm shim to node + codex.js ($codexScript)"
-        exit 2
-    }
-    $codexFile = $node.Source
-    $codexPrefix = @("`"$codexScript`"")
-}
+$codexResolution = Resolve-CodexCommand
+if (-not $codexResolution.Ok) { Write-Host "Refused: $($codexResolution.Reason)"; exit 2 }
+$codexFile = $codexResolution.File
+$codexPrefix = $codexResolution.Prefix
 $started = [DateTimeOffset]::UtcNow
 $briefName = [IO.Path]::GetFileNameWithoutExtension($briefPath)
 if (-not $LogDirectory) { $LogDirectory = Join-Path ([IO.Path]::GetTempPath()) ('pointframe-agent-runs/' + $started.ToLocalTime().ToString('yyyyMMdd-HHmmss') + '-' + $(if ($Task) { $Task } else { $briefName })) }

@@ -18,6 +18,8 @@ Set-StrictMode -Version Latest
 
 $SelfTestScripts = @(
     'merge-pr.ps1',
+    'record-review.ps1',
+    'codex-ask.ps1',
     'status.ps1',
     'agent-run.ps1',
     'release-impact.ps1',

@@ -4,7 +4,7 @@ How work is planned, assigned, reviewed, and merged in this repository by the co
 
 Part of the [Pointframe knowledge base](knowledge-base.md).
 
-**Enforcement status.** Rules marked **in force** are checked by scripts that exist today. Rules marked **planned** are policy only until the named follow-up lands: PR 2 adds a review gate to `scripts/merge-pr.ps1`, a review record, and a Codex consultation helper; PR 3 moves run, status, and dialogue records to a shared store under git's common directory. Until then the coordinator applies planned rules by hand.
+**Enforcement status.** Rules marked **in force** are checked by scripts that exist today. Rules marked **planned** are policy only until the named follow-up lands: PR 3 moves run, status, and dialogue records to a shared store under git's common directory. Until then the coordinator applies planned rules by hand.
 
 ## Purpose and authority
 
@@ -85,7 +85,9 @@ Every behavior change gets an independent review from a different agent than its
 - **Independence.** The reviewer gets the brief, the criteria, and the paths, not the executor's or the coordinator's opinion. It runs the key commands and returns PASS or FAIL per criterion with evidence, plus what it could not check.
 - **Consequences, not locations.** Heavy review follows what a change can break, not the directory. An F-39 help typo or an ordinary File map row does not qualify. Privacy wording is never mechanical.
 - **Model rule amended.** The strong Codex tier was reserved for brainstorm and retros; D4 also allows it, read-only, for heavy review.
-- **Planned (PR 2).** `scripts/merge-pr.ps1` refuses auto-merge without `-Worktree` and without a review record tied to the PR head SHA, rejects a stale SHA, a reviewer equal to the executor outside the small-fix exception, and any open blocking finding. A record command writes the record; Sonnet reviewers stay read-only and the coordinator is named as recorder. Until then the coordinator checks by hand.
+- **Review record (in force).** `pwsh scripts/record-review.ps1` writes one record per head SHA under git's common directory (`pointframe/reviews/<sha>.json`): head and tree, brief hash or requirement, executor and reviewer with sessions, light or heavy, verdict, open blocking findings, and evidence path. Sonnet reviewers stay read-only; the coordinator runs the command and is named as recorder. It refuses a reviewer equal to the executor (same model counts as the same reviewer) unless `-SmallFix`, which only the coordinator as executor may use and which is limited to 2 files and 12 changed lines.
+- **Merge gate (in force).** `scripts/merge-pr.ps1` refuses to merge (waiting mode and `-Auto`) without `-Worktree`, a matching verify receipt, and a passing record for the PR head; a stale head or tree, a FAIL verdict, an open blocking finding, or a missing evidence file is refused. A record for an ancestor counts only when the later change is the plugin pin. Direct `gh pr merge` remains a bypass; a required GitHub check is the next step if bypasses occur.
+- **Codex consultations.** Brainstorm and review calls go through `pwsh scripts/codex-ask.ps1` with `-Model` and `-Effort` on every call, including a resume by `-SessionId`; it rejects failed, missing, or stale output.
 
 ## Verification and desktop checks
 
@@ -100,8 +102,9 @@ The coordinator commits, opens PRs, and merges. Executors never commit or push. 
 
 1. Work on a feature branch, never on `master`.
 2. Commit, then `pwsh scripts/merge-pr.ps1 -PinOnly -Worktree <path>`, then `pwsh scripts/verify.ps1` on the committed tree. The executor's earlier run does not satisfy the merge: a receipt from before the commit is refused.
-3. Push and `gh pr create`.
-4. `pwsh scripts/merge-pr.ps1 -Pr <n> -Worktree <path> -Auto -WaitMerged` under a watcher. It needs the receipt to match the PR head and tree. "AUTO-MERGE ENABLED" is not merged.
+3. Record the independent review for the committed head: `pwsh scripts/record-review.ps1 -Worktree <path> ...`.
+4. Push and `gh pr create`.
+5. `pwsh scripts/merge-pr.ps1 -Pr <n> -Worktree <path> -Auto -WaitMerged` under a watcher. It needs the receipt and the review record to match the PR head and tree. "AUTO-MERGE ENABLED" is not merged.
 
 - **Checks.** Every required check (`unit-tests`, `package-checks`, `Analyze (csharp)`, CodeQL) must be present. Every check on the PR head, required or otherwise, must have completed without failure or cancellation; skipped checks are allowed. Never delete the branch or worktree until GitHub says MERGED.
 - **Serial.** Merge PRs one at a time; KB edits conflict. Every merge cuts a release.
@@ -114,7 +117,7 @@ The coordinator commits, opens PRs, and merges. Executors never commit or push. 
 - **Session closure (D5).** A coordinating session is one work package. At package end, end of day, the first context compaction, or a measured 150K context, whichever comes first: write the checkpoint (status plus handoff), finish or safely hand off the running operation (a desktop run, a merge watcher), start nothing new, then close.
 - **Owner questions.** Ask with `AskUserQuestion`: 2-4 real options, recommendation first (numbered plain options where it is unavailable), and only for a decision the charter or an approved plan leaves open; destructive or third-party actions are asked about only when neither the charter (A or B) nor an approved plan already authorizes them. A general "yes" approves only what was stated clearly.
 - **Final report.** What was done; what was tested and what was not; what was fixed after review; which work went to Claude and which to Codex; the model and effort used for each executor and reviewer run; both providers' limits; what awaits a decision.
-- **Planned (PR 3).** Run, status, and review records move to a shared store under git's common directory so every linked worktree sees them.
+- **Planned (PR 3).** Run and status records join the review records in a shared store under git's common directory so every linked worktree sees them.
 
 ## Incidents and measurement
 
@@ -122,4 +125,4 @@ The coordinator commits, opens PRs, and merges. Executors never commit or push. 
 - **Metrics to watch.** Coordinator versus executor tokens, questions asked to the owner, activation (`scripts/usage-report.ps1`), and counted small-fix exceptions.
 - **Trap to avoid.** Rules that live only in memory were not followed (D-016). When a correction is durable, put it in the owning section here or in a feature file as scope, check, and required evidence; use `lessons.md` when there is a reusable failure mechanism.
 
-**Files.** `scripts/agent-run.ps1`, `scripts/merge-pr.ps1`, `scripts/status.ps1`, `scripts/verify.ps1`, `CLAUDE.md`, `AGENTS.md`.
+**Files.** `scripts/agent-run.ps1`, `scripts/codex-ask.ps1`, `scripts/merge-pr.ps1`, `scripts/record-review.ps1`, `scripts/status.ps1`, `scripts/verify.ps1`, `CLAUDE.md`, `AGENTS.md`.

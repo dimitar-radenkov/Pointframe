@@ -1,0 +1,17 @@
+{
+  "record": {
+    "schema": 1,
+    "headSha": "head-a",
+    "treeSha": "tree-a",
+    "executor": "a",
+    "reviewer": "b",
+    "review": "light",
+    "verdict": "FAIL",
+    "blockingFindings": 0,
+    "evidence": "existing fixture evidence"
+  },
+  "expect": {
+    "ok": false,
+    "reason": "refused"
+  }
+}

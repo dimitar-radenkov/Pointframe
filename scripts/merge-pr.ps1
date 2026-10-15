@@ -6,7 +6,7 @@ Waits for a pull request's checks, squash-merges the exact head that was checked
   pwsh scripts/merge-pr.ps1 -Pr 190 -Worktree ..\Pointframe-wt-x   # also remove that worktree after the merge
   pwsh scripts/merge-pr.ps1 -Pr 190 -DryRun                  # evaluate once and report; never merges or deletes
   pwsh scripts/merge-pr.ps1 -PinOnly -Worktree <path>        # pin plugin locally before verify; commit work -> PinOnly -> verify -> push + gh pr create -> -Auto
-  pwsh scripts/merge-pr.ps1 -Pr 190 -Auto                    # enable GitHub auto-merge (squash, delete branch) and return at once
+  pwsh scripts/merge-pr.ps1 -Pr 190 -Worktree <path> -Auto   # enable auto-merge after receipt and review gates
   pwsh scripts/merge-pr.ps1 -Pr 190 -Auto -WaitMerged        # enable, wait, and clean up after merge
   pwsh scripts/merge-pr.ps1 -Pr 190 -Required unit-tests,CodeQL -TimeoutMinutes 20 -PollSeconds 15
   pwsh scripts/merge-pr.ps1 -SelfTest                        # offline: decision logic on scripts/tests/merge-pr fixtures
@@ -25,10 +25,10 @@ Rules, each from a past incident:
   - -Auto does not wait and does not clean up. It refuses a CONFLICTING, closed or failing pull request, otherwise runs
     gh pr merge --auto --squash --delete-branch and exits 0; GitHub merges once the repository's required checks pass.
     A -Worktree is NOT removed in this mode (it is still needed until the merge); remove it afterwards by hand.
-  - Order: commit work -> -PinOnly -Worktree -> verify.ps1 -> push + gh pr create -> -Auto -Worktree.
+  - Order: commit work -> -PinOnly -Worktree -> verify.ps1 -> record-review.ps1 -> push + gh pr create -> -Auto -Worktree.
     Auto requires a complete passing receipt for the PR head and current worktree, or for an ancestor whose only later
     change is the plugin pin (then check-agent-discovery.ps1 must pass). If a release lands after verify, -Auto commits and
-    pushes the pin itself, so no second verify.ps1 is needed. Use -NoReceipt only for non-worktree PRs.
+    pushes the pin itself, so no second verify.ps1 is needed. Merging always requires -Worktree and a review record.
 
 Exit codes: 0 merged and cleaned up (or -DryRun finished, or -Auto enabled auto-merge / found the PR merged), 1 check failed, timeout, closed PR, or merge did not
 complete, 2 gh missing or not authenticated or bad arguments, 3 merge conflict, 4 pull after merge failed.
@@ -44,7 +44,6 @@ param(
     [switch]$Auto,
     [switch]$NoPluginPin,
     [switch]$PinOnly,
-    [switch]$NoReceipt,
     [switch]$WaitMerged,
     [string]$StatusId,
     [switch]$SelfTest
@@ -54,6 +53,7 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'lib/tree-hash.ps1')
+. (Join-Path $PSScriptRoot 'lib/review-record.ps1')
 
 # ------------------------------------------------------------- pure decision logic
 
@@ -157,6 +157,60 @@ function Update-Status([string]$Stage, [string]$Artifact, [string]$Blocker)
     & pwsh @statusArguments
 }
 
+function Test-MergeReview([string]$WorktreePath, [string]$PrHead)
+{
+    $root = (Resolve-Path -LiteralPath $WorktreePath).Path
+    $tree = (& git -C $root rev-parse "$PrHead^{tree}").Trim()
+    $common = (& git -C $root rev-parse --git-common-dir).Trim()
+    if (-not [IO.Path]::IsPathRooted($common)) { $common = Join-Path $root $common }
+    $reviewDir = Join-Path ([IO.Path]::GetFullPath($common)) 'pointframe/reviews'
+    $candidate = $PrHead
+    for ($depth = 0; $depth -le 3; $depth++)
+    {
+        $path = Join-Path $reviewDir "$candidate.json"
+        if (Test-Path -LiteralPath $path -PathType Leaf)
+        {
+            try { $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } catch { return [pscustomobject]@{ Ok = $false; Reason = 'record is unparseable' } }
+            $recordTree = (& git -C $root rev-parse "$candidate^{tree}" 2>$null).Trim()
+            $files = @(& git -C $root diff --name-only $candidate $PrHead 2>$null | Where-Object { $_ })
+            $lines = 0
+            foreach ($stat in @(& git -C $root diff --numstat $candidate $PrHead 2>$null)) { $p = $stat -split "`t"; if ($p.Count -ge 3) { if ($p[0] -match '^\d+$') { $lines += [int]$p[0] }; if ($p[1] -match '^\d+$') { $lines += [int]$p[1] } } }
+            $decision = Test-ReviewRecordObject $record $candidate $recordTree (Test-Path -LiteralPath ([string]$record.evidence) -PathType Leaf)
+            if (-not $decision.Ok) { return $decision }
+            $isSmallFix = $record.PSObject.Properties['reason'] -and $record.reason -eq 'small-fix'
+            if ($candidate -eq $PrHead)
+            {
+                if ($isSmallFix)
+                {
+                    if ($record.reviewer -ne 'self' -or $record.executor -ne 'claude:coordinator') { return [pscustomobject]@{ Ok = $false; Reason = 'review identities must be reviewer self and executor claude:coordinator' } }
+                    $base = (& git -C $root merge-base $PrHead origin/master 2>$null).Trim()
+                    if ($LASTEXITCODE -ne 0 -or -not $base) { return [pscustomobject]@{ Ok = $false; Reason = 'cannot recompute small-fix change counts (origin/master merge-base unavailable)' } }
+                    $actual = Get-ReviewChangeCount $root $base $PrHead
+                    if (@($record.changedFiles).Count -ne $actual.Files.Count -or [int]$record.changedLines -ne $actual.Lines) { return [pscustomobject]@{ Ok = $false; Reason = 'recorded changed files/lines do not match git' } }
+                }
+                return $decision
+            }
+            if ($isSmallFix)
+            {
+                $base = (& git -C $root merge-base $candidate origin/master 2>$null).Trim()
+                if ($LASTEXITCODE -ne 0 -or -not $base) { return [pscustomobject]@{ Ok = $false; Reason = 'cannot recompute small-fix change counts (origin/master merge-base unavailable)' } }
+                $actual = Get-ReviewChangeCount $root $base $candidate
+                if (@($record.changedFiles).Count -ne $actual.Files.Count -or [int]$record.changedLines -ne $actual.Lines) { return [pscustomobject]@{ Ok = $false; Reason = 'recorded changed files/lines do not match git' } }
+            }
+            $paths = @(& git -C $root diff --name-only $candidate $PrHead 2>$null)
+            $receipt = [pscustomobject]@{ status='pass'; complete=$true; filter=$null; head=$candidate; treeHash=$recordTree }
+            $pin = Test-PinOnlyChange $receipt $recordTree $true $tree (Get-WorkingTreeHash $root) $paths
+            if ($pin.Ok) { return [pscustomobject]@{ Ok=$true; Reason="review record for ancestor accepted; $($pin.Reason)" } }
+            return [pscustomobject]@{ Ok=$false; Reason=$pin.Reason }
+        }
+        if ($depth -eq 3) { break }
+        $candidate = (& git -C $root rev-parse "$candidate^1" 2>$null).Trim()
+        if ($LASTEXITCODE -ne 0 -or -not $candidate) { break }
+    }
+    Test-ReviewRecordObject $null $PrHead $tree
+}
+
+
 # ------------------------------------------------------------------------- self-test
 
 function Invoke-SelfTest
@@ -230,6 +284,74 @@ function Invoke-SelfTest
             $failures.Add("pin-only/$($file.Name): expected $($fx.expect.ok) '$expectReason', got $($got.Ok) '$($got.Reason)'")
         }
     }
+    $reviewDir = Join-Path $fixtureDir 'reviews'
+    foreach ($file in @(Get-ChildItem -LiteralPath $reviewDir -Filter '*.json' -File | Sort-Object Name))
+    {
+        $fx = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+        $record = if ($fx.PSObject.Properties['record']) { $fx.record } else { $null }
+        if ($fx.PSObject.Properties['mode'] -and $fx.mode -in @('pin-only-descendant', 'non-pin-descendant'))
+        {
+            $receipt = [pscustomobject]@{ status = 'pass'; complete = $true; filter = $null; head = 'head-a'; treeHash = 'tree-a' }
+            $paths = if ($fx.mode -eq 'pin-only-descendant') { @('plugin/pointframe/server.lock.json') } else { @('src/change.cs') }
+            $pinDecision = Test-PinOnlyChange $receipt 'tree-a' $true 'tree-b' 'tree-b' $paths
+            $got = [pscustomobject]@{ Ok = $pinDecision.Ok; Reason = $pinDecision.Reason }
+        }
+        else { $got = Test-ReviewRecordObject $record 'head-a' 'tree-a' $true }
+        $count++
+        if ($got.Ok -ne [bool]$fx.expect.ok) { $failures.Add("reviews/$($file.Name): expected $($fx.expect.ok), got $($got.Ok) '$($got.Reason)'") }
+    }
+    $strictSchema = [pscustomobject]@{ schema='1'; headSha='head-a'; treeSha='tree-a'; verdict='PASS'; blockingFindings=0; executor='codex:gpt-6-luna'; reviewer='claude:gpt-6-luna'; evidence='present' }
+    $strictSchemaResult = Test-ReviewRecordObject $strictSchema 'head-a' 'tree-a' $true
+    $count++
+    if ($strictSchemaResult.Ok -or $strictSchemaResult.Reason -notmatch 'wrong schema') { $failures.Add('string schema 1 was accepted') }
+    $sameModel = [pscustomobject]@{ schema=1; headSha='head-a'; treeSha='tree-a'; verdict='PASS'; blockingFindings=0; executor='codex:gpt-6-luna'; reviewer='claude:gpt-6-luna'; evidence='present' }
+    $sameModelResult = Test-ReviewRecordObject $sameModel 'head-a' 'tree-a' $true
+    $count++
+    if ($sameModelResult.Ok -or $sameModelResult.Reason -notmatch 'same') { $failures.Add('same-model cross-provider review was accepted') }
+    $tempRepo = Join-Path ([IO.Path]::GetTempPath()) "merge-review-e2e-$([guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Path $tempRepo | Out-Null
+    try
+    {
+        & git -C $tempRepo init -q
+        & git -C $tempRepo -c user.name=SelfTest -c user.email=selftest@example.invalid config core.autocrlf false
+        $pinA = Join-Path $tempRepo 'plugin/pointframe/server.lock.json'; New-Item -ItemType Directory -Path (Split-Path $pinA) -Force | Out-Null
+        [IO.File]::WriteAllText($pinA, '{"version":"1"}')
+        $evidence = Join-Path $tempRepo 'evidence.md'; [IO.File]::WriteAllText($evidence, 'offline evidence')
+        & git -C $tempRepo add .; & git -C $tempRepo -c user.name=SelfTest -c user.email=selftest@example.invalid commit -qm initial
+        $base = (& git -C $tempRepo rev-parse HEAD).Trim(); $baseTree = (& git -C $tempRepo rev-parse 'HEAD^{tree}').Trim()
+        & git -C $tempRepo update-ref refs/remotes/origin/master HEAD
+        $recordDir = Join-Path $tempRepo '.git/pointframe/reviews'; New-Item -ItemType Directory -Path $recordDir -Force | Out-Null
+        $normalRecord = [ordered]@{ schema=1; headSha=$base; treeSha=$baseTree; verdict='PASS'; blockingFindings=0; executor='codex:gpt-6-luna'; reviewer='claude:gpt-6.1-sol'; evidence=$evidence }
+        [IO.File]::WriteAllText((Join-Path $recordDir "$base.json"), ($normalRecord | ConvertTo-Json -Depth 5))
+        $normalExact = Test-MergeReview $tempRepo $base; $count++
+        if (-not $normalExact.Ok) { $failures.Add("normal exact-head record refused: $($normalExact.Reason)") }
+        [IO.File]::WriteAllText($pinA, '{"version":"2"}')
+        & git -C $tempRepo add .; & git -C $tempRepo -c user.name=SelfTest -c user.email=selftest@example.invalid commit -qm pin
+        $pinHead = (& git -C $tempRepo rev-parse HEAD).Trim()
+        $normalPin = Test-MergeReview $tempRepo $pinHead; $count++
+        if (-not $normalPin.Ok) { $failures.Add("normal record at pin-only descendant refused: $($normalPin.Reason)") }
+        & git -C $tempRepo checkout -qb small-fix $base
+        [IO.File]::WriteAllText((Join-Path $tempRepo 'small.txt'), "small`n")
+        & git -C $tempRepo add .; & git -C $tempRepo -c user.name=SelfTest -c user.email=selftest@example.invalid commit -qm small-fix
+        $smallHead = (& git -C $tempRepo rev-parse HEAD).Trim(); $smallTree = (& git -C $tempRepo rev-parse 'HEAD^{tree}').Trim()
+        $actualSmall = Get-ReviewChangeCount $tempRepo $base $smallHead
+        $smallRecord = [ordered]@{ schema=1; headSha=$smallHead; treeSha=$smallTree; verdict='PASS'; blockingFindings=0; executor='claude:coordinator'; reviewer='self'; reason='small-fix'; changedFiles=$actualSmall.Files; changedLines=$actualSmall.Lines; evidence=$evidence }
+        [IO.File]::WriteAllText((Join-Path $recordDir "$smallHead.json"), ($smallRecord | ConvertTo-Json -Depth 5))
+        $smallExact = Test-MergeReview $tempRepo $smallHead; $count++
+        if (-not $smallExact.Ok) { $failures.Add("small-fix exact-head record refused: $($smallExact.Reason)") }
+        [IO.File]::WriteAllText($pinA, '{"version":"3"}')
+        & git -C $tempRepo add .; & git -C $tempRepo -c user.name=SelfTest -c user.email=selftest@example.invalid commit -qm pin-after-small-fix
+        $smallPinHead = (& git -C $tempRepo rev-parse HEAD).Trim()
+        $smallPin = Test-MergeReview $tempRepo $smallPinHead; $count++
+        if (-not $smallPin.Ok) { $failures.Add("small-fix at pin-only descendant refused: $($smallPin.Reason)") }
+        [IO.File]::WriteAllText((Join-Path $tempRepo 'other.txt'), 'non pin')
+        & git -C $tempRepo add .; & git -C $tempRepo -c user.name=SelfTest -c user.email=selftest@example.invalid commit -qm change
+        $otherHead = (& git -C $tempRepo rev-parse HEAD).Trim()
+        $otherDecision = Test-MergeReview $tempRepo $otherHead; $count++
+        if ($otherDecision.Ok) { $failures.Add('end-to-end non-pin descendant review was accepted') }
+    }
+    catch { $failures.Add("end-to-end merge review repository test failed: $($_.Exception.Message)") }
+    finally { Remove-Item -LiteralPath $tempRepo -Recurse -Force -ErrorAction SilentlyContinue }
     $count++
     if ((Get-PostMergeDecision 'OPEN') -ne 'Stop' -or (Get-PostMergeDecision 'CLOSED') -ne 'Stop' -or (Get-PostMergeDecision 'MERGED') -ne 'Cleanup')
     {
@@ -247,6 +369,12 @@ function Invoke-SelfTest
 if ($SelfTest)
 {
     Invoke-SelfTest
+}
+
+if (-not $DryRun -and -not $PinOnly -and -not $Worktree)
+{
+    Write-Host 'ERROR merging requires -Worktree.'
+    exit 2
 }
 
 # ----------------------------------------------------------------------------- main
@@ -388,6 +516,7 @@ function Test-MergeReceipt([string]$WorktreePath, [string]$PrHead)
     [pscustomobject]@{ Ok = $true; Reason = "$($pinOnly.Reason); discovery check passed" }
 }
 
+
 function Push-PluginPin([string]$WorktreePath, [string]$PullRequest)
 {
     # -Auto moves a stale pin itself: commit, push, and wait until GitHub reports the pushed commit as the PR head.
@@ -446,24 +575,43 @@ function Get-ChecksJson
 
 if ($Auto)
 {
+    if (-not $DryRun -and -not $Worktree) { Write-Host 'ERROR merging requires -Worktree.'; exit 2 }
     $prInfo = Get-PrJson
+    if ($DryRun -and -not $Worktree) { Write-Host 'REVIEW REFUSED: -Worktree is required for merge; dry run continues to report the remaining PR decision.' }
     if ($Worktree -and -not $NoPluginPin -and $prInfo.state -eq 'OPEN' -and (Test-PluginPinBehind $Worktree))
     {
         # A release landed after verify.ps1 ran; a pin-only commit does not need another full verify.
         Push-PluginPin $Worktree $Pr
         $prInfo = Get-PrJson
     }
-    if ($Worktree -and -not $NoReceipt -and $prInfo.state -eq 'OPEN')
+    if ($Worktree -and $prInfo.state -eq 'OPEN')
     {
         try { $receiptCheck = Test-MergeReceipt $Worktree ([string]$prInfo.headRefOid) }
         catch { Write-Host "RECEIPT REFUSED: receipt check failed: $_"; exit 1 }
         if (-not $receiptCheck.Ok) { Write-Host "RECEIPT REFUSED: $($receiptCheck.Reason)"; exit 1 }
         Write-Host "Receipt: $($receiptCheck.Reason)"
     }
-    elseif ($NoReceipt) { Write-Host 'WARNING: -NoReceipt skips the verify receipt gate.' }
+    if ($Worktree -and $prInfo.state -eq 'OPEN')
+    {
+        try { $reviewCheck = Test-MergeReview $Worktree ([string]$prInfo.headRefOid) }
+        catch { $reviewCheck = [pscustomobject]@{ Ok = $false; Reason = "review check failed: $_" } }
+        if (-not $reviewCheck.Ok)
+        {
+            Write-Host "REVIEW REFUSED: $($reviewCheck.Reason)"
+            Update-Status "auto-merge refused #$($prInfo.number)" '' $reviewCheck.Reason
+            if (-not $DryRun) { exit 1 }
+        }
+        else { Write-Host "Review: $($reviewCheck.Reason)" }
+    }
     $checks = if ($prInfo.state -eq 'OPEN') { Get-ChecksJson } else { @() }
     $decision = Get-AutoDecision $prInfo $checks $Required
     Write-Host "PR #$($prInfo.number) $($prInfo.headRefName) @ $($decision.Head): $($decision.Action) - $($decision.Reason)"
+    if ($DryRun -and -not $Worktree)
+    {
+        $checks | ForEach-Object { Write-Host "  $($_.name): $($_.bucket)" }
+        Write-Host 'DRY RUN: merge gate would refuse because no -Worktree was supplied.'
+        exit 0
+    }
     if ($decision.Action -eq 'Merged')
     {
         Write-Host 'Already merged; nothing to enable.'
@@ -544,17 +692,36 @@ if ($WaitMerged -and -not $Auto)
 }
 
 $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
-if ($NoReceipt) { Write-Host 'WARNING: -NoReceipt skips the verify receipt gate.' }
 while ($true)
 {
     $prInfo = Get-PrJson
+    if ($DryRun -and -not $Worktree) { Write-Host 'REVIEW REFUSED: -Worktree is required for merge; dry run continues to report the remaining PR decision.' }
     $checks = if ($prInfo.state -eq 'OPEN') { Get-ChecksJson } else { @() }
     $decision = Get-MergeDecision $prInfo $checks $Required
-    if ($Worktree -and -not $NoReceipt -and $prInfo.state -eq 'OPEN')
+    if ($DryRun -and -not $Worktree)
+    {
+        Write-Host "PR #$($prInfo.number) $($prInfo.headRefName) @ $($decision.Head): $($decision.Action) - $($decision.Reason)"
+        $checks | ForEach-Object { Write-Host "  $($_.name): $($_.bucket)" }
+        Write-Host 'DRY RUN: merge gate would refuse because no -Worktree was supplied.'
+        exit 0
+    }
+    if ($Worktree -and $prInfo.state -eq 'OPEN')
     {
         try { $receiptCheck = Test-MergeReceipt $Worktree ([string]$prInfo.headRefOid) }
         catch { Write-Host "RECEIPT REFUSED: receipt check failed: $_"; exit 1 }
         if (-not $receiptCheck.Ok) { Write-Host "RECEIPT REFUSED: $($receiptCheck.Reason)"; exit 1 }
+    }
+    if ($Worktree -and $prInfo.state -eq 'OPEN')
+    {
+        try { $reviewCheck = Test-MergeReview $Worktree ([string]$prInfo.headRefOid) }
+        catch { $reviewCheck = [pscustomobject]@{ Ok = $false; Reason = "review check failed: $_" } }
+        if (-not $reviewCheck.Ok)
+        {
+            Write-Host "REVIEW REFUSED: $($reviewCheck.Reason)"
+            Update-Status "merge refused #$($prInfo.number)" '' $reviewCheck.Reason
+            if (-not $DryRun) { exit 1 }
+        }
+        else { Write-Host "Review: $($reviewCheck.Reason)" }
     }
     Write-Host "PR #$($prInfo.number) $($prInfo.headRefName) @ $($decision.Head): $($decision.Action) - $($decision.Reason)"
 

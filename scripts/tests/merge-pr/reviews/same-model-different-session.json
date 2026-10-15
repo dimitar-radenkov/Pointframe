@@ -1,0 +1,17 @@
+{
+  "record": {
+    "schema": 1,
+    "headSha": "head-a",
+    "treeSha": "tree-a",
+    "executor": "codex:gpt-6-luna",
+    "reviewer": "codex:gpt-6-luna",
+    "review": "light",
+    "verdict": "PASS",
+    "blockingFindings": 0,
+    "evidence": "existing fixture evidence"
+  },
+  "expect": {
+    "ok": false,
+    "reason": "refused"
+  }
+}
