@@ -32,9 +32,10 @@ function Get-SessionId([string[]]$Lines)
     foreach ($line in $Lines)
     {
         try { $event = $line | ConvertFrom-Json } catch { continue }
-        if ($event.session_id) { return [string]$event.session_id }
-        if ($event.thread_id) { return [string]$event.thread_id }
-        if ($event.type -eq 'session.started' -and $event.sessionId) { return [string]$event.sessionId }
+        if ($event.PSObject.Properties['thread_id'] -and $event.thread_id) { return [string]$event.thread_id }
+        if ($event.PSObject.Properties['session_id'] -and $event.session_id) { return [string]$event.session_id }
+        if ($event.PSObject.Properties['type'] -and $event.type -eq 'session.started' -and
+            $event.PSObject.Properties['sessionId'] -and $event.sessionId) { return [string]$event.sessionId }
     }
     ''
 }
@@ -52,6 +53,14 @@ function Invoke-SelfTest
     if (-not (Test-CodexRunPolicy 'gpt-6.1-sol' high '' read-only $true).Ok) { $failures.Add('read-only sol/high was refused') }
     if ((Test-CodexRunPolicy 'gpt-6.1-sol' high '' workspace-write).Ok) { $failures.Add('workspace-write sol/high without reason accepted') }
     if ((Test-CodexRunPolicy 'gpt-6-luna' medium '' workspace-write).Ok -eq $false) { $failures.Add('luna medium refused') }
+    $freshArgs = New-CodexArguments @() $false 'gpt-6-luna' 'medium' 'read-only' '' 'C:\repo' 'C:\out.md'
+    $expectedFresh = @('--ask-for-approval', 'never', 'exec', '-m', 'gpt-6-luna', '-c', 'model_reasoning_effort=medium', '-c', 'windows.sandbox="unelevated"', '--sandbox', 'read-only', '--skip-git-repo-check', '--json', '-C', '"C:\repo"', '-o', '"C:\out.md"', '-')
+    if (($freshArgs -join "`n") -cne ($expectedFresh -join "`n")) { $failures.Add("fresh arguments mismatch: $($freshArgs -join ' | ')") }
+    $resumeArgs = New-CodexArguments @() $true 'gpt-6-luna' 'medium' 'workspace-write' 'session-123' 'C:\repo' 'C:\out.md'
+    $expectedResume = @('--ask-for-approval', 'never', 'exec', 'resume', '-m', 'gpt-6-luna', '-c', 'model_reasoning_effort=medium', '-c', 'windows.sandbox="unelevated"', '-c', 'sandbox_mode="workspace-write"', '--skip-git-repo-check', '--json', '-o', '"C:\out.md"', 'session-123', '-')
+    if (($resumeArgs -join "`n") -cne ($expectedResume -join "`n") -or $resumeArgs -ccontains '--sandbox' -or $resumeArgs -ccontains '-C') { $failures.Add("resume arguments mismatch: $($resumeArgs -join ' | ')") }
+    $strictEvent = Get-SessionId @('{"type":"thread.started","thread_id":"thread-123"}')
+    if ($strictEvent -ne 'thread-123') { $failures.Add('thread.started event did not return thread_id under strict mode') }
     $temp = Join-Path ([IO.Path]::GetTempPath()) "codex-ask-test-$([guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Path $temp | Out-Null
     try
@@ -65,7 +74,7 @@ function Invoke-SelfTest
         [IO.File]::SetLastWriteTimeUtc($path, $started.AddMinutes(-5).UtcDateTime)
         if ((Test-ConsultOutput $path $started).Reason -notmatch 'stale') { $failures.Add('stale output accepted') }
         # Fake codex command writes a fresh answer and emits a session event; it never opens a network connection.
-        $fake = { param($output) [IO.File]::WriteAllText($output, 'fake answer'); @('{"type":"session.started","session_id":"fake-session"}') }.GetNewClosure()
+        $fake = { param($output) [IO.File]::WriteAllText($output, 'fake answer'); @('{"type":"thread.started","thread_id":"fake-session"}') }.GetNewClosure()
         $fakeResult = & $fake $path
         if ((Test-ConsultOutput $path $started).Ok -ne $true -or (Get-SessionId $fakeResult) -ne 'fake-session') { $failures.Add('fake codex output/session not accepted') }
 
@@ -107,6 +116,23 @@ function Test-ConsultArguments
     if ($Id -and $Id -notmatch '^[A-Za-z0-9_-]+$') { return $false }
     $true
 }
+
+function New-CodexArguments
+{
+    param([string[]]$Prefix, [bool]$Resume, [string]$RunModel, [string]$RunEffort, [string]$RunSandbox, [string]$Id, [string]$Repo, [string]$Output)
+    $result = $Prefix + @('--ask-for-approval', 'never', 'exec')
+    if ($Resume) { $result += 'resume' }
+    $result += @('-m', $RunModel, '-c', "model_reasoning_effort=$RunEffort", '-c', 'windows.sandbox="unelevated"')
+    if ($Resume) { $result += @('-c', "sandbox_mode=`"$RunSandbox`"") }
+    else { $result += @('--sandbox', $RunSandbox) }
+    $result += '--skip-git-repo-check'
+    if (-not $Resume) { $result += @('--json', '-C', "`"$Repo`"") }
+    else { $result += '--json' }
+    $result += @('-o', "`"$Output`"")
+    if ($Resume) { $result += $Id }
+    $result += '-'
+    $result
+}
 if ($SelfTest) { Invoke-SelfTest }
 if (-not (Test-ConsultArguments $PromptFile $OutFile $Model $Effort $Sandbox $SessionId))
 { Write-Host 'ERROR PromptFile, OutFile, Model, and Effort are mandatory; sandbox and session id must be valid.'; exit 2 }
@@ -125,16 +151,16 @@ Remove-Item -LiteralPath $outPath -Force -ErrorAction SilentlyContinue
 $prompt = [IO.File]::ReadAllText($promptPath, [Text.Encoding]::UTF8)
 $started = [DateTimeOffset]::UtcNow
 $repo = (Resolve-Path -LiteralPath $Worktree).Path
-$arguments = $codex.Prefix + @('--ask-for-approval', 'never', 'exec')
-if ($SessionId) { $arguments += @('resume', $SessionId) }
-$arguments += @('-m', $Model, '-c', "model_reasoning_effort=$Effort", '-c', 'windows.sandbox="unelevated"', '--sandbox', $Sandbox, '--skip-git-repo-check', '--json', '-C', "`"$repo`"", '-o', "`"$outPath`"", '-')
+$arguments = New-CodexArguments $codex.Prefix ([bool]$SessionId) $Model $Effort $Sandbox $SessionId $repo $outPath
 $stdin = Join-Path ([IO.Path]::GetTempPath()) "codex-ask-$([guid]::NewGuid().ToString('N')).txt"
 $stdout = Join-Path ([IO.Path]::GetTempPath()) "codex-ask-$([guid]::NewGuid().ToString('N')).jsonl"
 $stderr = Join-Path ([IO.Path]::GetTempPath()) "codex-ask-$([guid]::NewGuid().ToString('N')).err"
 try
 {
     [IO.File]::WriteAllText($stdin, $prompt, [Text.UTF8Encoding]::new($false))
-    $process = Start-Process -FilePath $codex.File -ArgumentList $arguments -PassThru -NoNewWindow -RedirectStandardInput $stdin -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    $startOptions = @{ FilePath = $codex.File; ArgumentList = $arguments; PassThru = $true; NoNewWindow = $true; RedirectStandardInput = $stdin; RedirectStandardOutput = $stdout; RedirectStandardError = $stderr }
+    if ($SessionId) { $startOptions.WorkingDirectory = $repo }
+    $process = Start-Process @startOptions
     $process.WaitForExit()
     $events = if (Test-Path $stdout) { [IO.File]::ReadAllText($stdout, [Text.Encoding]::UTF8) } else { '' }
     $errors = if (Test-Path $stderr) { [IO.File]::ReadAllText($stderr, [Text.Encoding]::UTF8) } else { '' }
