@@ -15,6 +15,8 @@ internal sealed class OperationTelemetry : IOperationTelemetry, IDisposable
     internal const string HostKey = "host";
     internal const string ClientKey = "client";
     internal const string VersionKey = "version";
+    // Not "install_id": the desktop app's install IDs use that key, and the usage report counts them as desktop installs.
+    internal const string InstallIdKey = "agent_install_id";
 
     // Short in production so exiting never waits long for telemetry; the test assembly raises it because the first
     // emit builds the OpenTelemetry pipeline, which can take seconds on a loaded CI runner.
@@ -26,6 +28,7 @@ internal sealed class OperationTelemetry : IOperationTelemetry, IDisposable
 
     private readonly TelemetryHost _host;
     private readonly string _version;
+    private readonly string? _installId;
     private readonly Func<BaseExporter<LogRecord>> _exporterFactory;
     private readonly object _syncRoot = new();
     private Task _pending = Task.CompletedTask;
@@ -35,10 +38,11 @@ internal sealed class OperationTelemetry : IOperationTelemetry, IDisposable
     private bool _unavailable;
     private bool _disposed;
 
-    internal OperationTelemetry(TelemetryHost host, string version, Func<BaseExporter<LogRecord>> exporterFactory)
+    internal OperationTelemetry(TelemetryHost host, string version, string? installId, Func<BaseExporter<LogRecord>> exporterFactory)
     {
         _host = host;
         _version = version;
+        _installId = installId;
         _exporterFactory = exporterFactory;
     }
 
@@ -130,6 +134,11 @@ internal sealed class OperationTelemetry : IOperationTelemetry, IDisposable
         if (_host == TelemetryHost.Mcp)
         {
             properties[ClientKey] = TelemetryAllowlist.McpClient(mcpClientName);
+        }
+
+        if (_installId is not null)
+        {
+            properties[InstallIdKey] = _installId;
         }
 
         return properties;

@@ -259,6 +259,7 @@ A decision records why a choice was made over the obvious alternative, so nobody
 - [D-012 Version compatibility](features/cli-mcp.md#d-012-version-compatibility)
 - [D-013 Verification spec v1 is frozen](features/cli-mcp.md#d-013-verification-spec-v1-is-frozen)
 - [D-014 Interactive desktop testing reuses verify trust](features/cli-mcp.md#d-014-interactive-desktop-testing-reuses-verify-trust)
+- [D-015 Agent telemetry carries a random install ID](features/telemetry.md#d-015-agent-telemetry-carries-a-random-install-id)
 
 <!-- /decisions -->
 

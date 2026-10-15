@@ -41,7 +41,7 @@ public sealed class OperationTelemetryTests : IDisposable
 
         var export = Assert.Single(exporter.Exports);
         Assert.Equal(
-            new[] { "client", "duration_bucket", "host", "name", "outcome", "version" },
+            new[] { "agent_install_id", "client", "duration_bucket", "host", "name", "outcome", "version" },
             export.Properties.Keys.Order(StringComparer.Ordinal).ToArray());
         Assert.Equal("capture_monitor", export.Properties["name"]);
         Assert.Equal("success", export.Properties["outcome"]);
@@ -63,7 +63,7 @@ public sealed class OperationTelemetryTests : IDisposable
 
         var export = Assert.Single(exporter.Exports);
         Assert.Equal(
-            new[] { "duration_bucket", "host", "name", "outcome", "version" },
+            new[] { "agent_install_id", "duration_bucket", "host", "name", "outcome", "version" },
             export.Properties.Keys.Order(StringComparer.Ordinal).ToArray());
         Assert.Equal("record", export.Properties["name"]);
         Assert.Equal("cancelled", export.Properties["outcome"]);
@@ -181,7 +181,7 @@ public sealed class OperationTelemetryTests : IDisposable
     }
 
     [Fact]
-    public void Notice_IsShownOncePerDataDirectory_AndStoresNoIdentifier()
+    public void Notice_IsShownOncePerDataDirectory_AndMentionsTheInstallId()
     {
         var notices = new List<string>();
         var preferences = new TelemetryPreferences(_directory, _ => null);
@@ -194,6 +194,7 @@ public sealed class OperationTelemetryTests : IDisposable
         Assert.Contains("DO_NOT_TRACK", notice, StringComparison.Ordinal);
         Assert.Contains(TelemetryPreferences.ConfigFileName, notice, StringComparison.Ordinal);
         Assert.Contains("IP", notice, StringComparison.Ordinal);
+        Assert.Contains("install ID", notice, StringComparison.Ordinal);
         Assert.Equal("1", File.ReadAllText(preferences.NoticePath));
     }
 
@@ -210,6 +211,55 @@ public sealed class OperationTelemetryTests : IDisposable
             notices.Add);
 
         Assert.Empty(notices);
+    }
+
+    [Fact]
+    public void InstallId_IsRandomAndStaysTheSameAcrossRunsAndHosts()
+    {
+        var cliExporter = new CapturingExporter();
+        var mcpExporter = new CapturingExporter();
+        var cli = Create(TelemetryHost.Cli, cliExporter);
+        var mcp = Create(TelemetryHost.Mcp, mcpExporter);
+
+        cli.Track("record", TelemetryOutcome.Success, TimeSpan.Zero);
+        mcp.Track("capture_monitor", TelemetryOutcome.Success, TimeSpan.Zero, "claude-code");
+        cli.Flush();
+        mcp.Flush();
+
+        var stored = File.ReadAllText(Path.Combine(_directory, TelemetryPreferences.InstallIdFileName));
+        Assert.Matches("^[0-9a-f]{32}$", stored);
+        Assert.Equal(stored, Assert.Single(cliExporter.Exports).Properties["agent_install_id"]);
+        Assert.Equal(stored, Assert.Single(mcpExporter.Exports).Properties["agent_install_id"]);
+    }
+
+    [Fact]
+    public void InstallId_ReplacesAnInvalidFile()
+    {
+        var preferences = new TelemetryPreferences(_directory, _ => null);
+        File.WriteAllText(preferences.InstallIdPath, @"C:\Users\someone");
+
+        var id = preferences.GetOrCreateInstallId();
+
+        Assert.Matches("^[0-9a-f]{32}$", id);
+        Assert.Equal(id, File.ReadAllText(preferences.InstallIdPath));
+    }
+
+    [Fact]
+    public void OptingOut_DeletesTheInstallId()
+    {
+        var preferences = new TelemetryPreferences(_directory, _ => null);
+        var before = preferences.GetOrCreateInstallId();
+
+        var sut = OperationTelemetryFactory.Create(
+            TelemetryHost.Cli,
+            "1.2.3",
+            new TelemetryPreferences(_directory, name => name == "DO_NOT_TRACK" ? "1" : null),
+            () => new CapturingExporter(),
+            _ => { });
+
+        Assert.IsType<NullOperationTelemetry>(sut);
+        Assert.False(File.Exists(preferences.InstallIdPath));
+        Assert.NotEqual(before, preferences.GetOrCreateInstallId());
     }
 
     [Fact]
@@ -279,7 +329,7 @@ public sealed class OperationTelemetryTests : IDisposable
     }
 
     [Fact]
-    public async Task RealExporter_Payload_CarriesOnlyTheAllowlistAndNoIdentity()
+    public async Task RealExporter_Payload_CarriesOnlyTheAllowlistAndTheRandomInstallId()
     {
         using var listener = StartListener(out var endpoint);
         var payloadTask = CaptureRequestPayloadAsync(listener);
@@ -300,7 +350,8 @@ public sealed class OperationTelemetryTests : IDisposable
         Assert.DoesNotContain("ai.user.id", payload, StringComparison.Ordinal);
         Assert.DoesNotContain("ai.session.id", payload, StringComparison.Ordinal);
         Assert.DoesNotContain("ai.location.ip", payload, StringComparison.Ordinal);
-        Assert.DoesNotContain("install_id", payload, StringComparison.Ordinal);
+        Assert.Contains(File.ReadAllText(Path.Combine(_directory, TelemetryPreferences.InstallIdFileName)), payload, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"install_id\"", payload, StringComparison.Ordinal);
         Assert.DoesNotContain("session_id", payload, StringComparison.Ordinal);
 
         var forbiddenValues = new[]

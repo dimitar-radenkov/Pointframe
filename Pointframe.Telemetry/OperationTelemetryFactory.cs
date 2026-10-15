@@ -11,8 +11,9 @@ public static class OperationTelemetryFactory
 
     public static string NoticeText(string configPath) =>
         "Pointframe sends anonymous usage counts from the CLI and MCP server: the command or tool name, " +
-        "success or failure, a coarse duration bucket, cli or mcp, the MCP client type, and the version. " +
-        "It never sends arguments, paths, screenshots, text, error messages, or any user, machine, or install identifier. " +
+        "success or failure, a coarse duration bucket, cli or mcp, the MCP client type, the version, and a random install ID " +
+        "that is stored in this folder and is not tied to your name, account, or machine. " +
+        "It never sends arguments, paths, screenshots, text, error messages, or user or machine names. " +
         "Application Insights masks IP addresses. " +
         $"Opt out with {TelemetryPreferences.OptOutEnvironmentVariable}=1 or {TelemetryPreferences.DoNotTrackEnvironmentVariable}=1, " +
         $"or put {{\"optOut\": true}} in {configPath}. Details: {PrivacyUrl}";
@@ -57,6 +58,7 @@ public static class OperationTelemetryFactory
         {
             if (preferences.IsOptedOut())
             {
+                preferences.DeleteInstallId();
                 return NullOperationTelemetry.Instance;
             }
 
@@ -66,7 +68,7 @@ public static class OperationTelemetryFactory
                 preferences.MarkNoticeShown();
             }
 
-            return new OperationTelemetry(host, version, exporterFactory);
+            return new OperationTelemetry(host, version, preferences.GetOrCreateInstallId(), exporterFactory);
         }
         catch (Exception)
         {
