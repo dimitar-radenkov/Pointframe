@@ -17,6 +17,7 @@ Last full review against the code: 2026-09-05.
 | Roadmap, plans, task status, executor cost records | `plan/` |
 | Contributor setup | `docs/developer-guide.md` |
 | Per-session instructions | `CLAUDE.md`, one line per topic pointing here |
+| How agents plan, assign, review, and merge work | `docs/knowledge-base/workflow.md` |
 | Test counts, PR numbers, "verified on my machine" | The PR description |
 
 **This file's structure.** A generated [Feature index](#feature-index), the [File map](#file-map), then five fixed groups, each a `##` heading with one `###` section per topic (Decisions holds only a generated index):
@@ -105,15 +106,15 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 | Path | What lives here | Read first |
 |---|---|---|
 | `*`, `.vscode/**` | Root config: solution, central package versions, NBGV `version.json`, local tools, editor and MCP client config | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `CLAUDE.md`, `CONTRIBUTING.md`, `lessons.md`, `docs/**`, `.claude/**`, `.codex/**`, `.agents/skills/kb-*/**`, `scripts/kb.ps1` | Agent and contributor docs, this file, the kb skills and their script, the Claude Code and Codex project hooks, and the generated Codex skill copies | [How to maintain this file](#how-to-maintain-this-file), [D-006](decisions.md#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area) |
+| `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `lessons.md`, `docs/**`, `.claude/**`, `.codex/**`, `.agents/skills/kb-*/**`, `scripts/kb.ps1` | Agent and contributor docs, this file, the kb skills and their script, the Claude Code and Codex project hooks, and the generated Codex skill copies | [How to maintain this file](#how-to-maintain-this-file), [Agent workflow](workflow.md), [D-006](decisions.md#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area) |
 | `docs/cli/**`, `docs/mcp-desktop-testing/**`, `README.md` | CLI and MCP user docs; the DocsSync tests fail when they drift from the code | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
 | `docs/appinsights*` | Kusto queries and the workbook template | [Telemetry](features/telemetry.md#telemetry-pipeline) |
 | `scripts/update-download-badges.ps1` | Download totals across all releases as shields.io endpoint badges, built by the Pages workflow; offline `-SelfTest` | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/usage-report.ps1`, `scripts/tests/usage-report/**` | Usage report from Application Insights (activation, cohorts, retention, onboarding, failures, website) and the offline fixtures its `-SelfTest` shapes | [Telemetry](features/telemetry.md#telemetry-pipeline) |
 | `scripts/measure-mcp-payloads.ps1` | Offline self-test and MCP stdio payload inventory with a per-run fixture desktop policy | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
-| `scripts/merge-pr.ps1`, `scripts/tests/merge-pr/**` | Agent merge tool: receipt-gated checked-head merge, `-PinOnly`, optional auto-merge wait and cleanup; offline fixtures for decisions and receipts | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `scripts/agent-run.ps1`, `scripts/tests/agent-run/**` | Checked Codex executor launcher with brief and policy validation, runtime budgets, token accounting, and cost records; offline decision fixtures | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `scripts/status.ps1`, `scripts/tests/status/**` | Authoritative status store, GitHub #186 and handoff renderer; offline rendering fixtures | [CI, CD, and versioning](#ci-cd-and-versioning) |
+| `scripts/merge-pr.ps1`, `scripts/tests/merge-pr/**` | Agent merge tool: receipt-gated checked-head merge, `-PinOnly`, optional auto-merge wait and cleanup; offline fixtures for decisions and receipts | [CI, CD, and versioning](#ci-cd-and-versioning), [Agent workflow](workflow.md) |
+| `scripts/agent-run.ps1`, `scripts/tests/agent-run/**` | Checked Codex executor launcher with brief and policy validation, runtime budgets, token accounting, and cost records; offline decision fixtures | [CI, CD, and versioning](#ci-cd-and-versioning), [Agent workflow](workflow.md) |
+| `scripts/status.ps1`, `scripts/tests/status/**` | Authoritative status store, GitHub #186 and handoff renderer; offline rendering fixtures | [CI, CD, and versioning](#ci-cd-and-versioning), [Agent workflow](workflow.md) |
 | `scripts/lib/tree-hash.ps1` | Shared working-tree hash and verify receipt freshness decisions used by verify and merge scripts | [CI, CD, and versioning](#ci-cd-and-versioning) |
 | `scripts/check-agent-discovery.ps1`, `scripts/tests/agent-discovery/**` | Offline check of the agent page, llms.txt, and directory drafts against README, packaging, and the CD asset list; `-Online`, `-Snapshot`; its good fixture tree | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
 | `scripts/check-released-desktop.ps1` | Coordinator's post-release or candidate desktop qualification of CLI/MCP packages; offline `-SelfTest` | [Packaging and configuration](features/cli-mcp.md#packaging-and-configuration) |
@@ -260,6 +261,7 @@ A decision records why a choice was made over the obvious alternative, so nobody
 - [D-013 Verification spec v1 is frozen](features/cli-mcp.md#d-013-verification-spec-v1-is-frozen)
 - [D-014 Interactive desktop testing reuses verify trust](features/cli-mcp.md#d-014-interactive-desktop-testing-reuses-verify-trust)
 - [D-015 Agent telemetry carries a random install ID](features/telemetry.md#d-015-agent-telemetry-carries-a-random-install-id)
+- [D-016 Agents follow one workflow in the knowledge base](decisions.md#d-016-agents-follow-one-workflow-in-the-knowledge-base)
 
 <!-- /decisions -->
 

@@ -25,6 +25,7 @@
 !.agents/skills/kb-*/SKILL.md
 !.github/copilot-instructions.md
 !CLAUDE.md
+!AGENTS.md
 !lessons.md
 !docs/developer-guide.md
 !docs/zipline-upload.md
