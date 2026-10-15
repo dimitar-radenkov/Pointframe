@@ -17,7 +17,7 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 
 ## CLI and MCP operation telemetry
 
-**Responsibility.** Emit the `agent_operation` event, which is deliberately outside `TelemetryEvents` and the desktop catalog. Count which MCP tools and CLI commands are used and how they end, without content or identity. The owner decision: allowlist only name, outcome, duration bucket, host, and version; no content, arguments, raw errors, or persistent identifiers; a visible first-run notice and a reliable opt-out. It measures operations, not unique users or retention.
+**Responsibility.** Emit the `agent_operation` event, which is deliberately outside `TelemetryEvents` and the desktop catalog. Count which MCP tools and CLI commands are used, how they end, and by how many installs, without content or personal identity. Allowlist only name, outcome, duration bucket, host, version, and a random install ID ([D-015](#d-015-agent-telemetry-carries-a-random-install-id)); no content, arguments, raw errors, user or machine names; a visible first-run notice and a reliable opt-out.
 
 **Key types.**
 
@@ -25,14 +25,14 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 |---|---|
 | `Pointframe.Telemetry` project | Shared by `Pointframe.Cli` and `Pointframe.Mcp`; references only Azure Monitor exporter and OpenTelemetry, never WPF |
 | `TelemetryAllowlist` | Fixed command and tool names (unknown becomes `other`), outcome names, duration buckets (`lt_1s`, `1_5s`, `5_30s`, `gt_30s`), and the MCP client mapping |
-| `TelemetryPreferences` | Opt-out from `POINTFRAME_TELEMETRY_OPTOUT`, `DO_NOT_TRACK`, or `agent-telemetry.json` (`{"optOut": true}`) in the Pointframe data directory; also the notice-shown marker file |
+| `TelemetryPreferences` | Opt-out from `POINTFRAME_TELEMETRY_OPTOUT`, `DO_NOT_TRACK`, or `agent-telemetry.json` (`{"optOut": true}`) in the Pointframe data directory; the notice-shown marker file; the `agent-install-id` file (created on the first tracked run, deleted on opt-out) |
 | `OperationTelemetryFactory` | Returns a no-op when the connection string is empty or the user opted out; otherwise shows the notice once and returns `OperationTelemetry` |
 | `OperationTelemetry` | Emits `agent_operation` on a pool thread through the same OpenTelemetry log pipeline as the desktop app; `Flush` waits at most two seconds |
 | `McpTelemetryFilter` | The MCP call-tool filter: measures every `tools/call`, maps `GlobalHotkeyNotApproved` and `ProfileNotFound` results to `denied`; classifies typed failures (top-level `error` or `success: false` in the structured content, `IsError` unset) as `error`, but a desktop check that ran and failed or was inconclusive, or a matched negative control (`NegativeControlMatched`), stays `success` |
 
 **Invariants.**
 
-- The event carries exactly `name`, `outcome`, `duration_bucket`, `host`, `version`, and for MCP `client`. The README and `website/privacy.html` list every key declared in `OperationTelemetry.cs`; `scripts/check-agent-discovery.ps1` fails when one is missing.
+- The event carries exactly `name`, `outcome`, `duration_bucket`, `host`, `version`, `agent_install_id` when the ID file is usable, and for MCP `client`. The key is not `install_id`, because `scripts/usage-report.ps1` counts that key as a desktop install. A change to what the notice says bumps `TelemetryPreferences.NoticeFileName`, so every user sees the new notice once. The README and `website/privacy.html` list every key declared in `OperationTelemetry.cs`; `scripts/check-agent-discovery.ps1` fails when one is missing.
 - The resource is empty plus `service.name` (`Pointframe.Cli` or `Pointframe.Mcp`) and a constant `service.instance.id` (`cli` or `mcp`). Offline storage is disabled so nothing outlives an opt-out.
 - The connection string lives in the embedded `Pointframe.Telemetry/telemetry.json`, empty in source and injected by `cd.yml` before the packages build. `POINTFRAME_TELEMETRY_CONNECTION_STRING` overrides it for tests and contributors.
 - Telemetry never blocks or fails a tool call: `Track` queues work, every telemetry path catches its own exceptions, and the CLI and MCP host flush with a short timeout on exit.
@@ -80,3 +80,15 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 **Files.** `Pointframe/Services/Infrastructure/ITelemetryService.cs`, `Pointframe/Services/Infrastructure/TelemetryService.cs`, `Pointframe/Services/Infrastructure/NullTelemetryService.cs`, `Pointframe/Services/Infrastructure/TelemetryEventCatalog.cs`, `Pointframe/Services/Infrastructure/TelemetryHeartbeatService.cs`, `Pointframe/Services/Infrastructure/ActivationTelemetryService.cs`, `Pointframe/appsettings.json`, `scripts/usage-report.ps1`.
 
 - Lesson: Azure Monitor's exporter sends the machine name as the role instance unless the resource is set explicitly
+
+## D-015 Agent telemetry carries a random install ID
+
+**Decided.** 2026-10-15, by the owner. Replaces the 2026-10-05 rule of no persistent identifiers in `agent_operation`.
+
+**Context.** Without an identifier, 3,744 agent events in ten days could not be split into users: the owner's trials, CI runners, and outside users looked the same, and a tool that failed 39 of 39 times could be one agent retrying or a bug for everyone.
+
+**Decision.** The CLI and the MCP server send `agent_install_id`, a random 32-hex ID stored in `%LOCALAPPDATA%\Pointframe\agent-install-id` and shared by both hosts on one Windows account. It is not derived from the user, machine, or account. Opting out deletes it. The notice, README, privacy page, plugin README, and directory submission texts say so.
+
+**Alternatives rejected.** No identifier: cannot count users or retention. A per-run ID: shows sessions but not users or returns.
+
+**Files.** `Pointframe.Telemetry/TelemetryPreferences.cs`, `Pointframe.Telemetry/OperationTelemetry.cs`, `Pointframe.Telemetry/OperationTelemetryFactory.cs`, `website/privacy.html`.

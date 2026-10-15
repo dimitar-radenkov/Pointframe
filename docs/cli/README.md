@@ -810,7 +810,7 @@ desktop or a working `ffmpeg.exe`; use a real `displays`, `capture`, or
 
 ## Privacy and telemetry
 
-Official release builds of the CLI send one anonymous event per command: the command name (`other` for anything unrecognized), whether it succeeded, a coarse duration bucket, `cli`, and the version. Arguments, paths, output, error text, and identifiers are never sent, `--help` and `--version` send nothing, and source builds send nothing. The first run prints a one-time notice to standard error. Opt out with `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1`, or put `{"optOut": true}` in `%LOCALAPPDATA%\Pointframe\agent-telemetry.json`. See the [Privacy Policy](../../README.md#privacy-policy).
+Official release builds of the CLI send one anonymous event per command: the command name (`other` for anything unrecognized), whether it succeeded, a coarse duration bucket, `cli`, the version, and a random install ID stored in `%LOCALAPPDATA%\Pointframe\agent-install-id` (not tied to a name, account, or machine). Arguments, paths, output, error text, and user or machine names are never sent, `--help` and `--version` send nothing, and source builds send nothing. The first run prints a one-time notice to standard error. Opt out with `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1`, or put `{"optOut": true}` in `%LOCALAPPDATA%\Pointframe\agent-telemetry.json`. See the [Privacy Policy](../../README.md#privacy-policy).
 
 ## Troubleshooting
 

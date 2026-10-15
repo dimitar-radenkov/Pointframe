@@ -46,7 +46,7 @@ It does not use `npx`, `uvx`, or any other package launcher, does not run any ot
 
 The server runs on your machine. Captures, OCR results, and recordings are written to your disk under `%LOCALAPPDATA%\Pointframe` and are not uploaded by the plugin. A screenshot reaches the model only when a capture tool returns it to Claude; pass `includeImage: false` to return metadata only.
 
-Official builds of the server send one anonymous usage event per tool call to Azure Application Insights with IP masking: the tool name, the outcome, a duration bucket, the host, the MCP client type, and the version. No arguments, file paths, screenshots, text, error messages, or identifiers are sent. To opt out, set the environment variable `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1` before starting Claude. Full details are in the [privacy policy](https://dimitar-radenkov.github.io/Pointframe/privacy.html).
+Official builds of the server send one anonymous usage event per tool call to Azure Application Insights with IP masking: the tool name, the outcome, a duration bucket, the host, the MCP client type, the version, and a random install ID that is not tied to your name, account, or machine. No arguments, file paths, screenshots, text, error messages, user names, or machine names are sent. To opt out, set the environment variable `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1` before starting Claude. Full details are in the [privacy policy](https://dimitar-radenkov.github.io/Pointframe/privacy.html).
 
 ## Enable desktop testing (optional)
 

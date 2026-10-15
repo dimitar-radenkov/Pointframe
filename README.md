@@ -730,8 +730,9 @@ This policy covers the Pointframe desktop app, the Pointframe CLI, and the Point
 | `host` | `cli` or `mcp` |
 | `client` (MCP only) | `claude-desktop`, `claude-code`, `codex`, `vscode`, `cursor`, or `other` |
 | `version` | the Pointframe version |
+| `agent_install_id` | a random ID created on first use and stored in `%LOCALAPPDATA%\Pointframe\agent-install-id`, shared by the CLI and the MCP server on that account; not tied to a name, account, or machine |
 
-No arguments, paths, screenshots, text, error messages, or identifiers are sent: there is no install ID, session ID, user name, or machine name, and the exporter identifies itself with the fixed names `Pointframe.Cli` or `Pointframe.Mcp`. Because nothing identifies an install, this telemetry counts operations; it cannot count unique users or retention. Source builds send nothing, because the connection string is empty in the repository and injected only by the release pipeline. The first run prints a one-time notice to standard error (the MCP server never writes to standard output outside the protocol, so it also adds the notice to its server instructions once).
+No arguments, paths, screenshots, text, error messages, user names, or machine names are sent, and the exporter identifies itself with the fixed names `Pointframe.Cli` or `Pointframe.Mcp`. The random install ID lets the project count how many installs use the CLI and MCP server and whether they come back; opting out deletes it, so opting back in starts a new, unrelated ID. Source builds send nothing, because the connection string is empty in the repository and injected only by the release pipeline. The first run prints a one-time notice to standard error (the MCP server never writes to standard output outside the protocol, so it also adds the notice to its server instructions once).
 
 **Opting out of CLI and MCP telemetry.** Set the environment variable `POINTFRAME_TELEMETRY_OPTOUT=1` (or the standard `DO_NOT_TRACK=1`), or create `%LOCALAPPDATA%\Pointframe\agent-telemetry.json` containing `{"optOut": true}`. A config file that cannot be read counts as an opt-out. When opted out, no telemetry request is made at all.
 

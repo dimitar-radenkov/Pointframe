@@ -20,7 +20,7 @@ Expected review notes
 
 Data handling answers
   Does the plugin read or store personal data? It can capture the user's screen when the user asks Claude to. Screenshots, OCR text, and recordings are stored only on the user's disk under %LOCALAPPDATA%\Pointframe. A screenshot reaches the model only when a capture tool returns it to the client; includeImage false returns metadata only. Nothing is uploaded by the plugin.
-  Does it send data to services other than its declared connectors? Official builds of the MCP server send one anonymous usage event per tool call (tool name, outcome, duration bucket, host, MCP client type, version) to Azure Application Insights with IP masking. No arguments, paths, screenshots, text, error messages, or identifiers. Opt out with POINTFRAME_TELEMETRY_OPTOUT=1 or DO_NOT_TRACK=1. The first start also downloads the server from GitHub Releases.
+  Does it send data to services other than its declared connectors? Official builds of the MCP server send one anonymous usage event per tool call (tool name, outcome, duration bucket, host, MCP client type, version, random install ID) to Azure Application Insights with IP masking. No arguments, paths, screenshots, text, error messages, user names, or machine names. Opt out with POINTFRAME_TELEMETRY_OPTOUT=1 or DO_NOT_TRACK=1. The first start also downloads the server from GitHub Releases.
   How long is data kept? Locally, until the user deletes it. Telemetry follows the retention in the privacy policy.
   Is it intended for people under 18? No (CONFIRM wording).
   Privacy policy: https://dimitar-radenkov.github.io/Pointframe/privacy.html
