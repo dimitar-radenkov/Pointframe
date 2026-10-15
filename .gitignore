@@ -405,3 +405,6 @@ installer/output/
 # Local coordination state written by scripts/status.ps1 and scripts/agent-run.ps1
 plan/*.json
 plan/*.jsonl
+
+# Local coordination notes (plans, status, private Claude-Codex dialogues); never published
+plan/
