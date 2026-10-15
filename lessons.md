@@ -1712,3 +1712,21 @@ The preflight treated any `LogonUI` process as a lock. `LogonUI.exe` had been st
 ### Takeaway
 
 Ask Windows whether the input desktop is usable instead of inferring the lock state from a process list.
+
+## An unpinned ffmpeg master build broke every microphone recording
+
+### Problem
+
+From 2026-10-09 every microphone recording on 6.7.96 and 6.7.97 failed at stop with `recording_failed` (phase `finalize`, reason `pipe_broken`, `ffmpeg_exit_code` -22). Nothing in the recording code had changed, and recordings on the developer machine worked.
+
+### Root cause
+
+The installer and the MCP package downloaded `ffmpeg-master-latest-win64-gpl.zip`, so each new install got whatever ffmpeg master was that day. Master builds from about 2026-09 turned `-thread_queue_size` into a muxer (output) option; placed before the `dshow` microphone input, as `FFMpegVideoWriter` did, it is rejected with "Error parsing options for input file ... Invalid argument". Older installs still had a September build, where it is a demuxer option.
+
+### What fixed it
+
+`installer/Pointframe.iss` and `.github/workflows/cd.yml` download the `n9.0` release-branch build. `FFMpegVideoWriter` adds the input `-thread_queue_size` only when `ffmpeg -h long` describes it as a demuxer option (`HelpAllowsInputThreadQueueSize`), so installs that already have a master build record again. The CD step runs the downloaded ffmpeg with the microphone input layout and fails the release if it rejects it.
+
+### Takeaway
+
+Ship external binaries from a release branch, not from a moving development build, and check at release time that the shipped binary accepts the exact arguments the app sends.

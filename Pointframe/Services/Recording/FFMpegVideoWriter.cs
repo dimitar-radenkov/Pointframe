@@ -8,6 +8,7 @@ namespace Pointframe.Services;
 public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnostics
 {
     private static readonly ConcurrentDictionary<string, bool> DrawtextSupportCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, bool> InputThreadQueueSizeSupportCache = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly Process _ffmpeg;
     private readonly Stream _stdin;
@@ -32,6 +33,8 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
 
         var ffmpegPath = FfmpegResolver.ResolveRequired("Screen recording");
         var drawtextFilter = TryBuildDrawtextFilter(ffmpegPath, videoWatermark, watermarkTimestamp ?? DateTimeOffset.Now, logger);
+        var microphoneThreadQueueSize = !string.IsNullOrWhiteSpace(microphoneDeviceName) &&
+            HasInputThreadQueueSize(ffmpegPath, logger);
 
         var psi = new ProcessStartInfo
         {
@@ -41,7 +44,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
             RedirectStandardInput = true,
             RedirectStandardError = true,
         };
-        BuildArguments(psi.ArgumentList, width, height, fps, outputPath, microphoneDeviceName, drawtextFilter);
+        BuildArguments(psi.ArgumentList, width, height, fps, outputPath, microphoneDeviceName, drawtextFilter, microphoneThreadQueueSize);
 
         _ffmpeg = new Process { StartInfo = psi };
 
@@ -62,7 +65,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
     public void WriteFrame(byte[] frameData) => _stdin.Write(frameData, 0, frameData.Length);
 
     internal static void BuildArguments(ICollection<string> args, int width, int height, int fps, string outputPath, string? microphoneDeviceName)
-        => BuildArguments(args, width, height, fps, outputPath, microphoneDeviceName, null);
+        => BuildArguments(args, width, height, fps, outputPath, microphoneDeviceName, null, false);
 
     internal static void BuildArguments(
         ICollection<string> args,
@@ -71,7 +74,8 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         int fps,
         string outputPath,
         string? microphoneDeviceName,
-        string? drawtextFilter)
+        string? drawtextFilter,
+        bool microphoneThreadQueueSize)
     {
         var hasMicrophone = !string.IsNullOrWhiteSpace(microphoneDeviceName);
 
@@ -96,8 +100,13 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
 
         if (hasMicrophone)
         {
-            args.Add("-thread_queue_size");
-            args.Add("512");
+            // ffmpeg master builds since 2026-09 accept -thread_queue_size only as a muxer option and reject it here.
+            if (microphoneThreadQueueSize)
+            {
+                args.Add("-thread_queue_size");
+                args.Add("512");
+            }
+
             args.Add("-f");
             args.Add("dshow");
             args.Add("-audio_buffer_size");
@@ -235,6 +244,62 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to probe ffmpeg drawtext support; video watermark disabled for this recording.");
+            return false;
+        }
+    }
+
+    internal static bool HelpAllowsInputThreadQueueSize(string helpText)
+    {
+        foreach (var line in helpText.Split('\n'))
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.StartsWith("-thread_queue_size", StringComparison.Ordinal))
+            {
+                return trimmed.Contains("demuxer", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasInputThreadQueueSize(string ffmpegPath, ILogger logger)
+    {
+        return InputThreadQueueSizeSupportCache.GetOrAdd(ffmpegPath, path => ProbeHasInputThreadQueueSize(path, logger));
+    }
+
+    private static bool ProbeHasInputThreadQueueSize(string ffmpegPath, ILogger logger)
+    {
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = ffmpegPath,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                },
+            };
+
+            process.StartInfo.ArgumentList.Add("-hide_banner");
+            process.StartInfo.ArgumentList.Add("-h");
+            process.StartInfo.ArgumentList.Add("long");
+
+            process.Start();
+            var helpTask = process.StandardOutput.ReadToEndAsync();
+            if (!process.WaitForExit(3000) || !helpTask.Wait(1000))
+            {
+                process.Kill();
+                logger.LogWarning("Timed out while probing ffmpeg options; microphone input queue size not set.");
+                return false;
+            }
+
+            return HelpAllowsInputThreadQueueSize(helpTask.Result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to probe ffmpeg options; microphone input queue size not set.");
             return false;
         }
     }

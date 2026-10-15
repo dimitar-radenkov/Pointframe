@@ -189,11 +189,45 @@ public sealed class FFMpegVideoWriterTests
     }
 
     [Fact]
+    public void BuildArguments_WithMicrophoneAndInputThreadQueueSize_AddsItBeforeAudioInput()
+    {
+        var args = new List<string>();
+        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", "Studio Mic", null, true);
+
+        var queueIndex = args.IndexOf("-thread_queue_size");
+        var dshowIndex = args.IndexOf("dshow");
+
+        Assert.True(queueIndex > args.IndexOf("pipe:0"));
+        Assert.Equal("512", args[queueIndex + 1]);
+        Assert.True(dshowIndex > queueIndex);
+    }
+
+    [Fact]
+    public void BuildArguments_WithMicrophoneWithoutInputThreadQueueSize_OmitsIt()
+    {
+        var args = new List<string>();
+        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", "Studio Mic", null, false);
+
+        Assert.DoesNotContain("-thread_queue_size", args);
+        Assert.Contains("audio=Studio Mic", args);
+    }
+
+    [Theory]
+    [InlineData("Advanced per-file options (input and output):\r\n-bitexact           bitexact mode\r\n-thread_queue_size  set the maximum number of queued packets from the demuxer\r\n", true)]
+    [InlineData("-attach <filename>  add an attachment to the output file\n-thread_queue_size  set the maximum number of queued packets per stream on the muxer\n", false)]
+    [InlineData("-bitexact           bitexact mode\n", false)]
+    [InlineData("", false)]
+    public void HelpAllowsInputThreadQueueSize_ReadsTheOptionDescription(string helpText, bool expected)
+    {
+        Assert.Equal(expected, FFMpegVideoWriter.HelpAllowsInputThreadQueueSize(helpText));
+    }
+
+    [Fact]
     public void BuildArguments_WhenDrawtextFilterProvided_AddsVideoFilter()
     {
         var args = new List<string>();
 
-        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", null, "drawtext=fontfile='C\\:/Windows/Fonts/segoeui.ttf':text='stamp'");
+        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", null, "drawtext=fontfile='C\\:/Windows/Fonts/segoeui.ttf':text='stamp'", false);
 
         var vfIndex = args.IndexOf("-vf");
         Assert.True(vfIndex >= 0);
@@ -205,7 +239,7 @@ public sealed class FFMpegVideoWriterTests
     {
         var args = new List<string>();
 
-        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", null, null);
+        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", null, null, false);
 
         Assert.DoesNotContain("-vf", args);
     }
