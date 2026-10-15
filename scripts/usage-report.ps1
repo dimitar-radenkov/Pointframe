@@ -215,13 +215,24 @@ AppEvents
 | order by events desc
 '@) $Ctx
     }
-    onboardingFirstCaptures = {
+    onboardingSnips = {
         param($Ctx)
         Expand-Kql ($AppEventsKql + @'
 
-AppEvents
-| where name == "first_capture_completed" and tostring(customDimensions.source) == "onboarding"
-| summarize events = count(), installs = dcount(install)
+// first_capture_completed has no source; attribute by the onboarding snip's session instead.
+let Sessions = AppEvents | extend session = tostring(customDimensions.session_id) | where isnotempty(session);
+let Snips = Sessions
+| where name == "snip_started" and tostring(customDimensions.source) == "onboarding"
+| summarize snipAt = min(timestamp) by install, session;
+Snips
+| join kind=leftouter (Sessions | where name in ("capture_completed", "scrolling_capture_completed", "first_capture_completed", "annotation_committed", "capture_pinned", "snip_cancelled") | project session, name, at = timestamp) on session
+| extend after = isnotempty(at) and at >= snipAt
+| summarize captured = countif(after and name in ("capture_completed", "scrolling_capture_completed")),
+    firstCapture = countif(after and name == "first_capture_completed"),
+    engaged = countif(after and name in ("annotation_committed", "capture_pinned")),
+    cancelled = countif(after and name == "snip_cancelled") by install
+| summarize snipInstalls = count(), capturedInstalls = countif(captured > 0), firstCaptureInstalls = countif(firstCapture > 0),
+    engagedNoCaptureInstalls = countif(captured == 0 and engaged > 0), cancelledInstalls = countif(captured == 0 and engaged == 0 and cancelled > 0)
 '@) $Ctx
     }
     exceptions = {
@@ -499,16 +510,20 @@ function New-Report([scriptblock]$Runner, [hashtable]$Ctx, [datetime]$Now)
         $shown = Get-Single (& $q 'onboardingShown')
         $actions = @(& $q 'onboardingActions')
         $hotkeys = @(& $q 'hotkeyStatus')
-        $first = Get-Single (& $q 'onboardingFirstCaptures')
+        $snips = Get-Single (& $q 'onboardingSnips')
         $shownEvents = [int](Get-Value $shown 'events')
-        $firstEvents = [int](Get-Value $first 'events')
+        $snipInstalls = [int](Get-Value $snips 'snipInstalls')
         [ordered]@{
-            hasData = ($shownEvents -gt 0 -or $actions.Count -gt 0 -or $hotkeys.Count -gt 0 -or $firstEvents -gt 0)
+            hasData = ($shownEvents -gt 0 -or $actions.Count -gt 0 -or $hotkeys.Count -gt 0 -or $snipInstalls -gt 0)
             shownEvents = $shownEvents
             shownInstalls = [int](Get-Value $shown 'installs')
             actions = @($actions | ForEach-Object { [ordered]@{ action = [string](Get-Value $_ 'action'); events = [int](Get-Value $_ 'events'); installs = [int](Get-Value $_ 'installs') } })
             hotkeyStatus = @($hotkeys | ForEach-Object { [ordered]@{ status = [string](Get-Value $_ 'status'); events = [int](Get-Value $_ 'events'); installs = [int](Get-Value $_ 'installs') } })
-            firstCapturesFromOnboarding = $firstEvents
+            onboardingSnipInstalls = $snipInstalls
+            onboardingCapturedInstalls = [int](Get-Value $snips 'capturedInstalls')
+            onboardingFirstCaptureInstalls = [int](Get-Value $snips 'firstCaptureInstalls')
+            onboardingEngagedNoCaptureInstalls = [int](Get-Value $snips 'engagedNoCaptureInstalls')
+            onboardingCancelledInstalls = [int](Get-Value $snips 'cancelledInstalls')
         }
     }
     $report.exceptions = Get-Section {
@@ -641,7 +656,9 @@ function Format-ReportText($Report, [bool]$SandboxView)
         param($d)
         if (-not $d.hasData) { return '  no data yet' }
         $text = "  onboarding_shown: $($d.shownEvents) events, $($d.shownInstalls) installs"
-        $text += "`n  first captures with source=onboarding: $($d.firstCapturesFromOnboarding)"
+        $text += "`n  installs that started a snip from onboarding: $($d.onboardingSnipInstalls)"
+        $text += "`n    copied or saved a capture later in that session: $($d.onboardingCapturedInstalls) (first capture: $($d.onboardingFirstCaptureInstalls))"
+        $text += "`n    annotated or pinned without copy/save: $($d.onboardingEngagedNoCaptureInstalls); only cancelled: $($d.onboardingCancelledInstalls)"
         $text += "`n  onboarding_action by action:`n" + $(if (@($d.actions).Count -eq 0) { '  no data yet' } else { Format-TextTable $d.actions @('action', 'events', 'installs') { param($r) @($r.action, $r.events, $r.installs) } })
         $text += "`n  hotkey_status by status:`n" + $(if (@($d.hotkeyStatus).Count -eq 0) { '  no data yet' } else { Format-TextTable $d.hotkeyStatus @('status', 'events', 'installs') { param($r) @($r.status, $r.events, $r.installs) } })
         $text
@@ -747,6 +764,11 @@ function Invoke-SelfTest
     & $check ($report.funnel.data.neverActivated -eq 590 -and $report.funnel.data.allSnipsCancelled -eq 12) 'funnel'
     & $check ($report.retention.data.days2PlusPct -eq 50.0 -and $report.retention.data.span30Plus -eq 20) 'retention'
     & $check ($report.onboarding.ok -and -not $report.onboarding.data.hasData) 'absent onboarding events mean no data yet'
+    $snipFixture = '{"tables":[{"name":"PrimaryResult","columns":[{"name":"snipInstalls","type":"long"},{"name":"capturedInstalls","type":"long"},{"name":"firstCaptureInstalls","type":"long"},{"name":"engagedNoCaptureInstalls","type":"long"},{"name":"cancelledInstalls","type":"long"}],"rows":[[9,1,1,3,1]]}]}' | ConvertFrom-Json
+    $snipReport = New-Report { param($name, $kql) if ($name -eq 'onboardingSnips') { $snipFixture } else { & $load $name } } $ctx $now
+    $sd = $snipReport.onboarding.data
+    & $check ($sd.hasData -and $sd.onboardingSnipInstalls -eq 9 -and $sd.onboardingCapturedInstalls -eq 1 -and $sd.onboardingEngagedNoCaptureInstalls -eq 3) 'onboarding snips are attributed by session'
+    & $check ((Format-ReportText $snipReport $false) -match 'started a snip from onboarding: 9') 'text shows onboarding snip installs'
     & $check ($report.exceptions.data.unhandled[0].exceptionType -eq 'AggregateException' -and @($report.exceptions.data.recordingFailed).Count -eq 0) 'exceptions, and no recording_failed'
     & $check ($report.website.data.sessions -eq 145 -and $report.website.data.ctaSessions -eq 26) 'website'
 
