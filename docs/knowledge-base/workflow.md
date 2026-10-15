@@ -1,0 +1,125 @@
+# Agent workflow
+
+How work is planned, assigned, reviewed, and merged in this repository by the coordinating agent (Claude), Claude subagents (Sonnet, Opus), and Codex executors and reviewers. Read it before starting a task. Decisions D1-D5 below are recorded with their rationale in [D-016](decisions.md#d-016-agents-follow-one-workflow-in-the-knowledge-base).
+
+Part of the [Pointframe knowledge base](knowledge-base.md).
+
+**Enforcement status.** Rules marked **in force** are checked by scripts that exist today. Rules marked **planned** are policy only until the named follow-up lands: PR 2 adds a review gate to `scripts/merge-pr.ps1`, a review record, and a Codex consultation helper; PR 3 moves run, status, and dialogue records to a shared store under git's common directory. Until then the coordinator applies planned rules by hand.
+
+## Purpose and authority
+
+The owner sets direction and holds the decisions the charter reserves. The coordinator is the single accountable agent: it decides, delegates, accepts or rejects results, and reports. Everything else is an executor or a reviewer.
+
+| Charter class | Who decides | Examples |
+|---|---|---|
+| A | Coordinator alone, report afterwards | Review findings inside an approved plan; bugs; flaky tests (assertions preserved); factual docs and site corrections; compatible dependency updates; release tooling; closing resolved or duplicate issues with linked evidence; security fixes that keep existing access and data contracts |
+| B | Coordinator alone, notify before publishing | Routine releases through the approved channels (GitHub release, winget, MCP Registry); major dependency upgrades with demonstrated compatibility and a recovery path; compatible telemetry schema changes |
+| C | Owner only | New product direction or large new feature; new external accounts or spend beyond budget; posting in the owner's name; deleting durable user data; user-visible promise changes (pricing, privacy policy, license); expanding collected telemetry or retention |
+
+- **Precedence.** The charter, then an approved plan, then this file, then `CLAUDE.md` and `AGENTS.md` (which point here). A rule kept only in an agent's private memory is not a rule; it belongs here.
+- **Disagreement.** A Claude-Codex debate about an execution question is bounded to one round. The coordinator then decides or runs a bounded experiment, and logs the dissent. Disagreement alone never goes to the owner.
+- **Guardrails.** At most 2 implementation tasks in parallel (separate worktrees), 1 release in flight, desktop takeover of at most 30 minutes at a time and announced first. Codex work stops at 80% of the weekly limit.
+- **Evidence per change.** Focused tests, a real-environment check when runtime behavior changes, an independent review, a final `verify.ps1`, and the checked head SHA or artifact. A privacy change states its residual risk.
+- **Decision log.** Log a material decision when it is made: time, objective, accountable agent, decision and reason, scope, evidence, recovery path, outcome (`scripts/status.ps1 -Decision`).
+- **Merged regression.** Stop the rollout, log it, open an issue, revert with verification (or roll forward when a revert would harm data), and notify at once without a new permission loop.
+
+## From idea to approved package
+
+| Work | Brainstorm and approval |
+|---|---|
+| Charter A work (bugs, flaky tests, doc corrections, review fixes) and work inside an approved plan | Proceeds directly: no brainstorm, no approval (D3) |
+| A new product package | Codex debate, then one approval message from the owner |
+| Charter C | Owner only |
+
+- **Debate.** "Brainstorm with Codex" is a real debate on a strong model: Codex proposes, the coordinator critiques with evidence from code and data, Codex answers, and they iterate (usually 2-3 rounds) until they converge. A single Codex answer forwarded as-is is not a brainstorm. Substantial design debates get two independent assessments.
+- **One approval message.** The converged plan (scope, deliverables, non-goals); each open decision with options, pros and cons, and a recommendation; and what comes after. After approval the coordinator executes, reviews, opens the PR, and merges without asking again. Include the points of disagreement and how each was settled in the approval message.
+- **Still ask** for a decision the approved plan leaves open, a destructive or third-party action that neither the charter (A or B) nor an approved plan already authorizes, or a surprise that changes the plan. Routine releases through the approved channels are class B: notify, do not wait.
+- **Private dialogues, public rules.** Rules and decision rationale live in this knowledge base. Full Claude-Codex dialogues stay local (D2) and are never needed to understand a rule. **Planned (PR 3):** a shared local store for dialogue records.
+
+## Roles and assignment
+
+| Role | Who | Does |
+|---|---|---|
+| Owner | Person | Sets direction, approves plans, decides class C |
+| Coordinator | Claude main session | Plans, writes briefs, assigns, reads results critically, accepts or returns them, integrates shared files (indexes, KB, numbering), commits, opens PRs, merges, reports |
+| Executor | Sonnet subagent or Codex (`gpt-6-luna`, workspace-write) | Delivers one whole result from a brief. Never commits, pushes, or opens a PR |
+| Reviewer | A different agent than the executor | Checks the result against the criteria, read-only |
+
+- **The coordinator does not execute whole results.** Delegate early: a task of more than about 5-10 steps, or one with its own run-test-fix loop, goes to an executor from the start. One executor gets the whole result; no agent per command. Fixes go back to the same executor: for a Sonnet subagent, continue the same subagent. Returning a fix to the same Codex executor through the launcher is **planned**; until then a fix is a new launcher run whose brief includes the previous run's report and the review findings. An incorrect review finding is rejected with a stated reason.
+- **Allocation.** Aim for 40-60% of eligible packages to Codex as a rolling target, never a per-task quota. Capability and remaining capacity decide exceptions. Codex suits scripts and code without visual judgment; Sonnet suits visual, MCP, and cross-file work.
+- **Models.** Cheapest model that can do the work: `gpt-6-luna` at `medium` effort by default, `high` effort for concurrency, lifecycle, and DPI work. Raise effort before raising the model. Only generation-6 models are used; the top tier needs owner approval. Brainstorm, retros, and heavy review use the strong tier (see Review). Set model and effort per run; never change persistent Codex configuration unless asked. Use only model names confirmed by Codex configuration or its model listing.
+- **Small-fix exception.** The coordinator may edit directly only when all hold: about 10 changed non-generated lines in at most 2 files; mechanical, with no runtime behavior change or new logic; no privacy, security, lifecycle, packaging, persistence, or workflow-gate impact; no diagnose-test-repair loop. Log each use and count them in the report, so three small fixes cannot hide substantial coordinator execution.
+- **One integrator.** Only the coordinator edits shared files (KB, indexes, numbering). Parallel tasks own disjoint files.
+- **Coordinator context.** Bulky logs, long outputs, and desktop snapshots stay out of the coordinator's context: write them to a file and keep the path, a short excerpt, and the exit code.
+
+## Brief and acceptance criteria
+
+One brief serves either executor. Required headings, checked by `scripts/agent-run.ps1` (**in force**; check a Sonnet brief with `-ValidateOnly`): objective (or why), worktree, read first, deliverables, exclusions, stop conditions, checks.
+
+| A brief also states | Why |
+|---|---|
+| Owned files and worktree | Parallel tasks must not collide |
+| Existing coverage to read first: exact files, tests, KB sections | No open-ended discovery |
+| Acceptance cases, including known lifecycle cases (focus, cancellation, legacy users, recording-only users, older clients) | The reviewer needs a criterion per case |
+| Authorized repairs | The executor repairs without asking |
+| Stop conditions | Stop after the first real environment failure (sandbox, missing tool, authentication) and report. Missing build outputs are not one; build them. Never retry an identical failing command |
+| Exact checks | Sandbox-safe: `dotnet format Pointframe/Pointframe.csproj --no-restore`, and every `dotnet test --filter` adds `&Category!=Integration` |
+
+## Execution budgets
+
+- **Launcher (in force).** Every Codex executor run goes through `scripts/agent-run.ps1`: it validates the brief, refuses `high` effort or the strong tier without `-EscalationReason`, stops at `-MaxMinutes` and `-MaxInputTokens`, and appends a cost record to the local `agent-runs.jsonl` under `plan/`.
+- **Reassessment triggers.** At 100 tool calls, 20M tokens, or 3 unsuccessful repair cycles the coordinator reassesses: continue, hand over with notes, or stop. A trigger is not an automatic replacement.
+- **One validation owner.** The executor runs focused tests while iterating and `pwsh scripts/verify.ps1` once on its final tree (pre-commit validation). It does not re-run build, format, KB, or workflow gates on an unchanged tree. The coordinator then commits and pins the plugin, and must run `verify.ps1` on the committed tree: `merge-pr.ps1 -Auto` requires a receipt for the committed head and tree, and a receipt from before the commit is refused.
+- **Limits.** Report both providers' remaining limits with progress reports and after each run (Codex 5-hour and weekly use; Claude status and reset time). Never read OAuth tokens or other credentials to call a usage endpoint.
+
+## Review
+
+Every behavior change gets an independent review from a different agent than its executor, preferably from the other subscription: Sonnet executes and Codex `gpt-6-luna` reviews, and the reverse (D4).
+
+| Review | When | Reviewer |
+|---|---|---|
+| Light | Default for a behavior change | The other subscription's light model, read-only |
+| Heavy | Collection, identifiers, consent, retention, or privacy promises; security boundaries, destructive operations, data migration; release, install, or update delivery; F-39 verify truthfulness, evidence freshness, or bypass resistance; authority, review, verification, or autonomy rules; hard concurrency, lifecycle, or DPI | `gpt-6.1-sol` at high effort read-only, or an Opus subagent. One heavy review replaces the light one |
+| Small-fix exception | All four small-fix conditions hold | The coordinator; logged and counted in the report |
+
+- **Independence.** The reviewer gets the brief, the criteria, and the paths, not the executor's or the coordinator's opinion. It runs the key commands and returns PASS or FAIL per criterion with evidence, plus what it could not check.
+- **Consequences, not locations.** Heavy review follows what a change can break, not the directory. An F-39 help typo or an ordinary File map row does not qualify. Privacy wording is never mechanical.
+- **Model rule amended.** The strong Codex tier was reserved for brainstorm and retros; D4 also allows it, read-only, for heavy review.
+- **Planned (PR 2).** `scripts/merge-pr.ps1` refuses auto-merge without `-Worktree` and without a review record tied to the PR head SHA, rejects a stale SHA, a reviewer equal to the executor outside the small-fix exception, and any open blocking finding. A record command writes the record; Sonnet reviewers stay read-only and the coordinator is named as recorder. Until then the coordinator checks by hand.
+
+## Verification and desktop checks
+
+- **Done gate (in force).** `pwsh scripts/verify.ps1` passes on the final tree and writes the gitignored verdict file `verdict.json` under `artifacts/verify`; see [CI, CD, and versioning](knowledge-base.md#ci-cd-and-versioning). Receipts are bound to the head and the working-tree hash, so a stale one is detectable.
+- **Real-environment check.** When runtime behavior changes, run the real app: `pwsh scripts/desktop-tests.ps1` for the regression selection, with `-Repeat N` for stress. The desktop is announced and kept to 30 minutes at a time; check the input desktop is not locked first.
+- **Release qualification.** Run `pwsh scripts/release-impact.ps1` before merging; when it prints `desktop-qualification: required`, run `scripts/check-released-desktop.ps1 -BuildCandidate`. After each release run `scripts/check-release-channels.ps1 -Version <x> -Watch` and report a failed channel at once.
+- **Report what was not tested.** A report that omits an untested path claims it passed.
+
+## PR and merge
+
+The coordinator commits, opens PRs, and merges. Executors never commit or push. This overrides the generic "leave changes for user review" default for this repository.
+
+1. Work on a feature branch, never on `master`.
+2. Commit, then `pwsh scripts/merge-pr.ps1 -PinOnly -Worktree <path>`, then `pwsh scripts/verify.ps1` on the committed tree. The executor's earlier run does not satisfy the merge: a receipt from before the commit is refused.
+3. Push and `gh pr create`.
+4. `pwsh scripts/merge-pr.ps1 -Pr <n> -Worktree <path> -Auto -WaitMerged` under a watcher. It needs the receipt to match the PR head and tree. "AUTO-MERGE ENABLED" is not merged.
+
+- **Checks.** Every required check (`unit-tests`, `package-checks`, `Analyze (csharp)`, CodeQL) must be present. Every check on the PR head, required or otherwise, must have completed without failure or cancellation; skipped checks are allowed. Never delete the branch or worktree until GitHub says MERGED.
+- **Serial.** Merge PRs one at a time; KB edits conflict. Every merge cuts a release.
+- **Plugin pin.** A stale pin is acceptable when only the two pin files changed and `check-agent-discovery.ps1` passes; `-Auto` commits the pin itself.
+- **Repository settings** (rulesets, auto-merge) change only on the owner's explicit wording.
+
+## Status and handoff
+
+- **Status (in force).** the local status file under `plan/` is the store; `scripts/status.ps1 -Set`, `-Done`, `-Decision`, `-Publish` write the pinned status issue and the handoff region. Each active task has a record: objective, accountable agent, stage, SHA or artifact, evidence, next step, blocker, budget and desktop use. Update it at start, material decisions, ready, release, regression, and done; add a daily digest comment on the issue; raise alerts only when intervention is needed. Publish at every stage change; never hand-edit generated regions.
+- **Session closure (D5).** A coordinating session is one work package. At package end, end of day, the first context compaction, or a measured 150K context, whichever comes first: write the checkpoint (status plus handoff), finish or safely hand off the running operation (a desktop run, a merge watcher), start nothing new, then close.
+- **Owner questions.** Ask with `AskUserQuestion`: 2-4 real options, recommendation first (numbered plain options where it is unavailable), and only for a decision the charter or an approved plan leaves open; destructive or third-party actions are asked about only when neither the charter (A or B) nor an approved plan already authorizes them. A general "yes" approves only what was stated clearly.
+- **Final report.** What was done; what was tested and what was not; what was fixed after review; which work went to Claude and which to Codex; the model and effort used for each executor and reviewer run; both providers' limits; what awaits a decision.
+- **Planned (PR 3).** Run, status, and review records move to a shared store under git's common directory so every linked worktree sees them.
+
+## Incidents and measurement
+
+- **Weekly retro.** Every Monday, a dated document under `plan/retros/` with the work done, what went well and badly with causes, Claude and Codex token use, and next actions. Retros use strong models, with Codex challenging the draft.
+- **Metrics to watch.** Coordinator versus executor tokens, questions asked to the owner, activation (`scripts/usage-report.ps1`), and counted small-fix exceptions.
+- **Trap to avoid.** Rules that live only in memory were not followed (D-016). When a correction is durable, put it in the owning section here or in a feature file as scope, check, and required evidence; use `lessons.md` when there is a reusable failure mechanism.
+
+**Files.** `scripts/agent-run.ps1`, `scripts/merge-pr.ps1`, `scripts/status.ps1`, `scripts/verify.ps1`, `CLAUDE.md`, `AGENTS.md`.

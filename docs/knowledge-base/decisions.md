@@ -4,6 +4,26 @@ Decisions that span areas: why a choice was made over the obvious alternative. A
 
 Part of the [Pointframe knowledge base](knowledge-base.md).
 
+## Chronology
+
+Every decision by date, whichever file holds it. The sections themselves are in this file or the area file named by the link.
+
+| Date | ID | Decision |
+|---|---|---|
+| 2026-04-09 | [D-001](#d-001-mvvm-plus-di-is-the-composition-model) | MVVM plus DI is the composition model |
+| 2026-04-09 | [D-003](features/recording.md#d-003-recording-uses-one-authoritative-session-geometry) | Recording uses one authoritative session geometry |
+| 2026-09-05 | [D-002](#d-002-one-knowledge-base-file-checked-by-script) | One knowledge base file, checked by script (superseded by D-006) |
+| 2026-09-06 | [D-004](#d-004-native-libraries-ship-loose-and-the-installer-packages-them) | Native libraries ship loose and the installer packages them |
+| 2026-09-06 | [D-005](features/transcription.md#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app) | The speech model is delivered by both the installer and the app |
+| 2026-10-03 | [D-006](#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area) | Cross-cutting knowledge base plus one file per feature area |
+| 2026-10-03 | [D-007](features/cli-mcp.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service) | `verify run` drives the MCP server |
+| 2026-10-03 | [D-008](features/cli-mcp.md#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository) | Verify approvals need a person at a terminal (superseded by D-009 for gate and app commands) |
+| 2026-10-04 | [D-009](features/cli-mcp.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands) | An approver agent behind fixed rules approves verify commands (partly superseded by D-011) |
+| 2026-10-04 | [D-010](features/cli-mcp.md#d-010-verifys-agent-roles-run-on-any-agent) to [D-013](features/cli-mcp.md#d-013-verification-spec-v1-is-frozen) | Verify agent roles, standard commands, version compatibility, frozen spec v1 |
+| 2026-10-05 | [D-014](features/cli-mcp.md#d-014-interactive-desktop-testing-reuses-verify-trust) | Interactive desktop testing reuses verify trust |
+| 2026-10-15 | [D-015](features/telemetry.md#d-015-agent-telemetry-carries-a-random-install-id) | Agent telemetry carries a random install ID |
+| 2026-10-15 | [D-016](#d-016-agents-follow-one-workflow-in-the-knowledge-base) | Agents follow one workflow in the knowledge base |
+
 ## D-001 MVVM plus DI is the composition model
 
 Decided 2026-04-09.
@@ -70,3 +90,25 @@ Decided 2026-10-03. Supersedes [D-002](#d-002-one-knowledge-base-file-checked-by
 **Alternatives rejected.** One file per `F-NN` feature: 37 small files, and features of one area would repeat or cross-link the same flow and lessons. Keeping one file: the cost that triggered this decision. Frontmatter and a hand-kept index: the index is generated, and structure lives in the tables the script already parses.
 
 **Files.** `docs/knowledge-base/knowledge-base.md`, `docs/knowledge-base/features/recording.md`, `.claude/skills/kb-read/SKILL.md`, `.claude/skills/kb-write/SKILL.md`, `.claude/skills/kb-check/SKILL.md`, `scripts/kb.ps1`.
+
+## D-016 Agents follow one workflow in the knowledge base
+
+Decided 2026-10-15, by the owner, after a three-round Claude-Codex debate. The process itself is in [Agent workflow](workflow.md).
+
+**Context.** Process rules (who executes, who reviews, when to ask, how to merge) lived in the coordinator's private memory and in scattered scripts. The 2026-10-07 retro showed the coordinator session used about 84% of Claude tokens, far more than all executors together, and several PRs merged without independent review. Rules kept only in memory were not followed, and `CLAUDE.md` still told agents never to commit, contradicting the authorized flow.
+
+**Decision.**
+
+| ID | Decision |
+|---|---|
+| D1 | Location: `docs/knowledge-base/workflow.md`, part of the knowledge base |
+| D2 | Public rules, private dialogues: rules and decision rationale are public; full Claude-Codex dialogues stay local and are never required to understand a rule |
+| D3 | Brainstorm boundary: charter A work (bugs, flaky tests, doc corrections, review fixes) and work inside an approved plan proceed without brainstorm or approval; a new product package needs the Codex debate and one approval message |
+| D4 | Review: every behavior change gets an independent review from a different agent than the executor, preferably the other subscription. A small-fix exception (about 10 changed non-generated lines in at most 2 files; mechanical; no privacy, security, lifecycle, packaging, persistence, or workflow-gate impact; no diagnose-test-repair loop) is logged and counted. Heavy review (strong Codex tier read-only, or an Opus subagent) follows consequences: privacy promises, security and destructive operations, release delivery, F-39 truthfulness, authority and autonomy rules, hard concurrency, lifecycle, or DPI. This amends "strong Codex tier only for brainstorm and retros" |
+| D5 | Sessions: a coordinating session is one work package. At package end, end of day, first compaction, or a measured 150K context, write the checkpoint, finish or safely hand off the running operation, start nothing new, then close |
+
+**Consequences.** Enforcement is staged. This change is documentation only. A follow-up adds a review gate to `scripts/merge-pr.ps1` (refusing auto-merge without a worktree and a review record tied to the head SHA), a review record command, and a Codex consultation helper; a later one moves run, status, and review records to a shared store under git's common directory. Direct `gh pr merge` stays a bypass until a required GitHub check exists. Approved policy and implemented enforcement are marked separately in the workflow file.
+
+**Alternatives rejected.** A separate agent-workflow document outside the knowledge base: not retrieved by `kb.ps1 read`. A second decision log beside this file: two overlapping histories; this file keeps the global D-NNN IDs and gains the chronology above. Copying another repository's rule that knowledge changes only after owner approval: it would undermine the charter's autonomy. Review by the coordinator for every change: the failure this decision answers. Brainstorm for every package: conflicts with charter A. Immediate stop at the context threshold: it can strand a desktop run or merge watcher. Required GitHub enforcement immediately: wait for the local gate pilot to show whether bypasses persist.
+
+**Files.** `docs/knowledge-base/workflow.md`, `CLAUDE.md`, `AGENTS.md`, `scripts/merge-pr.ps1`.
