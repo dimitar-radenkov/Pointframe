@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Pointframe.Cli;
 
@@ -109,7 +110,23 @@ internal sealed class McpStdioToolClient : IMcpToolClient
     }
 
     public Task<JsonElement> CallToolAsync(string name, object arguments, TimeSpan timeout, CancellationToken cancellationToken) =>
-        SendRequestAsync("tools/call", new { name, arguments }, timeout, cancellationToken);
+        SendRequestAsync("tools/call", BuildCallParameters(name, arguments), timeout, cancellationToken);
+
+    // A "_meta" entry in the arguments object is request metadata, not a tool argument: it moves to the
+    // request's own _meta, which is where the server reads local hints such as the restart poll marker.
+    internal static object BuildCallParameters(string name, object arguments)
+    {
+        if (JsonSerializer.SerializeToNode(arguments) is JsonObject node
+            && node.TryGetPropertyValue("_meta", out var meta))
+        {
+            node.Remove("_meta");
+            return meta is JsonObject metaObject
+                ? new { name, arguments = node, _meta = metaObject }
+                : new { name, arguments = node };
+        }
+
+        return new { name, arguments };
+    }
 
     public Task<JsonElement> ListToolsAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
         SendRequestAsync("tools/list", new { }, timeout, cancellationToken);

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Pointframe.Engine.Automation.Services;
+using Pointframe.Telemetry;
 
 namespace Pointframe.Cli;
 
@@ -11,6 +12,24 @@ internal sealed record CaptureRectangle(int X, int Y, int Width, int Height);
 // ended, and a session that cannot be ended can never pass.
 internal sealed class DesktopScenarioRunner
 {
+    // The only step failures that are results about the app under test: a check that ran and failed, an element or
+    // window that was not there while observation worked, a blocked or ambiguous target, a matched negative control, and
+    // an app that kept running when a restart needed it gone. Any other failed step (a tool error, a provider, input,
+    // session, or desktop failure, an unknown code) means Pointframe could not tell, and counts as infrastructure.
+    internal static readonly IReadOnlySet<string> VerificationResultCodes = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "CheckFailed",
+        "CheckInconclusive",
+        "ElementNotFound",
+        "NoVisibleWindow",
+        "AmbiguousLocator",
+        "AmbiguousTarget",
+        "OccludedOrOutOfBounds",
+        "NegativeControlMatched",
+        "TargetStillRunning",
+    };
+
+
     private static readonly TimeSpan ActionTimeout = TimeSpan.FromSeconds(60);
     private const int MaxCandidates = 5;
     private static readonly TimeSpan LaunchTimeout = TimeSpan.FromSeconds(90);
@@ -21,6 +40,7 @@ internal sealed class DesktopScenarioRunner
     private readonly TimeSpan _elementTimeout;
     private readonly TimeSpan _pollInterval;
     private readonly TimeSpan _restartWait;
+    private bool _stepInfrastructure;
 
     internal DesktopScenarioRunner(
         IMcpToolClient client,
@@ -135,16 +155,18 @@ internal sealed class DesktopScenarioRunner
             var message = startMessage ?? ToolText(startResult);
             var launch = new VerificationStepResult(-1, "launch", VerificationStatus.Fail, $"launch app profile '{_profileId}'", code ?? "SessionNotStarted", message);
             return new VerificationScenarioResult(
-                scenario.Id, VerificationStatus.Fail, null, [], [launch, .. Skipped(scenario, 0)], null, false, null, ["The app session did not start."]);
+                scenario.Id, VerificationStatus.Fail, null, [], [launch, .. Skipped(scenario, 0)], null, false, null, ["The app session did not start."], InfrastructureFailure: true);
         }
 
         var steps = new List<VerificationStepResult>();
         var stopped = false;
+        var infrastructureFailure = false;
         var notReady = await WaitForReadyAsync(sessionId, "launch", cancellationToken).ConfigureAwait(false);
         if (notReady is not null)
         {
             steps.Add(new VerificationStepResult(-1, "launch", VerificationStatus.Fail, $"launch app profile '{_profileId}'", notReady.Value.Code, notReady.Value.Message));
             steps.AddRange(Skipped(scenario, 0));
+            infrastructureFailure = true;
         }
 
         for (var index = 0; index < scenario.Steps.Count && notReady is null; index++)
@@ -156,6 +178,7 @@ internal sealed class DesktopScenarioRunner
                 continue;
             }
 
+            _stepInfrastructure = false;
             VerificationStepResult result;
             try
             {
@@ -164,8 +187,10 @@ internal sealed class DesktopScenarioRunner
             catch (Exception exception) when (exception is TimeoutException or IOException or InvalidOperationException or JsonException or KeyNotFoundException)
             {
                 result = new VerificationStepResult(index, step.Kind, VerificationStatus.Fail, Describe(step), "StepError", exception.Message);
+                infrastructureFailure = true;
             }
 
+            infrastructureFailure |= result.Status != VerificationStatus.Pass && _stepInfrastructure;
             steps.Add(result);
             stopped = result.Status != VerificationStatus.Pass
                 && !(continueAfterFailedChecks && step is VerificationStep.Check && result.Code is "CheckFailed");
@@ -178,8 +203,15 @@ internal sealed class DesktopScenarioRunner
         string? proofKeyId = null;
         try
         {
-            var report = Structured(await _client.CallToolAsync(
-                "desktop_get_test_report", new { sessionId }, ActionTimeout, cancellationToken).ConfigureAwait(false));
+            var reportResult = await _client.CallToolAsync(
+                "desktop_get_test_report", new { sessionId }, ActionTimeout, cancellationToken).ConfigureAwait(false);
+            var (reportErrorCode, reportErrorMessage) = ErrorOf(reportResult);
+            if (reportErrorCode is not null)
+            {
+                throw new InvalidOperationException($"{reportErrorCode}: {reportErrorMessage}");
+            }
+
+            var report = Structured(reportResult);
             reportVerdict = report.TryGetProperty("verdict", out var verdict) ? verdict.GetString() : null;
             if (report.TryGetProperty("criteria", out var criteriaElement))
             {
@@ -190,11 +222,14 @@ internal sealed class DesktopScenarioRunner
             }
 
             bundleDirectory = report.TryGetProperty("sessionDirectory", out var directory) ? directory.GetString() : null;
+            var problemsBefore = problems.Count;
             (proofValid, proofKeyId) = VerifyBundle(bundleDirectory, report, problems);
+            infrastructureFailure |= problems.Count > problemsBefore;
         }
         catch (Exception exception) when (exception is TimeoutException or IOException or InvalidOperationException or JsonException or KeyNotFoundException)
         {
             problems.Add($"The signed report could not be read: {exception.Message}");
+            infrastructureFailure = true;
         }
 
         try
@@ -205,11 +240,13 @@ internal sealed class DesktopScenarioRunner
             if (code is not null)
             {
                 problems.Add($"Cleanup failed ({code}): {message}");
+                infrastructureFailure = true;
             }
         }
         catch (Exception exception) when (exception is TimeoutException or IOException or InvalidOperationException or JsonException)
         {
             problems.Add($"Cleanup failed: {exception.Message}");
+            infrastructureFailure = true;
         }
 
         if (reportVerdict is not null && reportVerdict != "passed")
@@ -217,6 +254,7 @@ internal sealed class DesktopScenarioRunner
             problems.Add($"The signed report's verdict is '{reportVerdict}'.");
         }
 
+        infrastructureFailure |= steps.Any(item => item.Status == VerificationStatus.Fail && (item.Code is null || !VerificationResultCodes.Contains(item.Code)));
         var passed = steps.All(item => item.Status == VerificationStatus.Pass)
             && reportVerdict == "passed"
             && proofValid
@@ -230,7 +268,8 @@ internal sealed class DesktopScenarioRunner
             bundleDirectory,
             proofValid,
             proofKeyId,
-            problems);
+            problems,
+            infrastructureFailure);
     }
 
     internal static string Describe(VerificationStep step) => step switch
@@ -329,9 +368,12 @@ internal sealed class DesktopScenarioRunner
                     var deadline = DateTimeOffset.UtcNow + _restartWait;
                     while (true)
                     {
+                        // An attempt started before the deadline is marked as a possible poll: the server then leaves a TargetStillRunning
+                        // refusal of it uncounted. An attempt started at or after the deadline is known to be final and is counted.
+                        var isPoll = DateTimeOffset.UtcNow < deadline;
                         var restart = ActionResult(index, step, description, await _client.CallToolAsync(
                             "desktop_restart_app",
-                            new { sessionId, actionId = NewActionId() },
+                            new { sessionId, actionId = NewActionId(), _meta = isPoll ? new Dictionary<string, bool> { [TelemetryHints.RestartPollMetaKey] = true } : null },
                             LaunchTimeout,
                             cancellationToken).ConfigureAwait(false));
                         if (restart.Code == "TargetStillRunning" && DateTimeOffset.UtcNow < deadline)
@@ -421,13 +463,16 @@ internal sealed class DesktopScenarioRunner
         var deadline = DateTimeOffset.UtcNow + _elementTimeout;
         IReadOnlyList<string> seen = [];
         IReadOnlyList<JsonElement> observed = [];
+        var infrastructure = false;
         while (true)
         {
             var observationResult = await ObserveAsync(sessionId, cancellationToken).ConfigureAwait(false);
             var observation = Structured(observationResult);
             var (code, message) = ErrorOf(observationResult);
+            infrastructure = code is not null;
             if (code == "SessionNotFound")
             {
+                _stepInfrastructure = true;
                 return ResolvedElement.Failed(code, message ?? "The desktop test session was not found.");
             }
 
@@ -466,6 +511,7 @@ internal sealed class DesktopScenarioRunner
 
             if (DateTimeOffset.UtcNow >= deadline)
             {
+                _stepInfrastructure = infrastructure;
                 var target = locator?.ToString() ?? "any element of the app";
                 var hint = seen.Count == 0 ? "The app exposed no automation ids." : $"Automation ids seen: {string.Join(", ", seen)}.";
                 return ResolvedElement.Failed(
@@ -495,10 +541,12 @@ internal sealed class DesktopScenarioRunner
     private async Task<(string Code, string Message)?> WaitForReadyAsync(string sessionId, string phase, CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + _elementTimeout;
+        var infrastructure = false;
         while (true)
         {
             var result = await ObserveAsync(sessionId, cancellationToken).ConfigureAwait(false);
             var (code, message) = ErrorOf(result);
+            infrastructure = code is not null;
             if (code == "SessionNotFound")
             {
                 return (code, message ?? "The desktop test session was not found.");
@@ -514,6 +562,7 @@ internal sealed class DesktopScenarioRunner
 
             if (DateTimeOffset.UtcNow >= deadline)
             {
+                _stepInfrastructure = infrastructure;
                 var reason = code is null ? string.Empty : $" The last observation returned {code}{(message is null ? string.Empty : $": {message}")}.";
                 return ("NoVisibleWindow", $"The app showed no visible window with UI elements within {_elementTimeout.TotalSeconds:0} seconds after the {phase}.{reason}");
             }

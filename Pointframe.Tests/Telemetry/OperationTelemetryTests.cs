@@ -71,6 +71,67 @@ public sealed class OperationTelemetryTests : IDisposable
         Assert.Equal("cli", export.Properties["host"]);
     }
 
+    [Theory]
+    [InlineData(TelemetryOutcome.Success, "success")]
+    [InlineData(TelemetryOutcome.Error, "error")]
+    [InlineData(TelemetryOutcome.Cancelled, "cancelled")]
+    [InlineData(TelemetryOutcome.Denied, "denied")]
+    [InlineData(TelemetryOutcome.VerificationFailed, "verification_failed")]
+    [InlineData(TelemetryOutcome.InvalidRequest, "invalid_request")]
+    public void EveryOutcome_ExportsOnlyItsAllowlistedValue_AndNoNewKey(TelemetryOutcome outcome, string expected)
+    {
+        var exporter = new CapturingExporter();
+        var sut = Create(TelemetryHost.Cli, exporter);
+
+        sut.Track("verify", outcome, TimeSpan.FromSeconds(2));
+        sut.Flush();
+
+        var export = Assert.Single(exporter.Exports);
+        Assert.Equal(expected, export.Properties["outcome"]);
+        Assert.Equal(
+            new[] { "agent_install_id", "duration_bucket", "host", "name", "outcome", "version" },
+            export.Properties.Keys.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
+    public void NewOutcomes_WhenOptedOut_ExportNothing()
+    {
+        var exporter = new CapturingExporter();
+        var created = false;
+        var sut = OperationTelemetryFactory.Create(
+            TelemetryHost.Cli,
+            "1.2.3",
+            new TelemetryPreferences(_directory, name => name == "DO_NOT_TRACK" ? "1" : null),
+            () =>
+            {
+                created = true;
+                return exporter;
+            },
+            _ => { });
+
+        sut.Track("verify", TelemetryOutcome.VerificationFailed, TimeSpan.Zero);
+        sut.Track("verify", TelemetryOutcome.InvalidRequest, TimeSpan.Zero);
+        sut.Flush();
+
+        Assert.False(created);
+        Assert.Empty(exporter.Exports);
+    }
+
+    [Fact]
+    public void Notice_IsV3AndNamesTheTwoNewOutcomes()
+    {
+        var notices = new List<string>();
+        var preferences = new TelemetryPreferences(_directory, _ => null);
+        File.WriteAllText(Path.Combine(_directory, "agent-telemetry-notice-v2"), "1");
+
+        _ = OperationTelemetryFactory.Create(TelemetryHost.Cli, "1.2.3", preferences, () => new CapturingExporter(), notices.Add);
+
+        var notice = Assert.Single(notices);
+        Assert.Equal("agent-telemetry-notice-v3", TelemetryPreferences.NoticeFileName);
+        Assert.Contains("verification_failed", notice, StringComparison.Ordinal);
+        Assert.Contains("invalid_request", notice, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void UnknownNameAndClient_AreReportedAsOther()
     {

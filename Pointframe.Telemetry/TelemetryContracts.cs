@@ -12,6 +12,8 @@ public enum TelemetryOutcome
     Error,
     Cancelled,
     Denied,
+    VerificationFailed,
+    InvalidRequest,
 }
 
 public interface IOperationTelemetry

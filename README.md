@@ -720,12 +720,12 @@ This policy covers the Pointframe desktop app, the Pointframe CLI, and the Point
 
 **Data collection.** Pointframe is free, open source, and needs no account. Screenshots, recordings, OCR text, file names, and file paths are never collected by the project. They stay on your machine under `%LOCALAPPDATA%\Pointframe`, apart from what you choose to send somewhere yourself: an MCP capture tool returns the image to your MCP client (pass `includeImage: false` to return metadata only), and Upload & copy link sends one capture to the HTTPS destination you configured.
 
-**Usage telemetry of the CLI and the MCP server.** Official release builds of the CLI and the MCP server send one anonymous event per MCP tool call or CLI command to Azure Application Insights. The event holds only these fixed values:
+**Usage telemetry of the CLI and the MCP server.** Official release builds of the CLI and the MCP server send one anonymous event per MCP tool call or CLI command to Azure Application Insights (from this version, a verification scenario's wait for the app to exit before a restart counts as one call). The event holds only these fixed values:
 
 | Property | Values |
 |---|---|
 | `name` | the MCP tool or CLI command, from a fixed list; anything else is `other` |
-| `outcome` | `success`, `error`, `cancelled`, or `denied` (never an error message) |
+| `outcome` | `success`, `error`, `cancelled`, `denied`, `verification_failed`, or `invalid_request` (never an error message) |
 | `duration_bucket` | `lt_1s`, `1_5s`, `5_30s`, or `gt_30s` |
 | `host` | `cli` or `mcp` |
 | `client` (MCP only) | `claude-desktop`, `claude-code`, `codex`, `vscode`, `cursor`, or `other` |

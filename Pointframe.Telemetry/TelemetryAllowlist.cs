@@ -65,6 +65,8 @@ public static class TelemetryAllowlist
         TelemetryOutcome.Success => "success",
         TelemetryOutcome.Cancelled => "cancelled",
         TelemetryOutcome.Denied => "denied",
+        TelemetryOutcome.VerificationFailed => "verification_failed",
+        TelemetryOutcome.InvalidRequest => "invalid_request",
         _ => "error",
     };
 

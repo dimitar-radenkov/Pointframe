@@ -264,6 +264,7 @@ A decision records why a choice was made over the obvious alternative, so nobody
 - [D-014 Interactive desktop testing reuses verify trust](features/cli-mcp.md#d-014-interactive-desktop-testing-reuses-verify-trust)
 - [D-015 Agent telemetry carries a random install ID](features/telemetry.md#d-015-agent-telemetry-carries-a-random-install-id)
 - [D-016 Agents follow one workflow in the knowledge base](decisions.md#d-016-agents-follow-one-workflow-in-the-knowledge-base)
+- [D-017 Agent outcomes separate failing verdicts and invalid input](features/telemetry.md#d-017-agent-outcomes-separate-failing-verdicts-and-invalid-input)
 
 <!-- /decisions -->
 

@@ -83,7 +83,8 @@ internal sealed record VerificationGateResult(
     int? ExitCode,
     double Seconds,
     string? Log,
-    IReadOnlyList<string> Details);
+    IReadOnlyList<string> Details,
+    [property: System.Text.Json.Serialization.JsonIgnore] bool InfrastructureFailure = false);
 
 internal static partial class GateRunner
 {
@@ -121,7 +122,7 @@ internal static partial class GateRunner
             {
                 result = new VerificationGateResult(
                     gate.Id, gate.Run, VerificationStatus.Fail, null, Math.Round(stopwatch.Elapsed.TotalSeconds, 1), null,
-                    [$"The gate could not be started: {exception.Message}"]);
+                    [$"The gate could not be started: {exception.Message}"], InfrastructureFailure: true);
             }
 
             results.Add(result);
