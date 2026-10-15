@@ -49,6 +49,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 - Border and annotation windows are positioned in physical pixels, not DIPs.
 - Microphone enumeration uses WASAPI (`MicrophoneDeviceService`); WinMM names are truncated and do not match ffmpeg device names.
 - The ffmpeg process must end when the video input ends, or it keeps running on the audio input alone.
+- ffmpeg option semantics differ between builds. `FFMpegVideoWriter` probes the resolved ffmpeg once per path (`-h filter=drawtext` for the watermark, `-h long` for whether `-thread_queue_size` is still an input option) and leaves out what that build rejects, because users may have any ffmpeg on `PATH` or from an older install.
 
 
 **Files.** `Pointframe/Services/Recording/ScreenRecordingService.cs`, `Pointframe/Services/Recording/IScreenRecordingService.cs`, `Pointframe/Services/Recording/IRecordingRedactionSession.cs`, `Pointframe/Services/Recording/RecordingRedactionSession.cs`, `Pointframe/Services/Recording/IRecordingEventTrack.cs`, `Pointframe/Services/Recording/RecordingEventTrack.cs`, `Pointframe/Services/Recording/VideoWriterFactory.cs`, `Pointframe/Services/Recording/FFMpegVideoWriter.cs`, `Pointframe/Services/Recording/FfmpegResolver.cs`, `Pointframe/Models/RecordingSessionGeometry.cs`, `Pointframe/Views/RecordingOverlayWindow.xaml.cs`, `Pointframe/Views/OverlayWindow.Recording.cs`, `Pointframe/Views/OverlayWindow.RecordingHud.cs`, `Pointframe/Views/OverlayWindow.RecordingAnnotation.cs`, `Pointframe/Views/CountdownWindow.xaml.cs`, `Pointframe/ViewModels/RecordingHudViewModel.cs`, `Pointframe/Services/Recording/RecordingHudCoordinator.cs`, `Pointframe/Services/Recording/RecordingAnnotationSurfaceCoordinator.cs`, `Pointframe/Services/Recording/RecordingMousePassthroughCoordinator.cs`, `Pointframe/Services/Recording/RecordingOverlayNativeInterop.cs`, `Pointframe/Services/Recording/RecordingCursorEffectsService.cs`, `Pointframe/Services/Recording/RecordingMicrophoneSession.cs`, `Pointframe/Services/Infrastructure/MicrophoneDeviceService.cs`, `Pointframe/Services/Recording/GifExportService.cs`, `Pointframe/Services/Recording/VideoTrimService.cs`, `Pointframe/ViewModels/TrimViewModel.cs`, `Pointframe/Services/Recording/WatermarkTokenResolver.cs`, `Pointframe/Services/Messaging/RecordingCompletedMessage.cs`, `Pointframe/Services/Messaging/TrimRecordingRequestedMessage.cs`.
@@ -69,6 +70,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 - Lesson: Recording annotation undo must reconcile output redactions
 - Lesson: Backpressure tests must synchronize on frame events, not elapsed sleeps
 - Lesson: ffmpeg screen-plus-microphone recordings must stop when the video input ends
+- Lesson: An unpinned ffmpeg master build broke every microphone recording
 - Lesson: Recording HUD microphone toggles must restore the device's original mute state
 - Lesson: Dropped recording frames shorten the final MP4 duration
 - Lesson: A recording worker fault must be observed before finalization is reported
