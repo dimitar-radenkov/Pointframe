@@ -1,0 +1,48 @@
+{
+  "featureCases": [
+    {
+      "name": "pass",
+      "frontmatter": "---\nname: verify-contacts\ndescription: verify contacts\n---\n# Verify contacts",
+      "feature": "## Sub-features\nAdd contact\n## How to get to it (user POV)\nOpen app\n## Driving it with Pointframe\nUse the add-contact scenario\n## Gotchas\nNone",
+      "expectedValid": true
+    },
+    {
+      "name": "missing frontmatter",
+      "frontmatter": "# Missing frontmatter",
+      "feature": "## Sub-features\n## How to get to it (user POV)\n## Driving it with Pointframe\n## Gotchas\nScenario: add-contact",
+      "expectedValid": false
+    },
+    {
+      "name": "missing H2",
+      "frontmatter": "---\nname: verify-contacts\n---\n# Skill",
+      "feature": "## Sub-features\n## How to get to it (user POV)\n## Driving it with Pointframe\nScenario: add-contact",
+      "expectedValid": false
+    },
+    {
+      "name": "unknown scenario",
+      "frontmatter": "---\nname: verify-contacts\n---\n# Skill",
+      "feature": "## Sub-features\n## How to get to it (user POV)\n## Driving it with Pointframe\n## Gotchas\nScenario: unknown-case",
+      "expectedValid": false
+    }
+  ],
+  "outcomeCases": [
+    { "name": "pass", "defectResult": "failed-expected", "expectedOutcome": "pass-clean", "facts": {} },
+    { "name": "defect variant still passes", "defectResult": "passed", "expectedOutcome": "fail", "facts": {} },
+    {
+      "name": "no generated skill",
+      "defectResult": "not-run",
+      "expectedOutcome": "fail",
+      "expectedExitCode": 1,
+      "facts": {
+        "skillValid": false,
+        "verifyPassedFresh": false,
+        "desktopCriterionPassed": false,
+        "negativeControl": false,
+        "reportsVerified": false,
+        "defectCheck": { "result": "not-run" }
+      }
+    }
+  ],
+  "copy": { "skillName": "seed-skill", "fileName": "SKILL.md", "content": "seed", "expectedRelativePath": ".agents/skills/seed-skill" },
+  "summary": { "run": 1, "outcome": "pass-clean", "toolCalls": 4, "totalInputTokens": 100, "minutes": 2, "withinLimits": true }
+}

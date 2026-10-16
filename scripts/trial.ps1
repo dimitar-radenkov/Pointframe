@@ -2,10 +2,12 @@
 param(
     [ValidateSet('pkhex', 'dngrep', 'electron', 'wpf-sample')][string]$App,
     [ValidateSet('claude', 'codex')][string]$Agent = 'claude',
+    [ValidateSet('change', 'create-skill')][string]$Task = 'change',
     [string]$Version,
     [string]$OutDirectory,
     [switch]$Matrix,
     [switch]$SelfTest,
+    [switch]$FreshMachine,
     [string]$MetricsPath,
     [int]$TimeoutMinutes = 30,
     [switch]$AllowCodexFullAccess,
@@ -13,7 +15,10 @@ param(
     [string]$AgentEffort,
     [int]$MaxToolCalls,
     [long]$MaxInputTokens,
-    [int]$MaxMinutes
+    [int]$MaxMinutes,
+    [string[]]$Skills,
+    [string]$ClaudePluginDir,
+    [ValidateRange(1, 100)][int]$Repeat = 1
 )
 
 # One reproducible fresh-agent trial: a coding agent adds a small UI change to an OSS Windows app and must set up
@@ -22,6 +27,7 @@ param(
 #
 #   pwsh scripts/trial.ps1 -App pkhex [-Version 6.7.85] [-OutDirectory <dir>]
 #   pwsh scripts/trial.ps1 -Matrix        # all 3 apps, sequentially
+#   pwsh scripts/trial.ps1 -App wpf-sample -Task create-skill [-Skills <dir>[,<dir>]] [-Repeat 2]
 #   pwsh scripts/trial.ps1 -App wpf-sample -Agent codex -AllowCodexFullAccess [-AgentModel gpt-6-luna] [-AgentEffort medium]
 #   pwsh scripts/trial.ps1 -SelfTest      # offline: env allowlist, scoring fixtures, process selection, metrics
 #
@@ -45,6 +51,9 @@ $script:CliModel = 'claude-sonnet-5-5'
 # The child environment is built from this allowlist and nothing else. Everything the agent CLIs, git, dotnet and
 # node need is named here; anything not named (VS Code, Claude Code and Codex session variables, POINTFRAME_*,
 # ELECTRON_RUN_AS_NODE, tokens for other services) never reaches the agent. PATH is kept but filtered.
+# Claude/Codex credentials normally live under USERPROFILE/CODEX_HOME. Redirecting LOCALAPPDATA can hide their
+# machine-local caches/update state (and dotnet/gh caches); fresh-machine runs record this limitation rather than
+# exposing the real profile and thereby exposing installed Pointframe components.
 $script:AllowedEnvironment = @(
     'SystemRoot', 'windir', 'SystemDrive', 'ComSpec', 'PATHEXT', 'TEMP', 'TMP', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH',
     'APPDATA', 'LOCALAPPDATA', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'ProgramData', 'CommonProgramFiles',
@@ -106,7 +115,7 @@ function Get-TextHit {
 function Get-ChildEnvironment {
     # Returns the environment the agent gets: allowlisted names only, PATH without any Pointframe directory, every
     # forbidden name removed. -Source is the parent environment (a dictionary), -Extra names added after filtering.
-    param([Parameter(Mandatory)][System.Collections.IDictionary]$Source, [System.Collections.IDictionary]$Extra)
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Source, [System.Collections.IDictionary]$Extra, [string]$FreshLocalAppData)
     $result = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($name in $script:AllowedEnvironment) {
         if ($name -match $script:ForbiddenPattern) { continue }
@@ -122,6 +131,7 @@ function Get-ChildEnvironment {
             $result['Path'] = $entries -join ';'
         }
     }
+    if ($FreshLocalAppData) { $result['LOCALAPPDATA'] = [IO.Path]::GetFullPath($FreshLocalAppData) }
     if ($null -ne $Extra) {
         foreach ($key in @($Extra.Keys)) {
             if ([string]$key -match $script:ForbiddenPattern) { throw "Refusing to add forbidden variable '$key' to the child environment." }
@@ -363,6 +373,190 @@ function Get-TrialOutcome {
     return [pscustomobject]@{ Outcome = 'pass-clean'; Reasons = @() }
 }
 
+function Copy-TrialSkills {
+    param([string[]]$SkillList, [string]$ProjectDirectory, [string]$AgentName)
+    $result = @()
+    if (-not $SkillList) { return $result }
+    $destinationRoot = if ($AgentName -eq 'claude') { '.claude/skills' } else { '.agents/skills' }
+    foreach ($source in (@($SkillList | ForEach-Object { $_ -split ',' }) | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+        $resolved = (Resolve-Path -LiteralPath $source -ErrorAction Stop).Path
+        if (-not (Test-Path -LiteralPath $resolved -PathType Container)) { throw "Skill source '$source' is not a directory." }
+        $folder = Get-Item -LiteralPath $resolved
+        $target = Join-Path (Join-Path $ProjectDirectory $destinationRoot) $folder.Name
+        if (Test-Path -LiteralPath $target) { throw "Skill destination already exists: $target" }
+        New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
+        Copy-Item -LiteralPath $resolved -Destination $target -Recurse
+        $hash = [System.Security.Cryptography.IncrementalHash]::CreateHash([System.Security.Cryptography.HashAlgorithmName]::SHA256)
+        try {
+            foreach ($file in Get-ChildItem -LiteralPath $target -File -Recurse | Sort-Object FullName) {
+                $relative = [IO.Path]::GetRelativePath($target, $file.FullName).Replace('\', '/')
+                $hash.AppendData([Text.Encoding]::UTF8.GetBytes($relative + "`0"))
+                $hash.AppendData([IO.File]::ReadAllBytes($file.FullName))
+            }
+            $digest = [Convert]::ToHexString($hash.GetHashAndReset()).ToLowerInvariant()
+        }
+        finally { $hash.Dispose() }
+        $result += [pscustomobject]@{ source = $resolved; destination = $target; sha256 = $digest; relativePath = (Join-Path $destinationRoot $folder.Name).Replace('\', '/') }
+    }
+    return $result
+}
+
+function Remove-AddedTrialPathEntries {
+    # Reader/writer injection keeps cleanup testable without touching the registry.
+    param([Parameter(Mandatory)][string]$TrialRoot, [Parameter(Mandatory)][scriptblock]$ReadPath, [Parameter(Mandatory)][scriptblock]$WritePath, [string]$BaselinePath = '')
+    $currentValue = & $ReadPath
+    $current = [string]$currentValue.Value
+    $kind = $currentValue.Kind
+    $baseline = @($BaselinePath -split ';' | Where-Object { $_ } | ForEach-Object { try { [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($_)).TrimEnd('\') + '\' } catch { $_ } })
+    $root = [IO.Path]::GetFullPath($TrialRoot).TrimEnd('\') + '\'
+    $segments = @($current.Split([char]';'))
+    $removed = [System.Collections.Generic.List[string]]::new()
+    $kept = [System.Collections.Generic.List[string]]::new()
+    foreach ($entry in $segments) {
+        $expanded = [Environment]::ExpandEnvironmentVariables($entry)
+        $full = try { [IO.Path]::GetFullPath($expanded).TrimEnd('\') + '\' } catch { '' }
+        if ($entry -and $full -and $full.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -and @($baseline | Where-Object { [string]::Equals($_, $full, [StringComparison]::OrdinalIgnoreCase) }).Count -eq 0) { $removed.Add($entry) }
+        else { $kept.Add($entry) }
+    }
+    if ($removed.Count -gt 0) { & $WritePath ($kept -join ';') $kind }
+    return @($removed)
+}
+
+function Read-UserPathRegistryValue {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $false)
+    if ($null -eq $key) { return [pscustomobject]@{ Value = ''; Kind = [Microsoft.Win32.RegistryValueKind]::String } }
+    try {
+        if (@($key.GetValueNames()) -notcontains 'Path') { return [pscustomobject]@{ Value = ''; Kind = [Microsoft.Win32.RegistryValueKind]::String } }
+        $kind = $key.GetValueKind('Path')
+        return [pscustomobject]@{ Value = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); Kind = $kind }
+    }
+    finally { $key.Dispose() }
+}
+
+function Write-UserPathRegistryValue {
+    param([string]$Value, [Microsoft.Win32.RegistryValueKind]$Kind)
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+    if ($null -eq $key) { throw 'HKCU\\Environment could not be opened for writing.' }
+    try { $key.SetValue('Path', $Value, $Kind) }
+    finally { $key.Dispose() }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class TrialEnvironmentBroadcast {
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, UIntPtr wParam, string lParam, uint flags, uint timeout, out UIntPtr result);
+}
+'@ -ErrorAction SilentlyContinue
+    $result = [UIntPtr]::Zero
+    [void][TrialEnvironmentBroadcast]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, 'Environment', 0x0002, 5000, [ref]$result)
+}
+
+function Get-CreateSkillOutcome {
+    param($Facts)
+    $reasons = [System.Collections.Generic.List[string]]::new()
+    if (@(Get-Fact $Facts 'envLeak' @()).Count -gt 0) { $reasons.Add('forbidden variable visible in the agent environment') }
+    if ((Get-Fact $Facts 'pathLeak' $false) -eq $true) { $reasons.Add('a Pointframe directory is still on the agent PATH') }
+    if (Get-Fact $Facts 'harnessError' $null) { $reasons.Add("harness error: $(Get-Fact $Facts 'harnessError' '')") }
+    if ($reasons.Count -gt 0) { return [pscustomobject]@{ Outcome = 'invalid'; Reasons = @($reasons) } }
+    if ((Get-Fact $Facts 'timedOut' $false) -eq $true) { return [pscustomobject]@{ Outcome = 'timeout'; Reasons = @('the agent did not finish within the time limit') } }
+    foreach ($check in @(
+        @{ Name = 'skill'; Key = 'skillValid'; Message = 'no valid verify skill with feature map was found' },
+        @{ Name = 'verify status'; Key = 'verifyPassedFresh'; Message = 'verify status is not pass and fresh' },
+        @{ Name = 'desktop criterion'; Key = 'desktopCriterionPassed'; Message = 'no desktop scenario has a passed criterion' },
+        @{ Name = 'negative control'; Key = 'negativeControl'; Message = 'no negative control passed' },
+        @{ Name = 'evidence'; Key = 'reportsVerified'; Message = 'the report proof did not survive or verify' }
+    )) { if ((Get-Fact $Facts $check.Key $false) -ne $true) { $reasons.Add($check.Message) } }
+    $leftover = [int](Get-Fact $Facts 'leftoverProcesses' 0)
+    if ($leftover -gt 0) { $reasons.Add("$leftover process(es) left running") }
+    $defect = Get-Fact (Get-Fact $Facts 'defectCheck' $null) 'result' 'not-run'
+    if ($defect -eq 'passed') { $reasons.Add('the defect variant still passed verify run') }
+    elseif ($defect -eq 'failed-other') { $reasons.Add('the defect variant failed for an unexpected reason') }
+    $otherFailureCount = $reasons.Count
+    if ($defect -in 'inconclusive', 'not-run') { $reasons.Add("the defect check was $defect") }
+    if ($otherFailureCount -gt 0) { return [pscustomobject]@{ Outcome = 'fail'; Reasons = @($reasons) } }
+    if ($defect -in 'inconclusive', 'not-run') { return [pscustomobject]@{ Outcome = 'invalid'; Reasons = @("the defect check was $defect") } }
+    $expected = Get-Fact $Facts 'expectedVersion' $null
+    foreach ($name in 'cliVersion', 'mcpVersion', 'verifierVersion') {
+        $actual = Get-Fact $Facts $name $null
+        if ($expected -and $actual -ne $expected) { $reasons.Add("the agent used $name $actual, expected $expected") }
+    }
+    if ($reasons.Count -gt 0) { return [pscustomobject]@{ Outcome = 'invalid'; Reasons = @($reasons) } }
+    return [pscustomobject]@{ Outcome = 'pass-clean'; Reasons = @() }
+}
+
+function New-AgentInvocation {
+    param(
+        [ValidateSet('claude', 'codex')][string]$AgentName,
+        [string[]]$SkillList,
+        [string]$PluginDirectory,
+        [string]$RunModel,
+        [string]$RunEffort,
+        [string]$McpConfigPath
+    )
+    $SkillList = @($SkillList | Where-Object { $_ })
+    if ($AgentName -eq 'claude') {
+        $model = if ($RunModel) { $RunModel } else { $script:CliModel }
+        $allowedTools = 'Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,TodoWrite'
+        if ($SkillList.Count -gt 0 -or $PluginDirectory) { $allowedTools += ',Skill' }
+        $arguments = @('-p', '--model', $model, '--setting-sources', 'project', '--max-budget-usd', '3',
+            '--strict-mcp-config', '--mcp-config', $McpConfigPath, '--allowedTools', $allowedTools,
+            '--output-format', 'stream-json', '--verbose')
+        if ($PluginDirectory) { $arguments += @('--plugin-dir', (Resolve-Path -LiteralPath $PluginDirectory -ErrorAction Stop).Path) }
+        return [pscustomobject]@{ Arguments = $arguments; Model = $model; Effort = $null; AllowedTools = $allowedTools }
+    }
+    $model = if ($RunModel) { $RunModel } else { 'gpt-6-luna' }
+    $effort = if ($RunEffort) { $RunEffort } else { 'medium' }
+    $arguments = @('exec', '--json', '--model', $model, '-c', "model_reasoning_effort=$effort", '--dangerously-bypass-approvals-and-sandbox', '-')
+    return [pscustomobject]@{ Arguments = $arguments; Model = $model; Effort = $effort; AllowedTools = $null }
+}
+
+function Get-CreateSkillFacts {
+    param([string]$ProjectDirectory, $Verdict, $Spec, [string[]]$CopiedSkillPaths = @())
+    $result = [ordered]@{ skillValid = $false; skillPath = $null; featurePath = $null; verifyPassedFresh = $false; desktopCriterionPassed = $false }
+    foreach ($base in @('.claude/skills', '.agents/skills', '.cursor/skills')) {
+        $root = Join-Path $ProjectDirectory $base
+        if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+        foreach ($skillFile in Get-ChildItem -LiteralPath $root -Filter SKILL.md -File -Recurse) {
+            $relativeSkillPath = [IO.Path]::GetRelativePath($ProjectDirectory, $skillFile.FullName).Replace([IO.Path]::DirectorySeparatorChar, '/')
+            if (@($CopiedSkillPaths | Where-Object { $relativeSkillPath -eq $_ -or $relativeSkillPath.StartsWith($_.TrimEnd('/') + '/', [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0) { continue }
+            $content = Get-Content -LiteralPath $skillFile.FullName -Raw
+            if ($content -notmatch '(?ms)^---\s*\r?\n(?<yaml>.*?)\r?\n---') { continue }
+            if ($Matches.yaml -notmatch '(?m)^name:\s*verify-[^\s#]+\s*$') { continue }
+            $features = Join-Path $skillFile.DirectoryName 'features'
+            if (-not (Test-Path -LiteralPath $features -PathType Container)) { continue }
+            $validFile = $false
+            foreach ($feature in Get-ChildItem -LiteralPath $features -File -Recurse) {
+                $text = Get-Content -LiteralPath $feature.FullName -Raw
+                $headers = @('Sub-features', 'How to get to it \(user POV\)', 'Driving it with .+', 'Gotchas')
+                if (@($headers | Where-Object { $text -notmatch "(?m)^## $_\s*$" }).Count -gt 0) { continue }
+                $known = @(Get-Fact $Spec 'scenarios' @() | ForEach-Object { [string](Get-Fact $_ 'id' '') })
+                if (@($known | Where-Object { $_ -and $text -match "(?<![A-Za-z0-9_-])$([regex]::Escape($_))(?![A-Za-z0-9_-])" }).Count -gt 0) { $validFile = $true; break }
+            }
+            if ($validFile) { $result.skillValid = $true; $result.skillPath = $skillFile.FullName; $result.featurePath = $features; break }
+        }
+        if ($result.skillValid) { break }
+    }
+    $result.verifyPassedFresh = (Get-Fact $Verdict 'status' '') -eq 'pass' -and (Get-Fact $Verdict 'fresh' $false) -eq $true
+    $desktopIds = @()
+    foreach ($specScenario in @(Get-Fact $Spec 'scenarios' @())) {
+        $desktopSteps = @((Get-Fact $specScenario 'steps' @()) | Where-Object { $null -ne (Get-Fact $_ 'invoke' $null) -or $null -ne (Get-Fact $_ 'enterText' $null) })
+        if ($desktopSteps.Count -gt 0) { $desktopIds += [string](Get-Fact $specScenario 'id' '') }
+    }
+    foreach ($scenario in @(Get-Fact $Verdict 'scenarios' @())) {
+        if ($desktopIds -notcontains [string](Get-Fact $scenario 'id' '')) { continue }
+        $passedCriteria = @((Get-Fact $scenario 'criteria' @()) | Where-Object { (Get-Fact $_ 'verdict' '') -match '^pass' })
+        $passedCriterionSteps = @((Get-Fact $scenario 'steps' @()) | Where-Object { (Get-Fact $_ 'status' '') -match '^pass' -and (Get-Fact $_ 'criterion' $null) })
+        if ($passedCriteria.Count -gt 0 -or $passedCriterionSteps.Count -gt 0) { $result.desktopCriterionPassed = $true }
+        if ($result.desktopCriterionPassed) { break }
+    }
+    return $result
+}
+
+function Format-RepeatSummary {
+    param([object[]]$Rows)
+    return @($Rows | Select-Object run, outcome, gate, toolCalls, totalInputTokens, minutes | Format-Table -AutoSize | Out-String).TrimEnd()
+}
+
 function Get-WorkaroundHits {
     # Added lines of a unified diff that match a workaround pattern, in source files only. A pattern the change
     # prompt itself asks for is exempt.
@@ -495,7 +689,11 @@ function Get-LimitEvaluation {
         if ($null -eq $check.Value) { $notMeasured.Add($check.Name); continue }
         if ($check.Value -gt $check.Limit) { $failed.Add($check.Name) }
     }
-    return [ordered]@{ withinLimits = if ($notMeasured.Count -gt 0) { $null } else { $failed.Count -eq 0 }; failed = @($failed); notMeasured = @($notMeasured) }
+    return [ordered]@{
+        toolCalls = $ToolLimit; totalInputTokens = $InputLimit; minutes = $MinuteLimit
+        withinLimits = if ($notMeasured.Count -gt 0) { $null } else { $failed.Count -eq 0 }
+        failed = @($failed); notMeasured = @($notMeasured)
+    }
 }
 
 function Get-TrustKey {
@@ -523,7 +721,23 @@ function Test-Self {
     $localApp = Get-Fact $apps.apps 'wpf-sample'
     if ((Get-Fact $localApp 'localPath' '') -ne 'samples/verify/wpf') { throw 'wpf-sample localPath is incorrect.' }
     if (@($localApp.excludePaths) -notcontains 'reference') { throw 'wpf-sample must exclude reference/.' }
+    if (@($localApp.tasks) -notcontains 'create-skill' -or -not (Get-Fact $localApp 'defectVariant' $null)) { throw 'wpf-sample must enable create-skill and define a defectVariant.' }
+    foreach ($name in 'pkhex', 'dngrep', 'electron') { if (@(Get-Fact $apps.apps.$name 'tasks' @()) -contains 'create-skill') { throw "$name must not opt in to create-skill." } }
     if (@($apps.workaroundPatterns).Count -eq 0) { throw 'apps.json lists no workaroundPatterns.' }
+
+    $noSkillsInvocation = New-AgentInvocation 'claude' $null '' 'test-model' '' 'empty-mcp.json'
+    if ($noSkillsInvocation.AllowedTools -match '(^|,)Skill(,|$)') { throw 'Claude without skills or a plugin must not receive the Skill tool.' }
+    $withSkillInvocation = New-AgentInvocation 'claude' @('skill-dir') '' 'test-model' '' 'empty-mcp.json'
+    if ($withSkillInvocation.AllowedTools -notmatch '(^|,)Skill(,|$)') { throw 'Claude with skills must receive the Skill tool.' }
+    $pluginRoot = Join-Path ([IO.Path]::GetTempPath()) ("pf-trial-plugin-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $pluginRoot -Force | Out-Null
+    try {
+        $withPluginInvocation = New-AgentInvocation 'claude' $null $pluginRoot 'test-model' '' 'empty-mcp.json'
+        if ($withPluginInvocation.AllowedTools -notmatch '(^|,)Skill(,|$)' -or $withPluginInvocation.Arguments -notcontains '--plugin-dir') { throw 'Claude with a plugin directory must receive Skill and --plugin-dir.' }
+    }
+    finally { Remove-Item -LiteralPath $pluginRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    $codexInvocation = New-AgentInvocation 'codex' $null '' 'gpt-6-luna' 'medium' ''
+    if ($codexInvocation.Arguments -notcontains '-' -or ($codexInvocation.Arguments -join ' ') -notmatch 'model_reasoning_effort=medium') { throw 'Codex invocation arguments are incorrect.' }
 
     # Environment allowlist builder strips forbidden variables and Pointframe PATH entries.
     $source = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -539,6 +753,34 @@ function Test-Self {
     if ($built.ContainsKey('VSCODE_PID') -or $built.ContainsKey('CLAUDECODE')) { throw 'A variable outside the allowlist survived.' }
     if ($built['SystemRoot'] -ne 'C:\Windows' -or $built['TRIAL_EXTRA'] -ne 'extra-value') { throw 'Allowlisted or extra variables were dropped.' }
     if ($built['Path'] -ne 'C:\Windows;C:\Git\cmd') { throw "PATH was not filtered: $($built['Path'])" }
+    $freshRoot = Join-Path ([IO.Path]::GetTempPath()) ('pf-trial-fresh-selftest-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $freshRoot -Force | Out-Null
+    try {
+        $fresh = Get-ChildEnvironment $source $null $freshRoot
+        if ($fresh['LOCALAPPDATA'] -ne [IO.Path]::GetFullPath($freshRoot)) { throw 'Fresh-machine LOCALAPPDATA was not redirected.' }
+        if ($fresh['TEMP'] -ne 'C:\Temp' -or $fresh.ContainsKey('TMP')) { throw 'Fresh-machine mode unexpectedly changed TEMP/TMP.' }
+        $trialPath = Join-Path $freshRoot 'Programs\Pointframe.Cli'
+        $pathValue = 'C:\Windows;%USERPROFILE%\bin;' + $trialPath + ';C:\Git\cmd'
+        $registryValue = [pscustomobject]@{ Value = $pathValue; Kind = [Microsoft.Win32.RegistryValueKind]::ExpandString }
+        $removedPaths = @(Remove-AddedTrialPathEntries $freshRoot { $registryValue } { param($value, $kind) $script:selfTestWrittenPath = $value; $script:selfTestWrittenKind = $kind })
+        if ($removedPaths.Count -ne 1 -or $removedPaths[0] -ne $trialPath) { throw 'PATH cleanup did not select exactly the trial entry.' }
+        if ($script:selfTestWrittenPath -ne 'C:\Windows;%USERPROFILE%\bin;C:\Git\cmd' -or $script:selfTestWrittenKind -ne [Microsoft.Win32.RegistryValueKind]::ExpandString) { throw 'PATH cleanup expanded or changed unrelated entries or the registry value kind.' }
+        $untouched = $false
+        $baselineOnly = [pscustomobject]@{ Value = 'C:\Windows;' + $trialPath; Kind = [Microsoft.Win32.RegistryValueKind]::ExpandString }
+        [void](Remove-AddedTrialPathEntries $freshRoot { $baselineOnly } { throw 'Writer must not run when no entry was added.' } $baselineOnly.Value)
+        $writerFailed = $false
+        try { [void](Remove-AddedTrialPathEntries $freshRoot { $registryValue } { throw 'mock registry write failure' }) } catch { $writerFailed = $true }
+        if (-not $writerFailed) { throw 'A throwing PATH writer was not surfaced for invalid-outcome handling.' }
+        $cleanupFacts = [ordered]@{ harnessError = 'Fresh-machine PATH cleanup failed: mock registry write failure' }
+        if ((Get-TrialOutcome $cleanupFacts).Outcome -ne 'invalid') { throw 'A PATH cleanup failure did not score invalid.' }
+        $mockLockReleased = $false
+        $mockResultPath = Join-Path $freshRoot 'result.json'
+        try { try { throw 'mock registry write failure' } catch { $cleanupFacts.harnessError = $_.Exception.Message } }
+        finally { $mockLockReleased = $true }
+        $cleanupFacts | ConvertTo-Json | Set-Content -LiteralPath $mockResultPath
+        if (-not $mockLockReleased -or -not (Test-Path -LiteralPath $mockResultPath)) { throw 'Cleanup failure did not release the lock and write the result.' }
+    }
+    finally { Remove-Item -LiteralPath $freshRoot -Recurse -Force -ErrorAction SilentlyContinue }
     $extraRejected = $false
     try { Get-ChildEnvironment $source @{ POINTFRAME_X = '1' } | Out-Null } catch { $extraRejected = $true }
     if (-not $extraRejected) { throw 'A forbidden Extra variable was accepted.' }
@@ -638,12 +880,59 @@ diff --git a/notes.md b/notes.md
         [IO.File]::WriteAllText($unparsedLog, 'not json' + "`n")
         $unparsedMetrics = Get-TranscriptMetrics $unparsedLog 'codex'
         foreach ($metricName in 'turns', 'toolCalls', 'inputTokens', 'cachedInputTokens', 'outputTokens') { if ($null -ne $unparsedMetrics[$metricName]) { throw "Unparsed transcript metric '$metricName' must be null." } }
-        $codexArgs = @('exec', '--json', '--model', 'gpt-6-luna', '-c', 'model_reasoning_effort=medium', '--dangerously-bypass-approvals-and-sandbox', '-')
-        if ($codexArgs -notcontains '-' -or ($codexArgs -join ' ') -notmatch 'model_reasoning_effort=' -or $codexArgs -contains '--reasoning-effort') { throw 'Codex invocation arguments are incorrect.' }
         $localClone = Join-Path $scratch 'local-project'
         $localEntry = Get-Fact $apps.apps 'wpf-sample'
         $localCloneResult = New-TrialClone $localEntry $localClone
         if (-not $localCloneResult.Local -or (Test-Path (Join-Path $localClone 'reference')) -or (Test-Path (Join-Path $localClone 'obj')) -or (Test-Path (Join-Path $localClone 'bin'))) { throw 'Local source copy did not exclude reference/, bin/, and obj/.' }
+
+        $skillProject = Join-Path $scratch 'skill-project'
+        $featureDir = Join-Path $skillProject '.agents/skills/verify-contacts/features'
+        New-Item -ItemType Directory -Path $featureDir -Force | Out-Null
+        $skillFile = Join-Path (Split-Path $featureDir -Parent) 'SKILL.md'
+        $featureFile = Join-Path $featureDir 'add-contact.md'
+        $createFixtures = Get-Content -LiteralPath (Join-Path (Join-Path $script:FixtureDirectory 'create-skill') 'create-skill.json') -Raw | ConvertFrom-Json
+        $sampleSpec = '{"scenarios":[{"id":"add-contact","steps":[{"invoke":{"automationId":"addButton"}}]}]}' | ConvertFrom-Json
+        foreach ($fixture in $createFixtures.featureCases) {
+            Set-Content -LiteralPath $skillFile -Value $fixture.frontmatter -Encoding utf8
+            Set-Content -LiteralPath $featureFile -Value $fixture.feature -Encoding utf8
+            $valid = (Get-CreateSkillFacts $skillProject $null $sampleSpec).skillValid
+            if ($valid -ne $fixture.expectedValid) { throw "Create-skill feature fixture '$($fixture.name)' expected valid=$($fixture.expectedValid), got $valid." }
+        }
+        foreach ($fixture in $createFixtures.outcomeCases) {
+            $createPass = [ordered]@{ harnessError = $null; timedOut = $false; envLeak = @(); pathLeak = $false; skillValid = $true; verifyPassedFresh = $true; desktopCriterionPassed = $true; negativeControl = $true; reportsVerified = $true; withinLimits = $true; leftoverProcesses = 0; defectCheck = @{ result = $fixture.defectResult } }
+            foreach ($property in $fixture.facts.PSObject.Properties) { $createPass[$property.Name] = $property.Value }
+            $outcome = (Get-CreateSkillOutcome $createPass).Outcome
+            if ($outcome -ne $fixture.expectedOutcome) { throw "Create-skill outcome fixture '$($fixture.name)' expected $($fixture.expectedOutcome), got $outcome." }
+            $expectedExitCode = Get-Fact $fixture 'expectedExitCode' $null
+            if ($null -ne $expectedExitCode -and (Get-ExitCodeForOutcome $outcome) -ne $expectedExitCode) { throw "Create-skill outcome fixture '$($fixture.name)' expected exit $expectedExitCode." }
+        }
+        $inconclusiveFacts = [ordered]@{ skillValid = $true; verifyPassedFresh = $true; desktopCriterionPassed = $true; negativeControl = $true; reportsVerified = $true; leftoverProcesses = 0; defectCheck = @{ result = 'not-run' } }
+        if ((Get-CreateSkillOutcome $inconclusiveFacts).Outcome -ne 'invalid') { throw 'An otherwise passing run with a not-run defect check must be invalid.' }
+        $copyFixture = $createFixtures.copy
+        $skillSource = Join-Path $scratch $copyFixture.skillName
+        New-Item -ItemType Directory -Path $skillSource -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $skillSource $copyFixture.fileName) -Value $copyFixture.content
+        $skillCopy = @(Copy-TrialSkills $skillSource $skillProject 'codex')
+        if ($skillCopy.Count -ne 1 -or -not (Test-Path (Join-Path $skillProject "$($copyFixture.expectedRelativePath)/$($copyFixture.fileName)")) -or $skillCopy[0].relativePath -ne $copyFixture.expectedRelativePath) { throw 'Skill copy/hash/exclusion metadata fixture failed.' }
+        $skillSourceB = Join-Path $scratch 'seed-skill-b'
+        New-Item -ItemType Directory -Path $skillSourceB -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $skillSourceB 'SKILL.md') -Value 'seed-b'
+        $commaInput = "$skillSource,$skillSourceB"
+        $arrayInput = @($skillSource, $skillSourceB)
+        $commaCopy = @(Copy-TrialSkills @($commaInput) (Join-Path $scratch 'comma-copy') 'codex')
+        $arrayCopy = @(Copy-TrialSkills $arrayInput (Join-Path $scratch 'array-copy') 'codex')
+        if ($commaCopy.Count -ne 2 -or $arrayCopy.Count -ne 2) { throw 'Skills input must support comma-separated and array forms.' }
+        $verifyGolden = Join-Path $skillProject '.agents/skills/verify-golden'
+        $bundled = Join-Path $skillProject '.agents/skills/creator/templates/verify-demo'
+        foreach ($fixtureRoot in $verifyGolden, $bundled) {
+            New-Item -ItemType Directory -Path (Join-Path $fixtureRoot 'features') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $fixtureRoot 'SKILL.md') -Value "---`nname: verify-copied`n---" -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $fixtureRoot 'features/add.md') -Value "## Sub-features`n## How to get to it (user POV)`n## Driving it with Pointframe`nadd-contact`n## Gotchas" -Encoding utf8
+        }
+        $copiedSkillPaths = @('.agents/skills/verify-golden', '.agents/skills/creator')
+        if ((Get-CreateSkillFacts $skillProject $null $sampleSpec $copiedSkillPaths).skillValid) { throw 'Copied skills and bundled template skills must not count as agent-created skills.' }
+        $formatted = Format-RepeatSummary @([pscustomobject]$createFixtures.summary)
+        if ($formatted -notmatch 'outcome' -or $formatted -notmatch 'totalInputTokens' -or $formatted -notmatch 'pass-clean') { throw 'Repeat summary formatting fixture failed.' }
     }
     finally { Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue }
     if ((Get-TrustKey 'C:\Some\Project') -notmatch '^[0-9A-F]{16}$' -or (Get-TrustKey 'c:\some\project\') -ne (Get-TrustKey 'C:\Some\Project')) { throw 'Trust key is not case- and slash-insensitive.' }
@@ -669,7 +958,7 @@ diff --git a/notes.md b/notes.md
     foreach ($required in 'pass-clean', 'pass-workaround', 'fail', 'timeout', 'invalid') {
         if (-not $outcomes.ContainsKey($required)) { throw "No fixture produces '$required'." }
     }
-    return "env allowlist and probe, process selection, workaround and defect classification, metrics, and $($fixtures.Count) scoring fixtures passed offline."
+    return "env allowlist and probe, process selection, workaround and defect classification, metrics, $($fixtures.Count) change scoring fixtures, and create-skill fixtures passed offline."
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -772,10 +1061,11 @@ function New-TrialClone {
 }
 
 function Get-AgentPrompt {
-    param($AppEntry, [string]$PinnedVersion)
+    param($AppEntry, [string]$PinnedVersion, [string]$TaskName = 'change')
     $versionLine = if ($PinnedVersion) { "`nUse Pointframe release v$PinnedVersion (CLI and MCP server)." } else { '' }
+    $taskText = if ($TaskName -eq 'create-skill') { 'Create a verification skill for this Windows desktop app so any coding agent can prove its features work, and prove it once.' } else { $AppEntry.change }
     return @"
-You are working in this repository: a Windows desktop application. Task: $($AppEntry.change)
+You are working in this repository: a Windows desktop application. Task: $taskText
 
 Before you finish, the change must be verified on the RUNNING application with Pointframe (a Windows tool that
 lets coding agents verify desktop apps), set up so the verification is repeatable and binding for this project.
@@ -832,10 +1122,11 @@ function Invoke-AgentProcess {
 function Find-AgentCli {
     # Every Pointframe CLI the agent could have used, with version and SHA-256. The one whose version equals the
     # verdict's verifierVersion is the one it used.
-    param([string]$TrialDirectory, [string]$VerifierVersion, $ChildEnvironment)
+    param([string]$TrialDirectory, [string]$VerifierVersion, $ChildEnvironment, [switch]$FreshMachine)
     $candidates = [System.Collections.Generic.List[string]]::new()
     $pathEntries = @()
-    foreach ($scope in 'User', 'Machine') { $pathEntries += @(([Environment]::GetEnvironmentVariable('Path', $scope) -as [string]) -split ';') }
+    if ($FreshMachine) { $pathEntries += @(([string](Get-Fact $ChildEnvironment 'Path' '') -split ';')) }
+    else { foreach ($scope in 'User', 'Machine') { $pathEntries += @(([Environment]::GetEnvironmentVariable('Path', $scope) -as [string]) -split ';') } }
     foreach ($entry in $pathEntries) {
         if (-not $entry) { continue }
         foreach ($name in 'pointframe.exe', 'Pointframe.Cli.exe') {
@@ -844,8 +1135,8 @@ function Find-AgentCli {
         }
     }
     foreach ($candidate in @(
-            (Join-Path $env:LOCALAPPDATA 'Programs\Pointframe.Cli\Pointframe.Cli.exe'),
-            (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\pointframe.exe'))) {
+            (Join-Path ([string](Get-Fact $ChildEnvironment 'LOCALAPPDATA' $env:LOCALAPPDATA)) 'Programs\Pointframe.Cli\Pointframe.Cli.exe'),
+            (Join-Path ([string](Get-Fact $ChildEnvironment 'LOCALAPPDATA' $env:LOCALAPPDATA)) 'Microsoft\WinGet\Links\pointframe.exe'))) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) { $candidates.Add($candidate) }
     }
     foreach ($file in @(Get-ChildItem -LiteralPath $TrialDirectory -Filter 'Pointframe.Cli.exe' -File -Recurse -ErrorAction SilentlyContinue |
@@ -863,16 +1154,20 @@ function Find-AgentCli {
 }
 
 function Get-McpInfo {
-    param($Verdict)
+    param($Verdict, $ChildEnvironment, [switch]$FreshMachine)
     $provenance = Get-Fact $Verdict 'provenance' $null
     $path = Get-Fact $provenance 'mcpExecutablePath' $null
     $sha = Get-Fact $provenance 'mcpSha256' $null
     if (-not $path) {
-        $state = Join-Path $env:LOCALAPPDATA 'Programs\Pointframe.Mcp\install-state.json'
+        $state = Join-Path ([string](Get-Fact $ChildEnvironment 'LOCALAPPDATA' $env:LOCALAPPDATA)) 'Programs\Pointframe.Mcp\install-state.json'
         if (Test-Path -LiteralPath $state) {
             $installation = Get-Content -LiteralPath $state -Raw | ConvertFrom-Json
             $path = Get-Fact $installation 'ExecutablePath' (Get-Fact $installation 'executablePath' $null)
         }
+    }
+    if ($FreshMachine -and $path) {
+        $freshRoot = [IO.Path]::GetFullPath([string](Get-Fact $ChildEnvironment 'LOCALAPPDATA' ''))
+        if (-not ([IO.Path]::GetFullPath($path)).StartsWith($freshRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { $path = $null }
     }
     $version = $null
     $actualSha = $null
@@ -893,11 +1188,11 @@ function Read-JsonFile {
 function Invoke-DefectCheck {
     # In a copy of the final trial directory, put every file outside the preserved Pointframe config back to the
     # pinned commit, then run the same CLI's `verify run`. The check must fail at the missing change.
-    param($Config, [string]$TrialDirectory, [string]$DefectDirectory, [string]$Commit, [string]$CliPath, [string]$McpPath, $AppEntry, $ChildEnvironment)
+    param($Config, [string]$TrialDirectory, [string]$DefectDirectory, [string]$Commit, [string]$CliPath, [string]$McpPath, $AppEntry, $ChildEnvironment, [string]$TaskName = 'change', [string[]]$ExtraIgnoredPaths = @())
     $trustFile = $null
     try {
         Copy-Tree $TrialDirectory $DefectDirectory
-        $ignored = @($Config.ignoredPaths | ForEach-Object { ":(exclude)$_" })
+        $ignored = @(@($Config.ignoredPaths) + $ExtraIgnoredPaths | Select-Object -Unique | ForEach-Object { ":(exclude)$_" })
         Invoke-Git $DefectDirectory @('add', '-A', '-N', '--', '.') -AllowFailure | Out-Null
         $diff = Invoke-Git $DefectDirectory (@('diff', '--no-color', '--unified=0', $Commit, '--', '.') + $ignored) -AllowFailure
         [IO.File]::WriteAllText("$DefectDirectory.agent.diff", $diff)
@@ -922,8 +1217,14 @@ function Invoke-DefectCheck {
             }
         }
 
+        if ($TaskName -eq 'create-skill') {
+            $variant = Get-Fact $AppEntry 'defectVariant' $null
+            if ($null -eq $variant -or -not (Get-Fact $variant 'fileName' $null) -or -not (Get-Fact $variant 'content' $null)) { throw 'create-skill requires defectVariant.fileName and defectVariant.content in apps.json.' }
+            [IO.File]::WriteAllText((Join-Path $DefectDirectory $variant.fileName), [string]$variant.content, [Text.UTF8Encoding]::new($false))
+        }
+
         # Gate approval is keyed by the project path; give the copy the same approval the trial directory has.
-        $trustRoot = Join-Path $env:LOCALAPPDATA 'Pointframe\verify\trust'
+        $trustRoot = Join-Path ([string](Get-Fact $ChildEnvironment 'LOCALAPPDATA' $env:LOCALAPPDATA)) 'Pointframe\verify\trust'
         $original = Join-Path $trustRoot "$(Get-TrustKey $TrialDirectory).json"
         if (Test-Path -LiteralPath $original) {
             $trust = Get-Content -LiteralPath $original -Raw | ConvertFrom-Json
@@ -956,7 +1257,9 @@ function Invoke-DefectCheck {
 }
 
 function Invoke-Trial {
-    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory, [string]$RunModel, [string]$RunEffort)
+    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory, [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string[]]$SkillList = @(), [string]$PluginDirectory = '', [switch]$FreshMachine)
+    $SkillList = @($SkillList | Where-Object { $_ })
+    if ($null -eq $PluginDirectory) { $PluginDirectory = '' }
     $config = Get-Content -LiteralPath $script:AppsPath -Raw | ConvertFrom-Json
     $appEntry = $config.apps.$AppName
     New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
@@ -966,20 +1269,29 @@ function Invoke-Trial {
     $started = [DateTime]::UtcNow
 
     $facts = [ordered]@{
-        expectedVersion = $null; envLeak = @(); pathLeak = $false
+        expectedVersion = $null; envLeak = @(); pathLeak = $false; task = $TaskName
         harnessError = $null; timedOut = $false; verifyStatus = 'none'; fresh = $false; criterionTiedToChange = $false
         negativeControl = $false; reportsVerified = $false; leftoverProcesses = 0
         defectCheck = [ordered]@{ result = 'not-run' }; workaroundHits = @()
         cliVersion = $null; mcpVersion = $null; verifierVersion = $null
     }
     $record = [ordered]@{
-        schemaVersion = 1; app = $AppName; agent = $AgentName; startedUtc = $started.ToString('o')
+        schemaVersion = 1; app = $AppName; agent = $AgentName; task = $TaskName; startedUtc = $started.ToString('o')
         outDirectory = $OutputDirectory; trialDirectory = $trialDirectory; transcript = $transcriptPath
-        isolation = [ordered]@{}; clone = $null; agentRun = $null; metrics = $null; pointframe = $null
+        isolation = [ordered]@{ freshMachine = ($FreshMachine -eq $true) }; clone = $null; agentRun = $null; metrics = $null; pointframe = $null
         verify = $null; leftover = @(); notes = @()
     }
 
     try {
+        $freshLocalAppData = $null
+        $userPathBefore = [string](Read-UserPathRegistryValue).Value
+        if ($FreshMachine) {
+            $freshLocalAppData = Join-Path $OutputDirectory ('fresh-machine-' + [guid]::NewGuid().ToString('N') + '\LocalAppData')
+            New-Item -ItemType Directory -Path $freshLocalAppData -Force | Out-Null
+            $record.isolation.freshLocalAppData = $freshLocalAppData
+            $record.notes += 'LOCALAPPDATA is isolated; agent CLI and dotnet/gh local caches or update state may be unavailable. Claude and Codex remain configured through their normal USERPROFILE/CODEX_HOME locations.'
+            # TEMP/TMP are not redirected: the set-based probe does not need them, and tools retain their normal writable temp location.
+        }
         Assert-InteractiveDesktop
         $stale = @(Get-ProcessTable | Where-Object { $_.Path -and $_.Path.StartsWith((Join-Path ([IO.Path]::GetTempPath()) 'pf-trials-out'), [StringComparison]::OrdinalIgnoreCase) })
         if ($stale.Count -gt 0) { throw "Lingering processes from an earlier trial are still running: $(($stale | ForEach-Object { "$($_.Name) pid $($_.Pid)" }) -join ', '). Stop them and rerun." }
@@ -999,7 +1311,7 @@ function Invoke-Trial {
         # Isolation: allowlisted environment, probed before the agent starts.
         $extra = [ordered]@{}
         $parent = Get-ParentEnvironment
-        $childEnvironment = Get-ChildEnvironment $parent $extra
+        $childEnvironment = Get-ChildEnvironment $parent $extra $freshLocalAppData
         $probe = Test-ChildEnvironment $childEnvironment
         $facts.envLeak = @($probe.Forbidden)
         $facts.pathLeak = $probe.PathLeak
@@ -1011,26 +1323,28 @@ function Invoke-Trial {
 
         $clone = New-TrialClone $appEntry $trialDirectory
         $record.clone = $clone
-        $prompt = Get-AgentPrompt $appEntry $PinnedVersion
+        if (@(Get-Fact $appEntry 'tasks' @('change')) -notcontains $TaskName) { throw "App '$AppName' does not opt in to task '$TaskName'." }
+        $prompt = Get-AgentPrompt $appEntry $PinnedVersion $TaskName
         $record.prompt = $prompt
+        $copiedSkills = @(Copy-TrialSkills $SkillList $trialDirectory $AgentName)
+        $record.skillSetup = $copiedSkills
+        $ignoredSkillPaths = @($copiedSkills | ForEach-Object { $_.relativePath })
 
         if ($AgentName -eq 'claude') {
             $emptyMcp = Join-Path $OutputDirectory 'empty-mcp.json'
             [IO.File]::WriteAllText($emptyMcp, '{"mcpServers":{}}')
             $exe = (Get-Command claude -ErrorAction Stop | Select-Object -First 1).Source
             if ($RunEffort) { throw '-AgentEffort is not supported for Claude trials.' }
-            $claudeModel = if ($RunModel) { $RunModel } else { $script:CliModel }
-            $agentArguments = @('-p', '--model', $claudeModel, '--setting-sources', 'project', '--max-budget-usd', '3',
-                '--strict-mcp-config', '--mcp-config', $emptyMcp, '--allowedTools', 'Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,TodoWrite',
-                '--output-format', 'stream-json', '--verbose')
-            $record.isolation.claude = [ordered]@{ model = $claudeModel; settingSources = 'project'; strictMcpConfig = $true; mcpConfig = $emptyMcp; maxBudgetUsd = 3 }
+            $invocation = New-AgentInvocation $AgentName $SkillList $PluginDirectory $RunModel $RunEffort $emptyMcp
+            $agentArguments = $invocation.Arguments
+            $record.isolation.claude = [ordered]@{ model = $invocation.Model; settingSources = 'project'; strictMcpConfig = $true; mcpConfig = $emptyMcp; maxBudgetUsd = 3 }
+            if ($PluginDirectory) { $record.isolation.claude.pluginDirectory = (Resolve-Path -LiteralPath $PluginDirectory -ErrorAction Stop).Path }
         }
         else {
-            $model = if ($RunModel) { $RunModel } else { 'gpt-6-luna' }
-            $effort = if ($RunEffort) { $RunEffort } else { 'medium' }
             $exe = (Get-Command codex -ErrorAction Stop | Select-Object -First 1).Source
-            $agentArguments = @('exec', '--json', '--model', $model, '-c', "model_reasoning_effort=$effort", '--dangerously-bypass-approvals-and-sandbox', '-')
-            $record.isolation.codex = [ordered]@{ model = $model; effort = $effort; fullAccess = $true }
+            $invocation = New-AgentInvocation $AgentName $SkillList $PluginDirectory $RunModel $RunEffort ''
+            $agentArguments = $invocation.Arguments
+            $record.isolation.codex = [ordered]@{ model = $invocation.Model; effort = $invocation.Effort; fullAccess = $true }
         }
         $record.isolation.agentExecutable = $exe
 
@@ -1040,7 +1354,7 @@ function Invoke-Trial {
         $record.metrics = Get-TranscriptMetrics $transcriptPath $AgentName
         $record.metrics.minutes = [Math]::Round($run.Seconds / 60, 2)
         $limits = Get-LimitEvaluation $record.metrics $MaxToolCalls $MaxInputTokens $MaxMinutes
-        if ($MaxToolCalls -gt 0 -or $MaxInputTokens -gt 0 -or $MaxMinutes -gt 0) { $record.limits = $limits }
+        if ($TaskName -eq 'create-skill' -or $MaxToolCalls -gt 0 -or $MaxInputTokens -gt 0 -or $MaxMinutes -gt 0) { $record.limits = $limits }
 
         # What is still running of what this run started (PID and start time), then kill exactly that.
         $recordedAll = @(Find-TrialProcesses (Get-ProcessTable) 0 $null @($trialDirectory) $run.Recorded)
@@ -1058,8 +1372,8 @@ function Invoke-Trial {
             $verdictPath = Join-Path $trialDirectory 'artifacts\pointframe-verify\verdict.json'
             $verdict = Read-JsonFile $verdictPath
             $verifierVersion = if ($null -ne $verdict) { Get-VersionNumber (Get-Fact (Get-Fact $verdict 'provenance' $null) 'verifierVersion' $null) } else { $null }
-            $cliInfo = Find-AgentCli $trialDirectory $verifierVersion $childEnvironment
-            $mcpInfo = Get-McpInfo $verdict
+            $cliInfo = Find-AgentCli $trialDirectory $verifierVersion $childEnvironment -FreshMachine:$FreshMachine
+            $mcpInfo = Get-McpInfo $verdict $childEnvironment -FreshMachine:$FreshMachine
             $facts.cliVersion = if ($cliInfo.Chosen) { $cliInfo.Chosen.version } else { $null }
             $facts.mcpVersion = $mcpInfo.version
             $facts.verifierVersion = $verifierVersion
@@ -1086,11 +1400,19 @@ function Invoke-Trial {
                 $facts.negativeControl = Test-NegativeControl $spec $verdict
                 $scenarios = @(Get-Fact $verdict 'scenarios' @())
                 $facts.reportsVerified = $scenarios.Count -gt 0 -and @($scenarios | Where-Object { (Get-Fact $_ 'proofValid' $false) -ne $true -or -not (Get-Fact $_ 'bundleDirectory' $null) -or -not (Test-Path -LiteralPath (Join-Path (Get-Fact $_ 'bundleDirectory' '') 'report.json')) }).Count -eq 0
+                if ($TaskName -eq 'create-skill') {
+                    $specPath = Get-Fact $verdict 'specPath' '.pointframe/verify.json'
+                    if (-not [IO.Path]::IsPathRooted($specPath)) { $specPath = Join-Path $trialDirectory $specPath }
+                    $createFacts = Get-CreateSkillFacts $trialDirectory $verdict (Read-JsonFile $specPath) $ignoredSkillPaths
+                    foreach ($key in $createFacts.Keys) { $facts[$key] = $createFacts[$key] }
+                    $facts.verifyPassedFresh = $facts.verifyStatus -eq 'pass' -and $facts.fresh
+                    $facts.negativeControl = Test-NegativeControl (Read-JsonFile $specPath) $verdict
+                }
             }
 
             # The defect check only matters for a run that otherwise passed.
             if ($facts.verifyStatus -eq 'pass' -and $facts.fresh -and $cliInfo.Chosen) {
-                $defect = Invoke-DefectCheck $config $trialDirectory $defectDirectory $clone.Commit $cliInfo.Chosen.path $mcpInfo.path $appEntry $childEnvironment
+                $defect = Invoke-DefectCheck $config $trialDirectory $defectDirectory $clone.Commit $cliInfo.Chosen.path $mcpInfo.path $appEntry $childEnvironment $TaskName $ignoredSkillPaths
                 $facts.defectCheck = [ordered]@{ result = $defect.result }
                 $facts.workaroundHits = @($defect.workaroundHits)
                 $record.defectCheck = $defect
@@ -1098,11 +1420,41 @@ function Invoke-Trial {
         }
     }
     catch { $facts.harnessError = $_.Exception.Message }
-    finally { Exit-DesktopLock }
+    finally {
+        try {
+            if ($FreshMachine -and $freshLocalAppData) {
+                $removedUserPath = @(Remove-AddedTrialPathEntries $freshLocalAppData { Read-UserPathRegistryValue } { param($value, $kind) Write-UserPathRegistryValue $value $kind } $userPathBefore)
+                $record.isolation.removedUserPathEntries = $removedUserPath
+            }
+        }
+        catch {
+            $record.isolation.pathCleanupError = $_.Exception.Message
+            $facts.harnessError = "Fresh-machine PATH cleanup failed: $($_.Exception.Message)"
+        }
+        finally {
+            try { Exit-DesktopLock }
+            catch {
+                if (-not $facts.harnessError) { $facts.harnessError = "Desktop lock release failed: $($_.Exception.Message)" }
+                $record.isolation.lockReleaseError = $_.Exception.Message
+            }
+        }
+    }
 
-    $scored = Get-TrialOutcome $facts
+    $scored = if ($TaskName -eq 'create-skill') { Get-CreateSkillOutcome $facts } else { Get-TrialOutcome $facts }
     $record.outcome = $scored.Outcome
     $record.reasons = @($scored.Reasons)
+    if ($TaskName -eq 'create-skill') {
+        $gateReasons = @($scored.Reasons)
+        $withinLimits = Get-Fact (Get-Fact $record 'limits' $null) 'withinLimits' $null
+        if ($withinLimits -ne $true) {
+            $limitInfo = Get-Fact $record 'limits' $null
+            $failedLimits = @(Get-Fact $limitInfo 'failed' @())
+            $unmeasuredLimits = @(Get-Fact $limitInfo 'notMeasured' @())
+            if ($failedLimits.Count -gt 0) { $gateReasons += "limits exceeded: $($failedLimits -join ', ')" }
+            if ($unmeasuredLimits.Count -gt 0) { $gateReasons += "limits not measured: $($unmeasuredLimits -join ', ')" }
+        }
+        $record.gate = [ordered]@{ result = if ($scored.Outcome -eq 'pass-clean' -and $withinLimits -eq $true) { 'pass' } else { 'fail' }; reasons = @($gateReasons) }
+    }
     $record.facts = $facts
     $record.finishedUtc = [DateTime]::UtcNow.ToString('o')
     $record | ConvertTo-Json -Depth 14 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'result.json') -Encoding utf8NoBOM
@@ -1150,6 +1502,11 @@ if ($Matrix -and $Agent -eq 'codex') {
     exit 2
 }
 
+if ($Task -eq 'create-skill' -and $Matrix) {
+    [Console]::Error.WriteLine('-Matrix supports the change task only.')
+    exit 2
+}
+
 if ($Agent -eq 'codex' -and -not $AllowCodexFullAccess) {
     [Console]::Error.WriteLine('Codex trials require full access to start and inspect GUI apps. The owner approves full access per package; pass -AllowCodexFullAccess for this package.')
     exit 2
@@ -1169,7 +1526,7 @@ if ($Matrix) {
     foreach ($matrixApp in 'pkhex', 'dngrep', 'electron') {
         foreach ($matrixAgent in @('claude')) {
             $directory = if ($OutDirectory) { Join-Path $OutDirectory "$matrixApp-$matrixAgent" } else { Join-Path $root "$stamp-$matrixApp-$matrixAgent" }
-            $outcome = Invoke-Trial $matrixApp $matrixAgent $Version $directory $AgentModel $AgentEffort
+            $outcome = Invoke-Trial $matrixApp $matrixAgent $Version $directory $AgentModel $AgentEffort 'change' @() '' $FreshMachine
             $summary += "$matrixApp/$matrixAgent=$outcome"
             $worst = [Math]::Max($worst, (Get-ExitCodeForOutcome $outcome))
         }
@@ -1182,6 +1539,30 @@ if (-not $App) {
     [Console]::Error.WriteLine('Pass -App, or -Matrix, or -SelfTest.')
     exit 2
 }
-$directory = if ($OutDirectory) { $OutDirectory } else { Join-Path $root "$stamp-$App-$Agent" }
-$outcome = Invoke-Trial $App $Agent $Version $directory $AgentModel $AgentEffort
-exit (Get-ExitCodeForOutcome $outcome)
+if ($Agent -ne 'claude' -and $ClaudePluginDir) {
+    [Console]::Error.WriteLine('-ClaudePluginDir is supported only for Claude trials.')
+    exit 2
+}
+if ($Task -eq 'create-skill') {
+    if ($MaxToolCalls -eq 0) { $MaxToolCalls = 15 }
+    if ($MaxInputTokens -eq 0) { $MaxInputTokens = 786000 }
+    if ($MaxMinutes -eq 0) { $MaxMinutes = 10 }
+}
+$directory = if ($OutDirectory) { $OutDirectory } elseif ($Task -eq 'change') { Join-Path $root "$stamp-$App-$Agent" } else { Join-Path $root "$stamp-$App-$Agent-$Task" }
+$summary = @()
+$worst = 0
+for ($index = 1; $index -le $Repeat; $index++) {
+    $runDirectory = if ($Repeat -gt 1) { Join-Path $directory ("{0:D2}" -f $index) } else { $directory }
+    $outcome = Invoke-Trial $App $Agent $Version $runDirectory $AgentModel $AgentEffort $Task $Skills $ClaudePluginDir $FreshMachine
+    $result = Read-JsonFile (Join-Path $runDirectory 'result.json')
+    $metrics = Get-Fact $result 'metrics' $null
+    $summary += [pscustomobject]@{
+        run = $index; outcome = $outcome; toolCalls = Get-Fact $metrics 'toolCalls' $null
+        totalInputTokens = Get-Fact $metrics 'totalInputTokens' $null
+        minutes = Get-Fact (Get-Fact $result 'agentRun' $null) 'minutes' $null
+        gate = Get-Fact (Get-Fact $result 'gate' $null) 'result' $null
+    }
+    $worst = [Math]::Max($worst, (Get-ExitCodeForOutcome $outcome))
+}
+if ($Repeat -gt 1 -or $PSBoundParameters.ContainsKey('Repeat')) { Write-Host 'REPEAT SUMMARY'; Write-Host (Format-RepeatSummary $summary) }
+exit $worst

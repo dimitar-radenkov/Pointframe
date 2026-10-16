@@ -10,7 +10,7 @@
   ],
   "sourceExtensions": [".cs", ".vb", ".fs", ".xaml", ".cpp", ".h", ".js", ".ts", ".html"],
   "preservePaths": [".pointframe", ".mcp.json", ".claude", ".codex"],
-  "ignoredPaths": [".pointframe", ".mcp.json", ".claude", ".codex", "AGENTS.md", "artifacts", "bin", "obj", "node_modules", "package-lock.json"],
+  "ignoredPaths": [".pointframe", ".mcp.json", ".claude", ".codex", ".agents", ".cursor", "AGENTS.md", "artifacts", "bin", "obj", "node_modules", "package-lock.json"],
   "apps": {
     "pkhex": {
       "repoUrl": "https://github.com/kwsch/PKHeX",
@@ -41,6 +41,8 @@
     },
     "wpf-sample": {
       "localPath": "samples/verify/wpf",
+      "tasks": ["change", "create-skill"],
+      "defectVariant": { "fileName": "Directory.Build.props", "content": "<Project><PropertyGroup><SampleBroken>true</SampleBroken></PropertyGroup></Project>" },
       "change": "Add a Clear button with AutomationProperties.AutomationId=\"clearButton\". Clicking it empties the contact list and sets the status text to exactly \"Cleared\".",
       "changeMarkers": ["Clear", "clearButton", "Cleared"],
       "expectedDefectFailure": { "codes": ["ElementNotFound", "CheckFailed"], "mention": "clearButton" },
