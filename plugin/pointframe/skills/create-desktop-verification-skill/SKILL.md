@@ -127,12 +127,12 @@ Scenario `<id>` in `.pointframe/verify.json`. Controls: <name box `automationId`
 - <traps found while writing it>
 ```
 
-## 4. Prove it once
+## 4. Prove it once, as the last step
 
-Run `pointframe verify run` once. The verdict JSON it prints is the proof: `status` must be `pass`, and each
+By now the spec and all three skill files are written. Run `pointframe verify run` once, last, and make no edit after it: any change (writing docs, skill files or a CLAUDE.md) makes the pass stale, and `pointframe verify status` would show `fresh: false`. If you must change anything, run `verify run` again. The verdict JSON it prints is the proof: `status` must be `pass`, and each
 scenario in it has a `bundleDirectory`. Confirm the evidence exists with one command that lists that
-directory (`report.json` and `index.html` must be there). Do not run `verify status` or run again unless
-something failed. If it failed, fix the spec or the app's ids and run again. Do not edit the app to make a
+directory (`report.json` and `index.html` must be there). Run `verify status` (it only reads) only if you are unsure the pass is fresh; run `verify run` again only if
+something failed or you changed a file. If it failed, fix the spec or the app's ids and run again. Do not edit the app to make a
 check pass.
 
 If the run fails with `spec_untrusted` or `approver_unavailable`, a gate is not a standard command. Replace

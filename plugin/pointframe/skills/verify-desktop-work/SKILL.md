@@ -40,7 +40,7 @@ pointframe verify init --app bin/Release/net10.0-windows/MyApp.exe --hooks none
   { "check": { "kind": "textEquals", "automationId": "statusLabel", "expected": "Not saved", "expectFailure": true, "timeoutSeconds": 1 } } ] }
 ```
 
-4. Run `pointframe verify run`. It runs the gates, launches the app, drives the scenario in the real UI, and installs the MCP server itself on its first run. Read `status` in the printed JSON: `pass` is exit 0, `fail` is exit 1, a wrong spec is exit 2.
+4. Run `pointframe verify run`. It runs the gates, launches the app, drives the scenario in the real UI, and installs the MCP server itself on its first run. Read `status` in the printed JSON: `pass` is exit 0, `fail` is exit 1, a wrong spec is exit 2. Run `verify run` last: any later edit, even to docs or skill files, makes the pass stale (`verify status` then shows `fresh: false`), so write everything first and run again if you change anything.
 5. Evidence: `artifacts/pointframe-verify/verdict.json` is the verdict, and each scenario's signed bundle (`report.json`, `evidence/` screenshots, `index.html`) is under `artifacts/pointframe-verify/runs/<time>/`. Say the work is done only when `status` is `pass`.
 
 The spec fields are in [verify-spec.md](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify-spec.md); the example above covers the common case.
@@ -309,8 +309,10 @@ Rules for the generated skill:
 - Write one file per feature under `features/`, each with exactly four H2 sections, named exactly
   `Sub-features`, `How to get to it (user POV)`, `Driving it with Pointframe` and `Gotchas` (tools check the
   headings), listed in `features/README.md`.
-- Prove the skill once, end to end, with `pointframe verify run`, and confirm that the evidence files
-  exist after the run, before telling anyone it works. Say what stays unproved.
+- Write the spec and every skill file (SKILL.md, features/README.md, the feature files) first. Then prove the skill
+  once, end to end, with `pointframe verify run` as the last step, and confirm that the evidence files exist after
+  the run, before telling anyone it works. Make no edit after the run: any change makes the pass stale; if you
+  must change something, run `verify run` again. Say what stays unproved.
 
 ## Limits
 
