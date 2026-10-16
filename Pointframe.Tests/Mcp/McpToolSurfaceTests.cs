@@ -1,6 +1,11 @@
 using System.ComponentModel;
+using System.IO;
+using System.IO.Pipelines;
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
@@ -123,14 +128,158 @@ public sealed class McpToolSurfaceTests
         // Claude Code validates the whole tools/list and drops every tool if one schema has a boolean
         // subschema such as "structuredContent": true. That once hid all desktop tools from Claude Code
         // agents, because desktop_observe_app returned CallToolResult with UseStructuredContent set.
-        var offenders = ToolMethods(toolType)
+        var fullDiscovery = ToolMethods(toolType)
             .Select(method => McpServerTool.Create(method, _ => null!).ProtocolTool)
-            .SelectMany(tool => new[] { ("input", tool.Name, (JsonElement?)tool.InputSchema), ("output", tool.Name, tool.OutputSchema) })
+            .ToArray();
+        var defaultDiscovery = McpDiscoveryFilter.Apply(new ListToolsResult { Tools = [.. fullDiscovery] });
+        var offenders = defaultDiscovery.Tools!
+            .SelectMany(tool => new[] { ("input", tool.Name, (JsonElement?)tool.InputSchema) })
             .Where(schema => schema.Item3 is { } element && ContainsBooleanSubschema(element))
             .Select(schema => $"{schema.Name} {schema.Item1}")
             .ToArray();
 
         Assert.Empty(offenders);
+        Assert.All(defaultDiscovery.Tools, tool => Assert.Null(tool.OutputSchema));
+        Assert.DoesNotContain(fullDiscovery, tool => tool.OutputSchema is { } schema && ContainsBooleanSubschema(schema));
+    }
+
+    [Theory]
+    [InlineData(typeof(PointframeMcpTools))]
+    [InlineData(typeof(DesktopTestingMcpTools))]
+    public void DefaultDiscoveryOmitsOnlyOutputSchema(Type toolType)
+    {
+        var fullTools = ToolMethods(toolType)
+            .Select(method => McpServerTool.Create(method, _ => null!).ProtocolTool)
+            .ToArray();
+        var defaultTools = McpDiscoveryFilter.Apply(new ListToolsResult { Tools = [.. fullTools] }).Tools!;
+
+        Assert.Equal(fullTools.Length, defaultTools.Count);
+        for (var index = 0; index < fullTools.Length; index++)
+        {
+            var full = fullTools[index];
+            var advertised = defaultTools[index];
+            Assert.Equal(full.Name, advertised.Name);
+            Assert.Equal(full.Title, advertised.Title);
+            Assert.Equal(full.Description, advertised.Description);
+            Assert.Equal(full.InputSchema.GetRawText(), advertised.InputSchema.GetRawText());
+            Assert.Equal(full.Annotations, advertised.Annotations);
+            Assert.Equal(full.Icons, advertised.Icons);
+            Assert.Equal(full.Meta, advertised.Meta);
+            Assert.Null(advertised.OutputSchema);
+        }
+    }
+
+    [Theory]
+    [InlineData(typeof(PointframeMcpTools))]
+    [InlineData(typeof(DesktopTestingMcpTools))]
+    public void FullDiscoveryRetainsOutputSchemasAndSchemaValidity(Type toolType)
+    {
+        var tools = ToolMethods(toolType)
+            .Select(method => McpServerTool.Create(method, _ => null!).ProtocolTool)
+            .ToArray();
+        var outputSchemas = tools.Select(tool => tool.OutputSchema).ToArray();
+        var result = new ListToolsResult { Tools = [.. tools] };
+
+        Assert.Equal(
+            outputSchemas.Select(schema => schema?.GetRawText()),
+            result.Tools!.Select(tool => tool.OutputSchema?.GetRawText()));
+        Assert.All(result.Tools, tool => Assert.NotEqual(JsonValueKind.Undefined, tool.InputSchema.ValueKind));
+        Assert.All(outputSchemas.Where(schema => schema.HasValue), schema => Assert.NotEqual(JsonValueKind.Undefined, schema!.Value.ValueKind));
+        Assert.DoesNotContain(result.Tools, tool => tool.OutputSchema is { } schema && ContainsBooleanSubschema(schema));
+    }
+
+    [Fact]
+    public async Task DefaultAndFullDiscoveryServers_AdvertiseTheSameToolsExceptOutputSchemas_AndReturnIdenticalResults()
+    {
+        await using var defaultServer = await DiscoveryServer.StartAsync(omitOutputSchemas: true);
+        await using var fullServer = await DiscoveryServer.StartAsync(omitOutputSchemas: false);
+
+        var defaultTools = await defaultServer.Client.ListToolsAsync();
+        var fullTools = await fullServer.Client.ListToolsAsync();
+
+        Assert.Equal(fullTools.Count, defaultTools.Count);
+        Assert.NotEmpty(fullTools);
+        Assert.Contains(fullTools, tool => tool.ProtocolTool.OutputSchema.HasValue);
+        for (var index = 0; index < fullTools.Count; index++)
+        {
+            var full = fullTools[index].ProtocolTool;
+            var advertised = defaultTools[index].ProtocolTool;
+            Assert.Equal(full.Name, advertised.Name);
+            Assert.Equal(full.Title, advertised.Title);
+            Assert.Equal(full.Description, advertised.Description);
+            Assert.Equal(full.InputSchema.GetRawText(), advertised.InputSchema.GetRawText());
+            Assert.Equal(
+                JsonSerializer.Serialize(full.Annotations, ModelContextProtocol.McpJsonUtilities.DefaultOptions),
+                JsonSerializer.Serialize(advertised.Annotations, ModelContextProtocol.McpJsonUtilities.DefaultOptions));
+            Assert.Null(advertised.OutputSchema);
+        }
+
+        var arguments = new Dictionary<string, object?> { ["text"] = "hello" };
+        var defaultResult = await defaultServer.Client.CallToolAsync("echo_structured", arguments);
+        var fullResult = await fullServer.Client.CallToolAsync("echo_structured", arguments);
+
+        Assert.NotNull(defaultResult.StructuredContent);
+        Assert.Equal(
+            JsonSerializer.Serialize(fullResult.StructuredContent, ModelContextProtocol.McpJsonUtilities.DefaultOptions),
+            JsonSerializer.Serialize(defaultResult.StructuredContent, ModelContextProtocol.McpJsonUtilities.DefaultOptions));
+        Assert.Equal(
+            fullResult.Content.OfType<TextContentBlock>().Select(block => block.Text),
+            defaultResult.Content.OfType<TextContentBlock>().Select(block => block.Text));
+    }
+
+    public sealed record EchoResult(string Text, int Length);
+
+    [McpServerToolType]
+    public sealed class DiscoveryStubTools
+    {
+        [McpServerTool(Name = "echo_structured", ReadOnly = true, UseStructuredContent = true)]
+        [Description("Echoes the text with its length.")]
+        public EchoResult Echo([Description("Text to echo.")] string text) => new(text, text.Length);
+
+        [McpServerTool(Name = "ping_plain", ReadOnly = true)]
+        [Description("Returns a fixed string.")]
+        public string Ping() => "pong";
+    }
+
+    private sealed class DiscoveryServer : IAsyncDisposable
+    {
+        private readonly IHost _host;
+
+        private DiscoveryServer(IHost host, McpClient client)
+        {
+            _host = host;
+            Client = client;
+        }
+
+        internal McpClient Client { get; }
+
+        internal static async Task<DiscoveryServer> StartAsync(bool omitOutputSchemas)
+        {
+            var clientToServer = new Pipe();
+            var serverToClient = new Pipe();
+            var builder = Host.CreateEmptyApplicationBuilder(new HostApplicationBuilderSettings());
+            var server = builder.Services
+                .AddMcpServer()
+                .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream());
+            if (omitOutputSchemas)
+            {
+                server.WithRequestFilters(filters => filters.AddListToolsFilter(McpDiscoveryFilter.Create()));
+            }
+
+            server.WithTools<DiscoveryStubTools>();
+            var host = builder.Build();
+            await host.StartAsync();
+            var client = await McpClient.CreateAsync(
+                new StreamClientTransport(clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream()));
+            return new DiscoveryServer(host, client);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Client.DisposeAsync();
+            await _host.StopAsync();
+            _host.Dispose();
+        }
     }
 
     private static bool ContainsBooleanSubschema(JsonElement schema)

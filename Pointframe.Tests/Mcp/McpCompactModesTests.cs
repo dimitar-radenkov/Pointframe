@@ -350,8 +350,10 @@ public sealed class McpCompactModesTests : IDisposable
     public void OutputOptions_AreOffByDefaultAndOptInByFlagOrEnvironment()
     {
         Assert.False(McpOutputOptions.Parse([], _ => null).CompactText);
+        Assert.False(McpOutputOptions.Parse([], _ => null).FullDiscovery);
         Assert.False(McpOutputOptions.Parse(["--desktop-testing"], _ => "0").CompactText);
         Assert.True(McpOutputOptions.Parse(["--compact-text"], _ => null).CompactText);
+        Assert.True(McpOutputOptions.Parse(["--full-discovery"], _ => null).FullDiscovery);
         Assert.True(McpOutputOptions.Parse([], name => name == "POINTFRAME_MCP_COMPACT_TEXT" ? "1" : null).CompactText);
         Assert.True(McpOutputOptions.Parse([], _ => "TRUE").CompactText);
     }
