@@ -13,6 +13,7 @@ param(
     [switch]$AllowCodexFullAccess,
     [string]$AgentModel,
     [string]$AgentEffort,
+    [string]$PromptPrefix,
     [int]$MaxToolCalls,
     [long]$MaxInputTokens,
     [int]$MaxMinutes,
@@ -92,13 +93,13 @@ function Get-Fact {
 function New-TrialInvocationParameters {
     param(
         [string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory,
-        [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change',
+        [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string]$RunPromptPrefix = '',
         [string[]]$SkillList = @(), [string]$PluginDirectory = '', [switch]$FreshMachine
     )
     return @{
         AppName = $AppName; AgentName = $AgentName; PinnedVersion = $PinnedVersion
         OutputDirectory = $OutputDirectory; RunModel = $RunModel; RunEffort = $RunEffort
-        TaskName = $TaskName; SkillList = $SkillList; PluginDirectory = $PluginDirectory
+        TaskName = $TaskName; PromptPrefix = $RunPromptPrefix; SkillList = $SkillList; PluginDirectory = $PluginDirectory
         FreshMachine = [bool]$FreshMachine
     }
 }
@@ -526,8 +527,11 @@ function Restore-TrialInstallMarkers {
     param([Parameter(Mandatory)][string]$LocalAppData, [string]$ConflictTime = [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmssfff'), [switch]$SkipLiveRuns)
     $markerDirectory = Join-Path $LocalAppData 'Pointframe\trial-hidden'
     $restored = [System.Collections.Generic.List[object]]::new()
-    if (-not (Test-Path -LiteralPath $markerDirectory -PathType Container)) { return @() }
-    foreach ($markerPath in Get-ChildItem -LiteralPath $markerDirectory -Filter '*.json' -File) {
+    $errors = [System.Collections.Generic.List[string]]::new()
+    $quarantined = [System.Collections.Generic.List[string]]::new()
+    $markerFiles = @(Get-ChildItem -LiteralPath $markerDirectory -Filter '*.json' -File -ErrorAction SilentlyContinue)
+    foreach ($path in $markerFiles | Where-Object { $_.Name -like 'corrupt-*' }) { $quarantined.Add($path.FullName) }
+    foreach ($markerPath in $markerFiles | Where-Object { $_.Name -notlike 'corrupt-*' }) {
         try {
             $marker = Get-Content -LiteralPath $markerPath.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
             if (-not $marker.originalPath -or -not $marker.hiddenPath -or @('hiding', 'hidden') -notcontains [string]$marker.state) { throw 'Marker is missing required fields or has an invalid state.' }
@@ -535,6 +539,7 @@ function Restore-TrialInstallMarkers {
         catch {
             $corrupt = Join-Path $markerDirectory "corrupt-$ConflictTime-$([guid]::NewGuid().ToString('N')).json"
             Move-Item -LiteralPath $markerPath.FullName -Destination $corrupt -ErrorAction Stop
+            $quarantined.Add($corrupt)
             continue
         }
         try {
@@ -555,8 +560,21 @@ function Restore-TrialInstallMarkers {
             else { throw "Hidden install '$hiddenPath' is missing while marker state is '$($marker.state)'." }
             Remove-Item -LiteralPath $markerPath.FullName -Force -ErrorAction Stop
         }
-        catch { throw "Could not recover marker '$($markerPath.FullName)': $($_.Exception.Message)" }
+        catch { $errors.Add("Could not recover marker '$($markerPath.FullName)': $($_.Exception.Message)") }
     }
+    $programs = Join-Path $LocalAppData 'Programs'
+    $pointedHidden = @()
+    foreach ($path in $markerFiles | Where-Object { $_.Name -notlike 'corrupt-*' }) {
+        try { $pointedHidden += [string]((Get-Content -LiteralPath $path.FullName -Raw | ConvertFrom-Json -ErrorAction Stop).hiddenPath) } catch { }
+    }
+    $orphans = @()
+    if (Test-Path -LiteralPath $programs -PathType Container) {
+        $orphans = @(Get-ChildItem -LiteralPath $programs -Directory -Filter '.pointframe-trial-hidden-*' | Where-Object { $pointedHidden -notcontains $_.FullName } | ForEach-Object FullName)
+    }
+    if ($quarantined.Count -gt 0 -or $orphans.Count -gt 0) {
+        Write-Warning ("TRIAL RECOVERY WARNING: quarantined markers: [{0}]; orphaned hidden install folders: [{1}]" -f ($quarantined -join '; '), ($orphans -join '; '))
+    }
+    if ($errors.Count -gt 0) { throw ($errors -join [Environment]::NewLine) }
     return @($restored)
 }
 
@@ -871,6 +889,11 @@ function Test-Self {
     if (-not $forwarded.FreshMachine -or $forwarded.TaskName -ne 'create-skill' -or $forwarded.PluginDirectory -ne 'plugin') {
         throw 'Entry-point parameter forwarding dropped -FreshMachine or another named argument.'
     }
+    $prefixed = New-TrialInvocationParameters -AppName 'wpf-sample' -AgentName 'claude' -PinnedVersion '' -OutputDirectory 'out' -RunModel '' -RunEffort '' -TaskName 'create-skill' -RunPromptPrefix '/create-verification-skill'
+    if ($prefixed.PromptPrefix -ne '/create-verification-skill') { throw 'Entry-point parameter forwarding dropped -PromptPrefix.' }
+    $samplePrompt = Get-AgentPrompt ([pscustomobject]@{ change = 'change task' }) '' 'create-skill' $prefixed.PromptPrefix
+    if (-not $samplePrompt.StartsWith("/create-verification-skill`n`n")) { throw 'Create-skill prompt prefix was not prepended with a blank line.' }
+    if ((Get-AgentPrompt ([pscustomobject]@{ change = 'change task' }) '' 'change' 'ignored') -match '^ignored') { throw 'Prompt prefix was applied to a non-create-skill task.' }
 
     $apps = Get-Content -LiteralPath $script:AppsPath -Raw | ConvertFrom-Json
     foreach ($name in 'pkhex', 'dngrep', 'electron') {
@@ -987,8 +1010,11 @@ function Test-Self {
         New-Item -ItemType Directory -Path $corruptMarkerDir -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $corruptMarkerDir 'bad.json') -Value '{broken'
         [ordered]@{ originalPath=(Join-Path $corruptPrograms 'Pointframe.Cli'); hiddenPath=(Join-Path $corruptPrograms '.pointframe-trial-hidden-good-Pointframe.Cli'); state='hidden'; harnessPid=999999; harnessStartTimeUtc='2000-01-01T00:00:00.0000000Z' } | ConvertTo-Json | Set-Content (Join-Path $corruptMarkerDir 'good.json')
-        [void](Restore-TrialInstallMarkers $corruptRoot)
+        New-Item -ItemType Directory -Path (Join-Path $corruptPrograms '.pointframe-trial-hidden-orphan') -Force | Out-Null
+        $recoveryWarnings = @()
+        [void](Restore-TrialInstallMarkers $corruptRoot -WarningVariable recoveryWarnings)
         if (@(Get-ChildItem $corruptMarkerDir -Filter 'corrupt-*.json').Count -ne 1 -or -not (Test-Path (Join-Path $corruptPrograms 'Pointframe.Cli'))) { throw 'Corrupt marker quarantine did not continue recovery.' }
+        if (($recoveryWarnings -join ' ') -notmatch 'corrupt-' -or ($recoveryWarnings -join ' ') -notmatch '\.pointframe-trial-hidden-orphan') { throw 'Recovery warning did not list quarantined markers and orphan hidden folders.' }
 
         $lockPathBefore = $script:DesktopLockPath
         $script:DesktopLockPath = Join-Path $freshRoot 'desktop.lock'
@@ -997,10 +1023,13 @@ function Test-Self {
 
         $failedRestoreRoot = Join-Path $freshRoot 'restore-failure'; $failedPrograms = Join-Path $failedRestoreRoot 'Programs'; $failedMarkerDir = Join-Path $failedRestoreRoot 'Pointframe\trial-hidden'
         New-Item -ItemType Directory -Path $failedPrograms -Force | Out-Null; New-Item -ItemType Directory -Path $failedMarkerDir -Force | Out-Null
-        [ordered]@{ originalPath=(Join-Path $failedPrograms 'Pointframe.Cli'); hiddenPath=(Join-Path $failedPrograms '.pointframe-trial-hidden-fail-Pointframe.Cli'); state='hidden'; harnessPid=999999; harnessStartTimeUtc='2000-01-01T00:00:00.0000000Z' } | ConvertTo-Json | Set-Content (Join-Path $failedMarkerDir 'failed.json')
+        foreach ($name in 'failed.json', 'also-failed.json') {
+            [ordered]@{ originalPath=(Join-Path $failedPrograms "Pointframe.Cli-$name"); hiddenPath=(Join-Path $failedPrograms ".pointframe-trial-hidden-$name"); state='hidden'; harnessPid=999999; harnessStartTimeUtc='2000-01-01T00:00:00.0000000Z' } | ConvertTo-Json | Set-Content (Join-Path $failedMarkerDir $name)
+        }
         $restoreFailed = $false
-        try { [void](Restore-TrialInstallMarkers $failedRestoreRoot) } catch { $restoreFailed = $true }
-        if (-not $restoreFailed -or -not (Test-Path (Join-Path $failedMarkerDir 'failed.json'))) { throw 'A failed restore did not retain its marker and report failure.' }
+        $restoreError = ''
+        try { [void](Restore-TrialInstallMarkers $failedRestoreRoot) } catch { $restoreFailed = $true; $restoreError = $_.Exception.Message }
+        if (-not $restoreFailed -or -not (Test-Path (Join-Path $failedMarkerDir 'failed.json')) -or -not (Test-Path (Join-Path $failedMarkerDir 'also-failed.json')) -or $restoreError -notmatch 'failed.json' -or $restoreError -notmatch 'also-failed.json') { throw 'Restore did not retain and report every failing marker.' }
     }
     finally { Remove-Item -LiteralPath $freshRoot -Recurse -Force -ErrorAction SilentlyContinue }
     $extraRejected = $false
@@ -1287,10 +1316,10 @@ function New-TrialClone {
 }
 
 function Get-AgentPrompt {
-    param($AppEntry, [string]$PinnedVersion, [string]$TaskName = 'change')
+    param($AppEntry, [string]$PinnedVersion, [string]$TaskName = 'change', [string]$Prefix = '')
     $versionLine = if ($PinnedVersion) { "`nUse Pointframe release v$PinnedVersion (CLI and MCP server)." } else { '' }
     $taskText = if ($TaskName -eq 'create-skill') { 'Create a verification skill for this Windows desktop app so any coding agent can prove its features work, and prove it once.' } else { $AppEntry.change }
-    return @"
+    $prompt = @"
 You are working in this repository: a Windows desktop application. Task: $taskText
 
 Before you finish, the change must be verified on the RUNNING application with Pointframe (a Windows tool that
@@ -1299,6 +1328,8 @@ Pointframe is not installed. Use only its public documentation: https://dimitar-
 and https://github.com/dimitar-radenkov/Pointframe (README and docs/cli). Work autonomously; nobody will answer
 questions. When done, state whether the verification passed and where its verdict is.$versionLine
 "@
+    if ($TaskName -eq 'create-skill' -and $Prefix) { return "$Prefix`n`n$prompt" }
+    return $prompt
 }
 
 function Invoke-AgentProcess {
@@ -1478,7 +1509,7 @@ function Invoke-DefectCheck {
 }
 
 function Invoke-Trial {
-    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory, [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string[]]$SkillList = @(), [string]$PluginDirectory = '', [switch]$FreshMachine)
+    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory, [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string]$PromptPrefix = '', [string[]]$SkillList = @(), [string]$PluginDirectory = '', [switch]$FreshMachine)
     $SkillList = @($SkillList | Where-Object { $_ })
     if ($null -eq $PluginDirectory) { $PluginDirectory = '' }
     $config = Get-Content -LiteralPath $script:AppsPath -Raw | ConvertFrom-Json
@@ -1549,7 +1580,7 @@ function Invoke-Trial {
         $clone = New-TrialClone $appEntry $trialDirectory
         $record.clone = $clone
         if (@(Get-Fact $appEntry 'tasks' @('change')) -notcontains $TaskName) { throw "App '$AppName' does not opt in to task '$TaskName'." }
-        $prompt = Get-AgentPrompt $appEntry $PinnedVersion $TaskName
+        $prompt = Get-AgentPrompt $appEntry $PinnedVersion $TaskName $PromptPrefix
         $record.prompt = $prompt
         $copiedSkills = @(Copy-TrialSkills $SkillList $trialDirectory $AgentName)
         $record.skillSetup = $copiedSkills
@@ -1722,7 +1753,7 @@ function Get-ExitCodeForOutcome {
 
 if (-not $SelfTest) {
     $startupLocalAppData = [Environment]::GetFolderPath('LocalApplicationData')
-    if (-not (Try-Enter-DesktopLock)) { Write-Host 'Skipped hidden-install recovery: desktop lock is held.' }
+    if (-not (Try-Enter-DesktopLock)) { Write-Warning "Skipped hidden-install recovery: lock is held at '$script:DesktopLockPath'. It may be stale if no trial harness process is alive; check for scripts/trial.ps1 or its pwsh process before removing it." }
     else {
         try {
             $recoveredAtStart = @(Restore-TrialInstallMarkers $startupLocalAppData -SkipLiveRuns)
@@ -1807,7 +1838,7 @@ $summary = @()
 $worst = 0
 for ($index = 1; $index -le $Repeat; $index++) {
     $runDirectory = if ($Repeat -gt 1) { Join-Path $directory ("{0:D2}" -f $index) } else { $directory }
-    $trialParameters = New-TrialInvocationParameters -AppName $App -AgentName $Agent -PinnedVersion $Version -OutputDirectory $runDirectory -RunModel $AgentModel -RunEffort $AgentEffort -TaskName $Task -SkillList $Skills -PluginDirectory $ClaudePluginDir -FreshMachine:$FreshMachine
+    $trialParameters = New-TrialInvocationParameters -AppName $App -AgentName $Agent -PinnedVersion $Version -OutputDirectory $runDirectory -RunModel $AgentModel -RunEffort $AgentEffort -TaskName $Task -RunPromptPrefix $PromptPrefix -SkillList $Skills -PluginDirectory $ClaudePluginDir -FreshMachine:$FreshMachine
     $outcome = Invoke-Trial @trialParameters
     $result = Read-JsonFile (Join-Path $runDirectory 'result.json')
     $metrics = Get-Fact $result 'metrics' $null

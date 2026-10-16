@@ -36,7 +36,7 @@ client needs no configuration and no restart.
    For example, for the WPF sample (also one line):
 
    ```
-   pointframe verify init --app bin/Debug/net10.0-windows/WpfSample.exe --hooks none
+   pointframe verify init --app bin/Release/net10.0-windows/WpfSample.exe --hooks none
    ```
 
    It writes a spec with the detected build and test gates and the `app`.
@@ -46,8 +46,8 @@ client needs no configuration and no restart.
    ```json
    {
      "schemaVersion": 1,
-     "app": { "id": "my-app", "executable": "bin/Debug/net10.0-windows/MyApp.exe" },
-     "gates": [{ "id": "build", "run": "dotnet build MyApp.csproj" }],
+     "app": { "id": "my-app", "executable": "bin/Release/net10.0-windows/MyApp.exe" },
+     "gates": [{ "id": "build", "run": "dotnet build MyApp.csproj -c Release" }],
      "scenarios": [{
        "id": "save-text",
        "criteria": ["Saving shows the typed text in the status line."],
@@ -63,7 +63,7 @@ client needs no configuration and no restart.
 
    Every criterion needs a check that names it with `criterion`. A scenario with criteria needs one
    negative control: a check with `"expectFailure": true` and a deliberately wrong expectation. The spec
-   fields are in `references/verify-spec.md` next to the `create-desktop-verification-skill` skill, or
+   fields are in `references/verify-spec.md` in the base directory of the `create-desktop-verification-skill` skill, or
    `docs/cli/verify-spec.md` in the Pointframe repository. Read the file from disk; do not fetch Pointframe
    docs from the web, because the example above covers the common case.
 3. **Name controls by `automationId` when the app has one, otherwise by `role` and `name`.** If a control
@@ -72,10 +72,11 @@ client needs no configuration and no restart.
 4. **Build and run.** Run `pointframe verify run`. It runs the gates (so the build gate produces the
    app), launches the app, runs each scenario in the real UI, and writes the verdict. Read `status` in
    the printed JSON, not only the exit code: `pass` is exit 0, `fail` is exit 1, a wrong spec is exit 2.
-   If the run stops with `mcp_not_found`, the Pointframe MCP server is not installed yet: make sure the
-   app is built, run `pointframe verify setup` (it installs the checksum-verified server and does not
-   touch your editor's configuration), and run `pointframe verify run` again. If it stops with
-   `app_running`, close the app and run again.
+   On a machine with no Pointframe MCP server, the first run installs the checksum-verified server itself
+   and prints a one-line note on stderr; no separate setup is needed. If that install fails (for example
+   offline), the run stops with `mcp_not_found` and the installer's error: fix the network and run again,
+   run `pointframe verify setup`, or pass `--mcp <path>`. If it stops with `app_running`, close the app
+   and run again.
 5. **Read the evidence.** `artifacts/pointframe-verify/verdict.json` is the verdict. Each scenario's
    signed proof bundle (`report.json`, the `evidence/` screenshots, and `index.html`, a readable
    timeline) is under `artifacts/pointframe-verify/runs/<time>/`. A failed step names the step and what

@@ -254,6 +254,42 @@ public sealed class VerificationInitTests
     }
 
     [Fact]
+    public void DetectGates_SingleRootProjectWithoutSolutionGetsABuildGate()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("WpfSample.csproj", "<Project><PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup></Project>");
+
+        var gates = fixture.Init.DetectGates(fixture.Root);
+
+        Assert.Equal("build", Assert.Single(gates).Id);
+        Assert.Equal("dotnet build WpfSample.csproj -c Release", gates[0].Run);
+        Assert.True(IsStandardGate(fixture.Root, gates[0]));
+    }
+
+    [Fact]
+    public void DetectGates_SeveralRootProjectsWithoutSolutionGetNoGate()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("A.csproj", "<Project />");
+        fixture.Write("B.csproj", "<Project />");
+
+        Assert.Empty(fixture.Init.DetectGates(fixture.Root));
+    }
+
+    [Fact]
+    public async Task RunAsync_SingleRootWinExeProjectWritesAValidatedSpecWithTheAppAndBuildGate()
+    {
+        using var fixture = new InitFixture();
+        fixture.Write("WpfSample.csproj", "<Project><PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup></Project>");
+
+        Assert.Equal(0, await fixture.RunAsync(Command(hooks: "none")));
+
+        var spec = JsonDocument.Parse(fixture.Read(".pointframe/verify.json")).RootElement;
+        Assert.Equal("dotnet build WpfSample.csproj -c Release", spec.GetProperty("gates")[0].GetProperty("run").GetString());
+        Assert.EndsWith("WpfSample.exe", spec.GetProperty("app").GetProperty("executable").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DetectApp_ReportsNoAmbiguousAndMultiTargetCandidates()
     {
         using var fixture = new InitFixture();

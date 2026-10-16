@@ -267,7 +267,10 @@ internal sealed class VerificationInit(
         var packageJson = Path.Combine(rootDirectory, "package.json");
         if (!fileSystem.FileExists(packageJson))
         {
-            return [];
+            var rootProjects = fileSystem.EnumerateFiles(rootDirectory, "*.csproj", SearchOption.TopDirectoryOnly).ToArray();
+            return rootProjects.Length == 1
+                ? [Gate(rootDirectory, "build", $"dotnet build {Quote(Path.GetFileName(rootProjects[0]))} -c Release")]
+                : [];
         }
 
         try

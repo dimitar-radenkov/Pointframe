@@ -135,6 +135,66 @@ public sealed class McpServerVersionTests : IDisposable
         installer.Verify(item => item.GetCurrent(), Times.Never);
     }
 
+    [Fact]
+    public async Task ResolveMcpExecutableAsync_NoServer_InstallsWhenAsked()
+    {
+        var installedPath = CreateFile();
+        var installer = new Mock<IMcpPackageInstaller>();
+        installer.Setup(item => item.GetCurrent()).Returns((McpInstallation?)null);
+        installer.Setup(item => item.InstallLatestAsync(false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new McpInstallation("1.2.4", installedPath, "install"));
+        var error = new StringWriter();
+        var application = CreateApplication(installer, error);
+
+        var resolution = await application.ResolveMcpExecutableAsync(null, CancellationToken.None, installIfMissing: true);
+
+        Assert.Equal(Path.GetFullPath(installedPath), resolution.Path);
+        installer.Verify(item => item.InstallLatestAsync(false, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains("no MCP server was found, so installed 1.2.4", error.ToString());
+    }
+
+    [Fact]
+    public async Task ResolveMcpExecutableAsync_NoServer_DoesNotInstallUnlessAsked()
+    {
+        var installer = new Mock<IMcpPackageInstaller>();
+        installer.Setup(item => item.GetCurrent()).Returns((McpInstallation?)null);
+        var application = CreateApplication(installer, TextWriter.Null);
+
+        var resolution = await application.ResolveMcpExecutableAsync(null);
+
+        Assert.Null(resolution.Path);
+        installer.Verify(item => item.InstallLatestAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResolveMcpExecutableAsync_NoServerInstallFails_ReportsMcpNotFoundWithTheInstallerError()
+    {
+        var installer = new Mock<IMcpPackageInstaller>();
+        installer.Setup(item => item.GetCurrent()).Returns((McpInstallation?)null);
+        installer.Setup(item => item.InstallLatestAsync(false, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("offline"));
+        var application = CreateApplication(installer, TextWriter.Null);
+
+        var resolution = await application.ResolveMcpExecutableAsync(null, CancellationToken.None, installIfMissing: true);
+
+        Assert.Null(resolution.Path);
+        Assert.Equal("mcp_not_found", resolution.ErrorCode);
+        Assert.Contains("offline", resolution.Error);
+    }
+
+    [Fact]
+    public async Task ResolveMcpExecutableAsync_ExplicitPathThatDoesNotExist_NeverInstalls()
+    {
+        var installer = new Mock<IMcpPackageInstaller>();
+        installer.Setup(item => item.GetCurrent()).Returns((McpInstallation?)null);
+        var application = CreateApplication(installer, TextWriter.Null);
+
+        var resolution = await application.ResolveMcpExecutableAsync(Path.Combine(Path.GetTempPath(), "missing-mcp.exe"), CancellationToken.None, installIfMissing: true);
+
+        Assert.Null(resolution.Path);
+        installer.Verify(item => item.InstallLatestAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private string CreateFile()
     {
         var path = Path.GetTempFileName();

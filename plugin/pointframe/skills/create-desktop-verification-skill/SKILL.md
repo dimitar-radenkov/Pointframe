@@ -5,11 +5,15 @@ description: Create a verify-<app> skill for a Windows desktop app (WPF, WinForm
 
 # Create a verification skill for a Windows desktop app
 
+This skill's files are next to this SKILL.md: read `references/recipe.md` and `references/verify-spec.md`
+from this skill's base directory (Claude Code prints it as "Base directory for this skill"). Do not search
+elsewhere and do not use web docs.
+
 You are writing a project skill, `verify-<app>`, that lets any later agent prove a change to this app in
 its real UI. Pointframe is the harness: it launches the app, drives it, evaluates checks, and signs the
 evidence. The full commands, spec fields, role names and trust rules are in
-`references/recipe.md` and the spec schema in `references/verify-spec.md` (both next to this file). Read
-them from disk once before you start; do not fetch Pointframe docs from the web.
+`references/recipe.md` and the spec schema in `references/verify-spec.md`. Read them once before you
+start.
 
 Work in the app's repository, in an interactive, unlocked Windows desktop session. Do not ask the user to
 write policy files or selectors; the spec below is all that is needed.
@@ -33,7 +37,7 @@ Find out, from the code and project files, not by asking:
 
 Install the CLI with the recipe's one-line command, then write `.pointframe/verify.json`. Run this on one
 line, with the built exe's path relative to the project root (for the WPF sample,
-`bin/Debug/net10.0-windows/WpfSample.exe`):
+`bin/Release/net10.0-windows/WpfSample.exe`):
 
 ```
 pointframe verify init --app <built exe> --hooks none
@@ -41,7 +45,7 @@ pointframe verify init --app <built exe> --hooks none
 
 Then edit the spec it wrote: start from the complete example in the recipe's step 2 and change the ids,
 texts and selectors. Every field is also in `references/verify-spec.md`. Read that file and the recipe from
-disk; do not fetch Pointframe docs from the web. One scenario:
+this skill's base directory. One scenario:
 
 - Steps that do the action (`enterText`, `invoke`) with selectors.
 - Criteria, each with a check on the resulting state: the status text or the new list item, not only that

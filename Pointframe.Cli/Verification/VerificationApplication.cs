@@ -99,7 +99,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
     private Task<int> InitAsync(CliCommand command, CancellationToken cancellationToken) => new VerificationInit(
         new PhysicalVerificationInitFileSystem(), standardOutput, standardError, services.CommandResolver, services.VerifierVersion)
-        .RunAsync(command, Environment.CurrentDirectory, ResolveMcpExecutableAsync, services.ClientFactory, services.DesktopLockName, TrustFailureCodeAsync, cancellationToken);
+        .RunAsync(command, Environment.CurrentDirectory, (path, token) => ResolveMcpExecutableAsync(path, token), services.ClientFactory, services.DesktopLockName, TrustFailureCodeAsync, cancellationToken);
 
     private async Task<int> AddScenarioAsync(CliCommand command, CancellationToken cancellationToken)
     {
@@ -305,7 +305,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
                     return await ErrorAsync(context, 1, "app_not_found", $"The app executable does not exist: {app.ExecutablePath}. Build the app first.", writeFile: true, gates: gates);
                 }
 
-                var resolution = await ResolveMcpExecutableAsync(command.McpExecutablePath, cancellationToken);
+                var resolution = await ResolveMcpExecutableAsync(command.McpExecutablePath, cancellationToken, installIfMissing: true);
                 var mcpExecutable = resolution.Path;
                 if (mcpExecutable is null)
                 {
@@ -651,7 +651,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             return await TaskErrorAsync(taskId, 1, "app_not_found", $"The app executable does not exist: {spec.App.ExecutablePath}. Build the unchanged app first.");
         }
 
-        var resolution = await ResolveMcpExecutableAsync(command.McpExecutablePath, cancellationToken);
+        var resolution = await ResolveMcpExecutableAsync(command.McpExecutablePath, cancellationToken, installIfMissing: true);
         var mcpExecutable = resolution.Path;
         if (mcpExecutable is null)
         {
@@ -930,7 +930,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
     internal string SpecPathOf(CliCommand command) => Path.GetFullPath(command.SpecPath ?? VerificationSpecLoader.DefaultSpecRelativePath);
 
-    internal async Task<McpResolution> ResolveMcpExecutableAsync(string? explicitPath, CancellationToken cancellationToken = default)
+    internal async Task<McpResolution> ResolveMcpExecutableAsync(string? explicitPath, CancellationToken cancellationToken = default, bool installIfMissing = false)
     {
         var configured = explicitPath ?? (services.EnvironmentVariable ?? Environment.GetEnvironmentVariable)(McpExecutableVariable);
         if (configured is not null)
@@ -953,7 +953,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         var candidate = installed?.ExecutablePath ?? services.InstalledMcpExecutable();
         if (string.IsNullOrWhiteSpace(candidate))
         {
-            return new McpResolution(null);
+            return await InstallWhenMissingAsync(installIfMissing, cancellationToken);
         }
 
         if (installed is not null && TryVersion(installed.Version, out var serverVersion)
@@ -985,7 +985,31 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             }
         }
 
-        return ResolvePath(candidate);
+        var resolvedCandidate = ResolvePath(candidate);
+        return resolvedCandidate.Path is null
+            ? await InstallWhenMissingAsync(installIfMissing, cancellationToken)
+            : resolvedCandidate;
+    }
+
+    // Only when no explicit --mcp / POINTFRAME_MCP_EXECUTABLE was given and nothing is installed: use the same
+    // checksum-verified installer as the stale-server update, so a first 'verify run' needs no separate setup.
+    private async Task<McpResolution> InstallWhenMissingAsync(bool installIfMissing, CancellationToken cancellationToken)
+    {
+        if (!installIfMissing || services.McpInstaller is not { } installer)
+        {
+            return new McpResolution(null);
+        }
+
+        try
+        {
+            var installation = await installer.InstallLatestAsync(false, cancellationToken);
+            await standardError.WriteLineAsync($"Pointframe verify: no MCP server was found, so installed {installation.Version}.");
+            return ResolvePath(installation.ExecutablePath);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return new McpResolution(null, "mcp_not_found", $"{McpNotFoundMessage} The automatic install failed: {exception.Message}");
+        }
     }
 
     private static McpResolution ResolvePath(string candidate)

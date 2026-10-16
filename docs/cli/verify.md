@@ -501,4 +501,4 @@ The command also accepts a bare scenario object and `--spec <file>`. It validate
 before writing. Duplicate ids are refused; use `--force` to replace one. A successful response says
 to run `pointframe verify run`; changed specs need approval again.
 
-When the CLI-installed MCP server is older than the CLI, verification updates it to the latest release; if that fails, install it with `pointframe mcp install --client vscode` or pass `--mcp <path>`. A newer installed server is used with a warning.
+When the CLI-installed MCP server is older than the CLI, verification updates it to the latest release, and `verify run` installs the latest release when no server is installed (unless `--mcp` or `POINTFRAME_MCP_EXECUTABLE` names one); if that fails, install it with `pointframe mcp install --client vscode` or pass `--mcp <path>`. A newer installed server is used with a warning.
