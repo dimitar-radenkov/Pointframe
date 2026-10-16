@@ -1,12 +1,5 @@
 {
-  "coreBytes": 33508,
-  "sections": {
-    "features/cli-mcp.md#packaging-and-configuration": 55665,
-    "features/cli-mcp.md#spec-driven-verification-runs": 25378,
-    "features/recording.md#recording-pipeline": 8833,
-    "file-map.md#file-map": 21235,
-    "tooling.md#ci-cd-and-versioning": 17844
-  },
+  "sections": {},
   "workflowRules": {
     "W-01": [
       "coordinator"

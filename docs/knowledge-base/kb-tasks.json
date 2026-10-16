@@ -5,7 +5,7 @@
       "id": "mcp-host",
       "target": "Pointframe.Mcp/Program.cs",
       "sections": [
-        "features/cli-mcp.md#packaging-and-configuration"
+        "features/cli-mcp.md#overview-entry-points-and-invariants"
       ],
       "lessons": [
         "A stdio client must drain the MCP server's stderr",
@@ -16,7 +16,7 @@
       "id": "verify-gates",
       "target": "Pointframe.Cli/Verification/GateRunner.cs",
       "sections": [
-        "features/cli-mcp.md#spec-driven-verification-runs"
+        "features/verify.md#overview-and-run-flow"
       ],
       "lessons": [
         "A named Mutex cannot guard work that awaits",
@@ -39,7 +39,8 @@
       "id": "recording-service",
       "target": "Pointframe/Services/Recording/ScreenRecordingService.cs",
       "sections": [
-        "features/recording.md#recording-pipeline",
+        "features/recording.md#recording-flow-and-entry-points",
+        "features/recording.md#recording-invariants-files-tests-and-lessons",
         "features/recording.md#recording-width-and-height-are-even",
         "features/recording.md#d-003-recording-uses-one-authoritative-session-geometry"
       ],
@@ -52,7 +53,7 @@
       "target": "Pointframe/Views/OverlayWindow.xaml.cs",
       "sections": [
         "features/capture.md#capture-overlay-and-selection",
-        "knowledge-base.md#dips-and-physical-pixels-are-converted-explicitly-per-monitor"
+        "composition.md#dips-and-physical-pixels-are-converted-explicitly-per-monitor"
       ],
       "lessons": [
         "Overlay capture must yield the dispatcher after hiding the overlay window",
@@ -63,7 +64,7 @@
       "id": "tray-manager",
       "target": "Pointframe/Services/Infrastructure/TrayIconManager.cs",
       "sections": [
-        "knowledge-base.md#app-bootstrap-di-and-messaging"
+        "composition.md#app-bootstrap-di-and-messaging"
       ],
       "lessons": [
         "Tray-launched file dialog can lose focus in a tray-only WPF app"
@@ -73,7 +74,7 @@
       "id": "merge-script",
       "target": "scripts/merge-pr.ps1",
       "sections": [
-        "tooling.md#ci-cd-and-versioning"
+        "tooling.md#local-gates-and-merging"
       ],
       "lessons": [
         "PowerShell variable names are case-insensitive, so a local can collide with a switch parameter"
@@ -83,9 +84,9 @@
       "id": "feature-f39",
       "target": "F-39",
       "sections": [
-        "features/cli-mcp.md#spec-driven-verification-runs",
-        "features/cli-mcp.md#d-013-verification-spec-v1-is-frozen",
-        "features/cli-mcp.md#d-014-interactive-desktop-testing-reuses-verify-trust"
+        "features/verify.md#overview-and-run-flow",
+        "features/verify.md#d-013-verification-spec-v1-is-frozen",
+        "features/verify.md#d-014-interactive-desktop-testing-reuses-verify-trust"
       ],
       "lessons": [
         "A named Mutex cannot guard work that awaits",
@@ -94,10 +95,9 @@
     },
     {
       "id": "topic-verify",
-      "target": "verify",
+      "target": "verify run",
       "sections": [
-        "features/cli-mcp.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service",
-        "features/cli-mcp.md#d-014-interactive-desktop-testing-reuses-verify-trust"
+        "features/verify.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service"
       ],
       "lessons": []
     },
@@ -105,13 +105,78 @@
       "id": "topic-dpi",
       "target": "dpi",
       "sections": [
-        "knowledge-base.md#dips-and-physical-pixels-are-converted-explicitly-per-monitor",
+        "composition.md#dips-and-physical-pixels-are-converted-explicitly-per-monitor",
         "features/recording.md#d-003-recording-uses-one-authoritative-session-geometry"
       ],
       "lessons": [
         "WPF PerMonitorV2: set window bounds before Show(), not in OnSourceInitialized",
         "Mixed-DPI multi-monitor capture features need PerMonitorV2 process DPI awareness"
       ]
+    },
+    {
+      "id": "verify-desktop-tools",
+      "target": "Pointframe.Cli/Verification/DesktopToolsApplication.cs",
+      "sections": [
+        "features/verify.md#initialization-setup-and-scenario-import",
+        "features/verify.md#d-014-interactive-desktop-testing-reuses-verify-trust"
+      ],
+      "lessons": []
+    },
+    {
+      "id": "engine-desktop-service",
+      "target": "Pointframe.Engine/Automation/Services/DesktopTestReportService.cs",
+      "sections": [
+        "features/cli-mcp.md#desktop-testing-driver-and-policy"
+      ],
+      "lessons": []
+    },
+    {
+      "id": "topic-trust",
+      "target": "trust",
+      "sections": [
+        "features/verify.md#d-014-interactive-desktop-testing-reuses-verify-trust"
+      ],
+      "lessons": []
+    },
+    {
+      "id": "engine-capture",
+      "target": "Pointframe.Engine/Capture/Services/DirectCaptureService.cs",
+      "sections": [
+        "features/cli-mcp.md#capture-ocr-and-recording"
+      ],
+      "lessons": []
+    },
+    {
+      "id": "feature-f39-ui-checks",
+      "target": "F-39",
+      "sections": [
+        "features/verify.md#desktop-ui-checks-and-selector-actions"
+      ],
+      "lessons": []
+    },
+    {
+      "id": "topic-approval",
+      "target": "approval",
+      "sections": [
+        "features/verify.md#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository"
+      ],
+      "lessons": []
+    },
+    {
+      "id": "topic-approver",
+      "target": "approver",
+      "sections": [
+        "features/verify.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands"
+      ],
+      "lessons": []
+    },
+    {
+      "id": "topic-agent-roles",
+      "target": "agent roles",
+      "sections": [
+        "features/verify.md#d-010-verifys-agent-roles-run-on-any-agent"
+      ],
+      "lessons": []
     }
   ]
 }

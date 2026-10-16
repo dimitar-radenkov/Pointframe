@@ -7,7 +7,7 @@ description: Write to the Pointframe knowledge base - add new knowledge or updat
 
 `/kb-write <topic>` writes about one topic. `/kb-write` with no topic sweeps the current change: run `pwsh scripts/kb.ps1 changed` (against `HEAD`; add `-Base master` for a whole branch) and handle every section and feature it lists whose subject actually changed.
 
-Read "How to maintain this file" at the top of `docs/knowledge-base/knowledge-base.md` once per session (`/kb-init` prints it); it holds the templates, conventions, and budgets.
+Read `docs/knowledge-base/maintenance.md` once per session (the core's "How to maintain this file" points to it); it holds the templates, conventions, and budgets.
 
 ## Where it goes
 
@@ -17,11 +17,11 @@ Read "How to maintain this file" at the top of `docs/knowledge-base/knowledge-ba
 | How one area works: flow, entry points, key types, its lessons | A `##` section in `features/<area>.md` |
 | A rule or recipe that only one area needs | A `##` section in that area file |
 | Which sections to read before editing a folder or file pattern | A row in `docs/knowledge-base/file-map.md`, linking the narrowest section that owns the files |
-| How the app is composed (host, DI, messaging) | `## Subsystems` in the main file |
+| How the app is composed (host, DI, messaging) | `## Subsystems` in `composition.md` |
 | A choice with lasting impact and a reason | A `## D-NNN Title` section with the next number across all files: in the area file if only one area needs it, otherwise in `decisions.md` |
-| A rule every area must keep, with why and what breaks | `## Invariants` in the main file |
+| A rule every area must keep, with why and what breaks | `## Invariants` in `composition.md` |
 | A short rule every change must keep | `## Architecture rules` in the main file |
-| A recipe any area uses | `## How-tos` in the main file |
+| A recipe any area uses | `## How-tos` in `how-tos.md` |
 | A stable table of paths, binaries, or configuration keys | `docs/knowledge-base/references.md` |
 | CI, CD, versioning, release and merge scripts, installer and packaging rules | `docs/knowledge-base/tooling.md` |
 | A bug, its root cause, and the fix | `lessons.md` (Problem, Root cause, What fixed it, Takeaway), then a `- Lesson: <heading>` line in the owning section |

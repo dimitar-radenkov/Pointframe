@@ -1,6 +1,6 @@
 # Settings
 
-The settings window and what it controls: hotkeys, theme, and per-area preferences. The persistence rule and the add-a-setting recipe are cross-cutting and live in the [knowledge base](../knowledge-base.md#settings-are-read-at-the-point-of-use-and-persisted-through-three-files).
+The settings window and what it controls: hotkeys, theme, and per-area preferences. The persistence rule and the add-a-setting recipe are cross-cutting and live in the [knowledge base](../composition.md#settings-are-read-at-the-point-of-use-and-persisted-through-three-files).
 
 Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cutting rules there first; this file holds what only this area needs.
 
@@ -8,10 +8,10 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 
 | ID | Feature | Triggered from | Entry point | Telemetry | Tests | Read first |
 |---|---|---|---|---|---|---|
-| F-29 | Settings window | Tray "Settings" | `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml.cs` | `settings_opened`, `settings_saved`, `settings_canceled`, `settings_section_changed`, `settings_section_reset`, `settings_defaults_restored` | `Pointframe.Tests/ViewModels/SettingsViewModelTests.cs`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs`, `Pointframe.Tests/SettingsWindowTests.cs`, `Pointframe.AutomationTests/Smoke/SettingsWindowSmokeTests.cs`, `Pointframe.AutomationTests/Smoke/SettingsSectionNavigationTests.cs` | [User settings](#user-settings), [Settings invariant](../knowledge-base.md#settings-are-read-at-the-point-of-use-and-persisted-through-three-files), [Add a user setting](../knowledge-base.md#add-a-user-setting) |
-| F-30 | Custom global hotkeys | Settings, Capture and Shortcuts sections | `Pointframe/Services/Infrastructure/GlobalHotkeyService.cs`, `Pointframe/Models/HotkeyBinding.cs` | — | `Pointframe.Tests/Models/HotkeyBindingTests.cs`, `Pointframe.Tests/Services/GlobalHotkeyServiceTests.cs` | [User settings](#user-settings), [App bootstrap](../knowledge-base.md#app-bootstrap-di-and-messaging) |
+| F-29 | Settings window | Tray "Settings" | `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml.cs` | `settings_opened`, `settings_saved`, `settings_canceled`, `settings_section_changed`, `settings_section_reset`, `settings_defaults_restored` | `Pointframe.Tests/ViewModels/SettingsViewModelTests.cs`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs`, `Pointframe.Tests/SettingsWindowTests.cs`, `Pointframe.AutomationTests/Smoke/SettingsWindowSmokeTests.cs`, `Pointframe.AutomationTests/Smoke/SettingsSectionNavigationTests.cs` | [User settings](#user-settings), [Settings invariant](../composition.md#settings-are-read-at-the-point-of-use-and-persisted-through-three-files), [Add a user setting](../how-tos.md#add-a-user-setting) |
+| F-30 | Custom global hotkeys | Settings, Capture and Shortcuts sections | `Pointframe/Services/Infrastructure/GlobalHotkeyService.cs`, `Pointframe/Models/HotkeyBinding.cs` | — | `Pointframe.Tests/Models/HotkeyBindingTests.cs`, `Pointframe.Tests/Services/GlobalHotkeyServiceTests.cs` | [User settings](#user-settings), [App bootstrap](../composition.md#app-bootstrap-di-and-messaging) |
 | F-31 | Light and dark theme | Settings, App section | `Pointframe/Services/Infrastructure/ThemeService.cs` | — | `Pointframe.Tests/Services/ThemeServiceTests.cs` | [User settings](#user-settings) |
-| F-42 | Share destination settings | Settings, Sharing section | `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml` | `settings_saved`, `settings_section_changed`, `settings_section_reset`, `settings_defaults_restored` | `Pointframe.Tests/ViewModels/SettingsViewModelTests.cs`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs` | [User settings](#user-settings), [Add a user setting](../knowledge-base.md#add-a-user-setting) |
+| F-42 | Share destination settings | Settings, Sharing section | `Pointframe/ViewModels/SettingsViewModel.cs`, `Pointframe/Views/SettingsWindow.xaml` | `settings_saved`, `settings_section_changed`, `settings_section_reset`, `settings_defaults_restored` | `Pointframe.Tests/ViewModels/SettingsViewModelTests.cs`, `Pointframe.Tests/Services/SettingsRoundTripTests.cs` | [User settings](#user-settings), [Add a user setting](../how-tos.md#add-a-user-setting) |
 
 ## User settings
 
@@ -35,7 +35,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 
 **Invariants.**
 
-- A new setting touches three files together or it is silently dropped on save. See [Settings persistence](../knowledge-base.md#settings-are-read-at-the-point-of-use-and-persisted-through-three-files) and [Add a user setting](../knowledge-base.md#add-a-user-setting).
+- A new setting touches three files together or it is silently dropped on save. See [Settings persistence](../composition.md#settings-are-read-at-the-point-of-use-and-persisted-through-three-files) and [Add a user setting](../how-tos.md#add-a-user-setting).
 - Restore Defaults writes hidden persisted values directly; a mode flag that defers the write leaves stale values behind.
 - Consumers read `IUserSettingsService.Current` at the point of use.
 - Share request header values are protected with Windows DPAPI before `UserSettings.Save`; never write them as plaintext or include them in logs.

@@ -15,7 +15,7 @@ The role is the first argument when it is one of the three words, otherwise `exe
 
 It prints, in order:
 
-1. The whole core, `docs/knowledge-base/knowledge-base.md`: architecture rules, how the app is composed, invariants, how-tos, and the Feature index.
+1. The whole core, `docs/knowledge-base/knowledge-base.md`: architecture rules, the Feature and Decision indexes, and links to composition, invariants, and how-tos.
 2. The workflow rules for your role, verbatim, with their `W-NN` IDs, and the names of the extra workflow sections your role should read.
 3. Environment facts from read-only probes (a running `Pointframe.Mcp.exe`, the desktop lock, hidden trial installs, the worktree count). They are facts, not instructions; `unknown` means a probe failed.
 4. Coordinator only: the active records of `plan/status.json` (objective, stage, next, blocker, due), labelled local operational context and not policy.
@@ -27,4 +27,4 @@ Then:
 2. Read each workflow section it names for your role, and the sections of the target it lists, at the lines it gives. `/kb-read <file, area, F-NN, or topic>` finds more later.
 3. The last line shows bytes and estimated tokens per part; an overage line means a part passed its budget.
 
-Claude Code can run this at the start of every session with an optional `SessionStart` hook; see "Maintenance commands" in `docs/knowledge-base/knowledge-base.md`.
+Claude Code can run this at the start of every session with an optional `SessionStart` hook; see "Maintenance commands" in `docs/knowledge-base/maintenance.md`.

@@ -16,11 +16,11 @@ Every decision by date, whichever file holds it. The sections themselves are in 
 | 2026-09-06 | [D-004](#d-004-native-libraries-ship-loose-and-the-installer-packages-them) | Native libraries ship loose and the installer packages them |
 | 2026-09-06 | [D-005](features/transcription.md#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app) | The speech model is delivered by both the installer and the app |
 | 2026-10-03 | [D-006](#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area) | Cross-cutting knowledge base plus one file per feature area |
-| 2026-10-03 | [D-007](features/cli-mcp.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service) | `verify run` drives the MCP server |
-| 2026-10-03 | [D-008](features/cli-mcp.md#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository) | Verify approvals need a person at a terminal (superseded by D-009 for gate and app commands) |
-| 2026-10-04 | [D-009](features/cli-mcp.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands) | An approver agent behind fixed rules approves verify commands (partly superseded by D-011) |
-| 2026-10-04 | [D-010](features/cli-mcp.md#d-010-verifys-agent-roles-run-on-any-agent) to [D-013](features/cli-mcp.md#d-013-verification-spec-v1-is-frozen) | Verify agent roles, standard commands, version compatibility, frozen spec v1 |
-| 2026-10-05 | [D-014](features/cli-mcp.md#d-014-interactive-desktop-testing-reuses-verify-trust) | Interactive desktop testing reuses verify trust |
+| 2026-10-03 | [D-007](features/verify.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service) | `verify run` drives the MCP server |
+| 2026-10-03 | [D-008](features/verify.md#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository) | Verify approvals need a person at a terminal (superseded by D-009 for gate and app commands) |
+| 2026-10-04 | [D-009](features/verify.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands) | An approver agent behind fixed rules approves verify commands (partly superseded by D-011) |
+| 2026-10-04 | [D-010](features/verify.md#d-010-verifys-agent-roles-run-on-any-agent) to [D-013](features/verify.md#d-013-verification-spec-v1-is-frozen) | Verify agent roles, standard commands, version compatibility, frozen spec v1 |
+| 2026-10-05 | [D-014](features/verify.md#d-014-interactive-desktop-testing-reuses-verify-trust) | Interactive desktop testing reuses verify trust |
 | 2026-10-15 | [D-015](features/telemetry.md#d-015-agent-telemetry-carries-a-random-install-id) | Agent telemetry carries a random install ID |
 | 2026-10-15 | [D-016](#d-016-agents-follow-one-workflow-in-the-knowledge-base) | Agents follow one workflow in the knowledge base |
 
@@ -41,7 +41,7 @@ Decided 2026-04-09.
 
 **Alternatives rejected.** Code-behind-first WPF: fast to write, impossible to test without UI automation. A static service locator: hides dependencies and defeats Moq-based tests.
 
-**Files.** `Pointframe/AppServiceRegistration.cs`. See [App bootstrap](knowledge-base.md#app-bootstrap-di-and-messaging) and [Register a service](knowledge-base.md#register-a-service).
+**Files.** `Pointframe/AppServiceRegistration.cs`. See [App bootstrap](composition.md#app-bootstrap-di-and-messaging) and [Register a service](how-tos.md#register-a-service).
 
 ## D-002 One knowledge base file, checked by script
 
@@ -71,7 +71,7 @@ Decided 2026-09-06.
 
 **Alternatives rejected.** Leaving the flag `true` and letting Whisper load from the self-extract directory: its loader does not look there. Copying only Whisper's DLLs out of the bundle: the flag has no per-library granularity.
 
-**Files.** `Pointframe/Properties/PublishProfiles/win-x64.pubxml`, `installer/Pointframe.iss`, `Pointframe.AutomationTests/Installer/InstallerSmokeTests.cs`. See [Everything emitted next to the exe must be in the installer file list](knowledge-base.md#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list) and [CI, CD, and versioning](tooling.md#ci-cd-and-versioning).
+**Files.** `Pointframe/Properties/PublishProfiles/win-x64.pubxml`, `installer/Pointframe.iss`, `Pointframe.AutomationTests/Installer/InstallerSmokeTests.cs`. See [Everything emitted next to the exe must be in the installer file list](composition.md#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list) and [Installer and packaging](tooling.md#installer-and-packaging).
 
 **Lessons.**
 
@@ -83,13 +83,13 @@ Decided 2026-10-03. Supersedes [D-002](#d-002-one-knowledge-base-file-checked-by
 
 **Context.** With a Feature map, a File map, and ten subsystems, the single file passed 950 lines. Agents loaded all of it to answer a question about one area, and every area edit touched the same large file. The owner's original intent was one file for what is cross-cutting (build, composition, shared rules) and a separate file per feature that an agent reads or updates only when it needs it.
 
-**Decision.** `docs/knowledge-base/knowledge-base.md` keeps cross-cutting knowledge: app bootstrap and DI, invariants every area must keep, shared recipes, references, the File map, and a Feature index generated from the area files. Each feature area gets `docs/knowledge-base/features/<area>.md`: a `## Features` table of `F-NN` rows (triggers, entry point, telemetry, tests, read first), then the area's subsystem, area-only invariants and recipes, and their lessons. Areas are coarse, about ten files rather than one per feature, so related features share their flow and lessons. One script, `scripts/kb.ps1`, checks every file: paths, lessons, cross-file links, unique feature IDs, telemetry and smoke-test coverage, and File map coverage. Agents use it through three skills: `/kb-read` resolves a file, area, feature, or topic to what to read across all files; `/kb-write` adds or updates knowledge; `/kb-check` checks and fixes.
+**Decision.** `docs/knowledge-base/knowledge-base.md` is the core every session loads (budget 12 KB): the Architecture rules and the Feature and Decision indexes generated from the area files. The rest of the cross-cutting knowledge sits next to it, one file per kind, so a session opens only what its task needs: `composition.md` (app bootstrap, DI lifetimes, messaging, and the invariants every area must keep), `how-tos.md` (shared recipes), `maintenance.md` (conventions, budgets, the task suite, rule IDs, and the maintenance commands), `file-map.md` (which sections to read before editing a path, one `###` table per area), `references.md` (paths, binaries, configuration), `tooling.md` (CI, CD, versioning, installer and packaging), `workflow.md`, and `decisions.md`. Each feature area gets `docs/knowledge-base/features/<area>.md` (`verify.md` holds spec-driven verification and its decisions, split from `cli-mcp.md`): a `## Features` table of `F-NN` rows (triggers, entry point, telemetry, tests, read first), then the area's subsystem, area-only invariants and recipes, and their lessons. Areas are coarse, about a dozen files rather than one per feature, so related features share their flow and lessons. One script, `scripts/kb.ps1`, checks every file: paths, lessons, cross-file links, unique feature IDs, telemetry and smoke-test coverage, and File map coverage. Agents use it through three skills: `/kb-read` resolves a file, area, feature, or topic to what to read across all files; `/kb-write` adds or updates knowledge; `/kb-check` checks and fixes.
 
-**Consequences.** An agent reads the main file (about 500 lines) plus one area file (under about 100) instead of the whole. Cross-file links must name the file, `features/recording.md#recording-pipeline`; the script fails on a broken one. A section moving between files changes its links, which the script also catches. An area file that passes about 150 lines is split. Decisions moved out of the main file on 2026-10-03: one that spans areas is in `decisions.md`, one that a single area needs is in that area file, and the main file keeps a generated index, because a decision is read only when someone is about to change what it governs.
+**Consequences.** An agent reads the core (about 11 KB) plus the sections its task touches instead of the whole; every section is at most 8 KB, and a `##` group of `###` topics costs only the topic read. The base budgets are checked with an empty baseline. Cross-file links must name the file, `features/recording.md#recording-pipeline`; the script fails on a broken one. A section moving between files changes its links, which the script also catches. An area file that passes about 150 lines is split. Decisions moved out of the main file on 2026-10-03: one that spans areas is in `decisions.md`, one that a single area needs is in that area file, and the main file keeps a generated index, because a decision is read only when someone is about to change what it governs.
 
 **Alternatives rejected.** One file per `F-NN` feature: 37 small files, and features of one area would repeat or cross-link the same flow and lessons. Keeping one file: the cost that triggered this decision. Frontmatter and a hand-kept index: the index is generated, and structure lives in the tables the script already parses.
 
-**Files.** `docs/knowledge-base/knowledge-base.md`, `docs/knowledge-base/features/recording.md`, `.claude/skills/kb-read/SKILL.md`, `.claude/skills/kb-write/SKILL.md`, `.claude/skills/kb-check/SKILL.md`, `scripts/kb.ps1`.
+**Files.** `docs/knowledge-base/knowledge-base.md`, `docs/knowledge-base/composition.md`, `docs/knowledge-base/how-tos.md`, `docs/knowledge-base/maintenance.md`, `docs/knowledge-base/features/recording.md`, `docs/knowledge-base/features/verify.md`, `.claude/skills/kb-read/SKILL.md`, `.claude/skills/kb-write/SKILL.md`, `.claude/skills/kb-check/SKILL.md`, `scripts/kb.ps1`.
 
 ## D-016 Agents follow one workflow in the knowledge base
 
