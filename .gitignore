@@ -34,6 +34,7 @@
 !Pointframe.Mcp/Guides/*.md
 !plugin/**/*.md
 !scripts/tests/**/*.md
+!samples/**/*.md
 
 # Claude Code per-user settings
 .claude/settings.local.json

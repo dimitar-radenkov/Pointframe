@@ -58,7 +58,7 @@ If you run the server yourself without a spec, the desktop-testing tools need a 
 
 ## Create a verification skill for your app
 
-`create-desktop-verification-skill` reads a Windows desktop app repository and writes a `verify-<app>` skill for it, with a spec scenario that is proved once. Ask Claude to "create a verification skill for this app". The skill and its recipe (`skills/create-desktop-verification-skill/references/recipe.md`) are generated from the same guide as `verify-desktop-work` by the repository's `scripts/sync-agent-guides.ps1`; do not edit them by hand.
+`create-desktop-verification-skill` reads a Windows desktop app repository and writes a `verify-<app>` skill for it, with a spec scenario that is proved once. Ask Claude to "create a verification skill for this app". Its `references/recipe.md` is generated from the same guide as `verify-desktop-work`, and `references/verify-spec.md` is a copy of the spec reference, both by the repository's `scripts/sync-agent-guides.ps1`; do not edit those two by hand.
 
 Without the Claude plugin, install the skill into any agent that supports the `skills` format:
 

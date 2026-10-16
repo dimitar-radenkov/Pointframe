@@ -66,6 +66,21 @@ public sealed class McpManagementTests : IDisposable
     }
 
     [Fact]
+    public async Task InstallLatestAsync_ConcurrentFirstInstalls_BothSucceedWithTheSameInstallation()
+    {
+        var package = CreatePackage("7.0.0");
+        var source = new Mock<IMcpPackageSource>();
+        source.Setup(item => item.DownloadLatestAsync(It.IsAny<CancellationToken>())).ReturnsAsync(package);
+        var installers = Enumerable.Range(0, 6).Select(_ => new McpPackageInstaller(source.Object, _root)).ToArray();
+
+        var results = await Task.WhenAll(installers.Select(installer => Task.Run(() => installer.InstallLatestAsync(dryRun: false, CancellationToken.None))));
+
+        Assert.All(results, result => Assert.Equal(results[0], result));
+        Assert.True(File.Exists(results[0].ExecutablePath));
+        Assert.Empty(Directory.GetDirectories(_root, "Pointframe.Mcp.staging-*"));
+    }
+
+    [Fact]
     public async Task InstallLatestAsync_RepeatedVersion_ReusesExistingInstallWithoutFailing()
     {
         var package = CreatePackage("7.0.0");

@@ -454,17 +454,15 @@ function Read-UserPathRegistryValue {
 function Restore-UserPathIfOnlyAdded {
     param([Parameter(Mandatory)]$Baseline, [Parameter(Mandatory)][scriptblock]$ReadPath, [Parameter(Mandatory)][scriptblock]$WritePath)
     $current = & $ReadPath
-    $baselineEntries = @(([string]$Baseline.Value).Split([char]';') | Where-Object { $_ })
-    $currentEntries = @(([string]$current.Value).Split([char]';') | Where-Object { $_ })
-    $remaining = [System.Collections.Generic.List[string]]::new()
-    foreach ($entry in $currentEntries) { $remaining.Add($entry) }
-    foreach ($entry in $baselineEntries) {
-        $index = -1
-        for ($i = 0; $i -lt $remaining.Count; $i++) { if ([string]::Equals($remaining[$i], $entry, [StringComparison]::OrdinalIgnoreCase)) { $index = $i; break } }
-        if ($index -lt 0) { return [pscustomobject]@{ Restored = $false; Reason = 'user PATH contains removals or edits'; Current = $current.Value } }
-        $remaining.RemoveAt($index)
+    if ($current.Kind -ne $Baseline.Kind) { return [pscustomobject]@{ Restored = $false; Reason = 'user PATH registry value kind changed'; Current = $current.Value } }
+    $baselineEntries = @(([string]$Baseline.Value).Split([char]';'))
+    $currentEntries = @(([string]$current.Value).Split([char]';'))
+    $baselineIndex = 0
+    foreach ($entry in $currentEntries) {
+        if ($baselineIndex -lt $baselineEntries.Count -and [string]::Equals($entry, $baselineEntries[$baselineIndex], [StringComparison]::Ordinal)) { $baselineIndex++ }
     }
-    if ($remaining.Count -eq 0) { return [pscustomobject]@{ Restored = $false; Reason = 'user PATH did not gain entries'; Current = $current.Value } }
+    if ($baselineIndex -ne $baselineEntries.Count) { return [pscustomobject]@{ Restored = $false; Reason = 'user PATH entries were removed, edited, or reordered'; Current = $current.Value } }
+    if ($currentEntries.Count -le $baselineEntries.Count) { return [pscustomobject]@{ Restored = $false; Reason = 'user PATH did not gain entries'; Current = $current.Value } }
     & $WritePath ([string]$Baseline.Value) $Baseline.Kind
     return [pscustomobject]@{ Restored = $true; Reason = $null; Current = $current.Value }
 }
@@ -524,12 +522,15 @@ function Test-TrialMarkerProcessLive {
 }
 
 function Restore-TrialInstallMarkers {
-    param([Parameter(Mandatory)][string]$LocalAppData, [string]$ConflictTime = [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmssfff'), [switch]$SkipLiveRuns)
+    param([Parameter(Mandatory)][string]$LocalAppData, [string]$ConflictTime = [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmssfff'), [switch]$SkipLiveRuns, [string]$RunId)
     $markerDirectory = Join-Path $LocalAppData 'Pointframe\trial-hidden'
     $restored = [System.Collections.Generic.List[object]]::new()
     $errors = [System.Collections.Generic.List[string]]::new()
     $quarantined = [System.Collections.Generic.List[string]]::new()
     $markerFiles = @(Get-ChildItem -LiteralPath $markerDirectory -Filter '*.json' -File -ErrorAction SilentlyContinue)
+    if ($PSBoundParameters.ContainsKey('RunId')) {
+        $markerFiles = @($markerFiles | Where-Object { $_.Name.StartsWith($RunId + '-', [StringComparison]::Ordinal) })
+    }
     foreach ($path in $markerFiles | Where-Object { $_.Name -like 'corrupt-*' }) { $quarantined.Add($path.FullName) }
     foreach ($markerPath in $markerFiles | Where-Object { $_.Name -notlike 'corrupt-*' }) {
         try {
@@ -542,6 +543,7 @@ function Restore-TrialInstallMarkers {
             $quarantined.Add($corrupt)
             continue
         }
+        if ($PSBoundParameters.ContainsKey('RunId') -and [string]$marker.runId -ne $RunId) { continue }
         try {
             $original = [string]$marker.originalPath; $hiddenPath = [string]$marker.hiddenPath
             if ($SkipLiveRuns -and (Test-TrialMarkerProcessLive $marker)) { continue }
@@ -660,11 +662,17 @@ function New-AgentInvocation {
         $model = if ($RunModel) { $RunModel } else { $script:CliModel }
         $allowedTools = 'Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,TodoWrite'
         if ($SkillList.Count -gt 0 -or $PluginDirectory) { $allowedTools += ',Skill' }
+        $skillWriteRules = @(
+            'Write(.claude/skills/**)', 'Edit(.claude/skills/**)',
+            'Write(.agents/skills/**)', 'Edit(.agents/skills/**)',
+            'Write(.cursor/skills/**)', 'Edit(.cursor/skills/**)'
+        )
+        $settings = @{ permissions = @{ allow = $skillWriteRules } } | ConvertTo-Json -Depth 4 -Compress
         $arguments = @('-p', '--model', $model, '--setting-sources', 'project', '--max-budget-usd', '3',
             '--strict-mcp-config', '--mcp-config', $McpConfigPath, '--allowedTools', $allowedTools,
-            '--output-format', 'stream-json', '--verbose')
+            '--settings', $settings, '--output-format', 'stream-json', '--verbose')
         if ($PluginDirectory) { $arguments += @('--plugin-dir', (Resolve-Path -LiteralPath $PluginDirectory -ErrorAction Stop).Path) }
-        return [pscustomobject]@{ Arguments = $arguments; Model = $model; Effort = $null; AllowedTools = $allowedTools }
+        return [pscustomobject]@{ Arguments = $arguments; Model = $model; Effort = $null; AllowedTools = $allowedTools; Settings = $settings; SkillWriteRules = $skillWriteRules }
     }
     $model = if ($RunModel) { $RunModel } else { 'gpt-6-luna' }
     $effort = if ($RunEffort) { $RunEffort } else { 'medium' }
@@ -866,6 +874,70 @@ function Get-TrustKey {
     return [Convert]::ToHexString($hash).Substring(0, 16)
 }
 
+function Complete-TrialRun {
+    param(
+        [Parameter(Mandatory)]$Record, [Parameter(Mandatory)]$Facts,
+        [Parameter(Mandatory)][string]$OutputDirectory, [Parameter(Mandatory)][string]$TaskName,
+        [bool]$FreshMachine, [bool]$OwnsDesktopLock,
+        [scriptblock]$PreserveInstalls = { }, [scriptblock]$RestoreMarkers = { },
+        [scriptblock]$RestorePath = { }, [scriptblock]$ReleaseLock = { Exit-DesktopLock }
+    )
+    foreach ($field in @{
+        restoreError = $null; pathRestoreError = $null; pathRestoreReason = $null
+        pathRestored = $false; restored = @(); agentInstallsMovedTo = @(); lockReleaseError = $null
+    }.GetEnumerator()) {
+        if (-not $Record.isolation.Contains($field.Key)) { $Record.isolation[$field.Key] = $field.Value }
+    }
+    if ($FreshMachine -and $OwnsDesktopLock) {
+        try { & $PreserveInstalls }
+        catch {
+            $Record.isolation.restoreError = "Could not preserve agent installs: $($_.Exception.Message)"
+            $Facts.harnessError = $Record.isolation.restoreError
+        }
+        try { & $RestoreMarkers }
+        catch {
+            if ($Record.isolation.restoreError) { $Record.isolation.restoreError += '; ' }
+            $Record.isolation.restoreError += "Could not restore hidden installs: $($_.Exception.Message)"
+            $Facts.harnessError = $Record.isolation.restoreError
+        }
+        try {
+            $pathResult = & $RestorePath
+            $Record.isolation.pathRestored = $pathResult.Restored
+            if (-not $pathResult.Restored) { $Record.isolation.pathRestoreReason = $pathResult.Reason }
+        }
+        catch {
+            $Record.isolation.pathRestoreError = "Could not restore user PATH: $($_.Exception.Message)"
+            if ($Facts.harnessError) { $Facts.harnessError += '; ' }
+            $Facts.harnessError += $Record.isolation.pathRestoreError
+        }
+    }
+    try { & $ReleaseLock }
+    catch {
+        if (-not $Facts.harnessError) { $Facts.harnessError = "Desktop lock release failed: $($_.Exception.Message)" }
+        $Record.isolation.lockReleaseError = $_.Exception.Message
+    }
+    $scored = if ($TaskName -eq 'create-skill') { Get-CreateSkillOutcome $Facts } else { Get-TrialOutcome $Facts }
+    $Record.outcome = $scored.Outcome
+    $Record.reasons = @($scored.Reasons)
+    if ($TaskName -eq 'create-skill') {
+        $gateReasons = @($scored.Reasons)
+        $withinLimits = Get-Fact (Get-Fact $Record 'limits' $null) 'withinLimits' $null
+        if ($withinLimits -ne $true) {
+            $limitInfo = Get-Fact $Record 'limits' $null
+            $failedLimits = @(Get-Fact $limitInfo 'failed' @())
+            $unmeasuredLimits = @(Get-Fact $limitInfo 'notMeasured' @())
+            if ($failedLimits.Count -gt 0) { $gateReasons += "limits exceeded: $($failedLimits -join ', ')" }
+            if ($unmeasuredLimits.Count -gt 0) { $gateReasons += "limits not measured: $($unmeasuredLimits -join ', ')" }
+        }
+        $Record.gate = [ordered]@{ result = if ($scored.Outcome -eq 'pass-clean' -and $withinLimits -eq $true) { 'pass' } else { 'fail' }; reasons = @($gateReasons) }
+    }
+    $Record.facts = $Facts
+    $Record.finishedUtc = [DateTime]::UtcNow.ToString('o')
+    try { $Record | ConvertTo-Json -Depth 14 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'result.json') -Encoding utf8NoBOM }
+    catch { $Facts.harnessError = "Could not write result.json: $($_.Exception.Message)"; $Record.facts = $Facts }
+    return $scored
+}
+
 # ---------------------------------------------------------------------------------------------------------------
 # Self test (offline: no network, desktop, or agents)
 
@@ -914,6 +986,16 @@ function Test-Self {
 
     $noSkillsInvocation = New-AgentInvocation 'claude' $null '' 'test-model' '' 'empty-mcp.json'
     if ($noSkillsInvocation.AllowedTools -match '(^|,)Skill(,|$)') { throw 'Claude without skills or a plugin must not receive the Skill tool.' }
+    $settingsIndex = [array]::IndexOf($noSkillsInvocation.Arguments, '--settings')
+    if ($settingsIndex -lt 0 -or $settingsIndex + 1 -ge $noSkillsInvocation.Arguments.Count) { throw 'Claude invocation must provide scoped project skill write settings.' }
+    $settingsJson = $noSkillsInvocation.Arguments[$settingsIndex + 1] | ConvertFrom-Json
+    $expectedSkillWriteRules = @(
+        'Write(.claude/skills/**)', 'Edit(.claude/skills/**)',
+        'Write(.agents/skills/**)', 'Edit(.agents/skills/**)',
+        'Write(.cursor/skills/**)', 'Edit(.cursor/skills/**)'
+    )
+    if (@($settingsJson.permissions.allow) -join "`n" -ne ($expectedSkillWriteRules -join "`n")) { throw 'Claude settings must allow Write and Edit only under the three project skill folders.' }
+    if (@($noSkillsInvocation.SkillWriteRules) -join "`n" -ne ($expectedSkillWriteRules -join "`n")) { throw 'Claude invocation skill write rule metadata is incorrect.' }
     $withSkillInvocation = New-AgentInvocation 'claude' @('skill-dir') '' 'test-model' '' 'empty-mcp.json'
     if ($withSkillInvocation.AllowedTools -notmatch '(^|,)Skill(,|$)') { throw 'Claude with skills must receive the Skill tool.' }
     $pluginRoot = Join-Path ([IO.Path]::GetTempPath()) ("pf-trial-plugin-" + [guid]::NewGuid().ToString('N'))
@@ -981,6 +1063,12 @@ function Test-Self {
         $editedPath = [pscustomobject]@{ Value = 'C:\Windows;C:\replacement' ; Kind = [Microsoft.Win32.RegistryValueKind]::String }
         $pathResult = Restore-UserPathIfOnlyAdded $baselinePath { $editedPath } { throw 'Edited PATH must not be overwritten.' }
         if ($pathResult.Restored) { throw 'A PATH edit was incorrectly classified as additions only.' }
+        $reorderedPath = [pscustomobject]@{ Value = '%USERPROFILE%\bin;C:\Windows;C:\trial\added'; Kind = $baselinePath.Kind }
+        $pathResult = Restore-UserPathIfOnlyAdded $baselinePath { $reorderedPath } { throw 'Reordered PATH must not be overwritten.' }
+        if ($pathResult.Restored -or $pathResult.Reason -notmatch 'reordered') { throw 'A reordered PATH with an addition was incorrectly restored.' }
+        $kindChangedPath = [pscustomobject]@{ Value = 'C:\Windows;%USERPROFILE%\bin;C:\trial\added'; Kind = [Microsoft.Win32.RegistryValueKind]::String }
+        $pathResult = Restore-UserPathIfOnlyAdded $baselinePath { $kindChangedPath } { throw 'PATH with changed registry kind must not be overwritten.' }
+        if ($pathResult.Restored -or $pathResult.Reason -notmatch 'kind changed') { throw 'A PATH registry kind change was incorrectly restored.' }
         $crashRoot = Join-Path $freshRoot 'crash'; $crashPrograms = Join-Path $crashRoot 'Programs'
         New-Item -ItemType Directory -Path (Join-Path $crashPrograms '.pointframe-trial-hidden-crash-Pointframe.Cli') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $crashPrograms 'Pointframe.Cli') -Force | Out-Null
@@ -1004,6 +1092,30 @@ function Test-Self {
         if (-not (Test-TrialMarkerProcessLive $liveMarkerFixture)) { throw "Live marker PID/start-time fixture did not match its process (pid=$($liveMarkerFixture.harnessPid) recorded=$($liveMarkerFixture.harnessStartTimeUtc) actual=$((Get-Process -Id $PID).StartTime.ToUniversalTime().ToString('o')))." }
         [void](Restore-TrialInstallMarkers $liveRoot -SkipLiveRuns)
         if (-not (Test-Path (Join-Path $liveMarkerDir 'live.json')) -or -not (Test-Path (Join-Path $livePrograms '.pointframe-trial-hidden-live-Pointframe.Cli'))) { throw 'Recovery did not skip a live trial marker.' }
+
+        $runFilterRoot = Join-Path $freshRoot 'run-filter'; $runFilterPrograms = Join-Path $runFilterRoot 'Programs'; $runFilterMarkers = Join-Path $runFilterRoot 'Pointframe\trial-hidden'
+        New-Item -ItemType Directory -Path (Join-Path $runFilterPrograms '.pointframe-trial-hidden-own-Pointframe.Cli') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $runFilterPrograms '.pointframe-trial-hidden-other-Pointframe.Mcp') -Force | Out-Null
+        New-Item -ItemType Directory -Path $runFilterMarkers -Force | Out-Null
+        [ordered]@{ originalPath=(Join-Path $runFilterPrograms 'Pointframe.Cli'); hiddenPath=(Join-Path $runFilterPrograms '.pointframe-trial-hidden-own-Pointframe.Cli'); runId='own-run'; state='hidden' } | ConvertTo-Json | Set-Content (Join-Path $runFilterMarkers 'own-run-Pointframe.Cli.json')
+        [ordered]@{ originalPath=(Join-Path $runFilterPrograms 'Pointframe.Mcp'); hiddenPath=(Join-Path $runFilterPrograms '.pointframe-trial-hidden-other-Pointframe.Mcp'); runId='other-run'; state='hidden' } | ConvertTo-Json | Set-Content (Join-Path $runFilterMarkers 'other-run-Pointframe.Mcp.json')
+        Set-Content -LiteralPath (Join-Path $runFilterMarkers 'other-run-bad.json') -Value '{broken'
+        [void](Restore-TrialInstallMarkers $runFilterRoot -RunId 'own-run')
+        if (-not (Test-Path (Join-Path $runFilterPrograms 'Pointframe.Cli')) -or -not (Test-Path (Join-Path $runFilterMarkers 'other-run-Pointframe.Mcp.json')) -or -not (Test-Path (Join-Path $runFilterMarkers 'other-run-bad.json')) -or -not (Test-Path (Join-Path $runFilterPrograms '.pointframe-trial-hidden-other-Pointframe.Mcp'))) { throw 'Run-scoped restore modified another run marker or hidden install.' }
+
+        $cleanupOutput = Join-Path $freshRoot 'cleanup-failure'; New-Item -ItemType Directory -Path $cleanupOutput -Force | Out-Null
+        $cleanupRecord = [ordered]@{ isolation = [ordered]@{}; limits = $null }
+        $cleanupFacts = [ordered]@{ envLeak = @(); pathLeak = $false; harnessError = $null; timedOut = $false; defectCheck = [ordered]@{ result = 'not-run' } }
+        $script:selfTestCleanupLockReleased = $false
+        $cleanupScored = Complete-TrialRun -Record $cleanupRecord -Facts $cleanupFacts -OutputDirectory $cleanupOutput -TaskName 'change' -FreshMachine $true -OwnsDesktopLock $true -RestoreMarkers { throw 'injected marker restore failure' } -RestorePath { [pscustomobject]@{ Restored = $false; Reason = 'not changed' } } -ReleaseLock { $script:selfTestCleanupLockReleased = $true }
+        $cleanupResult = Get-Content -LiteralPath (Join-Path $cleanupOutput 'result.json') -Raw | ConvertFrom-Json
+        if ($cleanupScored.Outcome -ne 'invalid' -or -not $script:selfTestCleanupLockReleased -or $cleanupResult.outcome -ne 'invalid' -or $cleanupResult.isolation.restoreError -notmatch 'injected marker restore failure') { throw 'Cleanup restore failure did not produce invalid result while releasing the lock and writing result.json.' }
+
+        $unlockedOutput = Join-Path $freshRoot 'cleanup-unlocked'; New-Item -ItemType Directory -Path $unlockedOutput -Force | Out-Null
+        $unlockedRecord = [ordered]@{ isolation = [ordered]@{} }
+        $unlockedFacts = [ordered]@{ envLeak = @(); pathLeak = $false; harnessError = $null; timedOut = $false; defectCheck = [ordered]@{ result = 'not-run' } }
+        [void](Complete-TrialRun -Record $unlockedRecord -Facts $unlockedFacts -OutputDirectory $unlockedOutput -TaskName 'change' -FreshMachine $true -OwnsDesktopLock $false -PreserveInstalls { throw 'must not move installs' } -RestoreMarkers { throw 'must not restore markers' } -RestorePath { throw 'must not restore PATH' } -ReleaseLock { })
+        if (-not (Test-Path (Join-Path $unlockedOutput 'result.json')) -or $unlockedRecord.isolation.restoreError -or $unlockedRecord.isolation.pathRestoreError) { throw 'Cleanup without lock ownership touched isolation state or failed to write result.' }
 
         $corruptRoot = Join-Path $freshRoot 'corrupt'; $corruptPrograms = Join-Path $corruptRoot 'Programs'; $corruptMarkerDir = Join-Path $corruptRoot 'Pointframe\trial-hidden'
         New-Item -ItemType Directory -Path (Join-Path $corruptPrograms '.pointframe-trial-hidden-good-Pointframe.Cli') -Force | Out-Null
@@ -1530,9 +1642,15 @@ function Invoke-Trial {
     $record = [ordered]@{
         schemaVersion = 1; app = $AppName; agent = $AgentName; task = $TaskName; startedUtc = $started.ToString('o')
         outDirectory = $OutputDirectory; trialDirectory = $trialDirectory; transcript = $transcriptPath
-        isolation = [ordered]@{ freshMachine = ($FreshMachine -eq $true) }; clone = $null; agentRun = $null; metrics = $null; pointframe = $null
+        isolation = [ordered]@{ freshMachine = ($FreshMachine -eq $true); restoreError = $null; pathRestoreError = $null; pathRestoreReason = $null; pathRestored = $false; restored = @(); agentInstallsMovedTo = @(); lockReleaseError = $null }; clone = $null; agentRun = $null; metrics = $null; pointframe = $null
         verify = $null; leftover = @(); notes = @()
     }
+    $localAppData = $null
+    $runId = $null
+    $hiddenInstalls = @()
+    $userPathBefore = $null
+    $ownsDesktopLock = $false
+    $scored = $null
 
     try {
         $localAppData = [Environment]::GetFolderPath('LocalApplicationData')
@@ -1558,6 +1676,7 @@ function Invoke-Trial {
         $record.expectedVersion = $expected
 
         Enter-DesktopLock
+        $ownsDesktopLock = $true
 
         if ($FreshMachine) {
             $hiddenInstalls = @(Hide-TrialInstalls $localAppData $runId)
@@ -1593,7 +1712,7 @@ function Invoke-Trial {
             if ($RunEffort) { throw '-AgentEffort is not supported for Claude trials.' }
             $invocation = New-AgentInvocation $AgentName $SkillList $PluginDirectory $RunModel $RunEffort $emptyMcp
             $agentArguments = $invocation.Arguments
-            $record.isolation.claude = [ordered]@{ model = $invocation.Model; settingSources = 'project'; strictMcpConfig = $true; mcpConfig = $emptyMcp; maxBudgetUsd = 3 }
+            $record.isolation.claude = [ordered]@{ model = $invocation.Model; settingSources = 'project'; strictMcpConfig = $true; mcpConfig = $emptyMcp; maxBudgetUsd = 3; skillWritePermission = [ordered]@{ mechanism = '--settings inline permissions.allow'; rules = @($invocation.SkillWriteRules) } }
             if ($PluginDirectory) { $record.isolation.claude.pluginDirectory = (Resolve-Path -LiteralPath $PluginDirectory -ErrorAction Stop).Path }
         }
         else {
@@ -1677,58 +1796,12 @@ function Invoke-Trial {
     }
     catch { $facts.harnessError = $_.Exception.Message }
     finally {
-        if ($FreshMachine) {
-            try {
-                $record.isolation.agentInstallsMovedTo += @(Move-TrialAgentInstalls $hiddenInstalls $OutputDirectory $runId)
-            }
-            catch {
-                $record.isolation.restoreError = "Could not preserve agent installs: $($_.Exception.Message)"
-                $facts.harnessError = $record.isolation.restoreError
-            }
-            try {
-                $record.isolation.restored = @(Restore-TrialInstallMarkers $localAppData)
-            }
-            catch {
-                if ($record.isolation.restoreError) { $record.isolation.restoreError += '; ' }
-                $record.isolation.restoreError += "Could not restore hidden installs: $($_.Exception.Message)"
-                $facts.harnessError = $record.isolation.restoreError
-            }
-            try {
-                $pathResult = Restore-UserPathIfOnlyAdded $userPathBefore { Read-UserPathRegistryValue } { param($value, $kind) Write-UserPathRegistryValue $value $kind }
-                $record.isolation.pathRestored = $pathResult.Restored
-                if (-not $pathResult.Restored) { $record.isolation.pathRestoreReason = $pathResult.Reason }
-            }
-            catch {
-                if ($record.isolation.restoreError) { $record.isolation.restoreError += '; ' }
-                $record.isolation.restoreError += "Could not restore user PATH: $($_.Exception.Message)"
-                $facts.harnessError = $record.isolation.restoreError
-            }
-        }
-        try { Exit-DesktopLock }
-        catch {
-            if (-not $facts.harnessError) { $facts.harnessError = "Desktop lock release failed: $($_.Exception.Message)" }
-            $record.isolation.lockReleaseError = $_.Exception.Message
-        }
+        $preserve = { if ($null -ne $runId) { $record.isolation.agentInstallsMovedTo += @(Move-TrialAgentInstalls $hiddenInstalls $OutputDirectory $runId) } }.GetNewClosure()
+        $restore = { if ($null -ne $localAppData -and $null -ne $runId) { $record.isolation.restored = @(Restore-TrialInstallMarkers $localAppData -RunId $runId) } }.GetNewClosure()
+        $restorePath = { if ($null -ne $userPathBefore) { Restore-UserPathIfOnlyAdded $userPathBefore { Read-UserPathRegistryValue } { param($value, $kind) Write-UserPathRegistryValue $value $kind } } }.GetNewClosure()
+        $release = { if ($ownsDesktopLock) { Exit-DesktopLock } }.GetNewClosure()
+        $scored = Complete-TrialRun -Record $record -Facts $facts -OutputDirectory $OutputDirectory -TaskName $TaskName -FreshMachine ($FreshMachine -eq $true) -OwnsDesktopLock $ownsDesktopLock -PreserveInstalls $preserve -RestoreMarkers $restore -RestorePath $restorePath -ReleaseLock $release
     }
-
-    $scored = if ($TaskName -eq 'create-skill') { Get-CreateSkillOutcome $facts } else { Get-TrialOutcome $facts }
-    $record.outcome = $scored.Outcome
-    $record.reasons = @($scored.Reasons)
-    if ($TaskName -eq 'create-skill') {
-        $gateReasons = @($scored.Reasons)
-        $withinLimits = Get-Fact (Get-Fact $record 'limits' $null) 'withinLimits' $null
-        if ($withinLimits -ne $true) {
-            $limitInfo = Get-Fact $record 'limits' $null
-            $failedLimits = @(Get-Fact $limitInfo 'failed' @())
-            $unmeasuredLimits = @(Get-Fact $limitInfo 'notMeasured' @())
-            if ($failedLimits.Count -gt 0) { $gateReasons += "limits exceeded: $($failedLimits -join ', ')" }
-            if ($unmeasuredLimits.Count -gt 0) { $gateReasons += "limits not measured: $($unmeasuredLimits -join ', ')" }
-        }
-        $record.gate = [ordered]@{ result = if ($scored.Outcome -eq 'pass-clean' -and $withinLimits -eq $true) { 'pass' } else { 'fail' }; reasons = @($gateReasons) }
-    }
-    $record.facts = $facts
-    $record.finishedUtc = [DateTime]::UtcNow.ToString('o')
-    $record | ConvertTo-Json -Depth 14 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'result.json') -Encoding utf8NoBOM
 
     $metrics = $record.metrics
     $minutes = if ($null -ne $record.agentRun) { $record.agentRun.minutes } else { $null }
