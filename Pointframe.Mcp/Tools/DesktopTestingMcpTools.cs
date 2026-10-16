@@ -329,7 +329,7 @@ internal sealed class DesktopTestingMcpTools(
         DragCoreAsync(sessionId, actionId, observationRef, imageRef, points, durationMilliseconds, cancellationToken);
 
     [McpServerTool(Name = "desktop_enter_text", Title = "Enter desktop text", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
-    [Description("Enters text into a field. Prefer semantic entry (semanticValue true): it sets the field's value through UI Automation instead of typing keystrokes, and needs no screenshot, observation, or coordinates. Name the field with a selector (automationId, or role and name, optionally scoped by windowRef), resolved against a fresh inspection when the action runs and required to match exactly one element, or with an elementRef from desktop_observe_app. Pass exactly one way to name the field. Without semanticValue, it clicks the point x, y inside an observed image to place the caret and types the text, so observationRef, imageRef, x and y are required.")]
+    [Description("Enters text into a field. Prefer semantic entry (semanticValue true): it sets the field's value through UI Automation instead of typing keystrokes, and needs no screenshot, observation, or coordinates. Name the field with a selector (automationId, or role and name, optionally scoped by windowRef), resolved against a fresh inspection when the action runs and required to match exactly one element, or with an elementRef from desktop_observe_app. Pass exactly one way to name the field. text is required. With semanticValue true, an empty string clears the field and whitespace is entered as given. Coordinate typing needs 1 to 4096 characters and rejects an empty string with InvalidTextLength. Without semanticValue, it clicks the point x, y inside an observed image to place the caret and types the text, so observationRef, imageRef, x and y are required.")]
     public Task<DesktopTestingActionResponse> EnterTextAsync(
         [Description("Session id from desktop_start_test_session.")] string sessionId,
         [Description("A UUID action identifier.")] string actionId,
@@ -1305,6 +1305,11 @@ internal sealed class DesktopTestingMcpTools(
         string? windowRef,
         CancellationToken cancellationToken)
     {
+        if (text is null)
+        {
+            return Error(actionId, "InvalidRequest", "text is required; pass an empty string to clear a field.");
+        }
+
         var session = await sessions.GetAsync(sessionId, cancellationToken).ConfigureAwait(false);
         if (session?.Target is null)
         {

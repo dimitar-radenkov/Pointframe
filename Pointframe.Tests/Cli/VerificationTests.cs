@@ -451,6 +451,22 @@ public sealed class VerificationTests : IDisposable
         client.Verify("desktop_end_test_session", _ => true);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task RunAsync_EnterTextWithEmptyOrBlankText_DispatchesTheStep(string text)
+    {
+        var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true));
+        var scenario = VerificationSpecLoader.ParseScenario(
+            $$"""{ "id": "r", "steps": [ { "enterText": { "automationId": "textBox", "text": "{{text}}" } } ] }""", "r");
+
+        await Runner(client.Mock.Object).RunAsync(scenario, CancellationToken.None);
+
+        Assert.Equal(1, client.Count("desktop_enter_text"));
+        client.Verify("desktop_enter_text", args => args.GetProperty("semanticValue").GetBoolean()
+            && args.GetProperty("text").GetString() == text);
+    }
+
     [Fact]
     public async Task RunAsync_CheckFails_StopsScenarioReportsFoundValueAndStillEndsSession()
     {

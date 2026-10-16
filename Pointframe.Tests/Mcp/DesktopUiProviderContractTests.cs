@@ -33,6 +33,26 @@ public sealed class DesktopUiProviderContractTests
         Assert.Equal(("element-1", "λ"), backend.SetValueRequest);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void UiAutomationProvider_SetsEmptyAndWhitespaceValues(string value)
+    {
+        var backend = new FakeUiBackend();
+        var provider = new WindowsUiAutomationProvider(backend);
+
+        Assert.True(provider.TrySetValue("element-1", value));
+        Assert.Equal(("element-1", value), backend.SetValueRequest);
+    }
+
+    [Fact]
+    public void UiAutomationProvider_RejectsNullValue()
+    {
+        var provider = new WindowsUiAutomationProvider(new FakeUiBackend());
+
+        Assert.Throws<ArgumentNullException>(() => provider.TrySetValue("element-1", null!));
+    }
+
     [Fact]
     public void UiAutomationProvider_RejectsSemanticActionsWhenBackendDoesNotSupportThem()
     {
