@@ -353,7 +353,8 @@ public sealed class VerificationOutcomeTests : IDisposable
 
         Assert.Equal("InspectionIncomplete", result.Steps.Single(item => item.Kind == "invoke").Code);
         Assert.True(result.InfrastructureFailure);
-        Assert.Equal(0, fake.Count("desktop_invoke"));
+        // The server refuses every attempt, so no invoke was ever accepted.
+        Assert.All(result.Steps.Where(item => item.Kind == "invoke"), item => Assert.NotEqual(VerificationStatus.Pass, item.Status));
     }
 
     [Fact]
@@ -365,6 +366,36 @@ public sealed class VerificationOutcomeTests : IDisposable
 
         Assert.Equal(VerificationStatus.Pass, result.Steps.Single(item => item.Kind == "invoke").Status);
         Assert.Equal(1, fake.Count("desktop_invoke"));
+    }
+
+    [Fact]
+    public async Task Runner_SelectorStepDoesNotObserveJustToFindARef()
+    {
+        var fake = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true));
+
+        var result = await FastRunner(fake).RunAsync(
+            Scenario("""[ { "enterText": { "automationId": "textBox", "text": "hi" } }, { "invoke": { "automationId": "saveButton" } } ]"""),
+            CancellationToken.None);
+
+        Assert.All(result.Steps.Where(item => item.Kind != "launch"), item => Assert.Equal(VerificationStatus.Pass, item.Status));
+        Assert.Equal(1, fake.Count("desktop_observe_app"));
+        fake.Verify("desktop_invoke", args => !args.TryGetProperty("elementRef", out _) && !args.TryGetProperty("observationRef", out _));
+    }
+
+    [Fact]
+    public async Task Runner_SelectorStepWaitsForAnElementThatAppearsLate()
+    {
+        var fake = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            ObserveResponse = call => call <= 3
+                ? new { observationRef = "obs-1", images = new[] { new { imageRef = "img-1" } }, elements = new[] { new { elementRef = "el-x", windowRef = "win-1", role = "Edit", automationId = "other" } } }
+                : null!,
+        };
+
+        var result = await FastRunner(fake).RunAsync(Scenario("""[ { "invoke": { "automationId": "saveButton" } } ]"""), CancellationToken.None);
+
+        Assert.Equal(VerificationStatus.Pass, result.Steps.Single(item => item.Kind == "invoke").Status);
+        Assert.True(fake.Count("desktop_invoke") >= 2);
     }
 
     [Fact]

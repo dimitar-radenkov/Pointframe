@@ -289,45 +289,44 @@ internal sealed class DesktopScenarioRunner
         switch (step)
         {
             case VerificationStep.EnterText enterText:
-                {
-                    var element = await ResolveAsync(sessionId, enterText.Locator, cancellationToken).ConfigureAwait(false);
-                    if (element.Error is not null)
+                // The spec names the field by automationId or role and name, so the server resolves it itself:
+                // no observation is fetched just to find a ref.
+                return await RunSelectorActionAsync(
+                    sessionId,
+                    index,
+                    step,
+                    description,
+                    enterText.Locator,
+                    "desktop_enter_text",
+                    actionId => new
                     {
-                        return new VerificationStepResult(index, step.Kind, VerificationStatus.Fail, description, element.Error.Value.Code, element.Error.Value.Message);
-                    }
-
-                    return ActionResult(index, step, description, await _client.CallToolAsync(
-                        "desktop_enter_text",
-                        new
-                        {
-                            sessionId,
-                            actionId = NewActionId(),
-                            observationRef = element.ObservationRef,
-                            imageRef = element.ImageRef,
-                            x = 0,
-                            y = 0,
-                            text = enterText.Text,
-                            semanticValue = true,
-                            elementRef = element.ElementRef,
-                        },
-                        ActionTimeout,
-                        cancellationToken).ConfigureAwait(false));
-                }
+                        sessionId,
+                        actionId,
+                        text = enterText.Text,
+                        semanticValue = true,
+                        automationId = enterText.Locator.AutomationId,
+                        role = enterText.Locator.AutomationId is null ? enterText.Locator.Role : null,
+                        name = enterText.Locator.AutomationId is null ? enterText.Locator.Name : null,
+                    },
+                    cancellationToken).ConfigureAwait(false);
 
             case VerificationStep.Invoke invoke:
-                {
-                    var element = await ResolveAsync(sessionId, invoke.Locator, cancellationToken).ConfigureAwait(false);
-                    if (element.Error is not null)
+                return await RunSelectorActionAsync(
+                    sessionId,
+                    index,
+                    step,
+                    description,
+                    invoke.Locator,
+                    "desktop_invoke",
+                    actionId => new
                     {
-                        return new VerificationStepResult(index, step.Kind, VerificationStatus.Fail, description, element.Error.Value.Code, element.Error.Value.Message);
-                    }
-
-                    return ActionResult(index, step, description, await _client.CallToolAsync(
-                        "desktop_invoke",
-                        new { sessionId, actionId = NewActionId(), elementRef = element.ElementRef },
-                        ActionTimeout,
-                        cancellationToken).ConfigureAwait(false));
-                }
+                        sessionId,
+                        actionId,
+                        automationId = invoke.Locator.AutomationId,
+                        role = invoke.Locator.AutomationId is null ? invoke.Locator.Role : null,
+                        name = invoke.Locator.AutomationId is null ? invoke.Locator.Name : null,
+                    },
+                    cancellationToken).ConfigureAwait(false);
 
             case VerificationStep.PressKeys pressKeys:
                 {
@@ -460,6 +459,87 @@ internal sealed class DesktopScenarioRunner
 
             default:
                 throw new InvalidOperationException($"Unsupported step '{step.Kind}'.");
+        }
+    }
+
+    // Sends an action that names its target by selector. The server resolves the selector against a fresh
+    // inspection and refuses to act on zero, several, or an unverifiable match, so a refusal here never means
+    // input was sent. A missing element or a partial inspection is retried until the element timeout, because
+    // the window may still be opening; every attempt is a new action id.
+    private async Task<VerificationStepResult> RunSelectorActionAsync(
+        string sessionId,
+        int index,
+        VerificationStep step,
+        string description,
+        ElementLocator locator,
+        string tool,
+        Func<string, object> arguments,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + _elementTimeout;
+        while (true)
+        {
+            var result = await _client.CallToolAsync(tool, arguments(NewActionId()), ActionTimeout, cancellationToken).ConfigureAwait(false);
+            var (code, message) = ErrorOf(result);
+            if (code == "AmbiguousTarget")
+            {
+                // Spec v1 has no window scoping, so the server's advice to add a windowRef would mislead here.
+                var advice = message?.IndexOf(" Add windowRef", StringComparison.Ordinal) ?? -1;
+                var candidates = advice >= 0 ? message![..advice] : message;
+                return new VerificationStepResult(
+                    index,
+                    step.Kind,
+                    VerificationStatus.Fail,
+                    description,
+                    "AmbiguousLocator",
+                    $"{candidates} Narrow the locator (a different role or name, or an automationId).");
+            }
+
+            if (code is not ("ElementNotFound" or "InspectionIncomplete" or "ProviderUnavailable"))
+            {
+                return ActionResult(index, step, description, result);
+            }
+
+            if (DateTimeOffset.UtcNow < deadline)
+            {
+                await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            if (code == "InspectionIncomplete")
+            {
+                // The walk hit its budget before it could establish that the element is missing, so this is
+                // not a result about the app.
+                _stepInfrastructure = true;
+                return new VerificationStepResult(
+                    index,
+                    step.Kind,
+                    VerificationStatus.Fail,
+                    description,
+                    "InspectionIncomplete",
+                    $"UI Automation stopped before it could establish whether {locator} exists uniquely. This is not an app defect. Retry, or give the step a more specific selector (an automationId).");
+            }
+
+            _stepInfrastructure = code == "ProviderUnavailable";
+            var observed = await ObserveAsync(sessionId, cancellationToken).ConfigureAwait(false);
+            var elements = Structured(observed).TryGetProperty("elements", out var observedElements) && observedElements.ValueKind == JsonValueKind.Array
+                ? observedElements.EnumerateArray().ToArray()
+                : [];
+            var seen = elements
+                .Select(element => element.TryGetProperty("automationId", out var id) && id.ValueKind == JsonValueKind.String ? id.GetString() : null)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Cast<string>()
+                .Distinct(StringComparer.Ordinal)
+                .Take(20)
+                .ToArray();
+            var hint = seen.Length == 0 ? "The app exposed no automation ids." : $"Automation ids seen: {string.Join(", ", seen)}.";
+            return new VerificationStepResult(
+                index,
+                step.Kind,
+                VerificationStatus.Fail,
+                description,
+                "ElementNotFound",
+                AppendMenuHint($"No element matched {locator} within {_elementTimeout.TotalSeconds:0} seconds. {hint}{NameHint(locator, elements)}", locator, elements));
         }
     }
 
