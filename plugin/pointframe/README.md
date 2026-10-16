@@ -1,6 +1,6 @@
 # Pointframe plugin for Claude
 
-Gives Claude eyes on your Windows desktop. The plugin starts the [Pointframe](https://github.com/dimitar-radenkov/Pointframe) MCP server locally, so Claude can list monitors and windows, capture a monitor, a region or a window and look at it, read on-screen text with Windows OCR, search earlier captures, and record a monitor to MP4 with pixelated redaction regions. It also ships two skills: `verify-desktop-work`, a workflow for proving that a change to a Windows desktop app works by checking its real UI and returning a signed report, and `capture-screen`, which tells Claude how to look at the screen.
+Gives Claude eyes on your Windows desktop. The plugin starts the [Pointframe](https://github.com/dimitar-radenkov/Pointframe) MCP server locally, so Claude can list monitors and windows, capture a monitor, a region or a window and look at it, read on-screen text with Windows OCR, search earlier captures, and record a monitor to MP4 with pixelated redaction regions. It also ships three skills: `verify-desktop-work`, a workflow for proving that a change to a Windows desktop app works by checking its real UI and returning a signed report; `create-desktop-verification-skill`, which writes a `verify-<app>` skill for a desktop app repository; and `capture-screen`, which tells Claude how to look at the screen.
 
 Pointframe is free and open source (MIT). The capture, OCR, and recording tools only observe; they never click or type.
 
@@ -50,9 +50,23 @@ Official builds of the server send one anonymous usage event per tool call to Az
 
 ## Enable desktop testing (optional)
 
-The `verify-desktop-work` skill needs the server's opt-in desktop-testing tools, which let Claude launch a listed app and click in it. They are off in this plugin. To turn them on, write a policy file that lists the apps Claude may launch (see the [desktop-testing guide](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp-desktop-testing/README.md)), then register the plugin's launcher yourself with the two extra flags, for example `claude mcp add --scope user pointframe-testing -- "<plugin folder>\scripts\start-mcp.cmd" --desktop-testing --desktop-policy C:\path\to\policy.json`. The flags are passed through to the server.
+The `verify-desktop-work` skill has two parts. The first needs nothing from this plugin: install the Pointframe CLI, write `.pointframe/verify.json` for your app, and run `pointframe verify run`. The CLI starts its own server for the run, approves standard commands by policy, and needs no policy file and no restart.
 
-If the project already has a `.pointframe/verify.json` with an `app`, skip all of that: run `pointframe verify setup` in the project instead. It approves the spec like `pointframe verify run`, installs the server if needed, and writes the project's `.mcp.json` so Claude gets desktop tools for exactly that app, with no policy file to write.
+For interactive desktop tools, run `pointframe verify setup` in the project (it needs the `.pointframe/verify.json` with an `app`). It approves the spec like `pointframe verify run`, installs the server if needed, and writes the project's `.mcp.json` so Claude gets desktop tools for exactly that app, with no policy file to write. Restart Claude Code afterwards. This plugin's own server keeps desktop testing off.
+
+If you run the server yourself without a spec, the desktop-testing tools need a policy file that lists the apps Claude may launch (see the [desktop-testing guide](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp-desktop-testing/README.md)) and the flags `--desktop-testing --desktop-policy <file>`.
+
+## Create a verification skill for your app
+
+`create-desktop-verification-skill` reads a Windows desktop app repository and writes a `verify-<app>` skill for it, with a spec scenario that is proved once. Ask Claude to "create a verification skill for this app". The skill and its recipe (`skills/create-desktop-verification-skill/references/recipe.md`) are generated from the same guide as `verify-desktop-work` by the repository's `scripts/sync-agent-guides.ps1`; do not edit them by hand.
+
+Without the Claude plugin, install the skill into any agent that supports the `skills` format:
+
+```
+npx skills add https://github.com/dimitar-radenkov/Pointframe/tree/master/plugin/pointframe --skill create-desktop-verification-skill
+```
+
+TODO(coordinator): run this command in a clean folder and mark it "verified on <date>" here. It has not been run yet.
 
 ## Uninstall and clear the cache
 

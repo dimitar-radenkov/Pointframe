@@ -306,7 +306,7 @@ public sealed class VerificationRunTests : IDisposable
         Assert.Equal(1, exitCode);
         var nextStep = _fixture.ReadVerdict().GetProperty("nextStep");
         Assert.Equal("run_command", nextStep.GetProperty("kind").GetString());
-        Assert.Equal("pointframe mcp install --client vscode", nextStep.GetProperty("command").GetString());
+        Assert.Equal("pointframe verify setup", nextStep.GetProperty("command").GetString());
     }
 
     [Fact]

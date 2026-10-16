@@ -356,8 +356,9 @@ and whether `ffmpeg` was found for recording.
 #### Use with Claude (plugin)
 
 The [`plugin/pointframe`](plugin/pointframe) folder is a Claude plugin for Windows. It
-starts this MCP server for you and adds two skills: `verify-desktop-work` (prove that a
-change to a Windows desktop app works, with a signed report) and `capture-screen`. On
+starts this MCP server for you and adds three skills: `verify-desktop-work` (prove that a
+change to a Windows desktop app works, with a signed report), `create-desktop-verification-skill`
+(write a `verify-<app>` skill for a desktop app repository) and `capture-screen`. On
 the first start it downloads the pinned release of the server from GitHub, checks its
 SHA-256 against `server.lock.json`, and caches it under
 `%LOCALAPPDATA%\Pointframe\plugin-mcp`. Its `.mcp.json` runs `scripts/start-mcp.cmd`, which

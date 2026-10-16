@@ -41,6 +41,17 @@ public sealed class VerificationNextStepTests
         Assert.Equal(kind, result.Kind);
     }
 
+    [Theory]
+    [InlineData("mcp_not_found", "pointframe verify setup")]
+    [InlineData("mcp_version_mismatch", "pointframe mcp install --client vscode")]
+    public void For_MissingOrStaleMcpServerRecommendsTheInstallingCommand(string code, string command)
+    {
+        var result = VerificationNextSteps.For("error", code);
+
+        Assert.Equal("run_command", result.Kind);
+        Assert.Equal(command, result.Command);
+    }
+
     [Fact]
     public void For_FailedGateNamesGate()
     {

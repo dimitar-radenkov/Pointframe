@@ -768,13 +768,13 @@ public sealed class VerificationTests : IDisposable
     {
         var client = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
         {
-            ObserveResponse = _ => WindowWith(new { elementRef = "el-1", windowRef = "win-1", role = "menu item", name = "Options" }),
+            ObserveResponse = _ => WindowWith(new { elementRef = "el-1", windowRef = "win-1", role = "MenuItem", name = "Options" }),
         };
 
         var result = await Runner(client.Mock.Object).RunAsync(InvokeScenario("""{ "automationId": "Menu_Options" }"""), CancellationToken.None);
 
         Assert.Equal("ElementNotFound", result.Steps[0].Code);
-        Assert.Contains("\"role\": \"menu item\", \"name\": \"Options\"", result.Steps[0].Message, StringComparison.Ordinal);
+        Assert.Contains("\"role\": \"MenuItem\", \"name\": \"Options\"", result.Steps[0].Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -784,8 +784,8 @@ public sealed class VerificationTests : IDisposable
         {
             CheckResponse = _ => new { error = new { code = "ElementNotFound", message = "No matching element." } },
             ObserveResponse = _ => WindowWith(
-                new { elementRef = "menu-1", windowRef = "win-1", role = "menu bar", name = "Main menu" },
-                new { elementRef = "item-1", windowRef = "win-1", role = "menu item", name = "Import" }),
+                new { elementRef = "menu-1", windowRef = "win-1", role = "MenuBar", name = "Main menu" },
+                new { elementRef = "item-1", windowRef = "win-1", role = "MenuItem", name = "Import" }),
         };
         var scenario = VerificationSpecLoader.ParseScenario(
             """{ "id": "menu", "steps": [ { "check": { "kind": "exists", "automationId": "Menu_Import" } } ] }""",
@@ -795,7 +795,7 @@ public sealed class VerificationTests : IDisposable
 
         Assert.Equal("ElementNotFound", result.Steps[0].Code);
         Assert.Contains("Menu items appear in UI Automation only after their parent menu is open", result.Steps[0].Message, StringComparison.Ordinal);
-        Assert.Contains("\"role\": \"menu item\", \"name\": \"Import\"", result.Steps[0].Message, StringComparison.Ordinal);
+        Assert.Contains("\"role\": \"MenuItem\", \"name\": \"Import\"", result.Steps[0].Message, StringComparison.Ordinal);
     }
 
     [Fact]

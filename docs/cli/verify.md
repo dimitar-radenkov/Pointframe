@@ -8,36 +8,20 @@ The fields of the spec file are in the [spec reference](verify-spec.md).
 
 ## Coding agents: start here
 
-1. Download the versioned CLI ZIP and its `.sha256` file from the [latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest).
-   The CLI winget package is not available yet. `DimitarRadenkov.Pointframe` installs the desktop app, not the CLI.
-2. Check the ZIP hash against the value in the `.sha256` file:
-
-   ```powershell
-   (Get-FileHash .\Pointframe.Cli-<version>-win-x64.zip -Algorithm SHA256).Hash
-   ```
-
-3. Extract the ZIP. From the extracted folder, install the CLI and call that executable in this shell:
-
-   ```powershell
-   .\Pointframe.Cli.exe install
-   .\Pointframe.Cli.exe verify init --app <path to the built exe> --hooks claude
-   ```
-
-   Install adds `pointframe` to PATH for new shells. For Codex, use `--hooks codex`.
-4. Add a desktop scenario using the [spec reference](verify-spec.md) and [Advanced](#advanced-desktop-scenarios-and-tasks).
-5. Run the checks (from a new shell; in the same shell, call the extracted `.\Pointframe.Cli.exe` instead):
-
-   ```powershell
-   pointframe verify run
-   ```
-
-6. Optionally run `pointframe verify setup` to give the agent interactive desktop tools. Restart the agent session afterwards.
+Follow the `verify-desktop-work` recipe: the guide `Pointframe.Mcp/Guides/verify-desktop-work.md` in this
+repository, which the MCP server serves as `pointframe://guides/verify-desktop-work` and the Pointframe plugin
+ships as a skill. It has the one-step CLI install, the spec scenario, `pointframe verify run`, the role names, and
+what approval needs. In short: install the CLI (see [Install](#install) for the manual steps), run
+`pointframe verify init --app <path to the built exe>` (add `--hooks none` if you do not want a Stop hook), add a
+desktop scenario from the [spec reference](verify-spec.md), then run `pointframe verify run`. Run
+`pointframe verify setup` afterwards for interactive desktop tools.
 
 Real apps:
 
 - Keep a build gate. If the solution has packaging projects (MSIX/`.wapproj`) that fail, build the app's own project instead of removing the gate; a spec without gates is never fresh.
+- `role` is the UI Automation control type name in one word: `Button`, `Edit` (a text box), `Text`, `ListItem`, `MenuItem`, `CheckBox`. Matching ignores case but not spaces, so `list item` never matches. The full table is in the `verify-desktop-work` guide.
 - Prefer `invoke` steps over `pressKeys`; keyboard steps need the app in the foreground.
-- Menu items may appear in UI Automation only after their parent menu is open. Invoke the parent first, for example `{ "invoke": { "role": "menu item", "name": "Options" } }`, then locate and invoke the submenu item by role and name.
+- Menu items may appear in UI Automation only after their parent menu is open. Invoke the parent first, for example `{ "invoke": { "role": "MenuItem", "name": "Options" } }`, then locate and invoke the submenu item by role and name.
 - Electron apps need `--force-renderer-accessibility` in the app arguments, before the app path.
 - `textEquals` on a label, TextBlock, or heading compares its displayed text.
 - `desktop_invoke` clicks elements like a user, so modal dialogs are fine. Check dialog text with role `Text` and its name, then dismiss it by invoking its button (for example, role `Button`, name `OK`). Never change app code to work around the verifier.
@@ -459,7 +443,7 @@ then restart the agent:
   a text message; the message carries that text.
 - **`ElementNotFound` for an `automationId`.** WinForms menu items and many
   controls expose no AutomationId. When an observed element has that name, the
-  message suggests `{ "role": "menu item", "name": "Options" }` instead.
+  message suggests `{ "role": "MenuItem", "name": "Options" }` instead.
 - **A build gate fails because `Pointframe.Cli.exe` is locked.** Use the installed
   `pointframe` in the hook, not a build output that your own gates rebuild.
 

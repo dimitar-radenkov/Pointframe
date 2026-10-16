@@ -716,19 +716,19 @@ internal sealed class DesktopScenarioRunner
 
     private static string AppendMenuHint(string? message, ElementLocator? locator, IReadOnlyList<JsonElement> observed)
     {
-        var isMenuItem = string.Equals(locator?.Role, "menu item", StringComparison.OrdinalIgnoreCase);
+        var isMenuItem = string.Equals(locator?.Role, "MenuItem", StringComparison.OrdinalIgnoreCase);
         var menuBarIsPresent = observed.Any(element =>
             element.TryGetProperty("role", out var role)
             && role.ValueKind == JsonValueKind.String
             && role.GetString() is { } value
-            && (string.Equals(value, "menu bar", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(value, "menubar", StringComparison.OrdinalIgnoreCase)));
+            && (string.Equals(value, "MenuBar", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "menu bar", StringComparison.OrdinalIgnoreCase)));
         if (!isMenuItem && !menuBarIsPresent)
         {
             return message ?? string.Empty;
         }
 
-        return $"{message} Menu items appear in UI Automation only after their parent menu is open: invoke the parent first, e.g. {{ \"invoke\": {{ \"role\": \"menu item\", \"name\": \"Options\" }} }}, then the item.";
+        return $"{message} Menu items appear in UI Automation only after their parent menu is open: invoke the parent first, e.g. {{ \"invoke\": {{ \"role\": \"MenuItem\", \"name\": \"Options\" }} }}, then the item.";
     }
 
     private static string StripPrefix(string automationId)

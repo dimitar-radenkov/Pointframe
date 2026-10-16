@@ -1015,7 +1015,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
     }
 
     internal const string McpNotFoundMessage =
-        "No Pointframe MCP server found. Pass --mcp <path>, set POINTFRAME_MCP_EXECUTABLE, or run 'Pointframe.Cli.exe mcp install --client vscode'.";
+        "No Pointframe MCP server found. Pass --mcp <path>, set POINTFRAME_MCP_EXECUTABLE, or run 'pointframe verify setup' (build the app first; it installs the checksum-verified server).";
 
     private const string DesktopBusyMessage = "Another Pointframe verification run is using the desktop. Wait for it to finish.";
 

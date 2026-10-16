@@ -1730,3 +1730,21 @@ The installer and the MCP package downloaded `ffmpeg-master-latest-win64-gpl.zip
 ### Takeaway
 
 Ship external binaries from a release branch, not from a moving development build, and check at release time that the shipped binary accepts the exact arguments the app sends.
+
+## A selector role is the one-word UI Automation control type name
+
+### Problem
+
+On 2026-10-16 a cold agent's first `verify run` on the WPF sample failed because its spec used `"role": "list item"`, and the coordinator made the same guess the same day. Product hints and docs taught `"menu item"` in several places, and unit tests fed that string through a fake that accepted it.
+
+### Root cause
+
+Selectors compare `role` with `ControlType.ToString()` from FlaUI (`ListItem`, `MenuItem`) using ordinal case-insensitive equality. The spaced form is the localized control type a person reads, so it never matches, and the `ElementNotFound` result did not list valid roles.
+
+### What fixed it
+
+The canonical guide states the role vocabulary and how to learn a role from an observation or a report; docs, hint strings and tests use the control type names.
+
+### Takeaway
+
+Write selector roles as one-word control type names. When a test double accepts an input the real backend would reject, the test teaches the wrong contract; feed doubles real values.

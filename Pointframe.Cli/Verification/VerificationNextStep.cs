@@ -18,7 +18,8 @@ internal static class VerificationNextSteps
 
         return errorCode switch
         {
-            "mcp_not_found" or "mcp_version_mismatch" => new("run_command", "pointframe mcp install --client vscode", null, "Install the VS Code MCP server, then retry verification."),
+            "mcp_not_found" => new("run_command", "pointframe verify setup", null, "Install the Pointframe MCP server with `pointframe verify setup` (build the app first), then retry verification."),
+            "mcp_version_mismatch" => new("run_command", "pointframe mcp install --client vscode", null, "Update the Pointframe MCP server, then retry verification."),
             "inspection_incomplete" => new("run_command", "pointframe verify run", null, "UI Automation could not inspect the whole app, so the failure is not a verdict on the app. Run verification again, or give the failing step a more specific selector (an automationId)."),
             "desktop_busy" => new("wait", null, 30, "Wait for the desktop session to become available, then retry."),
             "app_not_found" => appBuildCommand is not null ? new("run_command", appBuildCommand, null, "Build the app, then retry verification.") : new("run_command", null, null, "Build the app first."),
