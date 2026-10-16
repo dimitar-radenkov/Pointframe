@@ -13,6 +13,7 @@ param(
     [string]$Rescore,
     [int]$TimeoutMinutes = 30,
     [switch]$AllowCodexFullAccess,
+    [switch]$AllowClaudeBypassPermissions,
     [string]$AgentModel,
     [string]$AgentEffort,
     [string]$PromptPrefix,
@@ -37,7 +38,7 @@ param(
 # Needs the interactive desktop (it holds %TEMP%\pointframe-desktop.lock), git, gh (latest release lookup), and the
 # claude CLI, signed in. Exit code: 0 pass-clean, 1 pass-workaround/fail/timeout, 2 invalid.
 #
-# Codex full access is refused unless explicitly approved for the package with -AllowCodexFullAccess.
+# Codex full access and Claude bypass permissions are refused unless explicitly approved for the package.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -659,24 +660,20 @@ function New-AgentInvocation {
         [string]$PluginDirectory,
         [string]$RunModel,
         [string]$RunEffort,
-        [string]$McpConfigPath
+        [string]$McpConfigPath,
+        [switch]$AllowBypassPermissions
     )
     $SkillList = @($SkillList | Where-Object { $_ })
     if ($AgentName -eq 'claude') {
         $model = if ($RunModel) { $RunModel } else { $script:CliModel }
         $allowedTools = 'Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,TodoWrite'
         if ($SkillList.Count -gt 0 -or $PluginDirectory) { $allowedTools += ',Skill' }
-        $skillWriteRules = @(
-            'Write(.claude/skills/**)', 'Edit(.claude/skills/**)',
-            'Write(.agents/skills/**)', 'Edit(.agents/skills/**)',
-            'Write(.cursor/skills/**)', 'Edit(.cursor/skills/**)'
-        )
-        $settings = @{ permissions = @{ allow = $skillWriteRules } } | ConvertTo-Json -Depth 4 -Compress
         $arguments = @('-p', '--model', $model, '--setting-sources', 'project', '--max-budget-usd', '3',
             '--strict-mcp-config', '--mcp-config', $McpConfigPath, '--allowedTools', $allowedTools,
-            '--settings', $settings, '--output-format', 'stream-json', '--verbose')
+            '--output-format', 'stream-json', '--verbose')
+        if ($AllowBypassPermissions) { $arguments += @('--permission-mode', 'bypassPermissions') }
         if ($PluginDirectory) { $arguments += @('--plugin-dir', (Resolve-Path -LiteralPath $PluginDirectory -ErrorAction Stop).Path) }
-        return [pscustomobject]@{ Arguments = $arguments; Model = $model; Effort = $null; AllowedTools = $allowedTools; Settings = $settings; SkillWriteRules = $skillWriteRules }
+        return [pscustomobject]@{ Arguments = $arguments; Model = $model; Effort = $null; AllowedTools = $allowedTools; PermissionMode = $(if ($AllowBypassPermissions) { 'bypassPermissions' } else { $null }) }
     }
     $model = if ($RunModel) { $RunModel } else { 'gpt-6-luna' }
     $effort = if ($RunEffort) { $RunEffort } else { 'medium' }
@@ -1149,16 +1146,13 @@ function Test-Self {
 
     $noSkillsInvocation = New-AgentInvocation 'claude' $null '' 'test-model' '' 'empty-mcp.json'
     if ($noSkillsInvocation.AllowedTools -match '(^|,)Skill(,|$)') { throw 'Claude without skills or a plugin must not receive the Skill tool.' }
-    $settingsIndex = [array]::IndexOf($noSkillsInvocation.Arguments, '--settings')
-    if ($settingsIndex -lt 0 -or $settingsIndex + 1 -ge $noSkillsInvocation.Arguments.Count) { throw 'Claude invocation must provide scoped project skill write settings.' }
-    $settingsJson = $noSkillsInvocation.Arguments[$settingsIndex + 1] | ConvertFrom-Json
-    $expectedSkillWriteRules = @(
-        'Write(.claude/skills/**)', 'Edit(.claude/skills/**)',
-        'Write(.agents/skills/**)', 'Edit(.agents/skills/**)',
-        'Write(.cursor/skills/**)', 'Edit(.cursor/skills/**)'
-    )
-    if (@($settingsJson.permissions.allow) -join "`n" -ne ($expectedSkillWriteRules -join "`n")) { throw 'Claude settings must allow Write and Edit only under the three project skill folders.' }
-    if (@($noSkillsInvocation.SkillWriteRules) -join "`n" -ne ($expectedSkillWriteRules -join "`n")) { throw 'Claude invocation skill write rule metadata is incorrect.' }
+    if ($noSkillsInvocation.Arguments -contains '--settings' -or $noSkillsInvocation.Arguments -contains '--permission-mode') { throw 'Claude invocation must not add settings or bypass permissions by default.' }
+    $bypassInvocation = New-AgentInvocation 'claude' $null '' 'test-model' '' 'empty-mcp.json' -AllowBypassPermissions
+    $permissionModeIndex = [array]::IndexOf($bypassInvocation.Arguments, '--permission-mode')
+    if ($permissionModeIndex -lt 0 -or $permissionModeIndex + 1 -ge $bypassInvocation.Arguments.Count -or $bypassInvocation.Arguments[$permissionModeIndex + 1] -ne 'bypassPermissions') { throw 'Claude bypass permission mode must be present only when explicitly enabled.' }
+    foreach ($requiredArgument in @('--strict-mcp-config', '--mcp-config', 'empty-mcp.json', '--max-budget-usd', '3', '--model', 'test-model')) {
+        if ($bypassInvocation.Arguments -notcontains $requiredArgument) { throw "Claude bypass invocation lost required isolation argument '$requiredArgument'." }
+    }
     $withSkillInvocation = New-AgentInvocation 'claude' @('skill-dir') '' 'test-model' '' 'empty-mcp.json'
     if ($withSkillInvocation.AllowedTools -notmatch '(^|,)Skill(,|$)') { throw 'Claude with skills must receive the Skill tool.' }
     $pluginRoot = Join-Path ([IO.Path]::GetTempPath()) ("pf-trial-plugin-" + [guid]::NewGuid().ToString('N'))
@@ -1551,6 +1545,8 @@ diff --git a/notes.md b/notes.md
 
     $refusal = Invoke-Captured 'pwsh' @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'trial.ps1'), '-App', 'wpf-sample', '-Agent', 'codex') $script:RepositoryRoot (Get-ChildEnvironment (Get-ParentEnvironment) $null) 30
     if ($refusal.ExitCode -ne 2 -or $refusal.Error -notmatch 'owner approves full access per package') { throw 'Codex trial refusal without -AllowCodexFullAccess is wrong.' }
+    $claudeSkillRefusal = Invoke-Captured 'pwsh' @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'trial.ps1'), '-App', 'wpf-sample', '-Agent', 'claude', '-Task', 'create-skill', '-Configuration', 'installed', '-Skills', 'skill-dir') $script:RepositoryRoot (Get-ChildEnvironment (Get-ParentEnvironment) $null) 30
+    if ($claudeSkillRefusal.ExitCode -ne 2 -or $claudeSkillRefusal.Error -notmatch '\.claude/skills.*require.*AllowClaudeBypassPermissions.*owner approves.*per package') { throw 'Claude create-skill refusal without -AllowClaudeBypassPermissions is wrong.' }
     $effortRefusal = Invoke-Captured 'pwsh' @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'trial.ps1'), '-App', 'wpf-sample', '-Agent', 'claude', '-AgentEffort', 'high') $script:RepositoryRoot (Get-ChildEnvironment (Get-ParentEnvironment) $null) 30
     if ($effortRefusal.ExitCode -ne 2 -or $effortRefusal.Error -notmatch 'AgentEffort is not supported for Claude') { throw 'Claude -AgentEffort refusal did not happen before trial setup.' }
 
@@ -1870,7 +1866,7 @@ function Invoke-DefectCheck {
 }
 
 function Invoke-Trial {
-    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory, [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string]$PromptPrefix = '', [string[]]$SkillList = @(), [string]$PluginDirectory = '', [string]$Configuration = 'cold', [switch]$FreshMachine)
+    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory, [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string]$PromptPrefix = '', [string[]]$SkillList = @(), [string]$PluginDirectory = '', [string]$Configuration = 'cold', [switch]$FreshMachine, [switch]$AllowClaudeBypassPermissions)
     $SkillList = @($SkillList | Where-Object { $_ })
     if ($null -eq $PluginDirectory) { $PluginDirectory = '' }
     $config = Get-Content -LiteralPath $script:AppsPath -Raw | ConvertFrom-Json
@@ -1963,9 +1959,9 @@ function Invoke-Trial {
             [IO.File]::WriteAllText($emptyMcp, '{"mcpServers":{}}')
             $exe = (Get-Command claude -ErrorAction Stop | Select-Object -First 1).Source
             if ($RunEffort) { throw '-AgentEffort is not supported for Claude trials.' }
-            $invocation = New-AgentInvocation $AgentName $SkillList $PluginDirectory $RunModel $RunEffort $emptyMcp
+            $invocation = New-AgentInvocation $AgentName $SkillList $PluginDirectory $RunModel $RunEffort $emptyMcp -AllowBypassPermissions:$AllowClaudeBypassPermissions
             $agentArguments = $invocation.Arguments
-            $record.isolation.claude = [ordered]@{ model = $invocation.Model; settingSources = 'project'; strictMcpConfig = $true; mcpConfig = $emptyMcp; maxBudgetUsd = 3; skillWritePermission = [ordered]@{ mechanism = '--settings inline permissions.allow'; rules = @($invocation.SkillWriteRules) } }
+            $record.isolation.claude = [ordered]@{ model = $invocation.Model; permissionMode = $(if ($invocation.PermissionMode) { $invocation.PermissionMode } else { 'default' }); settingSources = 'project'; strictMcpConfig = $true; mcpConfig = $emptyMcp; maxBudgetUsd = 3 }
             if ($PluginDirectory) { $record.isolation.claude.pluginDirectory = (Resolve-Path -LiteralPath $PluginDirectory -ErrorAction Stop).Path }
         }
         else {
@@ -2154,6 +2150,11 @@ if ($Task -eq 'create-skill' -and $Matrix) {
     exit 2
 }
 
+if ($Task -eq 'create-skill' -and $Agent -eq 'claude' -and -not $AllowClaudeBypassPermissions) {
+    [Console]::Error.WriteLine('Claude create-skill trials write under .claude/skills and require -AllowClaudeBypassPermissions. The owner approves bypass permissions per package.')
+    exit 2
+}
+
 if ($Task -eq 'create-skill') {
     if (-not $PSBoundParameters.ContainsKey('Configuration')) { [Console]::Error.WriteLine('-Configuration installed|cold is required for create-skill.'); exit 2 }
     if ($Configuration -eq 'installed') {
@@ -2215,6 +2216,7 @@ $worst = 0
 for ($index = 1; $index -le $Repeat; $index++) {
     $runDirectory = if ($Repeat -gt 1) { Join-Path $directory ("{0:D2}" -f $index) } else { $directory }
     $trialParameters = New-TrialInvocationParameters -AppName $App -AgentName $Agent -PinnedVersion $Version -OutputDirectory $runDirectory -RunModel $AgentModel -RunEffort $AgentEffort -TaskName $Task -RunPromptPrefix $PromptPrefix -SkillList $Skills -PluginDirectory $ClaudePluginDir -Configuration $Configuration -FreshMachine:$FreshMachine
+    $trialParameters.AllowClaudeBypassPermissions = $AllowClaudeBypassPermissions
     $outcome = Invoke-Trial @trialParameters
     $result = Read-JsonFile (Join-Path $runDirectory 'result.json')
     $metrics = Get-Fact $result 'metrics' $null
