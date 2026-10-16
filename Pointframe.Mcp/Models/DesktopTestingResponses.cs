@@ -54,7 +54,7 @@ public sealed record DesktopTestingCheckResponse(
 public sealed record DesktopNextStep(
     string Kind,
     string Tool,
-    IReadOnlyDictionary<string, object?> Arguments,
+    IReadOnlyDictionary<string, object?>? Arguments,
     int? RetryAfterSeconds = null,
     string? Reason = null);
 

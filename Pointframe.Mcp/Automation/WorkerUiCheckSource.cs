@@ -62,13 +62,11 @@ public sealed class WorkerUiCheckSource(
             return evaluation;
         }
 
-        // Existence and absence are decided by a witnessed match: a found element proves exists and
-        // refutes absent. Every state predicate needs exactly one match, so an unseen duplicate could
-        // flip its verdict; only an already visible second match (an ambiguous target) is final.
-        var witnessed = condition is DesktopUiCheckCondition.Exists
-            or DesktopUiCheckCondition.Absent
-            or DesktopUiCheckCondition.WindowExists
-            or DesktopUiCheckCondition.WindowAbsent;
+        // DesktopUiCheckService accepts any match count for exists and absent, so a found element proves
+        // exists and refutes absent. Every other kind (state predicates and the window checks) needs exactly
+        // one match, so an unseen duplicate could flip its verdict; only an already visible second match
+        // (an ambiguous target) is final.
+        var witnessed = condition is DesktopUiCheckCondition.Exists or DesktopUiCheckCondition.Absent;
         if (evaluation.MatchCount > 0 && (witnessed || evaluation.MatchCount > 1))
         {
             return evaluation with { IsTruncated = true };

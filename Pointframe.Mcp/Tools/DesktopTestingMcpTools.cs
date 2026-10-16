@@ -466,9 +466,12 @@ internal sealed class DesktopTestingMcpTools(
             condition,
             TimeSpan.FromSeconds(spec.TimeoutSeconds),
             cancellationToken).ConfigureAwait(false);
+        // Every session produces a report, and a criterion-bound check or a session that declared criteria is
+        // meant to end in a passing one; those need a fresh session to recover.
+        var reportBearing = criterionId is not null || reports.Get(sessionId)?.Criteria.Count > 0;
         var response = expectFailure
-            ? DesktopTestingResponseMapper.MapNegativeControl(evaluation, sessionId, spec)
-            : DesktopTestingResponseMapper.MapCheck(evaluation, sessionId, spec);
+            ? DesktopTestingResponseMapper.MapNegativeControl(evaluation, sessionId, spec, criterionId, reportBearing)
+            : DesktopTestingResponseMapper.MapCheck(evaluation, sessionId, spec, false, criterionId, reportBearing);
 
         // The report is the record of what the server itself observed. Only checks the server evaluated
         // land here; requests rejected before evaluation say nothing about the application.
