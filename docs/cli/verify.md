@@ -36,8 +36,17 @@ pointframe verify init --app bin/Release/net10.0-windows/MyApp.exe --hooks none
   { "check": { "kind": "textEquals", "automationId": "statusLabel", "expected": "Not saved", "expectFailure": true, "timeoutSeconds": 1 } } ] }
 ```
 
-4. Run `pointframe verify run`. It runs the gates, launches the app, drives the scenario in the real UI, and installs the MCP server itself on its first run. Read `status` in the printed JSON: `pass` is exit 0, `fail` is exit 1, a wrong spec is exit 2. Run `verify run` last: any later edit, even to docs or skill files, makes the pass stale (`verify status` then shows `fresh: false`), so write everything first and run again if you change anything.
-5. Evidence: `artifacts/pointframe-verify/verdict.json` is the verdict, and each scenario's signed bundle (`report.json`, `evidence/` screenshots, `index.html`) is under `artifacts/pointframe-verify/runs/<time>/`. Say the work is done only when `status` is `pass`.
+4. Make it a `verify-<app>` skill (pstack-compatible), so the next agent can repeat the proof. Use ONE folder, the project skill folder the repo already has: `.claude/skills/` for Claude Code, `.agents/skills/` for Codex and other agents. The folder and the `name:` in the SKILL.md frontmatter are both `verify-<app>`:
+
+```
+<skills>/verify-<app>/SKILL.md              (frontmatter: name: verify-<app>, description: Prove that a change to <app> works ... Use after changing <app>.)
+<skills>/verify-<app>/features/README.md    (lists the feature files)
+<skills>/verify-<app>/features/<feature>.md (one per feature)
+```
+
+   Each feature file has exactly four H2 sections, with these exact headings: `Sub-features`, `How to get to it (user POV)`, `Driving it with Pointframe`, `Gotchas`. `Driving it with Pointframe` and `Gotchas` name the scenario id (for example `save-text`) and say to run `pointframe verify run --scenario <id>`; they never copy steps from the spec. Write all skill files in one shell command, before step 5.
+5. Run `pointframe verify run`. It runs the gates, launches the app, drives the scenario in the real UI, and installs the MCP server itself on its first run. Read `status` in the printed JSON: `pass` is exit 0, `fail` is exit 1, a wrong spec is exit 2. Run `verify run` last: any later edit, even to docs or skill files, makes the pass stale (`verify status` then shows `fresh: false`), so write everything first and run again if you change anything.
+6. Evidence: `artifacts/pointframe-verify/verdict.json` is the verdict, and each scenario's signed bundle (`report.json`, `evidence/` screenshots, `index.html`) is under `artifacts/pointframe-verify/runs/<time>/`. Say the work is done only when `status` is `pass`.
 
 The spec fields are in [verify-spec.md](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify-spec.md); the example above covers the common case.
 <!-- short-path:end -->
