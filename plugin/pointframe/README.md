@@ -66,7 +66,7 @@ Without the Claude plugin, install the skill into any agent that supports the `s
 npx skills add https://github.com/dimitar-radenkov/Pointframe/tree/master/plugin/pointframe --skill create-desktop-verification-skill
 ```
 
-TODO(coordinator): run this command in a clean folder and mark it "verified on <date>" here. It has not been run yet.
+Checked on 2026-10-16 with `skills` 1.7.2: it installs the skill and its `references/recipe.md` into the agent's project skill folder (`.agents/skills` for Codex). Add `--agent <name>` to pick the agent and `--yes` to skip prompts.
 
 ## Uninstall and clear the cache
 
