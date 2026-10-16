@@ -10,7 +10,9 @@ pwsh scripts/kb.ps1 check          # refresh the generated parts, then check eve
 pwsh scripts/kb.ps1 check -NoFix   # check only, write nothing (what CI runs)
 ```
 
-`check` rewrites three generated things, so never edit them by hand: the table of contents and the Feature index in `docs/knowledge-base/knowledge-base.md`, and the Codex copies of the `kb-*` skills in `.agents/skills/`. Edit skills only under `.claude/skills/kb-*`.
+`check` rewrites generated things, so never edit them by hand: the table of contents, Feature index, and decision index in `docs/knowledge-base/knowledge-base.md`, the Codex copies of the `kb-*` skills in `.agents/skills/`, and `docs/knowledge-base/kb-baseline.json` (it only lowers entries). Edit skills only under `.claude/skills/kb-*`.
+
+`pwsh scripts/kb.ps1 selftest` runs the tool against synthetic fixtures in `scripts/kb-fixtures/` (`scripts/verify.ps1` runs it first), and `pwsh scripts/kb.ps1 stats` prints bytes and estimated tokens per file, section, and task-suite task.
 
 Fix every `ERROR`, then run `check` again until it prints `0 errors`:
 
@@ -19,17 +21,24 @@ Fix every `ERROR`, then run `check` again until it prints `0 errors`:
 | path does not exist | The file moved or was renamed: update the path, or the section if behavior moved with it |
 | path is gitignored | `*.md` is ignored by default: add a `!` negation to `.gitignore`, or drop the path |
 | lesson heading not found | Copy the exact `## ` heading from `lessons.md` |
-| broken link | Point it at an existing heading; another file's section is `other.md#anchor` or `../knowledge-base.md#anchor` |
-| tracked file matches no File map row | Add or widen a File map row in the main file |
+| broken link | Point it at an existing heading; another file's section is `other.md#anchor` or `../other.md#anchor` |
+| tracked file matches no File map row | Add or widen a row in `docs/knowledge-base/file-map.md`, linking the narrowest section that owns the file |
 | File map pattern matches no tracked file | The folder or file is gone: narrow or remove the pattern. A brand-new file must be tracked (`git add -N`) before it counts |
 | File map row is redundant | Delete it, or give it a link the wider row does not have |
+| links the container heading | A `##` heading that only groups `###` sections cannot be read; link one of its `###` sections |
+| section is N bytes, over 8192 / the core file is over 12288 | Split or compress it. Only violations already in `docs/knowledge-base/kb-baseline.json` are allowed, at their listed size or less; a section that grew past its entry fails until it shrinks again |
+| baseline lists a section that is within the limit | Run `check` without `-NoFix`; it drops the entry |
+| rule ID / unknown role / rule-section trigger / malformed rule marker | Fix the `<!-- rule:W-NN roles=... -->` or `<!-- rule-section roles=... -->` line in `workflow.md`: unique `W-NN`, roles from `all`, `coordinator`, `executor`, `reviewer`, and a trigger directly before a `##` heading |
+| lesson has N subsections / unknown subsection | A lesson needs exactly one `### Problem`, `### What fixed it`, and `### Takeaway`; `### Root cause` is optional |
+| lesson is not linked from any section / only from sections nothing reaches | Add a `- Lesson:` line to the owning section, and make sure a File map row, a feature row, or a task reaches that section |
+| task suite: task has recall below 1 | A routing change hid an expected section or lesson from `kb read`: fix the File map rows or links, or update `docs/knowledge-base/kb-tasks.json` when the expectation is really obsolete |
 | telemetry event belongs to no feature | Add the event to the `F-NN` row that emits it |
 | smoke test belongs to no feature | Add the test to the `F-NN` row it covers |
 | feature ID is also used | IDs are never reused: give the new feature the next free `F-NN` |
 | more than one **Files.** line | A block landed under the wrong heading: move it |
 | is out of date | Run `check` without `-NoFix` |
 
-A `note` is not an error. "lesson not linked from any section" means `kb.ps1 read` will never show that lesson: link it from the owning section with `/kb-write`, unless its feature is still on an unmerged branch.
+A `note` is not an error, and a `warn` (a prose line over 600 characters, an area file over 40 KB, changelog phrasing in an area file) does not fail the check but should be fixed when you touch that text.
 
 ## The project hook
 

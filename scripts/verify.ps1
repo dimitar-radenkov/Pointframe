@@ -10,7 +10,7 @@ so an agent can act on them. Run it before saying a task is done; a task is done
 
 Gates, in order: preflight (no running process locks the Release output), build (Release, like CI),
 format (dotnet format --verify-no-changes on the main project), tests (unit lane, Category!=Integration),
-kb (scripts/kb.ps1 check -NoFix), workflows (scripts/check-workflow-scripts.ps1: its self-test, then every pwsh
+kb (scripts/kb.ps1 selftest, then check -NoFix), workflows (scripts/check-workflow-scripts.ps1: its self-test, then every pwsh
 run: block in .github/workflows must parse), discovery (scripts/check-agent-discovery.ps1: its self-test, then the offline
 checks of the agent page, llms.txt, directory drafts, install commands, and release asset names), scripts (scripts/test-scripts.ps1: every coordinator script's offline self-test, and no ignored fixture). Tests are skipped when the build fails; every other gate always
 runs, so one pass reports every problem.
@@ -193,6 +193,13 @@ function Test-Tests
 
 function Test-Kb
 {
+    $self = Invoke-Logged 'kb-selftest' 'pwsh' @('-NoProfile', '-NonInteractive', '-File', (Join-Path $RepoRoot 'scripts' 'kb.ps1'), 'selftest')
+    if ($self.ExitCode -ne 0)
+    {
+        $failed = @($self.Lines | Where-Object { $_ -match '^FAIL' } | ForEach-Object { $_.Trim() })
+        $details = @('Fix: pwsh scripts/kb.ps1 selftest runs kb.ps1 against the synthetic knowledge bases in scripts/kb-fixtures; the log has each failed case.') + $failed
+        return New-Gate 'kb' 'fail' "Knowledge base self-test failed ($($failed.Count) case(s))." $details $self.Log
+    }
     $run = Invoke-Logged 'kb' 'pwsh' @('-NoProfile', '-NonInteractive', '-File', (Join-Path $RepoRoot 'scripts' 'kb.ps1'), 'check', '-NoFix')
     if ($run.ExitCode -eq 0)
     {

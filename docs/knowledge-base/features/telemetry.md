@@ -64,7 +64,7 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 | `TelemetryHeartbeatService` | Hosted service emitting `app_heartbeat` with uptime and session data |
 | `ActivationTelemetryService` | First-run and activation funnel events |
 
-**Configuration.** `Pointframe/appsettings.json` ships `ApplicationInsights:ConnectionString` empty, so source builds and CI send nothing. The CD workflow injects the real string and verifies the injection before publishing. A developer can set a personal string in `appsettings.Local.json`, which is loaded after `appsettings.json`. See [CI, CD, and versioning](../knowledge-base.md#ci-cd-and-versioning).
+**Configuration.** `Pointframe/appsettings.json` ships `ApplicationInsights:ConnectionString` empty, so source builds and CI send nothing. The CD workflow injects the real string and verifies the injection before publishing. A developer can set a personal string in `appsettings.Local.json`, which is loaded after `appsettings.json`. See [CI, CD, and versioning](../tooling.md#ci-cd-and-versioning).
 
 **Invariants.**
 

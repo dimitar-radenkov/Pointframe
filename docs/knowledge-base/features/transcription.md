@@ -63,4 +63,4 @@ Decided 2026-09-06.
 
 **Alternatives rejected.** Installer-only, the original plan: unchecked by default, so most installs would never have had the model, with no in-app remedy. In-app only: setup cannot pre-provision a machine, which matters for managed deployments.
 
-**Files.** `Pointframe/Services/Transcription/TranscriptModelResolver.cs`, `Pointframe/Services/Transcription/TranscriptModelService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `installer/Pointframe.iss`. See [Recording transcription](#recording-transcription) and [Runtime paths and external binaries](../knowledge-base.md#runtime-paths-and-external-binaries).
+**Files.** `Pointframe/Services/Transcription/TranscriptModelResolver.cs`, `Pointframe/Services/Transcription/TranscriptModelService.cs`, `Pointframe/ViewModels/SettingsViewModel.cs`, `installer/Pointframe.iss`. See [Recording transcription](#recording-transcription) and [Runtime paths and external binaries](../references.md#runtime-paths-and-external-binaries).

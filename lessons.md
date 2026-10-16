@@ -393,6 +393,10 @@ The capture path hid the overlay and then immediately blocked the UI thread with
 - hide the overlay window
 - explicitly flush the dispatcher through render priority
 
+### Takeaway
+
+When a WPF flow captures the desktop immediately after hiding a temporary overlay, changing `Visibility` is not enough on its own. Yield the dispatcher through a render pass before taking the screenshot, or the supposedly hidden overlay may still be captured.
+
 ## Recording border windows must be positioned in physical screen pixels on mixed-DPI multi-monitor setups
 
 ### Problem
@@ -544,6 +548,20 @@ If a recording feature temporarily controls a shared OS audio endpoint, treat th
 
 The recording HUD timer can show a longer wall-clock session than the saved MP4 duration, for example a roughly 4-5 second recording producing a file closer to 2 seconds.
 
+### Root cause
+
+`ScreenRecordingService` uses a bounded frame queue with `DropWrite` behavior and a four-buffer pool. When `_writer.WriteFrame()` falls behind, the capture loop logs `Frame skipped — buffer pool exhausted` and discards frames. The current ffmpeg rawvideo pipeline timestamps video effectively by delivered frame count, so dropped frames remove time from the output instead of preserving wall-clock duration.
+
+### What fixed it
+
+- inspect the recording log for `Frame skipped — buffer pool exhausted`
+- compare dropped frame count against the missing output duration at the configured fps
+- add per-session recording diagnostics: first-write delay plus attempted, written, and dropped frame counts with derived output and dropped durations
+
+### Takeaway
+
+In the current screen-recording architecture, backpressure is not just a visual quality problem. Every dropped frame also shortens the saved recording. If wall-clock duration must be preserved, the pipeline needs explicit timestamps or a non-dropping strategy, not just a higher buffer count.
+
 ## Backpressure tests must synchronize on frame events, not elapsed sleeps
 
 ### Problem
@@ -587,20 +605,6 @@ That means a rename can leave publish, signing, and installer compilation pointi
 
 When a desktop app is renamed, treat workflow scripts, installer assets, and publish-output paths as one delivery surface. A successful build does not prove CD is safe if any hardcoded path still points at the legacy tree.
 
-### Root cause
-
-`ScreenRecordingService` uses a bounded frame queue with `DropWrite` behavior and a four-buffer pool. When `_writer.WriteFrame()` falls behind, the capture loop logs `Frame skipped — buffer pool exhausted` and discards frames. The current ffmpeg rawvideo pipeline timestamps video effectively by delivered frame count, so dropped frames remove time from the output instead of preserving wall-clock duration.
-
-### What fixed or clarified it
-
-- inspect the recording log for `Frame skipped — buffer pool exhausted`
-- compare dropped frame count against the missing output duration at the configured fps
-- add per-session recording diagnostics: first-write delay plus attempted, written, and dropped frame counts with derived output and dropped durations
-
-### Takeaway
-
-In the current screen-recording architecture, backpressure is not just a visual quality problem. Every dropped frame also shortens the saved recording. If wall-clock duration must be preserved, the pipeline needs explicit timestamps or a non-dropping strategy, not just a higher buffer count.
-
 ## Recording-time controls and annotation surfaces are most reliable when hosted inside the main overlay window
 
 ### Problem
@@ -620,10 +624,6 @@ The recording flow kept splitting one logical overlay experience across multiple
 ### Takeaway
 
 For recording-mode UI on mixed-DPI multi-monitor setups, prefer one owning overlay window with embedded surfaces over multiple top-level helper windows. Removing window boundaries is often more robust than trying to perfect each helper window's placement separately.
-
-### Takeaway
-
-When a WPF flow captures the desktop immediately after hiding a temporary overlay, changing `Visibility` is not enough on its own. Yield the dispatcher through a render pass before taking the screenshot, or the supposedly hidden overlay may still be captured.
 
 ## Replacement windows should not be shown until the full-screen overlay has fully closed
 

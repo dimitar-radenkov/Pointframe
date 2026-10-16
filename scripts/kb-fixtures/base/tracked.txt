@@ -1,0 +1,11 @@
+docs/knowledge-base/features/alpha.md
+docs/knowledge-base/file-map.md
+docs/knowledge-base/kb-tasks.json
+docs/knowledge-base/knowledge-base.md
+docs/knowledge-base/workflow.md
+lessons.md
+plan/status.json
+src/alpha/Main.cs
+src/beta/Other.cs
+src/beta/Thing.cs
+tracked.txt

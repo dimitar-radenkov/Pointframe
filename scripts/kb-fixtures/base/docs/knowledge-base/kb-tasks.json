@@ -1,0 +1,22 @@
+{
+  "tasks": [
+    {
+      "id": "beta-file",
+      "target": "src/beta/Thing.cs",
+      "sections": [
+        "knowledge-base.md#child-b"
+      ],
+      "lessons": [
+        "Lesson beta one"
+      ]
+    },
+    {
+      "id": "alpha-feature",
+      "target": "F-90",
+      "sections": [
+        "features/alpha.md#alpha-section"
+      ],
+      "lessons": ["Lesson alpha one"]
+    }
+  ]
+}
