@@ -38,6 +38,18 @@ public interface IWindowsUiAutomationActionProvider
     bool TrySetValue(string elementRef, string value);
 }
 
+public interface IWindowsUiAutomationHitTestBackend
+{
+    bool ElementOwnsPoint(string elementRef, int x, int y);
+}
+
+public interface IWindowsUiAutomationHitTestProvider
+{
+    // True only when the element UI Automation finds under the physical-pixel point is the referenced element
+    // or one of its descendants. Anything uncertain is false.
+    bool ElementOwnsPoint(string elementRef, int x, int y);
+}
+
 public interface IWindowsUiAutomationWarmupProvider
 {
     void Warmup();
@@ -51,9 +63,13 @@ public interface IWindowsUiAutomationWarmupBackend
 public sealed class WindowsUiAutomationProvider :
     IDesktopUiObservationProvider,
     IWindowsUiAutomationActionProvider,
+    IWindowsUiAutomationHitTestProvider,
     IWindowsUiAutomationWarmupProvider
 {
     private readonly IWindowsUiAutomationBackend? _backend;
+
+    public bool ElementOwnsPoint(string elementRef, int x, int y) =>
+        _backend is IWindowsUiAutomationHitTestBackend hitTest && hitTest.ElementOwnsPoint(elementRef, x, y);
 
     public WindowsUiAutomationProvider(IWindowsUiAutomationBackend? backend = null)
     {

@@ -172,6 +172,20 @@ public sealed class DesktopPressKeysTests : IDisposable
     }
 
     [Fact]
+    public async Task ChordIsRejectedForAnUnapprovedGlobalHotkeyAndSentForAnApprovedOne()
+    {
+        var rejected = await CreateTools().PressKeysAsync(
+            SessionId, Guid.NewGuid().ToString(), globalHotkeyId: "other", chord: "Shift+A");
+        var approved = await CreateTools().PressKeysAsync(
+            SessionId, Guid.NewGuid().ToString(), globalHotkeyId: "type-letter", chord: "Shift+A");
+
+        Assert.Equal("GlobalHotkeyNotApproved", rejected.Error?.Code);
+        Assert.Equal("Complete", approved.Dispatch);
+        Assert.Equal([(ushort)0x10, (ushort)0x41], _request!.VirtualKeys);
+        Assert.Equal(DesktopInputMethod.GlobalHotkey, _request.Method);
+    }
+
+    [Fact]
     public async Task UnapprovedGlobalHotkeyIsRejected()
     {
         var response = await CreateTools().PressKeysAsync(

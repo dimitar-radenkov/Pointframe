@@ -26,6 +26,7 @@ public static class DesktopTestingLimits
     public const int MaxTextLength = 4096;
     public const int InvokeReturnMilliseconds = 2000;
     public const int WorkerWarmupMilliseconds = 5000;
+    public const int HitTestMilliseconds = 3000;
 
     public static void ValidateSchemaVersion(int schemaVersion)
     {

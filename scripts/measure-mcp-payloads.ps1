@@ -496,7 +496,32 @@ function Invoke-SelfTest
     Assert-Equal 10 $withDiscovery[-1].savedPercent 'tools/list saving percent'
     Assert-Equal 5 @(Get-ComparisonLines $comparisonRows).Count 'comparison table has a header, a rule and the rows'
 
-    'SelfTest passed (token estimator, UTF-8 counting, PNG sizes, duplicate detection, error rows, coverage rules, comparison math).'
+    $firstRows = @(
+        (New-ProblemRow 'desktop_start_test_session' 'first-check-compact' 'measured' ''),
+        (New-ProblemRow 'desktop_observe_app' 'first-check-compact' 'measured' ''),
+        (New-ProblemRow 'desktop_invoke' 'first-check-compact' 'unexpected-error' 'boom'),
+        (New-ProblemRow 'desktop_start_test_session' 'first-check-selector' 'measured' ''),
+        (New-ProblemRow 'desktop_invoke' 'first-check-selector' 'measured' ''),
+        (New-ProblemRow 'desktop_end_test_session' 'first-check-cleanup' 'measured' ''))
+    $firstRows[0].wireBytes = 1000
+    $firstRows[1].wireBytes = 3000
+    $firstRows[2].wireBytes = 1000
+    $firstRows[3].wireBytes = 1000
+    $firstRows[4].wireBytes = 1000
+    $firstRows[5].wireBytes = 9999
+    $firstCheck = @(Get-FirstCheckComparison $firstRows)
+    Assert-Equal 3 $firstCheck.Count 'first-check rows (compact, selector, saving)'
+    Assert-Equal 3 $firstCheck[0].calls 'compact first-check calls'
+    Assert-Equal 5000 $firstCheck[0].wireBytes 'compact first-check bytes'
+    Assert-Equal 1250 $firstCheck[0].estimatedTokens 'compact first-check tokens'
+    Assert-Equal 2 $firstCheck[1].calls 'selector first-check calls exclude cleanup'
+    Assert-Equal 2000 $firstCheck[1].wireBytes 'selector first-check bytes'
+    Assert-Equal 1 $firstCheck[0].unexpectedErrors 'unexpected errors are counted'
+    Assert-Equal 60 $firstCheck[2].savedPercent 'first-check saving percent'
+    Assert-Equal 0 @(Get-FirstCheckComparison @()).Count 'no first-check rows, no comparison'
+    Assert-Equal 5 @(Get-FirstCheckLines $firstCheck).Count 'first-check table has a header, a rule and the rows'
+
+    'SelfTest passed (token estimator, UTF-8 counting, PNG sizes, duplicate detection, error rows, coverage rules, comparison math, first-check math).'
 }
 
 # ---------------------------------------------------------------------------------------------------
@@ -724,7 +749,7 @@ function Find-FixtureWindow
 
 function Start-FixtureSession
 {
-    param([string[]]$Criteria)
+    param([string[]]$Criteria, [string]$Variant = '')
 
     $arguments = @{ actionId = New-ActionId; profileId = $script:FixtureProfileId }
     if ($Criteria)
@@ -732,7 +757,7 @@ function Start-FixtureSession
         $arguments['criteria'] = $Criteria
     }
 
-    $response = Invoke-Tool 'desktop_start_test_session' $arguments
+    $response = Invoke-Tool 'desktop_start_test_session' $arguments $Variant
     if ($null -eq $response -or -not $response['sessionRef'])
     {
         throw "The fixture session did not start: $($response | ConvertTo-Json -Compress -Depth 10)"
@@ -935,6 +960,9 @@ function Invoke-DesktopWorkflow
 
     $null = Invoke-Tool 'desktop_get_action_result' @{ actionId = $clickActionId }
 
+    # The session has recorded steps and checks by now; export them as a portable scenario before the report.
+    $null = Invoke-Tool 'desktop_export_scenario' @{ sessionId = $sessionId; scenarioId = 'payload-export' }
+
     $report = Invoke-Tool 'desktop_get_test_report' @{ sessionId = $sessionId }
     $null = Invoke-Tool 'desktop_end_test_session' @{ sessionId = $sessionId; actionId = New-ActionId }
 
@@ -1113,6 +1141,160 @@ function Invoke-CompactPass
     $onDisk = Get-Content -LiteralPath (Join-Path $full['sessionDirectory'] 'report.json') -Raw | ConvertFrom-Json
     Add-CompactCheck 'desktop_get_test_report' 'compact+compact-text' (@($onDisk.proof.entries).Count -gt 0 -and $null -eq $compact['proof']) 'the full proof must stay on disk while the compact response omits it'
     $null = Invoke-Tool 'desktop_end_test_session' @{ sessionId = $session; actionId = New-ActionId } 'compact-text'
+
+    Invoke-FirstCheckScenarios
+}
+
+# Opens a fresh fixture session. Only the compact path needs the fixture window (for observation bounds), and
+# that list_windows call is a counted call of that scenario; the selector path needs no discovery at all.
+function Start-FirstCheckSession
+{
+    param([string]$Variant, [switch]$NeedWindow)
+
+    $session = Start-FixtureSession @('The fixture text box holds the entered value.') $Variant
+    Start-Sleep -Seconds 2
+    $window = $null
+    if ($NeedWindow)
+    {
+        $window = Find-FixtureWindow (Invoke-Tool 'list_windows' @{} $Variant)
+        if ($null -eq $window)
+        {
+            throw 'list_windows did not report the fixture window for the first-check scenario.'
+        }
+    }
+
+    return @{ Session = $session; Window = $window }
+}
+
+# Requires one call of a first-check workflow to have worked: an action must dispatch, a check must pass, and
+# anything else must have produced a response. A failure is recorded against the scenario's own variant, so a
+# broken workflow fails the run instead of entering the savings comparison.
+function Assert-FirstCheckStep
+{
+    param([string]$Tool, [string]$Variant, $Response, [string]$Kind)
+
+    $ok = $null -ne $Response
+    if ($ok -and $Kind -eq 'action')
+    {
+        $ok = $Response['dispatch'] -eq 'Complete' -and -not $Response['error']
+    }
+    elseif ($ok -and $Kind -eq 'check')
+    {
+        $ok = $Response['verification'] -eq 'passed'
+    }
+
+    Add-CompactCheck $Tool $Variant $ok "the first-check call $Tool did not succeed: $($Response | ConvertTo-Json -Compress -Depth 5)"
+}
+
+# The first passing desktop check, two ways, in the same run. The compact path is what an agent did before
+# selectors: observe, focus, type at coordinates, observe, invoke by ref, check (plus the list_windows call that
+# finds the observation bounds). The selector path is start, enter by selector, invoke by selector, check: no
+# observation and no discovery. Every call a workflow makes carries its scenario's variant, so calls, bytes, token
+# estimate and unexpected errors are totalled per scenario, and every action and the final check must succeed.
+# Ending the session is cleanup and has a variant of its own.
+function Invoke-FirstCheckScenarios
+{
+    $text = 'first-check'
+
+    $compact = Start-FirstCheckSession 'first-check-compact' -NeedWindow
+    $bounds = $compact.Window['boundsPixels']
+    $region = @(@{ x = $bounds['x']; y = $bounds['y']; width = $bounds['width']; height = $bounds['height'] })
+    $observeArguments = @{ sessionId = $compact.Session; captureBoundsPixels = $region; includeUiAutomation = $true; includeImages = $false; detail = 'compact' }
+    $observation = Invoke-Tool 'desktop_observe_app' $observeArguments 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_observe_app' 'first-check-compact' $observation 'other'
+    $textBox = Get-CompactImagePoint $observation 'textBox'
+    $windowRef = if ($textBox.Element['windowRef']) { $textBox.Element['windowRef'] } else { $observation['windowRef'] }
+    $focus = Invoke-Tool 'desktop_focus_window' @{ sessionId = $compact.Session; actionId = New-ActionId; windowRef = $windowRef } 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_focus_window' 'first-check-compact' $focus 'action'
+    $observation = Invoke-Tool 'desktop_observe_app' $observeArguments 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_observe_app' 'first-check-compact' $observation 'other'
+    $textBox = Get-CompactImagePoint $observation 'textBox'
+    $entered = Invoke-Tool 'desktop_enter_text' @{
+        sessionId = $compact.Session; actionId = New-ActionId
+        observationRef = $observation['observationRef']; imageRef = $observation['images'][0]['imageRef']
+        x = $textBox.x; y = $textBox.y; text = $text
+    } 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_enter_text' 'first-check-compact' $entered 'action'
+    $observation = Invoke-Tool 'desktop_observe_app' $observeArguments 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_observe_app' 'first-check-compact' $observation 'other'
+    $save = Get-CompactImagePoint $observation 'saveButton'
+    $invoked = Invoke-Tool 'desktop_invoke' @{ sessionId = $compact.Session; actionId = New-ActionId; elementRef = $save.Element['elementRef'] } 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_invoke' 'first-check-compact' $invoked 'action'
+    $check = Invoke-Tool 'desktop_check_ui' @{ sessionId = $compact.Session; kind = 'textEquals'; automationId = 'textBox'; expected = $text; timeoutSeconds = 5; criterionId = 'C1' } 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_check_ui' 'first-check-compact' $check 'check'
+    $null = Invoke-Tool 'desktop_end_test_session' @{ sessionId = $compact.Session; actionId = New-ActionId } 'first-check-cleanup'
+
+    $selector = Start-FirstCheckSession 'first-check-selector'
+    $entered = Invoke-Tool 'desktop_enter_text' @{ sessionId = $selector.Session; actionId = New-ActionId; text = $text; semanticValue = $true; automationId = 'textBox' } 'first-check-selector'
+    Assert-FirstCheckStep 'desktop_enter_text' 'first-check-selector' $entered 'action'
+    $invoked = Invoke-Tool 'desktop_invoke' @{ sessionId = $selector.Session; actionId = New-ActionId; automationId = 'saveButton' } 'first-check-selector'
+    Assert-FirstCheckStep 'desktop_invoke' 'first-check-selector' $invoked 'action'
+    $check = Invoke-Tool 'desktop_check_ui' @{ sessionId = $selector.Session; kind = 'textEquals'; automationId = 'textBox'; expected = $text; timeoutSeconds = 5; criterionId = 'C1' } 'first-check-selector'
+    Assert-FirstCheckStep 'desktop_check_ui' 'first-check-selector' $check 'check'
+    $null = Invoke-Tool 'desktop_end_test_session' @{ sessionId = $selector.Session; actionId = New-ActionId } 'first-check-cleanup'
+}
+
+# Totals one first-passing-check scenario from its rows: how many calls it took, the bytes on the wire, the
+# pinned token estimate, and the calls that failed unexpectedly. The cleanup call has its own variant and is
+# not part of the count.
+function Get-FirstCheckSummary
+{
+    param($Rows, [string]$Variant)
+
+    $scenario = @($Rows | Where-Object { $_.variant -eq $Variant })
+    $bytes = 0
+    foreach ($row in $scenario)
+    {
+        $bytes += [int]$row.wireBytes
+    }
+
+    return [pscustomobject]@{
+        scenario = $Variant
+        calls = $scenario.Count
+        wireBytes = $bytes
+        estimatedTokens = Get-EstimatedTokens $bytes
+        unexpectedErrors = @($scenario | Where-Object { $_.outcome -eq 'unexpected-error' }).Count
+    }
+}
+
+function Get-FirstCheckComparison
+{
+    param($Rows)
+
+    $compact = Get-FirstCheckSummary $Rows 'first-check-compact'
+    $selector = Get-FirstCheckSummary $Rows 'first-check-selector'
+    if ($compact.calls -eq 0 -or $selector.calls -eq 0)
+    {
+        return @()
+    }
+
+    return @(
+        $compact,
+        $selector,
+        [pscustomobject]@{
+            scenario = 'saved by selector path'
+            calls = $compact.calls - $selector.calls
+            wireBytes = $compact.wireBytes - $selector.wireBytes
+            estimatedTokens = $compact.estimatedTokens - $selector.estimatedTokens
+            unexpectedErrors = $selector.unexpectedErrors
+            savedPercent = [math]::Round(100.0 * ($compact.estimatedTokens - $selector.estimatedTokens) / [math]::Max(1, $compact.estimatedTokens), 1)
+        })
+}
+
+function Get-FirstCheckLines
+{
+    param($Comparison)
+
+    $lines = [Collections.Generic.List[string]]::new()
+    $lines.Add('| Scenario | Calls | Bytes | Estimated tokens | Unexpected errors |')
+    $lines.Add('| --- | --- | --- | --- | --- |')
+    foreach ($row in $Comparison)
+    {
+        $saved = if ($row.PSObject.Properties['savedPercent']) { " ($($row.savedPercent)%)" } else { '' }
+        $lines.Add("| $($row.scenario) | $($row.calls) | $($row.wireBytes) | $($row.estimatedTokens)$saved | $($row.unexpectedErrors) |")
+    }
+
+    return $lines
 }
 
 function Get-AverageOf
@@ -1246,7 +1428,7 @@ function New-MarkdownTable
 
 function Write-Summary
 {
-    param([string]$Path, $Discovery, $Rows, [string[]]$Advertised, [string[]]$CleanupProblems, $Comparison = @())
+    param([string]$Path, $Discovery, $Rows, [string[]]$Advertised, [string[]]$CleanupProblems, $Comparison = @(), $FirstCheck = @())
 
     $measured = @($Rows | Where-Object { $_.outcome -eq 'measured' })
     $topText = @($measured | Sort-Object estimatedTextTokens -Descending | Select-Object -First 10)
@@ -1296,6 +1478,18 @@ function Write-Summary
         $md.Add('## Default versus compact modes (same run, bytes on the wire)')
         $md.Add('')
         foreach ($line in (Get-ComparisonLines $Comparison))
+        {
+            $md.Add($line)
+        }
+
+        $md.Add('')
+    }
+
+    if (@($FirstCheck).Count -gt 0)
+    {
+        $md.Add('## First passing check (same run)')
+        $md.Add('')
+        foreach ($line in (Get-FirstCheckLines $FirstCheck))
         {
             $md.Add($line)
         }
@@ -1505,6 +1699,7 @@ if ($null -ne $discovery -and $compactRows.Count -gt 0)
     $comparison = @(Get-ComparisonRows @($script:Rows) $compactRows $discovery $baselineDiscovery)
 }
 
+$firstCheck = @(Get-FirstCheckComparison $compactRows)
 foreach ($problem in $cleanupProblems)
 {
     $problems.Add("Cleanup: $problem")
@@ -1519,12 +1714,19 @@ $document = [ordered]@{
     calls = @($script:Rows)
     compactCalls = @($compactRows)
     comparison = @($comparison)
+    firstPassingCheck = @($firstCheck)
     problems = $problems.ToArray()
 }
 $document | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $outputDirectory 'payloads.json') -Encoding utf8
 if ($null -ne $discovery)
 {
-    Write-Summary (Join-Path $outputDirectory 'summary.md') $discovery $script:Rows $advertised $cleanupProblems.ToArray() $comparison
+    Write-Summary (Join-Path $outputDirectory 'summary.md') $discovery $script:Rows $advertised $cleanupProblems.ToArray() $comparison $firstCheck
+}
+
+if ($firstCheck.Count -gt 0)
+{
+    Write-Output 'First passing check (calls, bytes on the wire, estimated tokens, same run):'
+    Get-FirstCheckLines $firstCheck | ForEach-Object { Write-Output $_ }
 }
 
 if ($comparison.Count -gt 0)

@@ -130,7 +130,7 @@ public sealed class WorkerUiCheckSource(
         _ => throw new ArgumentOutOfRangeException(nameof(condition), condition, "The condition carries no locator."),
     };
 
-    private static IEnumerable<DesktopUiElementSnapshot> Locate(
+    internal static IEnumerable<DesktopUiElementSnapshot> Locate(
         IReadOnlyList<DesktopUiElementSnapshot> elements,
         DesktopLocator locator)
     {

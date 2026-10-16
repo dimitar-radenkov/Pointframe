@@ -28,6 +28,7 @@ public static class InvalidRequestCodes
         "InvalidClickCount",
         "ElementRequired",
         "TargetRequired",
+        "InvalidRequest",
     };
 
     public static bool Contains(string? code) => code is not null && _codes.Contains(code);

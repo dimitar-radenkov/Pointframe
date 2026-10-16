@@ -441,9 +441,12 @@ public sealed class VerificationTests : IDisposable
         Assert.Equal("passed", Assert.Single(result.Criteria).Verdict);
         Assert.Empty(result.Problems);
         client.Verify("desktop_enter_text", args => args.GetProperty("semanticValue").GetBoolean()
-            && args.GetProperty("elementRef").GetString() == "el-textBox"
+            && args.GetProperty("automationId").GetString() == "textBox"
+            && !args.TryGetProperty("observationRef", out _)
             && args.GetProperty("text").GetString() == "hello");
-        client.Verify("desktop_invoke", args => args.GetProperty("elementRef").GetString() == "el-saveButton");
+        client.Verify("desktop_invoke", args => args.GetProperty("automationId").GetString() == "saveButton"
+            && !args.TryGetProperty("elementRef", out _));
+        Assert.Equal(1, client.Count("desktop_observe_app"));
         client.Verify("desktop_check_ui", args => args.GetProperty("criterionId").GetString() == "C1");
         client.Verify("desktop_end_test_session", _ => true);
     }
@@ -666,8 +669,10 @@ public sealed class VerificationTests : IDisposable
 
         Assert.Equal("AmbiguousLocator", result.Steps[0].Code);
         Assert.Contains("automationId 'second'", result.Steps[0].Message, StringComparison.Ordinal);
-        Assert.Contains("\"x\":5", result.Steps[0].Message, StringComparison.Ordinal);
-        Assert.Equal(0, client.Count("desktop_invoke"));
+        Assert.DoesNotContain("windowRef", result.Steps[0].Message, StringComparison.Ordinal);
+        Assert.Contains("Narrow the locator", result.Steps[0].Message, StringComparison.Ordinal);
+        // Ambiguity is final: one refused attempt, not a retry until the timeout.
+        Assert.Equal(1, client.Count("desktop_invoke"));
     }
 
     [Fact]
@@ -683,7 +688,8 @@ public sealed class VerificationTests : IDisposable
         var result = await Runner(client.Mock.Object).RunAsync(InvokeScenario("""{ "role": "Button", "name": "Save" }"""), CancellationToken.None);
 
         Assert.Equal(VerificationStatus.Pass, result.Steps[0].Status);
-        client.Verify("desktop_invoke", args => args.GetProperty("elementRef").GetString() == "el-1");
+        client.Verify("desktop_invoke", args => args.GetProperty("role").GetString() == "Button"
+            && args.GetProperty("name").GetString() == "Save");
     }
 
     [Fact]

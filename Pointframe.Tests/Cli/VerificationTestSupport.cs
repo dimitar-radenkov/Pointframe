@@ -273,8 +273,9 @@ internal sealed class FakeMcp
     {
         "list_displays" => new { displays = new[] { new { boundsPixels = new { x = 0, y = 0, width = 1920, height = 1080 } } } },
         "desktop_start_test_session" => StartResponse,
-        "desktop_observe_app" => Observe(Count("desktop_observe_app")),
-        "desktop_invoke" => InvokeResponse,
+        "desktop_observe_app" => Observe(++_observationNumber),
+        "desktop_invoke" => ResolveSelector(arguments, InvokeResponse),
+        "desktop_enter_text" => ResolveSelector(arguments, Done),
         "desktop_focus_window" => FocusResponse,
         "desktop_check_ui" => CheckResponse(arguments),
         "desktop_get_test_report" => JsonSerializer.SerializeToElement(
@@ -287,6 +288,58 @@ internal sealed class FakeMcp
         "desktop_restart_app" => RestartResponse(Count("desktop_restart_app")),
         _ => Done,
     };
+
+    private int _observationNumber;
+
+    // Stands in for the server resolving a selector against a fresh inspection: the inspection draws from the
+    // same observation sequence as desktop_observe_app, and a refusal never reaches the action response.
+    private object ResolveSelector(JsonElement arguments, object actionResponse)
+    {
+        string? Text(string property) =>
+            arguments.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+        if (Text("elementRef") is not null)
+        {
+            return actionResponse;
+        }
+
+        var inspection = JsonSerializer.SerializeToElement(Observe(++_observationNumber));
+        if (inspection.ValueKind != JsonValueKind.Object)
+        {
+            return Error("ProviderUnavailable", "UI Automation was not available.");
+        }
+
+        if (inspection.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object)
+        {
+            return Error(error.GetProperty("code").GetString()!, "UI Automation was not available.");
+        }
+
+        var automationId = Text("automationId");
+        var role = Text("role");
+        var name = Text("name");
+        var elements = inspection.TryGetProperty("elements", out var list) && list.ValueKind == JsonValueKind.Array ? list.EnumerateArray().ToArray() : [];
+        string? Field(JsonElement element, string property) =>
+            element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        var matches = elements.Where(element => automationId is not null
+            ? Field(element, "automationId") == automationId
+            : string.Equals(Field(element, "role"), role, StringComparison.OrdinalIgnoreCase) && Field(element, "name") == name).ToArray();
+        if (matches.Length > 1)
+        {
+            var candidates = string.Join("; ", matches.Select(element =>
+                $"role '{Field(element, "role")}', name '{Field(element, "name")}', automationId '{Field(element, "automationId")}', window '{Field(element, "windowRef")}'"));
+            return Error("AmbiguousTarget", $"{matches.Length} elements matched the selector, and an input needs exactly one. No input was sent. Candidates: {candidates}. Add windowRef, or use a more specific automationId or role and name.");
+        }
+
+        if (inspection.TryGetProperty("isTruncated", out var truncated) && truncated.ValueKind == JsonValueKind.True)
+        {
+            return Error("InspectionIncomplete", "The UI Automation walk stopped early.");
+        }
+
+        return matches.Length == 0 ? Error("ElementNotFound", "No element matched the selector.") : actionResponse;
+    }
+
+    private static object Error(string code, string message) =>
+        new { operationStatus = "Completed", dispatch = "NotStarted", verification = "Failed", observationStatus = "NotRequested", error = new { code, message } };
 
     private object Observe(int observationNumber) => ObserveResponse?.Invoke(observationNumber) ?? new
     {
