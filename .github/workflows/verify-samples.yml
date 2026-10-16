@@ -33,6 +33,19 @@ env:
   POINTFRAME_CLI_VERSION: "6.7.34"
 
 jobs:
+  build-wpf-sample:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      - name: Build normal WPF sample
+        run: dotnet build samples/verify/wpf/WpfSample.csproj
+      - name: Build deliberately broken WPF sample
+        run: dotnet build samples/verify/wpf/WpfSample.csproj -p:SampleBroken=true
+
   verify-sample:
     runs-on: windows-latest
     strategy:

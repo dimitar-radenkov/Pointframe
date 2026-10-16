@@ -1,0 +1,8 @@
+<Window x:Class="WpfSample.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Contacts" Height="300" Width="420">
+  <StackPanel Margin="16">
+    <TextBox x:Name="NameInput" AutomationProperties.AutomationId="nameBox" Margin="0,0,0,8" />
+    <Button Content="Add" AutomationProperties.AutomationId="addButton" Click="Add_Click" Margin="0,0,0,8" />
+    <ListBox x:Name="ContactList" AutomationProperties.AutomationId="contactList" Height="140" />
+    <TextBlock x:Name="Status" AutomationProperties.AutomationId="statusText" Margin="0,8,0,0" />
+  </StackPanel>
+</Window>

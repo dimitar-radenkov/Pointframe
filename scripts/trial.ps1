@@ -1,12 +1,19 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('pkhex', 'dngrep', 'electron')][string]$App,
-    [ValidateSet('claude')][string]$Agent = 'claude',
+    [ValidateSet('pkhex', 'dngrep', 'electron', 'wpf-sample')][string]$App,
+    [ValidateSet('claude', 'codex')][string]$Agent = 'claude',
     [string]$Version,
     [string]$OutDirectory,
     [switch]$Matrix,
     [switch]$SelfTest,
-    [int]$TimeoutMinutes = 30
+    [string]$MetricsPath,
+    [int]$TimeoutMinutes = 30,
+    [switch]$AllowCodexFullAccess,
+    [string]$AgentModel,
+    [string]$AgentEffort,
+    [int]$MaxToolCalls,
+    [long]$MaxInputTokens,
+    [int]$MaxMinutes
 )
 
 # One reproducible fresh-agent trial: a coding agent adds a small UI change to an OSS Windows app and must set up
@@ -15,13 +22,13 @@ param(
 #
 #   pwsh scripts/trial.ps1 -App pkhex [-Version 6.7.85] [-OutDirectory <dir>]
 #   pwsh scripts/trial.ps1 -Matrix        # all 3 apps, sequentially
-#   pwsh scripts/trial.ps1 -SelfTest      # offline: env allowlist, scoring fixtures, process selection
+#   pwsh scripts/trial.ps1 -App wpf-sample -Agent codex -AllowCodexFullAccess [-AgentModel gpt-6-luna] [-AgentEffort medium]
+#   pwsh scripts/trial.ps1 -SelfTest      # offline: env allowlist, scoring fixtures, process selection, metrics
 #
 # Needs the interactive desktop (it holds %TEMP%\pointframe-desktop.lock), git, gh (latest release lookup), and the
 # claude CLI, signed in. Exit code: 0 pass-clean, 1 pass-workaround/fail/timeout, 2 invalid.
 #
-# Only Claude Code runs here. A Codex trial agent needs full access to start GUI apps, which the owner approves per
-# run (2026-10-07), so Codex trials are launched by hand and are not part of this script.
+# Codex full access is refused unless explicitly approved for the package with -AllowCodexFullAccess.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -44,6 +51,8 @@ $script:AllowedEnvironment = @(
     'CommonProgramFiles(x86)', 'CommonProgramW6432', 'ALLUSERSPROFILE', 'PUBLIC', 'USERNAME', 'USERDOMAIN', 'COMPUTERNAME',
     'OS', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'NUMBER_OF_PROCESSORS', 'PSModulePath',
     'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'OPENAI_API_KEY',
+    # Codex CLI uses these for endpoint selection and login; Codex session/workspace variables remain excluded.
+    'CODEX_HOME', 'OPENAI_BASE_URL',
     'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy', 'SSL_CERT_FILE', 'NODE_EXTRA_CA_CERTS',
     'DOTNET_ROOT', 'DOTNET_ROOT(x86)', 'DOTNET_CLI_HOME', 'DOTNET_NOLOGO', 'DOTNET_CLI_TELEMETRY_OPTOUT',
     'NUGET_PACKAGES', 'NUGET_HTTP_CACHE_PATH'
@@ -424,24 +433,69 @@ function Get-DefectResult {
 }
 
 function Get-TranscriptMetrics {
-    param([string]$Path)
-    $metrics = [ordered]@{ turns = $null; commands = $null; inputTokens = $null; cachedInputTokens = $null; outputTokens = $null; costUsd = $null }
+    param([string]$Path, [string]$Agent = 'claude')
+    $metrics = [ordered]@{ turns = $null; toolCalls = $null; commands = $null; inputTokens = $null; cacheCreationInputTokens = $null; cachedInputTokens = $null; totalInputTokens = $null; outputTokens = $null; costUsd = $null }
     if (-not (Test-Path -LiteralPath $Path)) { return $metrics }
-    try {
-        foreach ($line in [IO.File]::ReadLines($Path)) {
-            if ($line -notmatch '"type"\s*:\s*"result"') { continue }
+    foreach ($line in [IO.File]::ReadLines($Path)) {
+        try {
             $resultEvent = $line | ConvertFrom-Json
-            if ((Get-Fact $resultEvent 'type' '') -ne 'result') { continue }
-            $metrics.turns = Get-Fact $resultEvent 'num_turns' $null
-            $metrics.costUsd = Get-Fact $resultEvent 'total_cost_usd' $null
-            $usage = Get-Fact $resultEvent 'usage' $null
-            $metrics.inputTokens = Get-Fact $usage 'input_tokens' $null
-            $metrics.cachedInputTokens = Get-Fact $usage 'cache_read_input_tokens' $null
-            $metrics.outputTokens = Get-Fact $usage 'output_tokens' $null
+            if ($Agent -eq 'codex') {
+                $type = Get-Fact $resultEvent 'type' ''
+                if ($type -eq 'item.completed') {
+                    $item = Get-Fact $resultEvent 'item' $null
+                    if ((Get-Fact $item 'type' '') -in 'command_execution', 'mcp_tool_call') { if ($null -eq $metrics.toolCalls) { $metrics.toolCalls = 0 }; $metrics.toolCalls++ }
+                }
+                if ($type -eq 'turn.completed') {
+                    $usage = Get-Fact $resultEvent 'usage' $null
+                    foreach ($name in 'inputTokens', 'cachedInputTokens', 'outputTokens') { if ($null -eq $metrics[$name]) { $metrics[$name] = 0 } }
+                    if ($null -eq $metrics.turns) { $metrics.turns = 0 }
+                    $metrics.inputTokens += [long](Get-Fact $usage 'input_tokens' 0)
+                    $metrics.cachedInputTokens += [long](Get-Fact $usage 'cached_input_tokens' 0)
+                    # Codex input_tokens already includes cached input (agent-run.ps1 Get-TokenUsage uses it directly).
+                    $metrics.totalInputTokens = $metrics.inputTokens
+                    $metrics.outputTokens += [long](Get-Fact $usage 'output_tokens' 0)
+                    $metrics.turns++
+                }
+                continue
+            }
+            $type = Get-Fact $resultEvent 'type' ''
+            if ($type -eq 'assistant') {
+                foreach ($block in @(Get-Fact (Get-Fact $resultEvent 'message' $null) 'content' @())) {
+                    if ((Get-Fact $block 'type' '') -eq 'tool_use') { if ($null -eq $metrics.toolCalls) { $metrics.toolCalls = 0 }; $metrics.toolCalls++ }
+                }
+            }
+            if ($type -eq 'result') {
+                $metrics.turns = Get-Fact $resultEvent 'num_turns' $null
+                $metrics.costUsd = Get-Fact $resultEvent 'total_cost_usd' $null
+                $usage = Get-Fact $resultEvent 'usage' $null
+                $metrics.inputTokens = Get-Fact $usage 'input_tokens' $null
+                $metrics.cacheCreationInputTokens = Get-Fact $usage 'cache_creation_input_tokens' $null
+                $metrics.cachedInputTokens = Get-Fact $usage 'cache_read_input_tokens' $null
+                $metrics.outputTokens = Get-Fact $usage 'output_tokens' $null
+                if ($null -ne $metrics.inputTokens -and $null -ne $metrics.cacheCreationInputTokens -and $null -ne $metrics.cachedInputTokens) {
+                    $metrics.totalInputTokens = [long]$metrics.inputTokens + [long]$metrics.cacheCreationInputTokens + [long]$metrics.cachedInputTokens
+                }
+            }
         }
+        catch { $metrics['note'] = "transcript line could not be parsed: $($_.Exception.Message)" }
     }
-    catch { $metrics['note'] = "transcript could not be fully parsed: $($_.Exception.Message)" }
     return $metrics
+}
+
+function Get-LimitEvaluation {
+    param($Metrics, [int]$ToolLimit, [long]$InputLimit, [int]$MinuteLimit)
+    $failed = [System.Collections.Generic.List[string]]::new()
+    $notMeasured = [System.Collections.Generic.List[string]]::new()
+    foreach ($check in @(
+        @{ Name = 'toolCalls'; Limit = $ToolLimit; Value = (Get-Fact $Metrics 'toolCalls' $null) },
+        @{ Name = 'totalInputTokens'; Limit = $InputLimit; Value = (Get-Fact $Metrics 'totalInputTokens' $null) },
+        @{ Name = 'minutes'; Limit = $MinuteLimit; Value = (Get-Fact $Metrics 'minutes' $null) }
+    )) {
+        if ($check.Limit -le 0) { continue }
+        if ($null -eq $check.Value) { $notMeasured.Add($check.Name); continue }
+        if ($check.Value -gt $check.Limit) { $failed.Add($check.Name) }
+    }
+    return [ordered]@{ withinLimits = if ($notMeasured.Count -gt 0) { $null } else { $failed.Count -eq 0 }; failed = @($failed); notMeasured = @($notMeasured) }
 }
 
 function Get-TrustKey {
@@ -466,6 +520,9 @@ function Test-Self {
         }
         if (-not (Get-TextHit $entry.change @($entry.changeMarkers))) { throw "apps.json $name change prompt does not contain its change markers." }
     }
+    $localApp = Get-Fact $apps.apps 'wpf-sample'
+    if ((Get-Fact $localApp 'localPath' '') -ne 'samples/verify/wpf') { throw 'wpf-sample localPath is incorrect.' }
+    if (@($localApp.excludePaths) -notcontains 'reference') { throw 'wpf-sample must exclude reference/.' }
     if (@($apps.workaroundPatterns).Count -eq 0) { throw 'apps.json lists no workaroundPatterns.' }
 
     # Environment allowlist builder strips forbidden variables and Pointframe PATH entries.
@@ -564,13 +621,38 @@ diff --git a/notes.md b/notes.md
     New-Item -ItemType Directory -Path $scratch -Force | Out-Null
     try {
         $claudeLog = Join-Path $scratch 'claude.jsonl'
-        [IO.File]::WriteAllText($claudeLog, '{"type":"system"}' + "`n" + '{"type":"result","num_turns":52,"total_cost_usd":1.5,"usage":{"input_tokens":10,"cache_read_input_tokens":7,"output_tokens":3}}' + "`n")
+        [IO.File]::WriteAllText($claudeLog, '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tool-1","name":"Read"}]}}' + "`n" + '{"type":"result","num_turns":52,"total_cost_usd":1.5,"usage":{"input_tokens":10,"cache_creation_input_tokens":11,"cache_read_input_tokens":7,"output_tokens":3}}' + "`n")
         $metrics = Get-TranscriptMetrics $claudeLog
-        if ($metrics.turns -ne 52 -or $metrics.costUsd -ne 1.5 -or $metrics.outputTokens -ne 3) { throw 'Claude transcript metrics are wrong.' }
+        if ($metrics.turns -ne 52 -or $metrics.costUsd -ne 1.5 -or $metrics.outputTokens -ne 3 -or $metrics.toolCalls -ne 1 -or $metrics.cacheCreationInputTokens -ne 11 -or $metrics.totalInputTokens -ne 28) { throw 'Claude transcript metrics are wrong.' }
+        $missingLimits = Get-LimitEvaluation ([ordered]@{ toolCalls = 1; totalInputTokens = $null; minutes = $null }) 2 100 10
+        if ($null -ne $missingLimits.withinLimits -or @($missingLimits.notMeasured) -notcontains 'totalInputTokens' -or @($missingLimits.notMeasured) -notcontains 'minutes') { throw 'An unmeasured requested limit must be listed and make withinLimits null.' }
+        $codexLog = Join-Path $scratch 'codex.jsonl'
+        [IO.File]::WriteAllText($codexLog, '{"type":"item.completed","item":{"type":"command_execution"}}' + "`n" + '{"type":"item.completed","item":{"type":"mcp_tool_call"}}' + "`n" + '{"type":"turn.completed","usage":{"input_tokens":12,"cached_input_tokens":4,"output_tokens":6}}' + "`n" + '{"type":"turn.completed","usage":{"input_tokens":8,"cached_input_tokens":2,"output_tokens":3}}' + "`n")
+        $codexMetrics = Get-TranscriptMetrics $codexLog 'codex'
+        if ($codexMetrics.toolCalls -ne 2 -or $codexMetrics.inputTokens -ne 20 -or $codexMetrics.cachedInputTokens -ne 6 -or $codexMetrics.totalInputTokens -ne 20 -or $codexMetrics.outputTokens -ne 9 -or $codexMetrics.turns -ne 2) { throw 'Codex transcript metrics are wrong.' }
+        $codexWithNoiseLog = Join-Path $scratch 'codex-noise.jsonl'
+        [IO.File]::WriteAllText($codexWithNoiseLog, '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":2}}' + "`nnot json`n" + '{"type":"turn.completed","usage":{"input_tokens":3,"output_tokens":1}}' + "`n")
+        $codexWithNoise = Get-TranscriptMetrics $codexWithNoiseLog 'codex'
+        if ($codexWithNoise.turns -ne 2 -or $codexWithNoise.inputTokens -ne 8) { throw 'A non-JSON transcript line stopped metrics parsing.' }
+        $unparsedLog = Join-Path $scratch 'unparsed.jsonl'
+        [IO.File]::WriteAllText($unparsedLog, 'not json' + "`n")
+        $unparsedMetrics = Get-TranscriptMetrics $unparsedLog 'codex'
+        foreach ($metricName in 'turns', 'toolCalls', 'inputTokens', 'cachedInputTokens', 'outputTokens') { if ($null -ne $unparsedMetrics[$metricName]) { throw "Unparsed transcript metric '$metricName' must be null." } }
+        $codexArgs = @('exec', '--json', '--model', 'gpt-6-luna', '-c', 'model_reasoning_effort=medium', '--dangerously-bypass-approvals-and-sandbox', '-')
+        if ($codexArgs -notcontains '-' -or ($codexArgs -join ' ') -notmatch 'model_reasoning_effort=' -or $codexArgs -contains '--reasoning-effort') { throw 'Codex invocation arguments are incorrect.' }
+        $localClone = Join-Path $scratch 'local-project'
+        $localEntry = Get-Fact $apps.apps 'wpf-sample'
+        $localCloneResult = New-TrialClone $localEntry $localClone
+        if (-not $localCloneResult.Local -or (Test-Path (Join-Path $localClone 'reference')) -or (Test-Path (Join-Path $localClone 'obj')) -or (Test-Path (Join-Path $localClone 'bin'))) { throw 'Local source copy did not exclude reference/, bin/, and obj/.' }
     }
     finally { Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue }
     if ((Get-TrustKey 'C:\Some\Project') -notmatch '^[0-9A-F]{16}$' -or (Get-TrustKey 'c:\some\project\') -ne (Get-TrustKey 'C:\Some\Project')) { throw 'Trust key is not case- and slash-insensitive.' }
     if ((Get-VersionNumber '6.7.85+abc') -ne '6.7.85' -or $null -ne (Get-VersionNumber 'none')) { throw 'Version parsing is wrong.' }
+
+    $refusal = Invoke-Captured 'pwsh' @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'trial.ps1'), '-App', 'wpf-sample', '-Agent', 'codex') $script:RepositoryRoot (Get-ChildEnvironment (Get-ParentEnvironment) $null) 30
+    if ($refusal.ExitCode -ne 2 -or $refusal.Error -notmatch 'owner approves full access per package') { throw 'Codex trial refusal without -AllowCodexFullAccess is wrong.' }
+    $effortRefusal = Invoke-Captured 'pwsh' @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'trial.ps1'), '-App', 'wpf-sample', '-Agent', 'claude', '-AgentEffort', 'high') $script:RepositoryRoot (Get-ChildEnvironment (Get-ParentEnvironment) $null) 30
+    if ($effortRefusal.ExitCode -ne 2 -or $effortRefusal.Error -notmatch 'AgentEffort is not supported for Claude') { throw 'Claude -AgentEffort refusal did not happen before trial setup.' }
 
     # Scoring fixtures.
     $fixtures = @(Get-ChildItem -LiteralPath $script:FixtureDirectory -Filter '*.json' -File | Sort-Object Name)
@@ -656,6 +738,23 @@ function Copy-Tree {
 function New-TrialClone {
     # Fresh copy per run, from the %TEMP%\pf-pre cache when it holds the pinned commit, otherwise from GitHub.
     param($AppEntry, [string]$Destination)
+    $localPath = Get-Fact $AppEntry 'localPath' $null
+    if ($localPath) {
+        $sourcePath = Join-Path $script:RepositoryRoot $localPath
+        if (-not (Test-Path -LiteralPath $sourcePath -PathType Container)) { throw "Local trial source '$sourcePath' does not exist." }
+        if (Test-Path $Destination) { Remove-Item -Recurse -Force $Destination }
+        New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+        $excludes = @('bin', 'obj') + @((Get-Fact $AppEntry 'excludePaths' @()))
+        & robocopy $sourcePath $Destination /E /XD @($excludes | ForEach-Object { Join-Path $sourcePath $_ }) /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "Could not copy local trial source '$sourcePath' (robocopy exit $LASTEXITCODE)." }
+        Invoke-Git $Destination @('init', '-q') | Out-Null
+        Invoke-Git $Destination @('config', 'user.email', 'trial@example.invalid') | Out-Null
+        Invoke-Git $Destination @('config', 'user.name', 'Pointframe Trial') | Out-Null
+        Invoke-Git $Destination @('add', '-A') | Out-Null
+        Invoke-Git $Destination @('commit', '-q', '-m', 'Trial baseline') | Out-Null
+        $localCommit = (Invoke-Git $Destination @('rev-parse', 'HEAD')).Trim()
+        return [pscustomobject]@{ Source = $sourcePath; FromCache = $false; Commit = $localCommit; Local = $true }
+    }
     $cache = Join-Path ([IO.Path]::GetTempPath()) "pf-pre\$($AppEntry.cacheName)"
     $source = $AppEntry.repoUrl
     $fromCache = $false
@@ -669,7 +768,7 @@ function New-TrialClone {
     Invoke-Git $Destination @('checkout', '-q', '--detach', $AppEntry.commit) | Out-Null
     $head = (Invoke-Git $Destination @('rev-parse', 'HEAD')).Trim()
     if ($head -ne $AppEntry.commit) { throw "Trial clone is at $head, expected $($AppEntry.commit)." }
-    return [pscustomobject]@{ Source = $source; FromCache = $fromCache; Commit = $head }
+    return [pscustomobject]@{ Source = $source; FromCache = $fromCache; Commit = $head; Local = $false }
 }
 
 function Get-AgentPrompt {
@@ -857,7 +956,7 @@ function Invoke-DefectCheck {
 }
 
 function Invoke-Trial {
-    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory)
+    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory, [string]$RunModel, [string]$RunEffort)
     $config = Get-Content -LiteralPath $script:AppsPath -Raw | ConvertFrom-Json
     $appEntry = $config.apps.$AppName
     New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
@@ -915,22 +1014,33 @@ function Invoke-Trial {
         $prompt = Get-AgentPrompt $appEntry $PinnedVersion
         $record.prompt = $prompt
 
-        if ($AgentName -ne 'claude') { throw "Unsupported trial agent '$AgentName'." }
-        else {
+        if ($AgentName -eq 'claude') {
             $emptyMcp = Join-Path $OutputDirectory 'empty-mcp.json'
             [IO.File]::WriteAllText($emptyMcp, '{"mcpServers":{}}')
             $exe = (Get-Command claude -ErrorAction Stop | Select-Object -First 1).Source
-            $agentArguments = @('-p', '--model', $script:CliModel, '--setting-sources', 'project', '--max-budget-usd', '3',
+            if ($RunEffort) { throw '-AgentEffort is not supported for Claude trials.' }
+            $claudeModel = if ($RunModel) { $RunModel } else { $script:CliModel }
+            $agentArguments = @('-p', '--model', $claudeModel, '--setting-sources', 'project', '--max-budget-usd', '3',
                 '--strict-mcp-config', '--mcp-config', $emptyMcp, '--allowedTools', 'Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,TodoWrite',
                 '--output-format', 'stream-json', '--verbose')
-            $record.isolation.claude = [ordered]@{ model = $script:CliModel; settingSources = 'project'; strictMcpConfig = $true; mcpConfig = $emptyMcp; maxBudgetUsd = 3 }
+            $record.isolation.claude = [ordered]@{ model = $claudeModel; settingSources = 'project'; strictMcpConfig = $true; mcpConfig = $emptyMcp; maxBudgetUsd = 3 }
+        }
+        else {
+            $model = if ($RunModel) { $RunModel } else { 'gpt-6-luna' }
+            $effort = if ($RunEffort) { $RunEffort } else { 'medium' }
+            $exe = (Get-Command codex -ErrorAction Stop | Select-Object -First 1).Source
+            $agentArguments = @('exec', '--json', '--model', $model, '-c', "model_reasoning_effort=$effort", '--dangerously-bypass-approvals-and-sandbox', '-')
+            $record.isolation.codex = [ordered]@{ model = $model; effort = $effort; fullAccess = $true }
         }
         $record.isolation.agentExecutable = $exe
 
         $run = Invoke-AgentProcess $exe $agentArguments $trialDirectory $childEnvironment $prompt $transcriptPath @($trialDirectory, $defectDirectory) ($TimeoutMinutes * 60)
         $facts.timedOut = $run.TimedOut
         $record.agentRun = [ordered]@{ exitCode = $run.ExitCode; timedOut = $run.TimedOut; minutes = [Math]::Round($run.Seconds / 60, 2); timeoutMinutes = $TimeoutMinutes; processesRecorded = @($run.Recorded).Count }
-        $record.metrics = Get-TranscriptMetrics $transcriptPath
+        $record.metrics = Get-TranscriptMetrics $transcriptPath $AgentName
+        $record.metrics.minutes = [Math]::Round($run.Seconds / 60, 2)
+        $limits = Get-LimitEvaluation $record.metrics $MaxToolCalls $MaxInputTokens $MaxMinutes
+        if ($MaxToolCalls -gt 0 -or $MaxInputTokens -gt 0 -or $MaxMinutes -gt 0) { $record.limits = $limits }
 
         # What is still running of what this run started (PID and start time), then kill exactly that.
         $recordedAll = @(Find-TrialProcesses (Get-ProcessTable) 0 $null @($trialDirectory) $run.Recorded)
@@ -998,11 +1108,14 @@ function Invoke-Trial {
     $record | ConvertTo-Json -Depth 14 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'result.json') -Encoding utf8NoBOM
 
     $metrics = $record.metrics
-    $minutes = if ($null -ne $record.agentRun) { $record.agentRun.minutes } else { 0 }
+    $minutes = if ($null -ne $record.agentRun) { $record.agentRun.minutes } else { $null }
     $turns = if ($null -ne $metrics) { $metrics.turns } else { $null }
-    $cost = if ($null -ne $metrics -and $null -ne $metrics.costUsd) { ' cost=$' + $metrics.costUsd } elseif ($null -ne $metrics -and $null -ne $metrics.inputTokens) { " tokens=$($metrics.inputTokens)in/$($metrics.outputTokens)out" } else { '' }
+    $cost = if ($null -ne $metrics -and $null -ne $metrics.costUsd) { ' cost=$' + $metrics.costUsd } elseif ($null -ne $metrics -and $null -ne $metrics.totalInputTokens) { " tokens=$($metrics.totalInputTokens)in/$($metrics.outputTokens)out" } else { '' }
     $why = if ($scored.Reasons.Count -gt 0) { " [$($scored.Reasons -join '; ')]" } else { '' }
-    $line = "TRIAL $AppName $AgentName v$($facts.expectedVersion): $($scored.Outcome) turns=$turns min=$minutes$cost$why -> $(Join-Path $OutputDirectory 'result.json')"
+    $toolCalls = if ($null -ne $metrics) { $metrics.toolCalls } else { $null }
+    $totalInputTokens = if ($null -ne $metrics) { $metrics.totalInputTokens } else { $null }
+    $measured = if ($null -ne $toolCalls -or $null -ne $totalInputTokens) { " toolCalls=$toolCalls totalInputTokens=$totalInputTokens" } else { '' }
+    $line = "TRIAL $AppName $AgentName v$($facts.expectedVersion): $($scored.Outcome) turns=$turns min=$minutes$measured$cost$why -> $(Join-Path $OutputDirectory 'result.json')"
     Write-Host $line
     return $scored.Outcome
 }
@@ -1014,6 +1127,11 @@ function Get-ExitCodeForOutcome {
 
 # ---------------------------------------------------------------------------------------------------------------
 # Entry point
+
+if ($MetricsPath) {
+    Get-TranscriptMetrics $MetricsPath $Agent | ConvertTo-Json -Depth 5 -Compress | Write-Output
+    exit 0
+}
 
 if ($SelfTest) {
     try {
@@ -1027,6 +1145,21 @@ if ($SelfTest) {
     }
 }
 
+if ($Matrix -and $Agent -eq 'codex') {
+    [Console]::Error.WriteLine('Matrix trials are Claude-only; remove -Agent codex or run a single -App.')
+    exit 2
+}
+
+if ($Agent -eq 'codex' -and -not $AllowCodexFullAccess) {
+    [Console]::Error.WriteLine('Codex trials require full access to start and inspect GUI apps. The owner approves full access per package; pass -AllowCodexFullAccess for this package.')
+    exit 2
+}
+
+if ($Agent -eq 'claude' -and $AgentEffort) {
+    [Console]::Error.WriteLine('-AgentEffort is not supported for Claude trials.')
+    exit 2
+}
+
 $stamp = [DateTime]::Now.ToString('yyyyMMdd-HHmmss')
 $root = if ($OutDirectory) { $OutDirectory } else { Join-Path ([IO.Path]::GetTempPath()) 'pf-trials-out' }
 
@@ -1036,7 +1169,7 @@ if ($Matrix) {
     foreach ($matrixApp in 'pkhex', 'dngrep', 'electron') {
         foreach ($matrixAgent in @('claude')) {
             $directory = if ($OutDirectory) { Join-Path $OutDirectory "$matrixApp-$matrixAgent" } else { Join-Path $root "$stamp-$matrixApp-$matrixAgent" }
-            $outcome = Invoke-Trial $matrixApp $matrixAgent $Version $directory
+            $outcome = Invoke-Trial $matrixApp $matrixAgent $Version $directory $AgentModel $AgentEffort
             $summary += "$matrixApp/$matrixAgent=$outcome"
             $worst = [Math]::Max($worst, (Get-ExitCodeForOutcome $outcome))
         }
@@ -1050,5 +1183,5 @@ if (-not $App) {
     exit 2
 }
 $directory = if ($OutDirectory) { $OutDirectory } else { Join-Path $root "$stamp-$App-$Agent" }
-$outcome = Invoke-Trial $App $Agent $Version $directory
+$outcome = Invoke-Trial $App $Agent $Version $directory $AgentModel $AgentEffort
 exit (Get-ExitCodeForOutcome $outcome)
