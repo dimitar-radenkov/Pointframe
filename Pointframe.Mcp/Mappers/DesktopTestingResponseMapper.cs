@@ -237,11 +237,13 @@ public static class DesktopTestingResponseMapper
         {
             // The inconclusive check stays recorded and keeps this session's report inconclusive, so a retry in
             // the same session cannot produce passing evidence. Passing evidence needs a fresh session.
+            // Ending the session would close the app and, after a grace period, kill its process tree, so it is
+            // never the executable step; the first call only reads and persists the report.
             return new DesktopNextStep(
                 "fresh_session",
-                "desktop_end_test_session",
-                new Dictionary<string, object?> { ["sessionId"] = sessionId, ["actionId"] = Guid.NewGuid().ToString() },
-                Reason: $"{cause}, and this session's report keeps the inconclusive check, so it cannot become passing. End this session, start a new one with desktop_start_test_session using the same profileId and the same acceptance criteria, repeat the actions, and run this check again{(criterionId is null ? string.Empty : $" with criterionId '{criterionId}'")}, scoped with an automationId if possible.");
+                "desktop_get_test_report",
+                new Dictionary<string, object?> { ["sessionId"] = sessionId },
+                Reason: $"{cause}, and this session's report keeps the inconclusive check, so it cannot become passing. First read and keep this report. Then finish any diagnostics and save whatever state you need from the app, because desktop_end_test_session closes it. Only then end this session, start a new one with desktop_start_test_session using the same profileId and the same acceptance criteria, repeat the actions, and run this check again{(criterionId is null ? string.Empty : $" with criterionId '{criterionId}'")}, scoped with an automationId if possible.");
         }
 
         var arguments = new Dictionary<string, object?> { ["sessionId"] = sessionId, ["kind"] = spec.Kind };

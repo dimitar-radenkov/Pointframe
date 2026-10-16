@@ -232,12 +232,40 @@ public class DesktopUiCheckEvaluationTests
 
         var next = response.NextStep!;
         Assert.Equal("fresh_session", next.Kind);
-        Assert.Equal("desktop_end_test_session", next.Tool);
+        Assert.Equal("desktop_get_test_report", next.Tool);
         Assert.Equal("session-1", next.Arguments!["sessionId"]);
+        Assert.Contains("desktop_end_test_session", next.Reason, StringComparison.Ordinal);
+        Assert.Contains("save", next.Reason, StringComparison.Ordinal);
         Assert.Contains("desktop_start_test_session", next.Reason, StringComparison.Ordinal);
         Assert.Contains("same acceptance criteria", next.Reason, StringComparison.Ordinal);
         Assert.Contains("C1", next.Reason, StringComparison.Ordinal);
         AssertCallable(next);
+    }
+
+    [Theory]
+    [InlineData("InspectionIncomplete", false)]
+    [InlineData("InspectionIncomplete", true)]
+    [InlineData("ProviderUnavailable", false)]
+    [InlineData("ProviderUnavailable", true)]
+    [InlineData("UiaUnavailable", true)]
+    [InlineData("InspectionTimeout", true)]
+    public void NoRecoveryHintForAnInconclusiveCheckMakesADestructiveToolTheExecutableStep(string code, bool reportBearing)
+    {
+        var tools = typeof(DesktopTestingResponseMapper).Assembly.GetType("Pointframe.Mcp.DesktopTestingMcpTools")!;
+        var destructive = tools.GetMethods()
+            .Select(method => method.GetCustomAttributes(typeof(ModelContextProtocol.Server.McpServerToolAttribute), false)
+                .Cast<ModelContextProtocol.Server.McpServerToolAttribute>().SingleOrDefault())
+            .Where(attribute => attribute is { Destructive: true })
+            .Select(attribute => attribute!.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Contains("desktop_end_test_session", destructive);
+
+        foreach (var negativeControl in new[] { false, true })
+        {
+            var next = DesktopTestingResponseMapper.RecoveryFor(code, "session-1", CheckSpec, negativeControl, "C1", reportBearing)!;
+
+            Assert.True(next.Arguments is null || !destructive.Contains(next.Tool), $"{next.Tool} is destructive.");
+        }
     }
 
     [Fact]
