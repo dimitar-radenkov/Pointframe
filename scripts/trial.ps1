@@ -867,6 +867,8 @@ function Test-SkillActivation {
     $relativePaths = @($SkillSetup | ForEach-Object { ([string](Get-Fact $_ 'relativePath' '')).Replace('/', '\').Replace('\\', '\') } | Where-Object { $_ })
     $pointframeSkills = @{}
     $otherSkillNames = @{}
+    $otherSkillsActivated = @{}
+    $pointframeActivated = $false
     foreach ($skill in $SkillSetup) {
         $relative = [string](Get-Fact $skill 'relativePath' '')
         $name = Split-Path $relative -Leaf
@@ -878,7 +880,13 @@ function Test-SkillActivation {
         if ($isPointframe) { $pointframeSkills[$name] = $true } else { $otherSkillNames[$name] = $true }
     }
     $pluginPath = [string](Get-Fact (Get-Fact $Isolation 'claude' $null) 'pluginDirectory' '')
-    if ($pluginPath) { $paths += $pluginPath }
+    if ($pluginPath) {
+        $paths += $pluginPath
+        $pluginSkillsRoot = Join-Path $pluginPath 'skills'
+        if (Test-Path -LiteralPath $pluginSkillsRoot -PathType Container) {
+            foreach ($pluginSkill in Get-ChildItem -LiteralPath $pluginSkillsRoot -Directory) { $pointframeSkills[$pluginSkill.Name] = $true }
+        }
+    }
     if ($AgentName -eq 'claude') {
         foreach ($line in [IO.File]::ReadLines($Path)) {
             try {
@@ -887,17 +895,35 @@ function Test-SkillActivation {
                 foreach ($block in @(Get-Fact $event.message 'content' @())) {
                     if ((Get-Fact $block 'type' '') -eq 'tool_use' -and (Get-Fact $block 'name' '') -eq 'Skill') {
                         $skillName = [string](Get-Fact (Get-Fact $block 'input' $null) 'skill' '')
-                        if ($skillName -match '^pointframe:') { return $true }
-                        if ($pointframeSkills.ContainsKey($skillName.TrimStart('/'))) { return $true }
-                        if ($otherSkillNames.ContainsKey($skillName.TrimStart('/'))) { $script:LastOtherSkillsActivated = @($skillName.TrimStart('/')) }
-                        elseif ($otherSkillNames.Count -eq 1) { $script:LastOtherSkillsActivated = @($otherSkillNames.Keys) }
+                        $normalizedSkillName = $skillName.Trim().TrimStart('/')
+                        if ($normalizedSkillName -match '^pointframe:') { $pointframeActivated = $true }
+                        elseif ($pointframeSkills.ContainsKey($normalizedSkillName)) { $pointframeActivated = $true }
+                        elseif ($normalizedSkillName -and -not $normalizedSkillName.Contains(':')) { $otherSkillsActivated[$normalizedSkillName] = $true }
                     }
-                    $readPath = ([string](Get-Fact (Get-Fact $block 'input' $null) 'file_path' '')).Replace('/', '\\')
-                    if ((Get-Fact $block 'name' '') -eq 'Read' -and $readPath -match '(?i)(SKILL\.md|references[\\/].+\.md)$' -and @($SkillSetup | Where-Object { $root = ([string](Get-Fact $_ 'destination' '')).TrimEnd([char]'\', [char]'/'); $readPath.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase) -and $pointframeSkills.ContainsKey((Split-Path ([string](Get-Fact $_ 'relativePath' '')) -Leaf)) }).Count -gt 0) { return $true }
+                    $readPath = ([string](Get-Fact (Get-Fact $block 'input' $null) 'file_path' '')).Replace('/', '\')
+                    if ((Get-Fact $block 'name' '') -eq 'Read' -and $readPath -match '(?i)(SKILL\.md|references\\.+\.md)$') {
+                        foreach ($skill in $SkillSetup) {
+                            $root = ([string](Get-Fact $skill 'destination' '')).Replace('/', '\').TrimEnd([char]'\')
+                            $skillName = Split-Path ([string](Get-Fact $skill 'relativePath' '')) -Leaf
+                            if ($root -and $readPath.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                                if ($pointframeSkills.ContainsKey($skillName)) { $pointframeActivated = $true }
+                                elseif ($otherSkillNames.ContainsKey($skillName)) { $otherSkillsActivated[$skillName] = $true }
+                            }
+                        }
+                        if ($pluginPath) {
+                            $pluginSkillsRoot = (Join-Path $pluginPath 'skills').Replace('/', '\').TrimEnd([char]'\') + '\'
+                            if ($readPath.StartsWith($pluginSkillsRoot, [StringComparison]::OrdinalIgnoreCase)) {
+                                $pluginRelative = $readPath.Substring($pluginSkillsRoot.Length)
+                                $pluginSkillName = $pluginRelative.Split([char]'\')[0]
+                                if ($pointframeSkills.ContainsKey($pluginSkillName)) { $pointframeActivated = $true }
+                            }
+                        }
+                    }
                 }
             } catch { }
         }
-        return $false
+        $script:LastOtherSkillsActivated = @($otherSkillsActivated.Keys | Sort-Object)
+        return [bool]$pointframeActivated
     }
     foreach ($line in [IO.File]::ReadLines($Path)) {
         try {
@@ -909,13 +935,16 @@ function Test-SkillActivation {
                 foreach ($skill in $SkillSetup) {
                     $relativePath = ([string](Get-Fact $skill 'relativePath' '')).Replace('/', '\').Replace('\\', '\')
                     $name = Split-Path ([string](Get-Fact $skill 'relativePath' '')) -Leaf
-                    if ($pointframeSkills.ContainsKey($name) -and $normalizedCommand -match [regex]::Escape($relativePath) + '(?:\\SKILL\.md|\\references\\[^\s"'']+\.md)') { return $true }
-                    if ($otherSkillNames.ContainsKey($name) -and $normalizedCommand -match [regex]::Escape($relativePath) + '(?:\\SKILL\.md|\\references\\[^\s"'']+\.md)') { $script:LastOtherSkillsActivated = @($name) }
+                    if ($normalizedCommand -match [regex]::Escape($relativePath) + '(?:\\SKILL\.md|\\references\\[^\s"'']+\.md)') {
+                        if ($pointframeSkills.ContainsKey($name)) { $pointframeActivated = $true }
+                        elseif ($otherSkillNames.ContainsKey($name)) { $otherSkillsActivated[$name] = $true }
+                    }
                 }
             }
         } catch { }
     }
-    return $false
+    $script:LastOtherSkillsActivated = @($otherSkillsActivated.Keys | Sort-Object)
+    return [bool]$pointframeActivated
 }
 
 function Get-OtherSkillsActivated { return @($script:LastOtherSkillsActivated) }
@@ -1399,7 +1428,7 @@ diff --git a/notes.md b/notes.md
         Set-Content -LiteralPath (Join-Path $pstackSkill 'SKILL.md') -Value 'Create verification for an application using its public docs.'
         $pstackCopy = [pscustomobject]@{ source = $pstackSkill; destination = 'C:\trial\.claude\skills\create-verification-skill'; relativePath = '.claude/skills/create-verification-skill' }
         if (Test-SkillActivation $claudePstackLog 'claude' @($pstackCopy) $null) { throw 'Claude pstack Skill use must not count as Pointframe activation.' }
-        if ((Get-OtherSkillsActivated) -join ',' -ne 'create-verification-skill') { throw 'Cold pstack activation must be reported under otherSkillsActivated.' }
+        if ((Get-OtherSkillsActivated) -join ',' -ne 'pstack') { throw 'The exact non-Pointframe skill name from a Skill call must be reported.' }
         $claudePluginLog = Join-Path $scratch 'activation-plugin.jsonl'
         [IO.File]::WriteAllText($claudePluginLog, '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"pointframe:verify"}}]}}' + "`n")
         if (-not (Test-SkillActivation $claudePluginLog 'claude' @() ([pscustomobject]@{ claude = [pscustomobject]@{ pluginDirectory = 'C:\plugins\pointframe' } }))) { throw 'Installed Pointframe plugin Skill use was not counted.' }
@@ -1412,6 +1441,43 @@ diff --git a/notes.md b/notes.md
         $referenceEvent = [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Read'; input = [ordered]@{ file_path = $referenceReadPath } }) } }
         [IO.File]::WriteAllText($claudeReferenceLog, (($referenceEvent | ConvertTo-Json -Depth 6 -Compress) + "`n"))
         if (-not (Test-SkillActivation $claudeReferenceLog 'claude' @($copiedSkill) $null)) { throw 'Claude Read of a Pointframe skill reference was not counted.' }
+        $claudeForwardReadLog = Join-Path $scratch 'activation-forward-read.jsonl'
+        $forwardReadEvent = [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Read'; input = [ordered]@{ file_path = $copiedSkill.destination.Replace('\', '/') + '/SKILL.md' } }) } }
+        [IO.File]::WriteAllText($claudeForwardReadLog, (($forwardReadEvent | ConvertTo-Json -Depth 6 -Compress) + "`n"))
+        if (-not (Test-SkillActivation $claudeForwardReadLog 'claude' @($copiedSkill) $null)) { throw 'Claude Read with forward slashes did not match the full copied skill path.' }
+        $pluginRoot = Join-Path $scratch 'pointframe-plugin'
+        $pluginSkillRoot = Join-Path $pluginRoot 'skills\verify[thing]'
+        New-Item -ItemType Directory -Path (Join-Path $pluginSkillRoot 'references') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $pluginSkillRoot 'SKILL.md') -Value 'Pointframe plugin skill'
+        $pluginReadLog = Join-Path $scratch 'activation-plugin-read.jsonl'
+        $pluginReadEvent = [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Read'; input = [ordered]@{ file_path = (Join-Path $pluginSkillRoot 'references\recipe.md') } }) } }
+        [IO.File]::WriteAllText($pluginReadLog, (($pluginReadEvent | ConvertTo-Json -Depth 6 -Compress) + "`n"))
+        if (-not (Test-SkillActivation $pluginReadLog 'claude' @() ([pscustomobject]@{ claude = [pscustomobject]@{ pluginDirectory = $pluginRoot } }))) { throw 'Claude plugin-only Read under a discovered plugin skill folder was not counted.' }
+        $otherSkill2 = Join-Path $scratch 'create-another-skill'; New-Item -ItemType Directory -Path $otherSkill2 -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $otherSkill2 'SKILL.md') -Value 'General helper skill.'
+        $otherCopy2 = [pscustomobject]@{ source = $otherSkill2; destination = 'C:\trial\.claude\skills\create-another-skill'; relativePath = '.claude/skills/create-another-skill' }
+        $otherReadLog = Join-Path $scratch 'activation-other-read.jsonl'
+        $otherReadEvent = [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Read'; input = [ordered]@{ file_path = (Join-Path $otherCopy2.destination 'references\recipe.md') } }) } }
+        [IO.File]::WriteAllText($otherReadLog, (($otherReadEvent | ConvertTo-Json -Depth 6 -Compress) + "`n"))
+        if (Test-SkillActivation $otherReadLog 'claude' @($otherCopy2) $null) { throw 'Claude Read of another skill must not count as Pointframe activation.' }
+        if ((Get-OtherSkillsActivated) -join ',' -ne 'create-another-skill') { throw 'Claude Read of another skill reference must report its skill name.' }
+        $multipleOtherLog = Join-Path $scratch 'activation-multiple-other.jsonl'
+        $multipleOtherEvents = @(
+            [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Skill'; input = [ordered]@{ skill = 'builtin/unrelated' } }, [ordered]@{ type = 'tool_use'; name = 'Skill'; input = [ordered]@{ skill = 'create-verification-skill' } }, [ordered]@{ type = 'tool_use'; name = 'Skill'; input = [ordered]@{ skill = 'create-another-skill' } }, [ordered]@{ type = 'tool_use'; name = 'Skill'; input = [ordered]@{ skill = 'verify[thing]' } }) } },
+            [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Skill'; input = [ordered]@{ skill = 'create-verification-skill' } }) } }
+        )
+        [IO.File]::WriteAllLines($multipleOtherLog, [string[]]@($multipleOtherEvents | ForEach-Object { $_ | ConvertTo-Json -Depth 6 -Compress }))
+        if (-not (Test-SkillActivation $multipleOtherLog 'claude' @($pstackCopy, $otherCopy2, $copiedSkill) $null)) { throw 'Pointframe activation after other skill calls was missed.' }
+        if ((Get-OtherSkillsActivated) -join ',' -ne 'builtin/unrelated,create-another-skill,create-verification-skill') { throw 'Other skill calls must be exactly named, de-duplicated, and collected alongside Pointframe activation.' }
+        $codexOtherLog = Join-Path $scratch 'activation-codex-other.jsonl'
+        $codexOtherEvents = @(
+            [ordered]@{ type = 'item.completed'; item = [ordered]@{ type = 'command_execution'; command = 'cat .claude/skills/create-another-skill/SKILL.md' } },
+            [ordered]@{ type = 'item.completed'; item = [ordered]@{ type = 'command_execution'; command = 'cat .agents/skills/verify[thing]/SKILL.md' } },
+            [ordered]@{ type = 'item.completed'; item = [ordered]@{ type = 'command_execution'; command = 'cat .claude/skills/create-another-skill/references/recipe.md' } }
+        )
+        [IO.File]::WriteAllLines($codexOtherLog, [string[]]@($codexOtherEvents | ForEach-Object { $_ | ConvertTo-Json -Depth 6 -Compress }))
+        if (-not (Test-SkillActivation $codexOtherLog 'codex' @($otherCopy2, $copiedSkill) $null)) { throw 'Codex activation after other skill reads was missed.' }
+        if ((Get-OtherSkillsActivated) -join ',' -ne 'create-another-skill') { throw 'Codex other skill reads must be collected and de-duplicated alongside Pointframe activation.' }
         if (-not (Test-ColdSkillInput $pstackSkill)) { throw 'Cold pstack create-verification-skill must be allowed.' }
         $coldPointframe = Join-Path $scratch 'cold-pointframe'; New-Item -ItemType Directory -Path $coldPointframe -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $coldPointframe 'SKILL.md') -Value 'Pointframe verify workflow'
