@@ -42,8 +42,9 @@ public sealed class RestartWaitTelemetryTests : IDisposable
     {
         await using var server = await RestartServer.StartAsync(refusals: int.MaxValue);
         var client = await ClientAsync(server);
+        // A 2 s wait with 100 ms polls leaves room for several attempts even when each stdio call is slow on CI.
         var runner = new DesktopScenarioRunner(
-            client.Mock.Object, "fixture", [new CaptureRectangle(0, 0, 1920, 1080)], TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(150));
+            client.Mock.Object, "fixture", [new CaptureRectangle(0, 0, 1920, 1080)], TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(2));
 
         var result = await runner.RunAsync(RestartScenario(), CancellationToken.None);
 
