@@ -1,12 +1,13 @@
 namespace Pointframe.Mcp.Configuration;
 
 /// <summary>
-/// Server-wide output options. CompactText replaces the duplicated JSON text block of status-style tools
-/// with a short summary; it is off unless the host passes --compact-text or sets POINTFRAME_MCP_COMPACT_TEXT.
+/// Server-wide output options for tool discovery and results.
 /// </summary>
-public sealed record McpOutputOptions(bool CompactText)
+public sealed record McpOutputOptions(bool CompactText, bool FullDiscovery)
 {
     public const string CompactTextFlag = "--compact-text";
+
+    public const string FullDiscoveryFlag = "--full-discovery";
 
     public const string CompactTextEnvironmentVariable = "POINTFRAME_MCP_COMPACT_TEXT";
 
@@ -18,6 +19,8 @@ public sealed record McpOutputOptions(bool CompactText)
             && (environment.Equals("1", StringComparison.Ordinal)
                 || environment.Equals("true", StringComparison.OrdinalIgnoreCase)
                 || environment.Equals("yes", StringComparison.OrdinalIgnoreCase));
-        return new McpOutputOptions(fromEnvironment || args.Contains(CompactTextFlag, StringComparer.Ordinal));
+        return new McpOutputOptions(
+            fromEnvironment || args.Contains(CompactTextFlag, StringComparer.Ordinal),
+            args.Contains(FullDiscoveryFlag, StringComparer.Ordinal));
     }
 }

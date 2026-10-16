@@ -84,7 +84,13 @@ var mcpServer = builder.Services
     .WithRequestFilters(filters =>
     {
         filters.AddCallToolFilter(McpTelemetryFilter.Create(telemetry));
-        if (McpOutputOptions.Parse(args).CompactText)
+        var outputOptions = McpOutputOptions.Parse(args);
+        if (!outputOptions.FullDiscovery)
+        {
+            filters.AddListToolsFilter(McpDiscoveryFilter.Create());
+        }
+
+        if (outputOptions.CompactText)
         {
             filters.AddCallToolFilter(McpCompactTextFilter.Create());
         }

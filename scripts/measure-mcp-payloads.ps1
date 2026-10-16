@@ -1002,7 +1002,11 @@ $script:LastText = ''
 
 function Start-McpProcess
 {
-    param([hashtable]$ExtraEnvironment = @{})
+    param(
+        [hashtable]$ExtraEnvironment = @{},
+        [bool]$DesktopEnabled = $true,
+        [switch]$FullDiscovery
+    )
 
     $startInfo = [Diagnostics.ProcessStartInfo]::new($script:McpPath)
     $startInfo.WorkingDirectory = Split-Path $script:McpPath
@@ -1019,9 +1023,16 @@ function Start-McpProcess
         $startInfo.Environment[$key] = $ExtraEnvironment[$key]
     }
 
-    $startInfo.ArgumentList.Add('--desktop-testing')
-    $startInfo.ArgumentList.Add('--desktop-policy')
-    $startInfo.ArgumentList.Add($script:McpPolicyPath)
+    if ($DesktopEnabled)
+    {
+        $startInfo.ArgumentList.Add('--desktop-testing')
+        $startInfo.ArgumentList.Add('--desktop-policy')
+        $startInfo.ArgumentList.Add($script:McpPolicyPath)
+    }
+    if ($FullDiscovery)
+    {
+        $startInfo.ArgumentList.Add('--full-discovery')
+    }
     $script:Process = [Diagnostics.Process]::Start($startInfo)
     $script:ServerLog = $script:Process.StandardError.ReadToEndAsync()
 }
@@ -1428,7 +1439,7 @@ function New-MarkdownTable
 
 function Write-Summary
 {
-    param([string]$Path, $Discovery, $Rows, [string[]]$Advertised, [string[]]$CleanupProblems, $Comparison = @(), $FirstCheck = @())
+    param([string]$Path, $Discovery, $Rows, [string[]]$Advertised, [string[]]$CleanupProblems, $Comparison = @(), $FirstCheck = @(), $DiscoveryModes = @())
 
     $measured = @($Rows | Where-Object { $_.outcome -eq 'measured' })
     $topText = @($measured | Sort-Object estimatedTextTokens -Descending | Select-Object -First 10)
@@ -1445,7 +1456,14 @@ function Write-Summary
     $md.Add('')
     $md.Add('## Discovery')
     $md.Add('')
-    $md.Add("- tools/list: $($Discovery.toolListBytes) bytes (about $($Discovery.estimatedToolListTokens) tokens) for $($Discovery.toolCount) tools")
+    $md.Add('| Desktop tools | Discovery mode | tools/list bytes | Tools | Output schemas |')
+    $md.Add('| --- | --- | ---: | ---: | ---: |')
+    foreach ($mode in @($DiscoveryModes))
+    {
+        $md.Add("| $($mode.desktopEnabled) | $($mode.discoveryMode) | $($mode.toolListBytes) | $($mode.toolCount) | $($mode.toolsWithOutputSchema) |")
+    }
+    $md.Add('')
+    $md.Add("- Default enabled discovery: $($Discovery.toolListBytes) bytes (about $($Discovery.estimatedToolListTokens) tokens); acceptance ceiling: 41,000 bytes")
     $md.Add("- descriptions: $($Discovery.descriptionBytes) bytes; input schemas: $($Discovery.inputSchemaBytes) bytes; output schemas: $($Discovery.outputSchemaBytes) bytes ($($Discovery.toolsWithOutputSchema) of $($Discovery.toolCount) tools declare one)")
     $md.Add("- resources: $($Discovery.resourceCount) listed, $($Discovery.resourceReadBytes) bytes when all are read")
     $md.Add('')
@@ -1585,6 +1603,7 @@ $policy | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $policyPath -Encod
 
 $fixtureBefore = @(Get-Process -Name 'Pointframe.DesktopTestFixture' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
 $discovery = $null
+$discoveryModes = [Collections.Generic.List[object]]::new()
 $advertised = @()
 $runFailure = $null
 $compactRows = @()
@@ -1600,6 +1619,13 @@ try
 
     $discovery = Measure-Discovery $outputDirectory
     $advertised = $discovery.toolNames
+    $discoveryModes.Add([pscustomobject]@{
+        desktopEnabled = 'enabled'
+        discoveryMode = 'default'
+        toolListBytes = $discovery.toolListBytes
+        toolCount = $discovery.toolCount
+        toolsWithOutputSchema = $discovery.toolsWithOutputSchema
+    })
 
     $displays = Invoke-Tool 'list_displays'
 
@@ -1641,6 +1667,40 @@ finally
     Stop-McpProcess
 }
 
+if ($null -ne $discovery)
+{
+    foreach ($mode in @(
+        @{ Name = 'full-enabled'; DesktopEnabled = $true; FullDiscovery = $true },
+        @{ Name = 'default-disabled'; DesktopEnabled = $false; FullDiscovery = $false },
+        @{ Name = 'full-disabled'; DesktopEnabled = $false; FullDiscovery = $true }
+    ))
+    {
+        try
+        {
+            $modeDirectory = Join-Path $outputDirectory $mode.Name
+            New-Item -ItemType Directory -Force -Path $modeDirectory | Out-Null
+            Start-McpProcess -DesktopEnabled $mode.DesktopEnabled -FullDiscovery:$mode.FullDiscovery
+            $modeDiscovery = Measure-Discovery $modeDirectory
+            $discoveryModes.Add([pscustomobject]@{
+                desktopEnabled = $(if ($mode.DesktopEnabled) { 'enabled' } else { 'disabled' })
+                discoveryMode = $(if ($mode.FullDiscovery) { 'full' } else { 'default' })
+                toolListBytes = $modeDiscovery.toolListBytes
+                toolCount = $modeDiscovery.toolCount
+                toolsWithOutputSchema = $modeDiscovery.toolsWithOutputSchema
+            })
+        }
+        catch
+        {
+            $runFailure = "Discovery measurement '$($mode.Name)' failed: $($_.Exception.Message)"
+            break
+        }
+        finally
+        {
+            Stop-McpProcess
+        }
+    }
+}
+
 # ---------------------------------------------------------------------------------------------------
 # Cleanup verification, outputs, verdict
 # ---------------------------------------------------------------------------------------------------
@@ -1677,6 +1737,11 @@ if ($runFailure)
 
 if ($null -ne $discovery)
 {
+    if ($discovery.toolListBytes -gt 41000)
+    {
+        $problems.Add("Default discovery with desktop tools enabled is $($discovery.toolListBytes) bytes, above the 41,000-byte acceptance ceiling.")
+    }
+
     foreach ($problem in (Get-CoverageProblems $advertised $script:Rows $script:AllowedSkips))
     {
         $problems.Add($problem)
@@ -1710,6 +1775,7 @@ $document = [ordered]@{
     createdUtc = [DateTime]::UtcNow.ToString('o')
     tokenEstimator = $script:TokenEstimatorDescription
     discovery = $discovery
+    discoveryModes = $discoveryModes.ToArray()
     allowedSkips = $script:AllowedSkips
     calls = @($script:Rows)
     compactCalls = @($compactRows)
@@ -1720,7 +1786,7 @@ $document = [ordered]@{
 $document | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $outputDirectory 'payloads.json') -Encoding utf8
 if ($null -ne $discovery)
 {
-    Write-Summary (Join-Path $outputDirectory 'summary.md') $discovery $script:Rows $advertised $cleanupProblems.ToArray() $comparison $firstCheck
+    Write-Summary (Join-Path $outputDirectory 'summary.md') $discovery $script:Rows $advertised $cleanupProblems.ToArray() $comparison $firstCheck $discoveryModes.ToArray()
 }
 
 if ($firstCheck.Count -gt 0)
