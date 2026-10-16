@@ -13,7 +13,11 @@ Generated files (do not edit by hand):
   plugin/pointframe/skills/create-desktop-verification-skill/references/recipe.md
       the guide, unchanged
   plugin/pointframe/skills/create-desktop-verification-skill/references/verify-spec.md
-      docs/cli/verify-spec.md, unchanged (the spec schema, bundled so an agent never fetches it from the web)
+      docs/cli/verify-spec.md, unchanged (the spec schema, bundled so the bundled skill never fetches it from the web)
+
+Generated regions (the text between the short-path:begin and short-path:end comments; the markers must already exist):
+  the guide's own short-path region (section "Short path for coding agents") is the source; it is copied into
+  README.md, docs/cli/verify.md and website/llms.txt. Edit the region only in the guide.
 
 Line endings are compared without regard to CR; files are written with CRLF like the rest of the repository.
 Exit 0 when in sync, 1 on drift (-Check) or a missing source, 2 on bad arguments.
@@ -43,6 +47,9 @@ $SkillPath = 'plugin/pointframe/skills/verify-desktop-work/SKILL.md'
 $RecipePath = 'plugin/pointframe/skills/create-desktop-verification-skill/references/recipe.md'
 $SpecSourcePath = 'docs/cli/verify-spec.md'
 $SpecCopyPath = 'plugin/pointframe/skills/create-desktop-verification-skill/references/verify-spec.md'
+$RegionTargets = @('README.md', 'docs/cli/verify.md', 'website/llms.txt')
+$RegionBegin = '<!-- short-path:begin'
+$RegionEnd = '<!-- short-path:end -->'
 
 function ConvertTo-Lf([string]$Text)
 {
@@ -89,12 +96,41 @@ if ($null -eq $frontMatter)
     exit 1
 }
 
+function Get-Region([string]$Text)
+{
+    $b = $Text.IndexOf($RegionBegin, [StringComparison]::Ordinal)
+    $e = $Text.IndexOf($RegionEnd, [StringComparison]::Ordinal)
+    if ($b -lt 0 -or $e -lt $b)
+    {
+        return $null
+    }
+    $bodyStart = $Text.IndexOf("`n", $b) + 1
+    [pscustomobject]@{ BodyStart = $bodyStart; End = $e; Body = $Text.Substring($bodyStart, $e - $bodyStart) }
+}
+
+$guideRegion = Get-Region $guide
+if ($null -eq $guideRegion -or [string]::IsNullOrWhiteSpace($guideRegion.Body))
+{
+    Write-Host "ERROR sync-agent-guides: $GuidePath has no short-path region between $RegionBegin ... --> and $RegionEnd."
+    exit 1
+}
+
 $expected = [ordered]@{
     $SkillPath = $frontMatter + $guide
     $RecipePath = $guide
     $SpecCopyPath = $spec
 }
-
+foreach ($target in $RegionTargets)
+{
+    $text = Read-Lf $target
+    $region = if ($null -eq $text) { $null } else { Get-Region $text }
+    if ($null -eq $region)
+    {
+        Write-Host "ERROR sync-agent-guides: $target is missing or has no short-path region markers ($RegionBegin ... --> and $RegionEnd)."
+        exit 1
+    }
+    $expected[$target] = $text.Substring(0, $region.BodyStart) + $guideRegion.Body + $text.Substring($region.End)
+}
 $drift = [System.Collections.Generic.List[string]]::new()
 foreach ($relative in $expected.Keys)
 {

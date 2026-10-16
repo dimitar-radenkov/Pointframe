@@ -805,9 +805,43 @@ function Test-AgentGuidesInSync([string]$Root, [System.Collections.Generic.List[
     }
 }
 
+function Test-ShortPathInstall([string]$Root, [System.Collections.Generic.List[string]]$Problems)
+{
+    $guidePath = 'Pointframe.Mcp/Guides/verify-desktop-work.md'
+    $guide = Read-RepoFile $Root $guidePath
+    if (-not $guide)
+    {
+        return
+    }
+    $installLines = @(Get-TrimmedLines $guide | Where-Object { $_ -match '^pwsh -NoProfile -Command .*Pointframe\.Cli-win-x64\.zip' })
+    if ($installLines.Count -lt 2)
+    {
+        Add-Problem $Problems "$guidePath needs the CLI install command in step 1 and in the short path, but has $($installLines.Count)."
+        return
+    }
+    $install = $installLines[0]
+    foreach ($line in $installLines)
+    {
+        if ($line -cne $install)
+        {
+            Add-Problem $Problems "$guidePath short-path install command differs from the step 1 install command."
+            break
+        }
+    }
+    foreach ($path in @($Readme, 'docs/cli/verify.md', $Llms))
+    {
+        $text = Read-RepoFile $Root $path
+        if ($text -and -not (Get-TrimmedLines $text).Contains($install))
+        {
+            Add-Problem $Problems "$path short-path install command differs from the one in $guidePath."
+        }
+    }
+}
+
 function Test-ClaudePluginRepository([string]$Root, [System.Collections.Generic.List[string]]$Problems)
 {
     Test-AgentGuidesInSync $Root $Problems
+    Test-ShortPathInstall $Root $Problems
     $ci = Read-RepoFile $Root '.github/workflows/ci.yml'
     if ($null -eq $ci -or $ci -notmatch "(?s)push:.*?paths-ignore:\s*\r?\n\s*- 'plugin/\*\*'")
     {
@@ -1107,10 +1141,15 @@ function Invoke-SelfTest
             Copy-Item -LiteralPath (Join-Path $RepoRoot $relative) -Destination $target -Recurse
         }
         New-Item -ItemType Directory -Force -Path (Join-Path $guideRoot 'docs' 'cli') | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $guideRoot 'website') | Out-Null
         Copy-Item -LiteralPath (Join-Path $RepoRoot 'docs' 'cli' 'verify-spec.md') -Destination (Join-Path $guideRoot 'docs' 'cli')
+        Copy-Item -LiteralPath (Join-Path $RepoRoot 'docs' 'cli' 'verify.md') -Destination (Join-Path $guideRoot 'docs' 'cli')
+        Copy-Item -LiteralPath (Join-Path $RepoRoot 'README.md') -Destination $guideRoot
+        Copy-Item -LiteralPath (Join-Path $RepoRoot 'website' 'llms.txt') -Destination (Join-Path $guideRoot 'website')
         $cases++
         $clean = [System.Collections.Generic.List[string]]::new()
         Test-AgentGuidesInSync $guideRoot $clean
+        Test-ShortPathInstall $guideRoot $clean
         if ($clean.Count -ne 0)
         {
             $failures.Add("the agent guides should be in sync but reported: $($clean -join ' | ')")
@@ -1123,6 +1162,17 @@ function Invoke-SelfTest
         if (@($drifted | Where-Object { $_.Contains('differs from its source') }).Count -ne 2)
         {
             $failures.Add("a changed guide should drift both generated copies but reported: $($drifted -join ' | ')")
+        }
+        $guideText = [IO.File]::ReadAllText($guideFile).Replace("`r`n", "`n")
+        $firstInstall = $guideText.IndexOf('Invoke-WebRequest $u -OutFile', [StringComparison]::Ordinal)
+        $guideText = $guideText.Substring(0, $firstInstall) + 'Invoke-WebRequest $u -Verbose -OutFile' + $guideText.Substring($firstInstall + 'Invoke-WebRequest $u -OutFile'.Length)
+        [IO.File]::WriteAllText($guideFile, $guideText)
+        $cases++
+        $installDrift = [System.Collections.Generic.List[string]]::new()
+        Test-ShortPathInstall $guideRoot $installDrift
+        if (@($installDrift | Where-Object { $_.Contains('differs from the step 1 install command') }).Count -ne 1)
+        {
+            $failures.Add("a drifted step 1 install command should be reported but reported: $($installDrift -join ' | ')")
         }
     }
     finally
