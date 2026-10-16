@@ -40,6 +40,8 @@ public static class DesktopTestingServiceRegistration
         services.AddSingleton<IWindowsUiAutomationActionProvider>(serviceProvider =>
             serviceProvider.GetRequiredService<WorkerDesktopAutomationService>());
         services.AddSingleton<IDesktopOcrObservationProvider, DesktopOcrObservationProvider>();
+        services.AddSingleton<IWindowsUiAutomationHitTestProvider>(serviceProvider =>
+            serviceProvider.GetRequiredService<WorkerDesktopAutomationService>());
         services.AddSingleton<IDesktopWindowBoundsProvider, WindowsDesktopWindowBoundsProvider>();
         return services;
     }

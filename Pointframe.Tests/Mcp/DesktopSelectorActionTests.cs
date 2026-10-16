@@ -35,7 +35,7 @@ public sealed class DesktopSelectorActionTests
 
         Assert.Equal("Complete", response.Dispatch);
         Assert.Equal("click", response.Method);
-        Assert.Equal(1, fixture.InspectionCount);
+        Assert.Equal(2, fixture.InspectionCount);
         fixture.Input.Verify(input => input.ClickAsync(
             It.Is<DesktopClickRequest>(click => click.X == 120 && click.Y == 210 && click.Target.Window!.WindowRef == WindowA),
             It.IsAny<DesktopProcessIdentity>(),
@@ -491,6 +491,183 @@ public sealed class DesktopSelectorActionTests
         Assert.Equal("TargetRequired", response.Error?.Code);
     }
 
+    private static DesktopUiElementSnapshot At(string elementRef, PixelBounds bounds, string? name = "Save") =>
+        new(elementRef, WindowA, "Button", name, "saveButton", bounds, true);
+
+    [Fact]
+    public async Task LayoutChangeAfterForegroundingClicksTheElementWhereItIsNow()
+    {
+        var fixture = new Fixture(Snapshot(false, At("el-1", new PixelBounds(100, 200, 40, 20))))
+            .Then(Snapshot(false, At("el-2", new PixelBounds(300, 400, 60, 20))));
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), automationId: "saveButton");
+
+        Assert.Equal("Complete", response.Dispatch);
+        fixture.Input.Verify(input => input.ClickAsync(
+            It.Is<DesktopClickRequest>(click => click.X == 330 && click.Y == 410 && click.Target.BoundsPixels == new PixelBounds(300, 400, 60, 20)),
+            It.IsAny<DesktopProcessIdentity>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        fixture.HitTest.Verify(hit => hit.ElementOwnsPoint("el-2", 330, 410), Times.Once);
+    }
+
+    [Fact]
+    public async Task ModalCoveringTheClickPointRefusesAndSendsNoClick()
+    {
+        var fixture = new Fixture(Snapshot(false, At("el-1", new PixelBounds(100, 200, 40, 20))));
+        fixture.HitTest.Setup(hit => hit.ElementOwnsPoint(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>())).Returns(false);
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), automationId: "saveButton");
+
+        Assert.Equal("TargetOccluded", response.Error?.Code);
+        Assert.Equal("NotStarted", response.Dispatch);
+        fixture.Input.Verify(input => input.ClickAsync(It.IsAny<DesktopClickRequest>(), It.IsAny<DesktopProcessIdentity>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.UiAutomation.Verify(provider => provider.TryInvoke(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task WithoutAHitTestProviderASelectorClickFailsClosed()
+    {
+        var fixture = new Fixture(Snapshot(false, At("el-1", new PixelBounds(100, 200, 40, 20))), noHitTest: true);
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), automationId: "saveButton");
+
+        Assert.Equal("TargetOccluded", response.Error?.Code);
+        fixture.Input.Verify(input => input.ClickAsync(It.IsAny<DesktopClickRequest>(), It.IsAny<DesktopProcessIdentity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("gone")]
+    [InlineData("renamed")]
+    [InlineData("duplicate")]
+    [InlineData("incomplete")]
+    public async Task ElementThatChangesAfterForegroundingIsRefused(string change)
+    {
+        var first = Snapshot(false, At("el-1", new PixelBounds(100, 200, 40, 20)));
+        var second = change switch
+        {
+            "gone" => Snapshot(false),
+            "renamed" => Snapshot(false, At("el-2", new PixelBounds(100, 200, 40, 20), name: "Other")),
+            "duplicate" => Snapshot(false, At("el-2", new PixelBounds(100, 200, 40, 20)), At("el-3", new PixelBounds(300, 200, 40, 20))),
+            _ => Snapshot(true, At("el-2", new PixelBounds(100, 200, 40, 20))),
+        };
+        var fixture = new Fixture(first).Then(second);
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), automationId: "saveButton");
+
+        Assert.Equal(change == "incomplete" ? "InspectionIncomplete" : "TargetChanged", response.Error?.Code);
+        Assert.Equal("NotStarted", response.Dispatch);
+        fixture.Input.Verify(input => input.ClickAsync(It.IsAny<DesktopClickRequest>(), It.IsAny<DesktopProcessIdentity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private static Fixture RealLedgerFixture(DesktopUiSnapshot snapshot, out DesktopTestReportService reports)
+    {
+        reports = new DesktopTestReportService();
+        reports.Initialize(SessionId, "target.exe", "hash");
+        return new Fixture(snapshot, new DesktopActionCoordinator(new DesktopActionLedger(), reports), reports);
+    }
+
+    [Fact]
+    public async Task ReplayedSemanticSelectorEntryReturnsTheRecordedResultAfterTheObservationExpires()
+    {
+        var fixture = RealLedgerFixture(Snapshot(false, Element("el-9-1", WindowA, "Edit", "Name", "nameBox")), out _);
+        fixture.UiAutomation.Setup(provider => provider.TrySetValue("el-9-1", "hello")).Returns(true);
+        var actionId = Guid.NewGuid().ToString();
+        fixture.Observations.Setup(service => service.Resolve("observation-1")).Returns(Fixture.EmptyObservation());
+
+        var first = await fixture.Tools.EnterTextAsync(SessionId, actionId, "hello", "observation-1", semanticValue: true, automationId: "nameBox");
+        fixture.Observations.Setup(service => service.Resolve("observation-1"))
+            .Throws(new DesktopOperationException("StaleObservation", "expired"));
+        var replay = await fixture.Tools.EnterTextAsync(SessionId, actionId, "hello", "observation-1", semanticValue: true, automationId: "nameBox");
+
+        Assert.Equal("Complete", first.Dispatch);
+        Assert.Equal("Complete", replay.Dispatch);
+        Assert.Null(replay.Error);
+        Assert.Equal(1, fixture.InspectionCount);
+        fixture.UiAutomation.Verify(provider => provider.TrySetValue(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReplayedSelectorInvokeKeepsItsMethodAndDoesNotInspectOrClickAgain()
+    {
+        var fixture = RealLedgerFixture(Snapshot(false, At("el-1", new PixelBounds(100, 200, 40, 20))), out _);
+        var actionId = Guid.NewGuid().ToString();
+
+        var first = await fixture.Tools.InvokeAsync(SessionId, actionId, automationId: "saveButton");
+        var inspections = fixture.InspectionCount;
+        var replay = await fixture.Tools.InvokeAsync(SessionId, actionId, automationId: "saveButton");
+
+        Assert.Equal("click", first.Method);
+        Assert.Equal("click", replay.Method);
+        Assert.Equal(inspections, fixture.InspectionCount);
+        fixture.Input.Verify(input => input.ClickAsync(It.IsAny<DesktopClickRequest>(), It.IsAny<DesktopProcessIdentity>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SelectorStepsExportThroughTheRealReportServiceAndScopedOnesAreUnexportable()
+    {
+        var fixture = RealLedgerFixture(Snapshot(false,
+            new DesktopUiElementSnapshot("el-1", WindowA, "Edit", "Name", "nameBox", new PixelBounds(0, 0, 0, 0), true),
+            new DesktopUiElementSnapshot("el-2", WindowB, "Button", "OK", "okButton", new PixelBounds(0, 0, 0, 0), true)), out var reports);
+        fixture.UiAutomation.Setup(provider => provider.TrySetValue("el-1", "hello")).Returns(true);
+        fixture.UiAutomation.Setup(provider => provider.TryInvoke("el-2")).Returns(UiInvokeOutcome.Completed);
+
+        await fixture.Tools.EnterTextAsync(SessionId, Guid.NewGuid().ToString(), "hello", semanticValue: true, automationId: "nameBox");
+        await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), role: "Button", name: "OK");
+        await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), automationId: "okButton", windowRef: WindowB);
+
+        var entries = reports.GetScenarioRecording(SessionId).Entries;
+        Assert.Equal(3, entries.Count);
+        Assert.Equal("nameBox", entries[0].Step!.Value.GetProperty("enterText").GetProperty("automationId").GetString());
+        Assert.Equal("hello", entries[0].Step!.Value.GetProperty("enterText").GetProperty("text").GetString());
+        var invoke = entries[1].Step!.Value.GetProperty("invoke");
+        Assert.Equal("Button", invoke.GetProperty("role").GetString());
+        Assert.Equal("OK", invoke.GetProperty("name").GetString());
+        Assert.Null(entries[2].Step);
+        Assert.Equal("window refs are per session", entries[2].Reason);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task LegacyBlankObservationRefStillFailsAsStale(string blank)
+    {
+        var fixture = new Fixture(Snapshot(false));
+        fixture.Observations.Setup(service => service.Resolve(blank)).Throws(new DesktopOperationException("StaleObservation", "stale"));
+
+        var coordinate = await fixture.Tools.EnterTextAsync(SessionId, Guid.NewGuid().ToString(), "hello", blank, "image-1", 1, 1);
+        var semantic = await fixture.Tools.EnterTextAsync(SessionId, Guid.NewGuid().ToString(), "hello", blank, "image-1", 1, 1, semanticValue: true, elementRef: "el-1");
+
+        Assert.Equal("StaleObservation", coordinate.Error?.Code);
+        Assert.Equal("StaleObservation", semantic.Error?.Code);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task LegacyBlankElementRefStillReportsElementRequired(string blank)
+    {
+        var fixture = new Fixture(Snapshot(false));
+        fixture.Observations.Setup(service => service.Resolve("observation-1")).Returns(Fixture.EmptyObservation());
+
+        var invoke = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), blank);
+        var semantic = await fixture.Tools.EnterTextAsync(SessionId, Guid.NewGuid().ToString(), "hello", "observation-1", "image-1", 0, 0, semanticValue: true, elementRef: blank);
+
+        Assert.Equal("ElementRequired", invoke.Error?.Code);
+        Assert.Equal("ElementRequired", semantic.Error?.Code);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task LegacyBlankImageRefIsNotReportedAsInvalidRequest(string blank)
+    {
+        var fixture = new Fixture(Snapshot(false));
+        fixture.Observations.Setup(service => service.Resolve("observation-1")).Returns(Fixture.EmptyObservation());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fixture.Tools.EnterTextAsync(SessionId, Guid.NewGuid().ToString(), "hello", "observation-1", blank, 1, 1));
+    }
+
     [Theory]
     [InlineData("desktop_invoke", new[] { "elementRef", "automationId", "role", "name", "windowRef" })]
     [InlineData("desktop_enter_text", new[] { "text", "observationRef", "imageRef", "x", "y", "semanticValue", "elementRef", "automationId", "role", "name", "windowRef" })]
@@ -523,8 +700,9 @@ public sealed class DesktopSelectorActionTests
     private sealed class Fixture
     {
         private readonly DesktopUiSnapshot _snapshot;
+        private readonly Queue<DesktopUiSnapshot> _later = new();
 
-        public Fixture(DesktopUiSnapshot snapshot)
+        public Fixture(DesktopUiSnapshot snapshot, IDesktopActionCoordinator? realCoordinator = null, IDesktopTestReportService? realReports = null, bool noHitTest = false)
         {
             _snapshot = snapshot;
             var process = new DesktopProcessIdentity(ProcessRef, 1, DateTimeOffset.UtcNow, "target.exe", "hash");
@@ -569,22 +747,33 @@ public sealed class DesktopSelectorActionTests
                 .ReturnsAsync(DesktopInputPreflightResult.Valid());
             Provider.Setup(provider => provider.Inspect(It.IsAny<DesktopObservationRequest>()))
                 .Callback<DesktopObservationRequest>(_ => InspectionCount++)
-                .Returns(() => _snapshot);
+                .Returns(() => InspectionCount > 1 && _later.Count > 0 ? _later.Dequeue() : _snapshot);
+            HitTest.Setup(provider => provider.ElementOwnsPoint(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>())).Returns(true);
 
             Tools = new DesktopTestingMcpTools(
-                coordinator.Object,
+                realCoordinator ?? coordinator.Object,
                 sessions.Object,
                 Observations.Object,
                 Input.Object,
                 UiAutomation.Object,
                 new Mock<IDesktopUiCheckService>().Object,
                 new Mock<IDesktopOcrObservationProvider>().Object,
-                reports.Object,
+                realReports ?? reports.Object,
                 new Mock<IDesktopEvidenceRecorder>().Object,
                 new DesktopTestingPolicyLoader(),
                 new DesktopTestingHostOptions(Enabled: true, WorkerMode: false, PolicyPath: null, WorkerPipeName: null, ParentProcessId: null),
                 Provider.Object,
-                WindowBounds.Object);
+                WindowBounds.Object,
+                noHitTest ? null : HitTest.Object);
+        }
+
+        public Mock<IWindowsUiAutomationHitTestProvider> HitTest { get; } = new();
+
+        // The second inspection returns this snapshot: the screen changed between resolving and clicking.
+        public Fixture Then(DesktopUiSnapshot next)
+        {
+            _later.Enqueue(next);
+            return this;
         }
 
         public Mock<IWindowsDesktopInputService> Input { get; } = new();

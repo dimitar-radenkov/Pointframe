@@ -25,8 +25,12 @@ internal sealed class DesktopTestingMcpTools(
     DesktopTestingPolicyLoader policyLoader,
     DesktopTestingHostOptions options,
     IDesktopUiObservationProvider? uiObservation = null,
-    IDesktopWindowBoundsProvider? windowBounds = null)
+    IDesktopWindowBoundsProvider? windowBounds = null,
+    IWindowsUiAutomationHitTestProvider? hitTest = null)
 {
+    // The click-or-pattern method of an invoke by actionId, so a replayed actionId still reports how it was done.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> InvokeMethods = new(StringComparer.Ordinal);
+
     [McpServerTool(Name = "desktop_list_apps", Title = "List desktop applications", ReadOnly = true, Destructive = false, Idempotent = true, UseStructuredContent = true)]
     [Description("Lists the application profiles the desktop testing policy approves: for each, its id, the executable file name, and how many actions it allows. Pass an id as profileId to desktop_start_test_session. It never lists running processes or attach candidates.")]
     public Task<DesktopTestingActionResponse> ListAppsAsync(
@@ -387,6 +391,7 @@ internal sealed class DesktopTestingMcpTools(
             method = HasUsableBounds(element, process.ProcessRef, out _) ? "click" : "pattern";
         }
 
+        var dispatched = false;
         object canonicalArguments = selector is null
             ? new { sessionId, elementRef }
             : new { sessionId, automationId, role, name, windowRef };
@@ -396,6 +401,7 @@ internal sealed class DesktopTestingMcpTools(
             canonicalArguments,
             async _ =>
             {
+                dispatched = true;
                 if (selector is not null)
                 {
                     // Resolved here, inside the action, so a replayed actionId returns its recorded result
@@ -431,12 +437,33 @@ internal sealed class DesktopTestingMcpTools(
                         && focus.Code != "InputDispatchFailed"
                         && focus.ApprovedProcessForeground;
                     var released = (focus.IsValid || clickWithoutFocusingPopup) && input.TryReleaseOwnedInput();
+                    var clickElement = element;
+                    if (selector is not null && released)
+                    {
+                        // Foregrounding can move things and an app modal can cover the point, so the target is
+                        // established again now and the click point must belong to that element, not merely to its
+                        // window or process. Anything uncertain dispatches nothing.
+                        var revalidated = RevalidateSelectedElement(process, selector, element!, windowHandle);
+                        if (revalidated.Refusal is { } refusal)
+                        {
+                            return new DesktopActionExecution(
+                                DesktopDispatchStatus.NotStarted,
+                                DesktopVerificationStatus.Failed,
+                                DesktopObservationStatus.NotRequested,
+                                refusal);
+                        }
+
+                        clickElement = revalidated.Element!;
+                        invokeRef = clickElement.ElementRef;
+                        target = target with { BoundsPixels = clickElement.BoundsPixels };
+                    }
+
                     var click = released
                         ? await input.ClickAsync(
                             new DesktopClickRequest(
                                 target,
-                                element.BoundsPixels.X + element.BoundsPixels.Width / 2,
-                                element.BoundsPixels.Y + element.BoundsPixels.Height / 2,
+                                clickElement.BoundsPixels.X + clickElement.BoundsPixels.Width / 2,
+                                clickElement.BoundsPixels.Y + clickElement.BoundsPixels.Height / 2,
                                 AcceptAnyVisibleWindowInProcess: clickWithoutFocusingPopup),
                             process,
                             cancellationToken).ConfigureAwait(false)
@@ -471,6 +498,20 @@ internal sealed class DesktopTestingMcpTools(
                 exportLocator is null ? exportReason : null);
         }
         await AnnotateActionAsync(sessionId, actionId, "invoke", result, cancellationToken).ConfigureAwait(false);
+        if (dispatched && method is not null)
+        {
+            if (InvokeMethods.Count >= DesktopTestingLimits.MaxActionCapacity)
+            {
+                InvokeMethods.Clear();
+            }
+
+            InvokeMethods[actionId] = method;
+        }
+        else if (!dispatched && InvokeMethods.TryGetValue(actionId, out var recordedMethod))
+        {
+            method = recordedMethod;
+        }
+
         return WithSelectorGuidance(DesktopTestingResponseMapper.MapAction(result, sessionId)) with { Method = method };
     }
 
@@ -1269,25 +1310,30 @@ internal sealed class DesktopTestingMcpTools(
         var hasSelectorFields = HasSelectorFields(automationId, role, name, windowRef);
         try
         {
-            var observation = string.IsNullOrWhiteSpace(observationRef) ? null : observations.Resolve(observationRef);
+            // A selector call never touches an observation, even one the caller passes along: it goes straight
+            // through the action ledger, so replaying its actionId returns the recorded result after any
+            // observation has expired.
+            if (semanticValue && hasSelectorFields)
+            {
+                var selectorSpec = DesktopSelectorResolver.ParseTarget(elementRef, automationId, role, name, windowRef);
+                if (!selectorSpec.IsValid)
+                {
+                    return Error(actionId, selectorSpec.ErrorCode!, selectorSpec.ErrorMessage!);
+                }
+
+                return await EnterTextBySelectorAsync(sessionId, actionId, session.Target.Process, selectorSpec.Selector!, text, cancellationToken).ConfigureAwait(false);
+            }
+
+            // An omitted observationRef is null; an explicit empty or blank one is a legacy reference that must
+            // keep failing the way it always did (StaleObservation from the store).
+            var observation = observationRef is null ? null : observations.Resolve(observationRef);
             if (semanticValue)
             {
-                if (!hasSelectorFields && string.IsNullOrWhiteSpace(elementRef))
+                if (string.IsNullOrWhiteSpace(elementRef))
                 {
-                    return observation is null
+                    return observation is null && elementRef is null
                         ? Error(actionId, "InvalidRequest", "Semantic entry needs the field: pass a selector (automationId, or role and name) or an elementRef.")
                         : Error(actionId, "ElementRequired", "Semantic ValuePattern entry requires a verified UI automation element reference.");
-                }
-
-                var targetSpec = DesktopSelectorResolver.ParseTarget(elementRef, automationId, role, name, windowRef);
-                if (!targetSpec.IsValid)
-                {
-                    return Error(actionId, targetSpec.ErrorCode!, targetSpec.ErrorMessage!);
-                }
-
-                if (targetSpec.Selector is { } selector)
-                {
-                    return await EnterTextBySelectorAsync(sessionId, actionId, session.Target.Process, selector, text, cancellationToken).ConfigureAwait(false);
                 }
 
                 DesktopObservedElement? observedTarget;
@@ -1332,7 +1378,7 @@ internal sealed class DesktopTestingMcpTools(
                 return Error(actionId, "InvalidRequest", "A selector needs semanticValue true. Coordinate typing is named by observationRef, imageRef, x and y.");
             }
 
-            if (observation is null || string.IsNullOrWhiteSpace(imageRef) || x is null || y is null)
+            if (observation is null || imageRef is null || x is null || y is null)
             {
                 return Error(actionId, "InvalidRequest", "Coordinate typing needs observationRef, imageRef, x and y. To type without coordinates, pass semanticValue true with a selector (automationId, or role and name) or an elementRef.");
             }
@@ -1433,6 +1479,39 @@ internal sealed class DesktopTestingMcpTools(
         string.IsNullOrWhiteSpace(selector.AutomationId)
             ? new ExportLocator(null, selector.Role, selector.Name)
             : new ExportLocator(selector.AutomationId, null, null);
+
+    private (DesktopUiElementSnapshot? Element, DesktopOperationError? Refusal) RevalidateSelectedElement(
+        DesktopProcessIdentity process,
+        DesktopSelector selector,
+        DesktopUiElementSnapshot selected,
+        nint windowHandle)
+    {
+        var again = ResolveSelector(process, selector);
+        if (!again.IsResolved)
+        {
+            var code = again.ErrorCode is "ProviderUnavailable" or "InspectionIncomplete" ? again.ErrorCode : "TargetChanged";
+            return (null, new DesktopOperationError(code!, $"The target could not be established again after the window was foregrounded ({again.ErrorMessage}) No input was sent."));
+        }
+
+        var current = again.Element!;
+        var sameElement = string.Equals(current.AutomationId, selected.AutomationId, StringComparison.Ordinal)
+            && string.Equals(current.Role, selected.Role, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(current.Name, selected.Name, StringComparison.Ordinal)
+            && string.Equals(current.WindowRef, selected.WindowRef, StringComparison.OrdinalIgnoreCase);
+        if (!sameElement || !HasUsableBounds(current, process.ProcessRef, out var currentHandle) || currentHandle != windowHandle)
+        {
+            return (null, new DesktopOperationError("TargetChanged", "The selected element is no longer the same visible element after the window was foregrounded. No input was sent."));
+        }
+
+        var x = current.BoundsPixels.X + current.BoundsPixels.Width / 2;
+        var y = current.BoundsPixels.Y + current.BoundsPixels.Height / 2;
+        if (hitTest is null || !hitTest.ElementOwnsPoint(current.ElementRef, x, y))
+        {
+            return (null, new DesktopOperationError("TargetOccluded", "The click point does not land on the selected element (another control, popup, or dialog covers it). No input was sent."));
+        }
+
+        return (current, null);
+    }
 
     private DesktopSelectorResolution ResolveSelector(DesktopProcessIdentity process, DesktopSelector selector)
     {

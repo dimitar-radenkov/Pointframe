@@ -64,6 +64,9 @@ public sealed class DesktopAutomationWorkerProvider : IDesktopAutomationWorkerPr
                 DesktopAutomationWorkerProtocol.Operations.Invoke => HandleInvoke(request, cancellationToken),
                 DesktopAutomationWorkerProtocol.Operations.SetValue => HandleUiAction(request, static (provider, elementRef, payload) =>
                     provider.TrySetValue(elementRef, payload.GetProperty("value").GetString() ?? string.Empty), cancellationToken),
+                DesktopAutomationWorkerProtocol.Operations.HitTest => HandleUiAction(request, static (provider, elementRef, payload) =>
+                    provider is IWindowsUiAutomationHitTestProvider hitTest
+                    && hitTest.ElementOwnsPoint(elementRef, payload.GetProperty("x").GetInt32(), payload.GetProperty("y").GetInt32()), cancellationToken),
                 _ => Failure(request, "UnsupportedOperation", "The worker operation is not supported."),
             };
         }

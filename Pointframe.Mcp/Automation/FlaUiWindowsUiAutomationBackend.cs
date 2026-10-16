@@ -10,6 +10,7 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
     IWindowsUiAutomationBackend,
     IWindowsUiAutomationCandidateBackend,
     IWindowsUiAutomationActionBackend,
+    IWindowsUiAutomationHitTestBackend,
     IWindowsUiAutomationWarmupBackend,
     IDisposable
 {
@@ -271,6 +272,43 @@ internal sealed class FlaUiWindowsUiAutomationBackend :
         return thread.Join(waitMilliseconds)
             ? succeeded ? UiInvokeOutcome.Completed : UiInvokeOutcome.Failed
             : UiInvokeOutcome.Pending;
+    }
+
+    public bool ElementOwnsPoint(string elementRef, int x, int y)
+    {
+        if (!_elements.TryGetValue(elementRef, out var target))
+        {
+            return false;
+        }
+
+        try
+        {
+            var targetId = target.Properties.RuntimeId.ValueOrDefault;
+            if (targetId is not { Length: > 0 })
+            {
+                return false;
+            }
+
+            // The element under the point, then its ancestors: the point belongs to the target when the target
+            // is the hit element or contains it. Anything else (a sibling overlay, a popup, another window) is not.
+            var current = _automation.FromPoint(new System.Drawing.Point(x, y));
+            for (var depth = 0; current is not null && depth < 64; depth++)
+            {
+                var id = current.Properties.RuntimeId.ValueOrDefault;
+                if (id is { Length: > 0 } && id.AsSpan().SequenceEqual(targetId))
+                {
+                    return true;
+                }
+
+                current = current.Parent;
+            }
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        return false;
     }
 
     public bool TrySetValue(string elementRef, string value)

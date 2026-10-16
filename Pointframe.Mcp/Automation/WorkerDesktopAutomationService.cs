@@ -9,6 +9,7 @@ namespace Pointframe.Mcp.Automation;
 public sealed class WorkerDesktopAutomationService :
     IWindowsDesktopInputService,
     IWindowsUiAutomationActionProvider,
+    IWindowsUiAutomationHitTestProvider,
     IAsyncDisposable
 {
     private readonly IDesktopAutomationWorkerHost _host;
@@ -108,6 +109,9 @@ public sealed class WorkerDesktopAutomationService :
             _ => UiInvokeOutcome.Failed,
         };
     }
+
+    public bool ElementOwnsPoint(string elementRef, int x, int y) =>
+        DispatchUi(DesktopAutomationWorkerProtocol.Operations.HitTest, new { elementRef, x, y });
 
     public bool TrySetValue(string elementRef, string value) =>
         DispatchUi(DesktopAutomationWorkerProtocol.Operations.SetValue, new { elementRef, value });

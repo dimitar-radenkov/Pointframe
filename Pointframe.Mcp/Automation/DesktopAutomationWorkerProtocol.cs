@@ -31,6 +31,7 @@ public static class DesktopAutomationWorkerProtocol
         public const string Ping = "uia.ping";
         public const string Invoke = "uia.invoke";
         public const string SetValue = "uia.set_value";
+        public const string HitTest = "uia.hit_test";
     }
 
     public static string Serialize<T>(T message)

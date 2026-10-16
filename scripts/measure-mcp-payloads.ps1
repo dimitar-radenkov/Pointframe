@@ -1145,57 +1145,92 @@ function Invoke-CompactPass
     Invoke-FirstCheckScenarios
 }
 
-# Opens a fresh fixture session and returns its id and the fixture window.
+# Opens a fresh fixture session. Only the compact path needs the fixture window (for observation bounds), and
+# that list_windows call is a counted call of that scenario; the selector path needs no discovery at all.
 function Start-FirstCheckSession
 {
-    param([string]$Variant)
+    param([string]$Variant, [switch]$NeedWindow)
 
     $session = Start-FixtureSession @('The fixture text box holds the entered value.') $Variant
     Start-Sleep -Seconds 2
-    $window = Find-FixtureWindow (Invoke-Tool 'list_windows' @{} 'first-check' -NoRow)
-    if ($null -eq $window)
+    $window = $null
+    if ($NeedWindow)
     {
-        throw 'list_windows did not report the fixture window for the first-check scenario.'
+        $window = Find-FixtureWindow (Invoke-Tool 'list_windows' @{} $Variant)
+        if ($null -eq $window)
+        {
+            throw 'list_windows did not report the fixture window for the first-check scenario.'
+        }
     }
 
     return @{ Session = $session; Window = $window }
 }
 
+# Requires one call of a first-check workflow to have worked: an action must dispatch, a check must pass, and
+# anything else must have produced a response. A failure is recorded against the scenario's own variant, so a
+# broken workflow fails the run instead of entering the savings comparison.
+function Assert-FirstCheckStep
+{
+    param([string]$Tool, [string]$Variant, $Response, [string]$Kind)
+
+    $ok = $null -ne $Response
+    if ($ok -and $Kind -eq 'action')
+    {
+        $ok = $Response['dispatch'] -eq 'Complete' -and -not $Response['error']
+    }
+    elseif ($ok -and $Kind -eq 'check')
+    {
+        $ok = $Response['verification'] -eq 'passed'
+    }
+
+    Add-CompactCheck $Tool $Variant $ok "the first-check call $Tool did not succeed: $($Response | ConvertTo-Json -Compress -Depth 5)"
+}
+
 # The first passing desktop check, two ways, in the same run. The compact path is what an agent did before
-# selectors: observe, focus, type at coordinates, observe, invoke by ref, check. The selector path is start,
-# enter by selector, invoke by selector, check: no observation at all. Each scenario's calls carry their own
-# variant, so calls, bytes, token estimate and unexpected errors are totalled per scenario. Ending the session
-# is cleanup and has a variant of its own.
+# selectors: observe, focus, type at coordinates, observe, invoke by ref, check (plus the list_windows call that
+# finds the observation bounds). The selector path is start, enter by selector, invoke by selector, check: no
+# observation and no discovery. Every call a workflow makes carries its scenario's variant, so calls, bytes, token
+# estimate and unexpected errors are totalled per scenario, and every action and the final check must succeed.
+# Ending the session is cleanup and has a variant of its own.
 function Invoke-FirstCheckScenarios
 {
     $text = 'first-check'
 
-    $compact = Start-FirstCheckSession 'first-check-compact'
+    $compact = Start-FirstCheckSession 'first-check-compact' -NeedWindow
     $bounds = $compact.Window['boundsPixels']
     $region = @(@{ x = $bounds['x']; y = $bounds['y']; width = $bounds['width']; height = $bounds['height'] })
     $observeArguments = @{ sessionId = $compact.Session; captureBoundsPixels = $region; includeUiAutomation = $true; includeImages = $false; detail = 'compact' }
     $observation = Invoke-Tool 'desktop_observe_app' $observeArguments 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_observe_app' 'first-check-compact' $observation 'other'
     $textBox = Get-CompactImagePoint $observation 'textBox'
     $windowRef = if ($textBox.Element['windowRef']) { $textBox.Element['windowRef'] } else { $observation['windowRef'] }
-    $null = Invoke-Tool 'desktop_focus_window' @{ sessionId = $compact.Session; actionId = New-ActionId; windowRef = $windowRef } 'first-check-compact'
+    $focus = Invoke-Tool 'desktop_focus_window' @{ sessionId = $compact.Session; actionId = New-ActionId; windowRef = $windowRef } 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_focus_window' 'first-check-compact' $focus 'action'
     $observation = Invoke-Tool 'desktop_observe_app' $observeArguments 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_observe_app' 'first-check-compact' $observation 'other'
     $textBox = Get-CompactImagePoint $observation 'textBox'
-    $null = Invoke-Tool 'desktop_enter_text' @{
+    $entered = Invoke-Tool 'desktop_enter_text' @{
         sessionId = $compact.Session; actionId = New-ActionId
         observationRef = $observation['observationRef']; imageRef = $observation['images'][0]['imageRef']
         x = $textBox.x; y = $textBox.y; text = $text
     } 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_enter_text' 'first-check-compact' $entered 'action'
     $observation = Invoke-Tool 'desktop_observe_app' $observeArguments 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_observe_app' 'first-check-compact' $observation 'other'
     $save = Get-CompactImagePoint $observation 'saveButton'
-    $null = Invoke-Tool 'desktop_invoke' @{ sessionId = $compact.Session; actionId = New-ActionId; elementRef = $save.Element['elementRef'] } 'first-check-compact'
-    $null = Invoke-Tool 'desktop_check_ui' @{ sessionId = $compact.Session; kind = 'textEquals'; automationId = 'textBox'; expected = $text; timeoutSeconds = 5; criterionId = 'C1' } 'first-check-compact'
+    $invoked = Invoke-Tool 'desktop_invoke' @{ sessionId = $compact.Session; actionId = New-ActionId; elementRef = $save.Element['elementRef'] } 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_invoke' 'first-check-compact' $invoked 'action'
+    $check = Invoke-Tool 'desktop_check_ui' @{ sessionId = $compact.Session; kind = 'textEquals'; automationId = 'textBox'; expected = $text; timeoutSeconds = 5; criterionId = 'C1' } 'first-check-compact'
+    Assert-FirstCheckStep 'desktop_check_ui' 'first-check-compact' $check 'check'
     $null = Invoke-Tool 'desktop_end_test_session' @{ sessionId = $compact.Session; actionId = New-ActionId } 'first-check-cleanup'
 
     $selector = Start-FirstCheckSession 'first-check-selector'
-    $null = Invoke-Tool 'desktop_enter_text' @{ sessionId = $selector.Session; actionId = New-ActionId; text = $text; semanticValue = $true; automationId = 'textBox' } 'first-check-selector'
-    $null = Invoke-Tool 'desktop_invoke' @{ sessionId = $selector.Session; actionId = New-ActionId; automationId = 'saveButton' } 'first-check-selector'
+    $entered = Invoke-Tool 'desktop_enter_text' @{ sessionId = $selector.Session; actionId = New-ActionId; text = $text; semanticValue = $true; automationId = 'textBox' } 'first-check-selector'
+    Assert-FirstCheckStep 'desktop_enter_text' 'first-check-selector' $entered 'action'
+    $invoked = Invoke-Tool 'desktop_invoke' @{ sessionId = $selector.Session; actionId = New-ActionId; automationId = 'saveButton' } 'first-check-selector'
+    Assert-FirstCheckStep 'desktop_invoke' 'first-check-selector' $invoked 'action'
     $check = Invoke-Tool 'desktop_check_ui' @{ sessionId = $selector.Session; kind = 'textEquals'; automationId = 'textBox'; expected = $text; timeoutSeconds = 5; criterionId = 'C1' } 'first-check-selector'
-    Add-CompactCheck 'desktop_check_ui' 'first-check-selector' ($null -ne $check -and $check['verification'] -eq 'passed') 'the first check reached by selectors did not pass'
+    Assert-FirstCheckStep 'desktop_check_ui' 'first-check-selector' $check 'check'
     $null = Invoke-Tool 'desktop_end_test_session' @{ sessionId = $selector.Session; actionId = New-ActionId } 'first-check-cleanup'
 }
 
