@@ -8,13 +8,39 @@ The fields of the spec file are in the [spec reference](verify-spec.md).
 
 ## Coding agents: start here
 
-Follow the `verify-desktop-work` recipe: the guide `Pointframe.Mcp/Guides/verify-desktop-work.md` in this
-repository, which the MCP server serves as `pointframe://guides/verify-desktop-work` and the Pointframe plugin
-ships as a skill. It has the one-step CLI install, the spec scenario, `pointframe verify run`, the role names, and
-what approval needs. In short: install the CLI (see [Install](#install) for the manual steps), run
-`pointframe verify init --app <path to the built exe>` (add `--hooks none` if you do not want a Stop hook), add a
-desktop scenario from the [spec reference](verify-spec.md), then run `pointframe verify run`. Run
-`pointframe verify setup` afterwards for interactive desktop tools.
+The same recipe is the guide `Pointframe.Mcp/Guides/verify-desktop-work.md`, which the MCP server serves as `pointframe://guides/verify-desktop-work` and the Pointframe plugin ships as a skill. This is the short path from it; run `pointframe verify setup` afterwards for interactive desktop tools.
+
+<!-- short-path:begin (generated from Pointframe.Mcp/Guides/verify-desktop-work.md by scripts/sync-agent-guides.ps1; do not edit) -->
+Run everything from the project root, in an interactive, unlocked Windows desktop session.
+
+1. Install the CLI (skip this if `pointframe --version` works). Run this one line as it is, in one tool call; it works from Bash and from PowerShell:
+
+```
+pwsh -NoProfile -Command '$u="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Cli-win-x64.zip"; $d=Join-Path $env:TEMP "pointframe-cli"; Remove-Item $d -Recurse -Force -ErrorAction Ignore; New-Item -ItemType Directory $d | Out-Null; Invoke-WebRequest $u -OutFile "$d\cli.zip"; Invoke-WebRequest "$u.sha256" -OutFile "$d\cli.zip.sha256"; if ((Get-FileHash "$d\cli.zip").Hash -ne ((Get-Content "$d\cli.zip.sha256" -Raw).Trim() -split "\s+")[0]) { throw "SHA-256 mismatch" }; Expand-Archive "$d\cli.zip" "$d\x"; & "$d\x\Pointframe.Cli.exe" install; "$env:LOCALAPPDATA\Programs\Pointframe.Cli\pointframe.exe"'
+```
+
+   `install` puts `pointframe` on the user `Path` for new shells only. In the shell you already have open, call the exe path the line prints (`%LOCALAPPDATA%\Programs\Pointframe.Cli\pointframe.exe`) in place of `pointframe`.
+2. Write the spec, with your built exe's path relative to the project root (one line, for a single-project WPF app):
+
+```
+pointframe verify init --app bin/Release/net10.0-windows/MyApp.exe --hooks none
+```
+
+3. Add one scenario to the `scenarios` array of `.pointframe/verify.json`: an action, the resulting state, and a negative control (a check with `expectFailure` and a deliberately wrong expectation, which must fail):
+
+```jsonc
+{ "id": "save-text", "criteria": ["Saving shows the typed text in the status line."], "steps": [
+  { "enterText": { "automationId": "textBox", "text": "hello" } },
+  { "invoke": { "automationId": "saveButton" } },
+  { "check": { "kind": "textEquals", "automationId": "statusLabel", "expected": "Saved hello", "criterion": "C1" } },
+  { "check": { "kind": "textEquals", "automationId": "statusLabel", "expected": "Not saved", "expectFailure": true, "timeoutSeconds": 1 } } ] }
+```
+
+4. Run `pointframe verify run`. It runs the gates, launches the app, drives the scenario in the real UI, and installs the MCP server itself on its first run. Read `status` in the printed JSON: `pass` is exit 0, `fail` is exit 1, a wrong spec is exit 2. Run `verify run` last: any later edit, even to docs or skill files, makes the pass stale (`verify status` then shows `fresh: false`), so write everything first and run again if you change anything.
+5. Evidence: `artifacts/pointframe-verify/verdict.json` is the verdict, and each scenario's signed bundle (`report.json`, `evidence/` screenshots, `index.html`) is under `artifacts/pointframe-verify/runs/<time>/`. Say the work is done only when `status` is `pass`.
+
+The spec fields are in [verify-spec.md](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify-spec.md); the example above covers the common case.
+<!-- short-path:end -->
 
 Real apps:
 

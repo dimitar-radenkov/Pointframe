@@ -8,6 +8,40 @@ There are two ways to get that proof. The first needs no MCP client restart and 
 first passing proof in a project that has none. The second gives you interactive tools to explore and
 check the running app step by step. Start with the first; use the second when you need it.
 
+## Short path for coding agents
+
+<!-- short-path:begin -->
+Run everything from the project root, in an interactive, unlocked Windows desktop session.
+
+1. Install the CLI (skip this if `pointframe --version` works). Run this one line as it is, in one tool call; it works from Bash and from PowerShell:
+
+```
+pwsh -NoProfile -Command '$u="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Cli-win-x64.zip"; $d=Join-Path $env:TEMP "pointframe-cli"; Remove-Item $d -Recurse -Force -ErrorAction Ignore; New-Item -ItemType Directory $d | Out-Null; Invoke-WebRequest $u -OutFile "$d\cli.zip"; Invoke-WebRequest "$u.sha256" -OutFile "$d\cli.zip.sha256"; if ((Get-FileHash "$d\cli.zip").Hash -ne ((Get-Content "$d\cli.zip.sha256" -Raw).Trim() -split "\s+")[0]) { throw "SHA-256 mismatch" }; Expand-Archive "$d\cli.zip" "$d\x"; & "$d\x\Pointframe.Cli.exe" install; "$env:LOCALAPPDATA\Programs\Pointframe.Cli\pointframe.exe"'
+```
+
+   `install` puts `pointframe` on the user `Path` for new shells only. In the shell you already have open, call the exe path the line prints (`%LOCALAPPDATA%\Programs\Pointframe.Cli\pointframe.exe`) in place of `pointframe`.
+2. Write the spec, with your built exe's path relative to the project root (one line, for a single-project WPF app):
+
+```
+pointframe verify init --app bin/Release/net10.0-windows/MyApp.exe --hooks none
+```
+
+3. Add one scenario to the `scenarios` array of `.pointframe/verify.json`: an action, the resulting state, and a negative control (a check with `expectFailure` and a deliberately wrong expectation, which must fail):
+
+```jsonc
+{ "id": "save-text", "criteria": ["Saving shows the typed text in the status line."], "steps": [
+  { "enterText": { "automationId": "textBox", "text": "hello" } },
+  { "invoke": { "automationId": "saveButton" } },
+  { "check": { "kind": "textEquals", "automationId": "statusLabel", "expected": "Saved hello", "criterion": "C1" } },
+  { "check": { "kind": "textEquals", "automationId": "statusLabel", "expected": "Not saved", "expectFailure": true, "timeoutSeconds": 1 } } ] }
+```
+
+4. Run `pointframe verify run`. It runs the gates, launches the app, drives the scenario in the real UI, and installs the MCP server itself on its first run. Read `status` in the printed JSON: `pass` is exit 0, `fail` is exit 1, a wrong spec is exit 2. Run `verify run` last: any later edit, even to docs or skill files, makes the pass stale (`verify status` then shows `fresh: false`), so write everything first and run again if you change anything.
+5. Evidence: `artifacts/pointframe-verify/verdict.json` is the verdict, and each scenario's signed bundle (`report.json`, `evidence/` screenshots, `index.html`) is under `artifacts/pointframe-verify/runs/<time>/`. Say the work is done only when `status` is `pass`.
+
+The spec fields are in [verify-spec.md](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify-spec.md); the example above covers the common case.
+<!-- short-path:end -->
+
 ## Fastest first proof: a spec and `pointframe verify run`
 
 Everything runs from the project root, in an interactive, unlocked Windows desktop session.
@@ -64,8 +98,9 @@ client needs no configuration and no restart.
    Every criterion needs a check that names it with `criterion`. A scenario with criteria needs one
    negative control: a check with `"expectFailure": true` and a deliberately wrong expectation. The spec
    fields are in `references/verify-spec.md` in the base directory of the `create-desktop-verification-skill` skill, or
-   `docs/cli/verify-spec.md` in the Pointframe repository. Read the file from disk; do not fetch Pointframe
-   docs from the web, because the example above covers the common case.
+   `docs/cli/verify-spec.md` in the Pointframe repository. If you are reading this as the bundled skill or the MCP
+   resource, read the file from disk and do not fetch Pointframe docs from the web. If you are reading the public
+   README or docs, the short path above covers the common case, and the schema is linked there.
 3. **Name controls by `automationId` when the app has one, otherwise by `role` and `name`.** If a control
    has no automation id, give it one in the app (`AutomationProperties.AutomationId` in WPF, `Name` in
    WinForms) rather than guessing. See Roles below.
@@ -270,8 +305,10 @@ Rules for the generated skill:
 - Write one file per feature under `features/`, each with exactly four H2 sections, named exactly
   `Sub-features`, `How to get to it (user POV)`, `Driving it with Pointframe` and `Gotchas` (tools check the
   headings), listed in `features/README.md`.
-- Prove the skill once, end to end, with `pointframe verify run`, and confirm that the evidence files
-  exist after the run, before telling anyone it works. Say what stays unproved.
+- Write the spec and every skill file (SKILL.md, features/README.md, the feature files) first. Then prove the skill
+  once, end to end, with `pointframe verify run` as the last step, and confirm that the evidence files exist after
+  the run, before telling anyone it works. Make no edit after the run: any change makes the pass stale; if you
+  must change something, run `verify run` again. Say what stays unproved.
 
 ## Limits
 
