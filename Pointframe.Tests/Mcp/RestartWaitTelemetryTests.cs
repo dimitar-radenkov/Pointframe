@@ -58,6 +58,24 @@ public sealed class RestartWaitTelemetryTests : IDisposable
     }
 
     [Fact]
+    public async Task Runner_RestartWhoseLastPollEndsAfterTheDeadline_MakesOneFinalCountedAttempt()
+    {
+        await using var server = await RestartServer.StartAsync(refusals: int.MaxValue, callDelay: TimeSpan.FromMilliseconds(700));
+        var client = await ClientAsync(server);
+        var runner = new DesktopScenarioRunner(
+            client.Mock.Object, "fixture", [new CaptureRectangle(0, 0, 1920, 1080)], TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(500));
+
+        var result = await runner.RunAsync(RestartScenario(), CancellationToken.None);
+
+        var restart = result.Steps.Single(step => step.Kind == "restart");
+        Assert.Equal(VerificationStatus.Fail, restart.Status);
+        Assert.Equal("TargetStillRunning", restart.Code);
+        Assert.Equal(2, server.Script.Calls);
+        var tracked = Assert.Single(server.Telemetry.Tracked);
+        Assert.Equal(("desktop_restart_app", TelemetryOutcome.Error), (tracked.Name, tracked.Outcome));
+    }
+
+    [Fact]
     public async Task Runner_RestartCancelledBetweenPolls_EmitsNoRestartEvent()
     {
         using var cancellation = new CancellationTokenSource();
@@ -207,7 +225,7 @@ public sealed class RestartWaitTelemetryTests : IDisposable
         """{ "id": "r", "steps": [ { "invoke": { "automationId": "saveButton" } }, { "restart": {} }, { "check": { "kind": "exists", "automationId": "textBox" } } ] }""",
         "r");
 
-    public sealed class RestartScript(int refusals)
+    public sealed class RestartScript(int refusals, TimeSpan callDelay = default)
     {
         private int _calls;
 
@@ -216,6 +234,11 @@ public sealed class RestartWaitTelemetryTests : IDisposable
         public CallToolResult Next()
         {
             var calls = Interlocked.Increment(ref _calls);
+            if (callDelay > TimeSpan.Zero)
+            {
+                Thread.Sleep(callDelay);
+            }
+
             var json = calls <= refusals
                 ? "{\"operationStatus\":\"Completed\",\"dispatch\":\"NotStarted\",\"error\":{\"code\":\"TargetStillRunning\",\"message\":\"still running\"}}"
                 : "{\"operationStatus\":\"Completed\",\"dispatch\":\"Complete\"}";
@@ -281,9 +304,9 @@ public sealed class RestartWaitTelemetryTests : IDisposable
 
         internal RecordingTelemetry Telemetry { get; }
 
-        internal static async Task<RestartServer> StartAsync(int refusals)
+        internal static async Task<RestartServer> StartAsync(int refusals, TimeSpan callDelay = default)
         {
-            var script = new RestartScript(refusals);
+            var script = new RestartScript(refusals, callDelay);
             var telemetry = new RecordingTelemetry();
             var clientToServer = new Pipe();
             var serverToClient = new Pipe();
