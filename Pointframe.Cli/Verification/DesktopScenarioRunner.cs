@@ -435,7 +435,7 @@ internal sealed class DesktopScenarioRunner
                     if (code == "InspectionIncomplete")
                     {
                         _stepInfrastructure = true;
-                        message = $"{message} This is not an app defect. Scope the check with an automationId or windowRef, or retry.";
+                        message = $"{message} This is not an app defect. Retry, or give the check a more specific selector (an automationId).";
                     }
 
                     if (code == "ElementNotFound")
@@ -497,7 +497,9 @@ internal sealed class DesktopScenarioRunner
                         $"{matches.Length} elements matched {locator}, and an input needs exactly one. No input was sent. Candidates: {string.Join("; ", candidates)}. Narrow the locator (a different role or name, or an automationId).");
                 }
 
-                if (matches.Length == 1)
+                // A unique locator match in a truncated tree is not proof of uniqueness: an unseen duplicate could
+                // be the real target, so input is not dispatched on it.
+                if (matches.Length == 1 && !(lastTruncated && locator is not null))
                 {
                     var match = matches[0];
                     return new ResolvedElement(
@@ -527,7 +529,7 @@ internal sealed class DesktopScenarioRunner
                     _stepInfrastructure = true;
                     return ResolvedElement.Failed(
                         "InspectionIncomplete",
-                        $"UI Automation stopped before it could establish whether {locator?.ToString() ?? "any element of the app"} exists. This is not an app defect. Scope the step with an automationId or windowRef, or retry.");
+                        $"UI Automation stopped before it could establish whether {locator?.ToString() ?? "any element of the app"} exists uniquely. This is not an app defect. Retry, or give the step a more specific selector (an automationId).");
                 }
 
                 _stepInfrastructure = infrastructure;

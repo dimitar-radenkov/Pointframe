@@ -55,7 +55,8 @@ public sealed record DesktopNextStep(
     string Kind,
     string Tool,
     IReadOnlyDictionary<string, object?> Arguments,
-    int? RetryAfterSeconds = null);
+    int? RetryAfterSeconds = null,
+    string? Reason = null);
 
 public sealed record DesktopTestingActionResponse(
     int SchemaVersion,

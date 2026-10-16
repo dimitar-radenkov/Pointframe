@@ -62,11 +62,14 @@ public sealed class WorkerUiCheckSource(
             return evaluation;
         }
 
-        // A target that was found in the inspected part decides the check normally: a found element
-        // proves existence, a mismatch on it is real, and a found element makes absence false. Finding
-        // nothing proves nothing, because the target, a duplicate, or the thing absence needs to rule
-        // out may sit in the part of the tree that was never inspected.
-        if (evaluation.MatchCount > 0)
+        // Existence and absence are decided by a witnessed match: a found element proves exists and
+        // refutes absent. Every state predicate needs exactly one match, so an unseen duplicate could
+        // flip its verdict; only an already visible second match (an ambiguous target) is final.
+        var witnessed = condition is DesktopUiCheckCondition.Exists
+            or DesktopUiCheckCondition.Absent
+            or DesktopUiCheckCondition.WindowExists
+            or DesktopUiCheckCondition.WindowAbsent;
+        if (evaluation.MatchCount > 0 && (witnessed || evaluation.MatchCount > 1))
         {
             return evaluation with { IsTruncated = true };
         }

@@ -1,5 +1,6 @@
 using Pointframe.Engine;
 using Pointframe.Engine.Automation.Models;
+using Pointframe.Engine.Automation.Services;
 using Pointframe.Mcp.Automation;
 
 namespace Pointframe.Mcp;
@@ -69,7 +70,11 @@ public static class DesktopTestingResponseMapper
             response.Error,
             response.Ocr);
     }
-    public static DesktopTestingCheckResponse MapCheck(DesktopUiCheckEvaluation evaluation)
+    public static DesktopTestingCheckResponse MapCheck(
+        DesktopUiCheckEvaluation evaluation,
+        string? sessionId = null,
+        DesktopCheckSpec? spec = null,
+        bool negativeControl = false)
     {
         ArgumentNullException.ThrowIfNull(evaluation);
         return new DesktopTestingCheckResponse(
@@ -82,14 +87,33 @@ public static class DesktopTestingResponseMapper
             evaluation.MatchCount,
             evaluation.ErrorCode is null ? null : new McpCaptureError(evaluation.ErrorCode, evaluation.Message ?? evaluation.ErrorCode),
             evaluation.ActualValue,
-            RecoveryFor(evaluation.ErrorCode));
+            RecoveryFor(evaluation.ErrorCode, sessionId, spec, negativeControl));
     }
 
     // A negative control inverts only the verdict. Matches stays the oracle's raw answer, so a reader can
     // see that the wrong expectation was rejected rather than that the oracle said yes.
-    public static DesktopTestingCheckResponse MapNegativeControl(DesktopUiCheckEvaluation evaluation)
+    public static DesktopTestingCheckResponse MapNegativeControl(
+        DesktopUiCheckEvaluation evaluation,
+        string? sessionId = null,
+        DesktopCheckSpec? spec = null)
     {
-        var response = MapCheck(evaluation);
+        // Inverting an answer read from a partial tree would turn "not seen" into a passing control.
+        if (evaluation.IsTruncated)
+        {
+            return MapCheck(
+                new DesktopUiCheckEvaluation(
+                    false,
+                    false,
+                    evaluation.MatchCount,
+                    "InspectionIncomplete",
+                    "The UI Automation tree was truncated, so a negative control cannot be established.",
+                    IsTruncated: true),
+                sessionId,
+                spec,
+                negativeControl: true);
+        }
+
+        var response = MapCheck(evaluation, sessionId, spec, negativeControl: true);
         if (!evaluation.StateAvailable)
         {
             return response;
@@ -137,28 +161,63 @@ public static class DesktopTestingResponseMapper
             NextStep: RecoveryFor(result.Error?.Code));
     }
 
-    public static DesktopNextStep? RecoveryFor(string? code) => code switch
+    // A hint is emitted only when a complete, schema-valid call can be built from what is known; a hint
+    // that would need guessed inputs (window refs, capture bounds) is omitted instead.
+    public static DesktopNextStep? RecoveryFor(
+        string? code,
+        string? sessionId = null,
+        DesktopCheckSpec? spec = null,
+        bool negativeControl = false)
     {
-        "InspectionIncomplete" => new(
-            "scope_or_retry",
-            "desktop_check_ui",
-            new Dictionary<string, object?> { ["note"] = "Scope the check with windowRef or automationId, or repeat it once the UI has settled." },
-            1),
-        "TargetStillRunning" => new(
-            "wait",
-            "desktop_check_ui",
-            new Dictionary<string, object?> { ["kind"] = "processExited", ["note"] = "Close the app through its own UI, wait for processExited, then call desktop_restart_app again." },
-            2),
-        "StaleObservation" or "StaleObservationRef" => new("observe_then_retry", "desktop_observe_app", new Dictionary<string, object?>()),
-        "ElementNotFound" => new(
-            "observe_then_retry",
-            "desktop_observe_app",
-            new Dictionary<string, object?> { ["note"] = "Observe again and use a current element ref, automationId, or role and name." }),
-        "ProfileNotFound" or "UnknownProfile" => new("list_profiles", "desktop_list_apps", new Dictionary<string, object?>()),
-        "ProviderUnavailable" or "UiaUnavailable" or "InspectionTimeout" => new("retry", "desktop_observe_app", new Dictionary<string, object?>(), 2),
-        "TargetUnavailable" or "WindowUnavailable" => new("observe_then_retry", "desktop_observe_app", new Dictionary<string, object?>()),
-        _ => null,
-    };
+        switch (code)
+        {
+            case "InspectionIncomplete" or "ProviderUnavailable" or "UiaUnavailable" or "InspectionTimeout":
+                {
+                    if (sessionId is null || spec is null)
+                    {
+                        return null;
+                    }
+
+                    var arguments = new Dictionary<string, object?> { ["sessionId"] = sessionId, ["kind"] = spec.Kind };
+                    AddIfSet(arguments, "automationId", spec.AutomationId);
+                    AddIfSet(arguments, "role", spec.Role);
+                    AddIfSet(arguments, "name", spec.Name);
+                    AddIfSet(arguments, "windowRef", spec.WindowRef);
+                    AddIfSet(arguments, "expected", spec.Expected);
+                    arguments["timeoutSeconds"] = spec.TimeoutSeconds;
+                    if (negativeControl)
+                    {
+                        arguments["expectFailure"] = true;
+                    }
+
+                    return code == "InspectionIncomplete"
+                        ? new DesktopNextStep(
+                            "scope_or_retry",
+                            "desktop_check_ui",
+                            arguments,
+                            1,
+                            "The UI Automation walk stopped early. Retry once the UI has settled, or scope the check with automationId and windowRef.")
+                        : new DesktopNextStep("retry", "desktop_check_ui", arguments, 2, "UI Automation was not available; retry the same check.");
+                }
+
+            case "ProfileNotFound" or "UnknownProfile":
+                return new DesktopNextStep(
+                    "list_profiles",
+                    "desktop_list_apps",
+                    new Dictionary<string, object?> { ["actionId"] = Guid.NewGuid().ToString() },
+                    Reason: "List the approved profile ids, then pass one as profileId to desktop_start_test_session.");
+            default:
+                return null;
+        }
+    }
+
+    private static void AddIfSet(Dictionary<string, object?> arguments, string name, string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+        {
+            arguments[name] = value;
+        }
+    }
 
     private static string? Truncate(string? value)
     {

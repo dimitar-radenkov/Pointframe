@@ -330,12 +330,13 @@ public sealed class VerificationOutcomeTests : IDisposable
         Assert.Equal("InspectionIncomplete", step.Code);
         Assert.Contains("not an app defect", step.Message, StringComparison.Ordinal);
         Assert.Contains("automationId", step.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("windowRef", step.Message, StringComparison.Ordinal);
         Assert.True(result.InfrastructureFailure);
         Assert.NotEqual(VerificationStatus.Pass, result.Status);
     }
 
     [Fact]
-    public async Task Runner_TruncatedObservationThatContainsTheElement_StillResolves()
+    public async Task Runner_TruncatedObservationWithAUniqueMatch_DoesNotDispatchInput()
     {
         var fake = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
         {
@@ -350,7 +351,20 @@ public sealed class VerificationOutcomeTests : IDisposable
 
         var result = await FastRunner(fake).RunAsync(Scenario("""[ { "invoke": { "automationId": "saveButton" } } ]"""), CancellationToken.None);
 
+        Assert.Equal("InspectionIncomplete", result.Steps.Single(item => item.Kind == "invoke").Code);
+        Assert.True(result.InfrastructureFailure);
+        Assert.Equal(0, fake.Count("desktop_invoke"));
+    }
+
+    [Fact]
+    public async Task Runner_CompleteObservationWithAUniqueMatch_StillDispatches()
+    {
+        var fake = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true));
+
+        var result = await FastRunner(fake).RunAsync(Scenario("""[ { "invoke": { "automationId": "saveButton" } } ]"""), CancellationToken.None);
+
         Assert.Equal(VerificationStatus.Pass, result.Steps.Single(item => item.Kind == "invoke").Status);
+        Assert.Equal(1, fake.Count("desktop_invoke"));
     }
 
     [Fact]
@@ -376,7 +390,18 @@ public sealed class VerificationOutcomeTests : IDisposable
 
         Assert.Equal("run_command", next.Kind);
         Assert.Contains("automationId", next.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("windowRef", next.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("Fix failing", next.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NextStep_ForIncompleteInspection_NamesOnlyFieldsTheSpecAccepts()
+    {
+        var next = VerificationNextSteps.For(VerificationStatus.Fail, "inspection_incomplete");
+
+        Assert.Throws<VerificationSpecException>(() => Scenario("""[ { "check": { "kind": "exists", "automationId": "saveButton", "windowRef": "w" } } ]"""));
+        Assert.DoesNotContain("windowRef", next.Text, StringComparison.Ordinal);
+        Assert.NotNull(Scenario("""[ { "check": { "kind": "exists", "automationId": "saveButton" } } ]"""));
     }
 
     private static DesktopScenarioRunner FastRunner(FakeMcp fake) =>

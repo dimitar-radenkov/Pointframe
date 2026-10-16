@@ -27,7 +27,7 @@ public class DesktopUiCheckEvaluationTests
 
         Assert.False(result.StateAvailable);
         Assert.Equal("InspectionIncomplete", result.ErrorCode);
-        var response = DesktopTestingResponseMapper.MapCheck(result);
+        var response = DesktopTestingResponseMapper.MapCheck(result, "session-1", CheckSpec);
         Assert.Equal("inconclusive", response.Verification);
         Assert.Equal("InspectionIncomplete", response.Error!.Code);
         Assert.NotNull(response.NextStep);
@@ -69,17 +69,77 @@ public class DesktopUiCheckEvaluationTests
     }
 
     [Fact]
-    public async Task TruncatedTreeStillDecidesWhenTheTargetWasFound()
+    public async Task TruncatedTreeStillDecidesWitnessedChecks()
     {
         var source = SourceFor(true, Element("el-1-0", automationId: "saveButton", text: "Save"));
 
         var exists = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.Exists(ById("saveButton")), CancellationToken.None);
-        var mismatch = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.TextEquals(ById("saveButton"), "Other"), CancellationToken.None);
         var absent = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.Absent(ById("saveButton")), CancellationToken.None);
 
         Assert.Equal("passed", DesktopTestingResponseMapper.MapCheck(exists).Verification);
-        Assert.Equal("failed", DesktopTestingResponseMapper.MapCheck(mismatch).Verification);
         Assert.Equal("failed", DesktopTestingResponseMapper.MapCheck(absent).Verification);
+    }
+
+    [Fact]
+    public async Task TruncatedTreeWithAHiddenDuplicateMakesEveryUniquenessPredicateInconclusive()
+    {
+        var source = SourceFor(true, Element("el-1-0", automationId: "saveButton", text: "Save", toggleState: "On"));
+        DesktopUiCheckCondition[] conditions =
+        [
+            new DesktopUiCheckCondition.TextEquals(ById("saveButton"), "Save"),
+            new DesktopUiCheckCondition.TextEquals(ById("saveButton"), "Other"),
+            new DesktopUiCheckCondition.Enabled(ById("saveButton"), true),
+            new DesktopUiCheckCondition.Enabled(ById("saveButton"), false),
+            new DesktopUiCheckCondition.ToggleEquals(ById("saveButton"), "On"),
+            new DesktopUiCheckCondition.ToggleEquals(ById("saveButton"), "Off"),
+            new DesktopUiCheckCondition.SelectionEquals(ById("saveButton"), "Selected"),
+        ];
+
+        foreach (var condition in conditions)
+        {
+            var result = await source.EvaluateAsync(Process(), condition, CancellationToken.None);
+
+            Assert.Equal("InspectionIncomplete", result.ErrorCode);
+            Assert.Equal("inconclusive", DesktopTestingResponseMapper.MapCheck(result).Verification);
+        }
+    }
+
+    [Fact]
+    public async Task TruncatedTreeWithAVisibleDuplicateStaysAmbiguous()
+    {
+        var source = SourceFor(true, Element("el-1-0", automationId: "dup", text: "a"), Element("el-1-1", automationId: "dup", text: "a"));
+
+        var result = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.TextEquals(ById("dup"), "a"), CancellationToken.None);
+
+        Assert.Equal(2, result.MatchCount);
+        Assert.NotEqual("InspectionIncomplete", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task TruncatedFoundTargetNeverPassesOrInvertsAsANegativeControl()
+    {
+        var source = SourceFor(true, Element("el-1-0", automationId: "saveButton", text: "Save"));
+        var wrong = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.TextEquals(ById("saveButton"), "Wrong"), CancellationToken.None);
+        var exists = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.Exists(ById("saveButton")), CancellationToken.None);
+
+        var fromPredicate = DesktopTestingResponseMapper.MapNegativeControl(wrong);
+        var fromExists = DesktopTestingResponseMapper.MapNegativeControl(exists);
+        var direct = DesktopTestingResponseMapper.MapNegativeControl(new DesktopUiCheckEvaluation(true, false, 1, IsTruncated: true));
+
+        Assert.Equal("inconclusive", fromPredicate.Verification);
+        Assert.Equal("inconclusive", fromExists.Verification);
+        Assert.Equal("inconclusive", direct.Verification);
+        Assert.Equal("InspectionIncomplete", direct.Error!.Code);
+    }
+
+    [Fact]
+    public void CompleteTreeNegativeControlStillInverts()
+    {
+        var passed = DesktopTestingResponseMapper.MapNegativeControl(new DesktopUiCheckEvaluation(true, false, 1));
+        var failed = DesktopTestingResponseMapper.MapNegativeControl(new DesktopUiCheckEvaluation(true, true, 1));
+
+        Assert.Equal("passed", passed.Verification);
+        Assert.Equal("failed", failed.Verification);
     }
 
     [Fact]
@@ -99,19 +159,42 @@ public class DesktopUiCheckEvaluationTests
         Assert.Null(DesktopTestingResponseMapper.MapCheck(missing).NextStep);
     }
 
+    private static readonly DesktopCheckSpec CheckSpec = new("textEquals", "saveButton", null, null, "window-a", "Save", 5);
+
     [Theory]
-    [InlineData("ProviderUnavailable", "desktop_observe_app")]
-    [InlineData("InspectionTimeout", "desktop_observe_app")]
-    [InlineData("ProfileNotFound", "desktop_list_apps")]
-    [InlineData("UnknownProfile", "desktop_list_apps")]
-    [InlineData("StaleObservation", "desktop_observe_app")]
-    [InlineData("StaleObservationRef", "desktop_observe_app")]
-    [InlineData("ElementNotFound", "desktop_observe_app")]
-    [InlineData("TargetStillRunning", "desktop_check_ui")]
-    [InlineData("InspectionIncomplete", "desktop_check_ui")]
-    public void KnownErrorCodesCarryARecoveryNextStep(string code, string tool)
+    [InlineData("InspectionIncomplete")]
+    [InlineData("ProviderUnavailable")]
+    [InlineData("UiaUnavailable")]
+    [InlineData("InspectionTimeout")]
+    public void CheckRecoveryRetriesTheSameCheckWithItsOwnArguments(string code)
     {
-        var check = DesktopTestingResponseMapper.MapCheck(new DesktopUiCheckEvaluation(false, false, 0, code));
+        var response = DesktopTestingResponseMapper.MapCheck(new DesktopUiCheckEvaluation(false, false, 0, code), "session-1", CheckSpec);
+
+        var next = response.NextStep!;
+        Assert.Equal("desktop_check_ui", next.Tool);
+        Assert.Equal("session-1", next.Arguments["sessionId"]);
+        Assert.Equal("textEquals", next.Arguments["kind"]);
+        Assert.Equal("saveButton", next.Arguments["automationId"]);
+        Assert.Equal("Save", next.Arguments["expected"]);
+        Assert.False(next.Arguments.ContainsKey("expectFailure"));
+        AssertCallable(next);
+    }
+
+    [Fact]
+    public void NegativeControlRecoveryKeepsExpectFailure()
+    {
+        var response = DesktopTestingResponseMapper.MapNegativeControl(
+            new DesktopUiCheckEvaluation(true, false, 1, IsTruncated: true), "session-1", CheckSpec);
+
+        Assert.Equal(true, response.NextStep!.Arguments["expectFailure"]);
+        AssertCallable(response.NextStep);
+    }
+
+    [Theory]
+    [InlineData("ProfileNotFound")]
+    [InlineData("UnknownProfile")]
+    public void UnknownProfileRecoveryListsTheApprovedApps(string code)
+    {
         var action = DesktopTestingResponseMapper.MapAction(new DesktopActionResult(
             DesktopTestingLimits.SchemaVersion,
             Guid.NewGuid().ToString(),
@@ -121,8 +204,63 @@ public class DesktopUiCheckEvaluationTests
             DesktopObservationStatus.NotRequested,
             new DesktopOperationError(code, "x")));
 
-        Assert.Equal(tool, check.NextStep!.Tool);
-        Assert.Equal(tool, action.NextStep!.Tool);
+        Assert.Equal("desktop_list_apps", action.NextStep!.Tool);
+        Assert.True(Guid.TryParse((string?)action.NextStep.Arguments["actionId"], out _));
+        AssertCallable(action.NextStep);
+    }
+
+    [Theory]
+    [InlineData("TargetStillRunning")]
+    [InlineData("StaleObservation")]
+    [InlineData("ElementNotFound")]
+    public void HintsThatWouldNeedGuessedInputsAreOmitted(string code)
+    {
+        Assert.Null(DesktopTestingResponseMapper.RecoveryFor(code, "session-1", CheckSpec));
+    }
+
+    [Fact]
+    public void CheckRecoveryWithoutASessionIsOmitted()
+    {
+        Assert.Null(DesktopTestingResponseMapper.MapCheck(new DesktopUiCheckEvaluation(false, false, 0, "InspectionIncomplete")).NextStep);
+    }
+
+    private static void AssertCallable(DesktopNextStep step)
+    {
+        var tools = typeof(DesktopTestingResponseMapper).Assembly.GetType("Pointframe.Mcp.DesktopTestingMcpTools")!;
+        var method = tools.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Single(candidate => candidate.GetCustomAttributes(typeof(ModelContextProtocol.Server.McpServerToolAttribute), false)
+                .Cast<ModelContextProtocol.Server.McpServerToolAttribute>().Any(attribute => attribute.Name == step.Tool));
+        var parameters = method.GetParameters().Where(parameter => parameter.ParameterType != typeof(CancellationToken)).ToArray();
+        var names = parameters.Select(parameter => parameter.Name!).ToHashSet(StringComparer.Ordinal);
+        foreach (var required in parameters.Where(parameter => !parameter.HasDefaultValue))
+        {
+            Assert.True(step.Arguments.ContainsKey(required.Name!), $"{step.Tool} requires '{required.Name}'.");
+        }
+
+        foreach (var key in step.Arguments.Keys)
+        {
+            Assert.Contains(key, names);
+        }
+    }
+
+    [Fact]
+    public void ALostActionResponseCanBeReadBackWithTheEchoedActionId()
+    {
+        var actionId = Guid.NewGuid().ToString();
+        var stored = new DesktopActionResult(
+            DesktopTestingLimits.SchemaVersion,
+            actionId,
+            DesktopOperationStatus.Completed,
+            DesktopDispatchStatus.Complete,
+            DesktopVerificationStatus.NotRequested,
+            DesktopObservationStatus.NotRequested);
+        var coordinator = new Mock<IDesktopActionCoordinator>();
+        coordinator.Setup(item => item.GetResult(actionId)).Returns(stored);
+
+        var response = DesktopTestingResponseMapper.MapAction(coordinator.Object.GetResult(actionId));
+
+        Assert.Equal(actionId, response.ActionId);
+        Assert.Equal("Complete", response.Dispatch);
     }
 
     [Fact]

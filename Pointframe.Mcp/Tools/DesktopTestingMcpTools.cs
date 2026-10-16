@@ -467,8 +467,8 @@ internal sealed class DesktopTestingMcpTools(
             TimeSpan.FromSeconds(spec.TimeoutSeconds),
             cancellationToken).ConfigureAwait(false);
         var response = expectFailure
-            ? DesktopTestingResponseMapper.MapNegativeControl(evaluation)
-            : DesktopTestingResponseMapper.MapCheck(evaluation);
+            ? DesktopTestingResponseMapper.MapNegativeControl(evaluation, sessionId, spec)
+            : DesktopTestingResponseMapper.MapCheck(evaluation, sessionId, spec);
 
         // The report is the record of what the server itself observed. Only checks the server evaluated
         // land here; requests rejected before evaluation say nothing about the application.
