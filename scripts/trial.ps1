@@ -77,12 +77,30 @@ function Get-Fact {
     param($Facts, [Parameter(Mandatory)][string]$Name, $Default = $null)
     if ($null -eq $Facts) { return $Default }
     if ($Facts -is [System.Collections.IDictionary]) {
-        if ($Facts.Contains($Name)) { return $Facts[$Name] }
+        $containsKey = $Facts.PSObject.Methods['ContainsKey']
+        if ($null -ne $containsKey) {
+            if ($Facts.ContainsKey($Name)) { return $Facts[$Name] }
+        }
+        elseif ($Facts.Contains($Name)) { return $Facts[$Name] }
         return $Default
     }
     $property = $Facts.PSObject.Properties[$Name]
     if ($null -eq $property) { return $Default }
     return $property.Value
+}
+
+function New-TrialInvocationParameters {
+    param(
+        [string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory,
+        [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change',
+        [string[]]$SkillList = @(), [string]$PluginDirectory = '', [switch]$FreshMachine
+    )
+    return @{
+        AppName = $AppName; AgentName = $AgentName; PinnedVersion = $PinnedVersion
+        OutputDirectory = $OutputDirectory; RunModel = $RunModel; RunEffort = $RunEffort
+        TaskName = $TaskName; SkillList = $SkillList; PluginDirectory = $PluginDirectory
+        FreshMachine = [bool]$FreshMachine
+    }
 }
 
 function Get-Sha256Hex {
@@ -115,7 +133,7 @@ function Get-TextHit {
 function Get-ChildEnvironment {
     # Returns the environment the agent gets: allowlisted names only, PATH without any Pointframe directory, every
     # forbidden name removed. -Source is the parent environment (a dictionary), -Extra names added after filtering.
-    param([Parameter(Mandatory)][System.Collections.IDictionary]$Source, [System.Collections.IDictionary]$Extra, [string]$FreshLocalAppData)
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Source, [System.Collections.IDictionary]$Extra)
     $result = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($name in $script:AllowedEnvironment) {
         if ($name -match $script:ForbiddenPattern) { continue }
@@ -131,7 +149,6 @@ function Get-ChildEnvironment {
             $result['Path'] = $entries -join ';'
         }
     }
-    if ($FreshLocalAppData) { $result['LOCALAPPDATA'] = [IO.Path]::GetFullPath($FreshLocalAppData) }
     if ($null -ne $Extra) {
         foreach ($key in @($Extra.Keys)) {
             if ([string]$key -match $script:ForbiddenPattern) { throw "Refusing to add forbidden variable '$key' to the child environment." }
@@ -433,6 +450,133 @@ function Read-UserPathRegistryValue {
     finally { $key.Dispose() }
 }
 
+function Restore-UserPathIfOnlyAdded {
+    param([Parameter(Mandatory)]$Baseline, [Parameter(Mandatory)][scriptblock]$ReadPath, [Parameter(Mandatory)][scriptblock]$WritePath)
+    $current = & $ReadPath
+    $baselineEntries = @(([string]$Baseline.Value).Split([char]';') | Where-Object { $_ })
+    $currentEntries = @(([string]$current.Value).Split([char]';') | Where-Object { $_ })
+    $remaining = [System.Collections.Generic.List[string]]::new()
+    foreach ($entry in $currentEntries) { $remaining.Add($entry) }
+    foreach ($entry in $baselineEntries) {
+        $index = -1
+        for ($i = 0; $i -lt $remaining.Count; $i++) { if ([string]::Equals($remaining[$i], $entry, [StringComparison]::OrdinalIgnoreCase)) { $index = $i; break } }
+        if ($index -lt 0) { return [pscustomobject]@{ Restored = $false; Reason = 'user PATH contains removals or edits'; Current = $current.Value } }
+        $remaining.RemoveAt($index)
+    }
+    if ($remaining.Count -eq 0) { return [pscustomobject]@{ Restored = $false; Reason = 'user PATH did not gain entries'; Current = $current.Value } }
+    & $WritePath ([string]$Baseline.Value) $Baseline.Kind
+    return [pscustomobject]@{ Restored = $true; Reason = $null; Current = $current.Value }
+}
+
+function Get-TrialInstallPaths {
+    param([Parameter(Mandatory)][string]$LocalAppData)
+    return @('Pointframe.Cli', 'Pointframe.Mcp') | ForEach-Object { Join-Path (Join-Path $LocalAppData 'Programs') $_ }
+}
+
+function Hide-TrialInstalls {
+    param([Parameter(Mandatory)][string]$LocalAppData, [Parameter(Mandatory)][string]$RunId)
+    $markerDirectory = Join-Path $LocalAppData 'Pointframe\trial-hidden'
+    New-Item -ItemType Directory -Path $markerDirectory -Force | Out-Null
+    $hidden = [System.Collections.Generic.List[object]]::new()
+    try {
+        foreach ($original in Get-TrialInstallPaths $LocalAppData) {
+            if (-not (Test-Path -LiteralPath $original -PathType Container)) { continue }
+            $name = Split-Path $original -Leaf
+            $hiddenPath = Join-Path (Split-Path $original -Parent) ".pointframe-trial-hidden-$RunId-$name"
+            if (Test-Path -LiteralPath $hiddenPath) { throw "Trial hidden install path already exists: $hiddenPath" }
+            $markerPath = Join-Path $markerDirectory "$RunId-$name.json"
+            $process = Get-Process -Id $PID
+            $item = [ordered]@{ originalPath = $original; hiddenPath = $hiddenPath; runId = $RunId; timeUtc = [DateTime]::UtcNow.ToString('o'); state = 'hiding'; harnessPid = $PID; harnessStartTimeUtc = $process.StartTime.ToUniversalTime().ToString('o') }
+            $entry = [pscustomobject]@{ originalPath = $original; hiddenPath = $hiddenPath; markerPath = $markerPath; hiddenThisRun = $false; originalAbsentAfterHide = $false }
+            $hidden.Add($entry)
+            $item | ConvertTo-Json | Set-Content -LiteralPath $markerPath -Encoding utf8NoBOM
+            Move-Item -LiteralPath $original -Destination $hiddenPath -ErrorAction Stop
+            $entry.hiddenThisRun = $true
+            $entry.originalAbsentAfterHide = -not (Test-Path -LiteralPath $original)
+            $item.state = 'hidden'
+            $item | ConvertTo-Json | Set-Content -LiteralPath $markerPath -Encoding utf8NoBOM
+        }
+        return @($hidden)
+    }
+    catch {
+        for ($index = $hidden.Count - 1; $index -ge 0; $index--) {
+            $item = $hidden[$index]
+            try {
+                if (Test-Path -LiteralPath $item.hiddenPath) { Move-Item -LiteralPath $item.hiddenPath -Destination $item.originalPath -ErrorAction Stop }
+                if (Test-Path -LiteralPath $item.markerPath) { Remove-Item -LiteralPath $item.markerPath -Force -ErrorAction Stop }
+            }
+            catch { throw "Hide failed and install recovery failed for '$($item.originalPath)': $($_.Exception.Message)" }
+        }
+        throw
+    }
+}
+
+function Test-TrialMarkerProcessLive {
+    param($Marker)
+    if (-not $Marker.harnessPid -or -not $Marker.harnessStartTimeUtc) { return $false }
+    try {
+        $process = Get-Process -Id ([int]$Marker.harnessPid) -ErrorAction Stop
+        $recordedStart = if ($Marker.harnessStartTimeUtc -is [DateTime]) { $Marker.harnessStartTimeUtc.ToUniversalTime() } else { [DateTime]::Parse([string]$Marker.harnessStartTimeUtc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime() }
+        return $process.StartTime.ToUniversalTime().Ticks -eq $recordedStart.Ticks
+    }
+    catch { return $false }
+}
+
+function Restore-TrialInstallMarkers {
+    param([Parameter(Mandatory)][string]$LocalAppData, [string]$ConflictTime = [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmssfff'), [switch]$SkipLiveRuns)
+    $markerDirectory = Join-Path $LocalAppData 'Pointframe\trial-hidden'
+    $restored = [System.Collections.Generic.List[object]]::new()
+    if (-not (Test-Path -LiteralPath $markerDirectory -PathType Container)) { return @() }
+    foreach ($markerPath in Get-ChildItem -LiteralPath $markerDirectory -Filter '*.json' -File) {
+        try {
+            $marker = Get-Content -LiteralPath $markerPath.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
+            if (-not $marker.originalPath -or -not $marker.hiddenPath -or @('hiding', 'hidden') -notcontains [string]$marker.state) { throw 'Marker is missing required fields or has an invalid state.' }
+        }
+        catch {
+            $corrupt = Join-Path $markerDirectory "corrupt-$ConflictTime-$([guid]::NewGuid().ToString('N')).json"
+            Move-Item -LiteralPath $markerPath.FullName -Destination $corrupt -ErrorAction Stop
+            continue
+        }
+        try {
+            $original = [string]$marker.originalPath; $hiddenPath = [string]$marker.hiddenPath
+            if ($SkipLiveRuns -and (Test-TrialMarkerProcessLive $marker)) { continue }
+            if (Test-Path -LiteralPath $hiddenPath) {
+                if (Test-Path -LiteralPath $original) {
+                    $conflict = Join-Path $markerDirectory ("conflict-$ConflictTime\" + [IO.Path]::GetFileName($original))
+                    New-Item -ItemType Directory -Path (Split-Path $conflict -Parent) -Force | Out-Null
+                    Move-Item -LiteralPath $original -Destination $conflict -ErrorAction Stop
+                }
+                Move-Item -LiteralPath $hiddenPath -Destination $original -ErrorAction Stop
+                $restored.Add($original)
+            }
+            elseif ([string]$marker.state -eq 'hiding' -and (Test-Path -LiteralPath $original)) {
+                # Marker was written before the rename, so the original is still safely in place.
+            }
+            else { throw "Hidden install '$hiddenPath' is missing while marker state is '$($marker.state)'." }
+            Remove-Item -LiteralPath $markerPath.FullName -Force -ErrorAction Stop
+        }
+        catch { throw "Could not recover marker '$($markerPath.FullName)': $($_.Exception.Message)" }
+    }
+    return @($restored)
+}
+
+function Move-TrialAgentInstalls {
+    param([object[]]$HiddenInstalls, [string]$OutputDirectory, [string]$RunId)
+    $moved = [System.Collections.Generic.List[string]]::new()
+    foreach ($hiddenInstall in $HiddenInstalls) {
+        $original = [string]$hiddenInstall.originalPath
+        if (-not $hiddenInstall.hiddenThisRun -or -not $hiddenInstall.originalAbsentAfterHide) { continue }
+        if (-not (Test-Path -LiteralPath $original -PathType Container)) { continue }
+        $destRoot = Join-Path $OutputDirectory 'agent-installs'
+        New-Item -ItemType Directory -Path $destRoot -Force | Out-Null
+        $destination = Join-Path $destRoot (Split-Path $original -Leaf)
+        if (Test-Path -LiteralPath $destination) { $destination = Join-Path $destRoot ((Split-Path $original -Leaf) + '-' + $RunId) }
+        Move-Item -LiteralPath $original -Destination $destination -ErrorAction Stop
+        $moved.Add($destination)
+    }
+    return @($moved)
+}
+
 function Write-UserPathRegistryValue {
     param([string]$Value, [Microsoft.Win32.RegistryValueKind]$Kind)
     $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
@@ -708,6 +852,26 @@ function Get-TrustKey {
 # Self test (offline: no network, desktop, or agents)
 
 function Test-Self {
+    $genericFacts = [System.Collections.Generic.Dictionary[string, string]]::new()
+    $genericFacts['key'] = 'generic'
+    $hashFacts = @{ key = 'hashtable' }
+    $orderedFacts = [ordered]@{ key = 'ordered' }
+    $objectFacts = [pscustomobject]@{ key = 'object' }
+    foreach ($case in @(
+        @{ Facts = $genericFacts; Expected = 'generic' },
+        @{ Facts = $hashFacts; Expected = 'hashtable' },
+        @{ Facts = $orderedFacts; Expected = 'ordered' },
+        @{ Facts = $objectFacts; Expected = 'object' }
+    )) {
+        if ((Get-Fact $case.Facts 'key' 'missing') -ne $case.Expected -or (Get-Fact $case.Facts 'absent' 'fallback') -ne 'fallback') {
+            throw "Get-Fact failed for $($case.Facts.GetType().FullName)."
+        }
+    }
+    $forwarded = New-TrialInvocationParameters -AppName 'wpf-sample' -AgentName 'claude' -PinnedVersion '' -OutputDirectory 'out' -RunModel '' -RunEffort '' -TaskName 'create-skill' -SkillList @() -PluginDirectory 'plugin' -FreshMachine
+    if (-not $forwarded.FreshMachine -or $forwarded.TaskName -ne 'create-skill' -or $forwarded.PluginDirectory -ne 'plugin') {
+        throw 'Entry-point parameter forwarding dropped -FreshMachine or another named argument.'
+    }
+
     $apps = Get-Content -LiteralPath $script:AppsPath -Raw | ConvertFrom-Json
     foreach ($name in 'pkhex', 'dngrep', 'electron') {
         $entry = Get-Fact $apps.apps $name
@@ -742,6 +906,7 @@ function Test-Self {
     # Environment allowlist builder strips forbidden variables and Pointframe PATH entries.
     $source = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
     $source['SystemRoot'] = 'C:\Windows'
+    $source['LOCALAPPDATA'] = 'C:\self-test-profile\LocalAppData'
     $source['TEMP'] = 'C:\Temp'
     $source['POINTFRAME_MCP_EXECUTABLE'] = 'C:\old\Pointframe.Mcp.exe'
     $source['ELECTRON_RUN_AS_NODE'] = '1'
@@ -756,29 +921,86 @@ function Test-Self {
     $freshRoot = Join-Path ([IO.Path]::GetTempPath()) ('pf-trial-fresh-selftest-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $freshRoot -Force | Out-Null
     try {
-        $fresh = Get-ChildEnvironment $source $null $freshRoot
-        if ($fresh['LOCALAPPDATA'] -ne [IO.Path]::GetFullPath($freshRoot)) { throw 'Fresh-machine LOCALAPPDATA was not redirected.' }
+        $fresh = Get-ChildEnvironment $source $null
+        if ($fresh['LOCALAPPDATA'] -ne $source['LOCALAPPDATA']) { throw 'The child LOCALAPPDATA was changed.' }
         if ($fresh['TEMP'] -ne 'C:\Temp' -or $fresh.ContainsKey('TMP')) { throw 'Fresh-machine mode unexpectedly changed TEMP/TMP.' }
-        $trialPath = Join-Path $freshRoot 'Programs\Pointframe.Cli'
-        $pathValue = 'C:\Windows;%USERPROFILE%\bin;' + $trialPath + ';C:\Git\cmd'
-        $registryValue = [pscustomobject]@{ Value = $pathValue; Kind = [Microsoft.Win32.RegistryValueKind]::ExpandString }
-        $removedPaths = @(Remove-AddedTrialPathEntries $freshRoot { $registryValue } { param($value, $kind) $script:selfTestWrittenPath = $value; $script:selfTestWrittenKind = $kind })
-        if ($removedPaths.Count -ne 1 -or $removedPaths[0] -ne $trialPath) { throw 'PATH cleanup did not select exactly the trial entry.' }
-        if ($script:selfTestWrittenPath -ne 'C:\Windows;%USERPROFILE%\bin;C:\Git\cmd' -or $script:selfTestWrittenKind -ne [Microsoft.Win32.RegistryValueKind]::ExpandString) { throw 'PATH cleanup expanded or changed unrelated entries or the registry value kind.' }
-        $untouched = $false
-        $baselineOnly = [pscustomobject]@{ Value = 'C:\Windows;' + $trialPath; Kind = [Microsoft.Win32.RegistryValueKind]::ExpandString }
-        [void](Remove-AddedTrialPathEntries $freshRoot { $baselineOnly } { throw 'Writer must not run when no entry was added.' } $baselineOnly.Value)
-        $writerFailed = $false
-        try { [void](Remove-AddedTrialPathEntries $freshRoot { $registryValue } { throw 'mock registry write failure' }) } catch { $writerFailed = $true }
-        if (-not $writerFailed) { throw 'A throwing PATH writer was not surfaced for invalid-outcome handling.' }
-        $cleanupFacts = [ordered]@{ harnessError = 'Fresh-machine PATH cleanup failed: mock registry write failure' }
-        if ((Get-TrialOutcome $cleanupFacts).Outcome -ne 'invalid') { throw 'A PATH cleanup failure did not score invalid.' }
-        $mockLockReleased = $false
-        $mockResultPath = Join-Path $freshRoot 'result.json'
-        try { try { throw 'mock registry write failure' } catch { $cleanupFacts.harnessError = $_.Exception.Message } }
-        finally { $mockLockReleased = $true }
-        $cleanupFacts | ConvertTo-Json | Set-Content -LiteralPath $mockResultPath
-        if (-not $mockLockReleased -or -not (Test-Path -LiteralPath $mockResultPath)) { throw 'Cleanup failure did not release the lock and write the result.' }
+        $programs = Join-Path $freshRoot 'Programs'
+        New-Item -ItemType Directory -Path (Join-Path $programs 'Pointframe.Cli') -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $programs 'Pointframe.Cli\old.txt'), 'old')
+        $hidden = @(Hide-TrialInstalls $freshRoot 'selftest-run')
+        New-Item -ItemType Directory -Path (Join-Path $programs 'Pointframe.Cli') -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $programs 'Pointframe.Cli\new.txt'), 'new')
+        $evidence = Join-Path $freshRoot 'out\agent-installs\Pointframe.Cli'
+        New-Item -ItemType Directory -Path (Split-Path $evidence -Parent) -Force | Out-Null
+        Move-Item (Join-Path $programs 'Pointframe.Cli') $evidence
+        $restored = @(Restore-TrialInstallMarkers $freshRoot)
+        if ($hidden.Count -ne 1 -or $restored.Count -ne 1 -or -not (Test-Path (Join-Path $programs 'Pointframe.Cli\old.txt')) -or -not (Test-Path (Join-Path $evidence 'new.txt'))) { throw 'Hide, evidence move, and restore failed.' }
+        $failureRoot = Join-Path $freshRoot 'rename-failure'
+        $failurePrograms = Join-Path $failureRoot 'Programs'
+        New-Item -ItemType Directory -Path (Join-Path $failurePrograms 'Pointframe.Cli') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $failurePrograms 'Pointframe.Mcp') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $failurePrograms '.pointframe-trial-hidden-fail-Pointframe.Mcp') -Force | Out-Null
+        $renameFailed = $false
+        try { [void](Hide-TrialInstalls $failureRoot 'fail') } catch { $renameFailed = $true }
+        if (-not $renameFailed -or -not (Test-Path (Join-Path $failurePrograms 'Pointframe.Cli')) -or -not (Test-Path (Join-Path $failurePrograms 'Pointframe.Mcp'))) { throw "A rename failure did not restore earlier hidden installs (caught=$renameFailed; cli=$(Test-Path (Join-Path $failurePrograms 'Pointframe.Cli')); mcp=$(Test-Path (Join-Path $failurePrograms 'Pointframe.Mcp')))." }
+
+        if (Test-Path (Join-Path $failureRoot 'Pointframe\trial-hidden\fail-Pointframe.Cli.json')) { throw 'A failed hide left a stale marker after restoring the earlier install.' }
+        if (@(Move-TrialAgentInstalls @() (Join-Path $failureRoot 'out') 'fail').Count -ne 0 -or -not (Test-Path (Join-Path $failurePrograms 'Pointframe.Cli'))) { throw 'A partial hide failure displaced the restored owner install.' }
+        $beforeHideRoot = Join-Path $freshRoot 'before-hide'; $beforePrograms = Join-Path $beforeHideRoot 'Programs'
+        New-Item -ItemType Directory -Path (Join-Path $beforePrograms 'Pointframe.Cli') -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $beforePrograms 'Pointframe.Cli\owner.txt'), 'owner')
+        if (@(Move-TrialAgentInstalls @() (Join-Path $beforeHideRoot 'out') 'before').Count -ne 0 -or -not (Test-Path (Join-Path $beforePrograms 'Pointframe.Cli\owner.txt'))) { throw 'A failure before hide displaced an owner install.' }
+
+        $baselinePath = [pscustomobject]@{ Value = 'C:\Windows;%USERPROFILE%\bin'; Kind = [Microsoft.Win32.RegistryValueKind]::ExpandString }
+        $currentPath = [pscustomobject]@{ Value = 'C:\Windows;%USERPROFILE%\bin;C:\trial\added'; Kind = [Microsoft.Win32.RegistryValueKind]::ExpandString }
+        $pathResult = Restore-UserPathIfOnlyAdded $baselinePath { $currentPath } { param($value, $kind) $script:selfTestPath = $value; $script:selfTestPathKind = $kind }
+        if (-not $pathResult.Restored -or $script:selfTestPath -ne $baselinePath.Value -or $script:selfTestPathKind -ne $baselinePath.Kind) { throw 'PATH baseline was not restored with its raw value and kind.' }
+        $editedPath = [pscustomobject]@{ Value = 'C:\Windows;C:\replacement' ; Kind = [Microsoft.Win32.RegistryValueKind]::String }
+        $pathResult = Restore-UserPathIfOnlyAdded $baselinePath { $editedPath } { throw 'Edited PATH must not be overwritten.' }
+        if ($pathResult.Restored) { throw 'A PATH edit was incorrectly classified as additions only.' }
+        $crashRoot = Join-Path $freshRoot 'crash'; $crashPrograms = Join-Path $crashRoot 'Programs'
+        New-Item -ItemType Directory -Path (Join-Path $crashPrograms '.pointframe-trial-hidden-crash-Pointframe.Cli') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $crashPrograms 'Pointframe.Cli') -Force | Out-Null
+        $markerDir = Join-Path $crashRoot 'Pointframe\trial-hidden'; New-Item -ItemType Directory -Path $markerDir -Force | Out-Null
+        [ordered]@{ originalPath=(Join-Path $crashPrograms 'Pointframe.Cli'); hiddenPath=(Join-Path $crashPrograms '.pointframe-trial-hidden-crash-Pointframe.Cli'); runId='crash'; timeUtc=[DateTime]::UtcNow.ToString('o'); state='hidden'; harnessPid=999999; harnessStartTimeUtc='2000-01-01T00:00:00.0000000Z' } | ConvertTo-Json | Set-Content (Join-Path $markerDir 'crash.json')
+        [void](Restore-TrialInstallMarkers $crashRoot)
+        if (-not (Get-ChildItem $markerDir -Directory -Filter 'conflict-*' -ErrorAction SilentlyContinue) -or -not (Test-Path (Join-Path $crashPrograms 'Pointframe.Cli'))) { throw 'Crash recovery did not preserve conflict and restore hidden install.' }
+        $preRenameRoot = Join-Path $freshRoot 'pre-rename'; $preRenamePrograms = Join-Path $preRenameRoot 'Programs'
+        New-Item -ItemType Directory -Path (Join-Path $preRenamePrograms 'Pointframe.Cli') -Force | Out-Null
+        $preRenameMarkerDir = Join-Path $preRenameRoot 'Pointframe\trial-hidden'; New-Item -ItemType Directory -Path $preRenameMarkerDir -Force | Out-Null
+        [ordered]@{ originalPath=(Join-Path $preRenamePrograms 'Pointframe.Cli'); hiddenPath=(Join-Path $preRenamePrograms '.pointframe-trial-hidden-pre-Pointframe.Cli'); state='hiding'; harnessPid=999999; harnessStartTimeUtc='2000-01-01T00:00:00.0000000Z' } | ConvertTo-Json | Set-Content (Join-Path $preRenameMarkerDir 'pre.json')
+        [void](Restore-TrialInstallMarkers $preRenameRoot)
+        if (-not (Test-Path (Join-Path $preRenamePrograms 'Pointframe.Cli')) -or (Test-Path (Join-Path $preRenameMarkerDir 'pre.json'))) { throw 'Pre-rename crash recovery did not simply clear its marker.' }
+
+        $liveRoot = Join-Path $freshRoot 'live'; $livePrograms = Join-Path $liveRoot 'Programs'; $liveMarkerDir = Join-Path $liveRoot 'Pointframe\trial-hidden'
+        New-Item -ItemType Directory -Path (Join-Path $livePrograms '.pointframe-trial-hidden-live-Pointframe.Cli') -Force | Out-Null
+        New-Item -ItemType Directory -Path $liveMarkerDir -Force | Out-Null
+        $selfProcess = Get-Process -Id $PID
+        [ordered]@{ originalPath=(Join-Path $livePrograms 'Pointframe.Cli'); hiddenPath=(Join-Path $livePrograms '.pointframe-trial-hidden-live-Pointframe.Cli'); state='hidden'; harnessPid=$PID; harnessStartTimeUtc=$selfProcess.StartTime.ToUniversalTime().ToString('o') } | ConvertTo-Json | Set-Content (Join-Path $liveMarkerDir 'live.json')
+        $liveMarkerFixture = Get-Content (Join-Path $liveMarkerDir 'live.json') -Raw | ConvertFrom-Json
+        if (-not (Test-TrialMarkerProcessLive $liveMarkerFixture)) { throw "Live marker PID/start-time fixture did not match its process (pid=$($liveMarkerFixture.harnessPid) recorded=$($liveMarkerFixture.harnessStartTimeUtc) actual=$((Get-Process -Id $PID).StartTime.ToUniversalTime().ToString('o')))." }
+        [void](Restore-TrialInstallMarkers $liveRoot -SkipLiveRuns)
+        if (-not (Test-Path (Join-Path $liveMarkerDir 'live.json')) -or -not (Test-Path (Join-Path $livePrograms '.pointframe-trial-hidden-live-Pointframe.Cli'))) { throw 'Recovery did not skip a live trial marker.' }
+
+        $corruptRoot = Join-Path $freshRoot 'corrupt'; $corruptPrograms = Join-Path $corruptRoot 'Programs'; $corruptMarkerDir = Join-Path $corruptRoot 'Pointframe\trial-hidden'
+        New-Item -ItemType Directory -Path (Join-Path $corruptPrograms '.pointframe-trial-hidden-good-Pointframe.Cli') -Force | Out-Null
+        New-Item -ItemType Directory -Path $corruptMarkerDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $corruptMarkerDir 'bad.json') -Value '{broken'
+        [ordered]@{ originalPath=(Join-Path $corruptPrograms 'Pointframe.Cli'); hiddenPath=(Join-Path $corruptPrograms '.pointframe-trial-hidden-good-Pointframe.Cli'); state='hidden'; harnessPid=999999; harnessStartTimeUtc='2000-01-01T00:00:00.0000000Z' } | ConvertTo-Json | Set-Content (Join-Path $corruptMarkerDir 'good.json')
+        [void](Restore-TrialInstallMarkers $corruptRoot)
+        if (@(Get-ChildItem $corruptMarkerDir -Filter 'corrupt-*.json').Count -ne 1 -or -not (Test-Path (Join-Path $corruptPrograms 'Pointframe.Cli'))) { throw 'Corrupt marker quarantine did not continue recovery.' }
+
+        $lockPathBefore = $script:DesktopLockPath
+        $script:DesktopLockPath = Join-Path $freshRoot 'desktop.lock'
+        try { Set-Content -LiteralPath $script:DesktopLockPath -Value 'held'; if (Try-Enter-DesktopLock) { throw 'Startup lock acquisition ignored an existing desktop lock.' } }
+        finally { $script:DesktopLockPath = $lockPathBefore }
+
+        $failedRestoreRoot = Join-Path $freshRoot 'restore-failure'; $failedPrograms = Join-Path $failedRestoreRoot 'Programs'; $failedMarkerDir = Join-Path $failedRestoreRoot 'Pointframe\trial-hidden'
+        New-Item -ItemType Directory -Path $failedPrograms -Force | Out-Null; New-Item -ItemType Directory -Path $failedMarkerDir -Force | Out-Null
+        [ordered]@{ originalPath=(Join-Path $failedPrograms 'Pointframe.Cli'); hiddenPath=(Join-Path $failedPrograms '.pointframe-trial-hidden-fail-Pointframe.Cli'); state='hidden'; harnessPid=999999; harnessStartTimeUtc='2000-01-01T00:00:00.0000000Z' } | ConvertTo-Json | Set-Content (Join-Path $failedMarkerDir 'failed.json')
+        $restoreFailed = $false
+        try { [void](Restore-TrialInstallMarkers $failedRestoreRoot) } catch { $restoreFailed = $true }
+        if (-not $restoreFailed -or -not (Test-Path (Join-Path $failedMarkerDir 'failed.json'))) { throw 'A failed restore did not retain its marker and report failure.' }
     }
     finally { Remove-Item -LiteralPath $freshRoot -Recurse -Force -ErrorAction SilentlyContinue }
     $extraRejected = $false
@@ -992,15 +1214,19 @@ function Assert-InteractiveDesktop {
 
 function Enter-DesktopLock {
     Assert-InteractiveDesktop
+    if (-not (Try-Enter-DesktopLock)) { throw "Desktop lock already exists at '$($script:DesktopLockPath)'. Finish the other desktop run, then retry." }
+}
+
+function Try-Enter-DesktopLock {
     try {
         $script:LockStream = [IO.File]::Open($script:DesktopLockPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
-        $bytes = [Text.Encoding]::UTF8.GetBytes("trial pid=$PID utc=$([DateTime]::UtcNow.ToString('o'))")
+        $process = Get-Process -Id $PID
+        $bytes = [Text.Encoding]::UTF8.GetBytes("trial pid=$PID start=$($process.StartTime.ToUniversalTime().ToString('o')) utc=$([DateTime]::UtcNow.ToString('o'))")
         $script:LockStream.Write($bytes, 0, $bytes.Length)
         $script:LockStream.Flush()
+        return $true
     }
-    catch [IO.IOException] {
-        throw "Desktop lock already exists at '$($script:DesktopLockPath)'. Finish the other desktop run, then retry."
-    }
+    catch [IO.IOException] { return $false }
 }
 
 function Exit-DesktopLock {
@@ -1125,8 +1351,7 @@ function Find-AgentCli {
     param([string]$TrialDirectory, [string]$VerifierVersion, $ChildEnvironment, [switch]$FreshMachine)
     $candidates = [System.Collections.Generic.List[string]]::new()
     $pathEntries = @()
-    if ($FreshMachine) { $pathEntries += @(([string](Get-Fact $ChildEnvironment 'Path' '') -split ';')) }
-    else { foreach ($scope in 'User', 'Machine') { $pathEntries += @(([Environment]::GetEnvironmentVariable('Path', $scope) -as [string]) -split ';') } }
+    foreach ($scope in 'User', 'Machine') { $pathEntries += @(([Environment]::GetEnvironmentVariable('Path', $scope) -as [string]) -split ';') }
     foreach ($entry in $pathEntries) {
         if (-not $entry) { continue }
         foreach ($name in 'pointframe.exe', 'Pointframe.Cli.exe') {
@@ -1135,8 +1360,8 @@ function Find-AgentCli {
         }
     }
     foreach ($candidate in @(
-            (Join-Path ([string](Get-Fact $ChildEnvironment 'LOCALAPPDATA' $env:LOCALAPPDATA)) 'Programs\Pointframe.Cli\Pointframe.Cli.exe'),
-            (Join-Path ([string](Get-Fact $ChildEnvironment 'LOCALAPPDATA' $env:LOCALAPPDATA)) 'Microsoft\WinGet\Links\pointframe.exe'))) {
+            (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Programs\Pointframe.Cli\Pointframe.Cli.exe'),
+            (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Microsoft\WinGet\Links\pointframe.exe'))) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) { $candidates.Add($candidate) }
     }
     foreach ($file in @(Get-ChildItem -LiteralPath $TrialDirectory -Filter 'Pointframe.Cli.exe' -File -Recurse -ErrorAction SilentlyContinue |
@@ -1159,15 +1384,11 @@ function Get-McpInfo {
     $path = Get-Fact $provenance 'mcpExecutablePath' $null
     $sha = Get-Fact $provenance 'mcpSha256' $null
     if (-not $path) {
-        $state = Join-Path ([string](Get-Fact $ChildEnvironment 'LOCALAPPDATA' $env:LOCALAPPDATA)) 'Programs\Pointframe.Mcp\install-state.json'
+        $state = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Programs\Pointframe.Mcp\install-state.json'
         if (Test-Path -LiteralPath $state) {
             $installation = Get-Content -LiteralPath $state -Raw | ConvertFrom-Json
             $path = Get-Fact $installation 'ExecutablePath' (Get-Fact $installation 'executablePath' $null)
         }
-    }
-    if ($FreshMachine -and $path) {
-        $freshRoot = [IO.Path]::GetFullPath([string](Get-Fact $ChildEnvironment 'LOCALAPPDATA' ''))
-        if (-not ([IO.Path]::GetFullPath($path)).StartsWith($freshRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { $path = $null }
     }
     $version = $null
     $actualSha = $null
@@ -1224,7 +1445,7 @@ function Invoke-DefectCheck {
         }
 
         # Gate approval is keyed by the project path; give the copy the same approval the trial directory has.
-        $trustRoot = Join-Path ([string](Get-Fact $ChildEnvironment 'LOCALAPPDATA' $env:LOCALAPPDATA)) 'Pointframe\verify\trust'
+        $trustRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Pointframe\verify\trust'
         $original = Join-Path $trustRoot "$(Get-TrustKey $TrialDirectory).json"
         if (Test-Path -LiteralPath $original) {
             $trust = Get-Content -LiteralPath $original -Raw | ConvertFrom-Json
@@ -1283,15 +1504,14 @@ function Invoke-Trial {
     }
 
     try {
-        $freshLocalAppData = $null
-        $userPathBefore = [string](Read-UserPathRegistryValue).Value
-        if ($FreshMachine) {
-            $freshLocalAppData = Join-Path $OutputDirectory ('fresh-machine-' + [guid]::NewGuid().ToString('N') + '\LocalAppData')
-            New-Item -ItemType Directory -Path $freshLocalAppData -Force | Out-Null
-            $record.isolation.freshLocalAppData = $freshLocalAppData
-            $record.notes += 'LOCALAPPDATA is isolated; agent CLI and dotnet/gh local caches or update state may be unavailable. Claude and Codex remain configured through their normal USERPROFILE/CODEX_HOME locations.'
-            # TEMP/TMP are not redirected: the set-based probe does not need them, and tools retain their normal writable temp location.
-        }
+        $localAppData = [Environment]::GetFolderPath('LocalApplicationData')
+        $runId = [guid]::NewGuid().ToString('N')
+        $hiddenInstalls = @()
+        $userPathBefore = Read-UserPathRegistryValue
+        $record.isolation.hidden = @()
+        $record.isolation.restored = @()
+        $record.isolation.agentInstallsMovedTo = @()
+        $record.isolation.pathRestored = $false
         Assert-InteractiveDesktop
         $stale = @(Get-ProcessTable | Where-Object { $_.Path -and $_.Path.StartsWith((Join-Path ([IO.Path]::GetTempPath()) 'pf-trials-out'), [StringComparison]::OrdinalIgnoreCase) })
         if ($stale.Count -gt 0) { throw "Lingering processes from an earlier trial are still running: $(($stale | ForEach-Object { "$($_.Name) pid $($_.Pid)" }) -join ', '). Stop them and rerun." }
@@ -1308,10 +1528,15 @@ function Invoke-Trial {
 
         Enter-DesktopLock
 
+        if ($FreshMachine) {
+            $hiddenInstalls = @(Hide-TrialInstalls $localAppData $runId)
+            $record.isolation.hidden = @($hiddenInstalls | ForEach-Object { $_.hiddenPath })
+        }
+
         # Isolation: allowlisted environment, probed before the agent starts.
         $extra = [ordered]@{}
         $parent = Get-ParentEnvironment
-        $childEnvironment = Get-ChildEnvironment $parent $extra $freshLocalAppData
+        $childEnvironment = Get-ChildEnvironment $parent $extra
         $probe = Test-ChildEnvironment $childEnvironment
         $facts.envLeak = @($probe.Forbidden)
         $facts.pathLeak = $probe.PathLeak
@@ -1421,22 +1646,37 @@ function Invoke-Trial {
     }
     catch { $facts.harnessError = $_.Exception.Message }
     finally {
-        try {
-            if ($FreshMachine -and $freshLocalAppData) {
-                $removedUserPath = @(Remove-AddedTrialPathEntries $freshLocalAppData { Read-UserPathRegistryValue } { param($value, $kind) Write-UserPathRegistryValue $value $kind } $userPathBefore)
-                $record.isolation.removedUserPathEntries = $removedUserPath
+        if ($FreshMachine) {
+            try {
+                $record.isolation.agentInstallsMovedTo += @(Move-TrialAgentInstalls $hiddenInstalls $OutputDirectory $runId)
             }
-        }
-        catch {
-            $record.isolation.pathCleanupError = $_.Exception.Message
-            $facts.harnessError = "Fresh-machine PATH cleanup failed: $($_.Exception.Message)"
-        }
-        finally {
-            try { Exit-DesktopLock }
             catch {
-                if (-not $facts.harnessError) { $facts.harnessError = "Desktop lock release failed: $($_.Exception.Message)" }
-                $record.isolation.lockReleaseError = $_.Exception.Message
+                $record.isolation.restoreError = "Could not preserve agent installs: $($_.Exception.Message)"
+                $facts.harnessError = $record.isolation.restoreError
             }
+            try {
+                $record.isolation.restored = @(Restore-TrialInstallMarkers $localAppData)
+            }
+            catch {
+                if ($record.isolation.restoreError) { $record.isolation.restoreError += '; ' }
+                $record.isolation.restoreError += "Could not restore hidden installs: $($_.Exception.Message)"
+                $facts.harnessError = $record.isolation.restoreError
+            }
+            try {
+                $pathResult = Restore-UserPathIfOnlyAdded $userPathBefore { Read-UserPathRegistryValue } { param($value, $kind) Write-UserPathRegistryValue $value $kind }
+                $record.isolation.pathRestored = $pathResult.Restored
+                if (-not $pathResult.Restored) { $record.isolation.pathRestoreReason = $pathResult.Reason }
+            }
+            catch {
+                if ($record.isolation.restoreError) { $record.isolation.restoreError += '; ' }
+                $record.isolation.restoreError += "Could not restore user PATH: $($_.Exception.Message)"
+                $facts.harnessError = $record.isolation.restoreError
+            }
+        }
+        try { Exit-DesktopLock }
+        catch {
+            if (-not $facts.harnessError) { $facts.harnessError = "Desktop lock release failed: $($_.Exception.Message)" }
+            $record.isolation.lockReleaseError = $_.Exception.Message
         }
     }
 
@@ -1480,6 +1720,18 @@ function Get-ExitCodeForOutcome {
 # ---------------------------------------------------------------------------------------------------------------
 # Entry point
 
+if (-not $SelfTest) {
+    $startupLocalAppData = [Environment]::GetFolderPath('LocalApplicationData')
+    if (-not (Try-Enter-DesktopLock)) { Write-Host 'Skipped hidden-install recovery: desktop lock is held.' }
+    else {
+        try {
+            $recoveredAtStart = @(Restore-TrialInstallMarkers $startupLocalAppData -SkipLiveRuns)
+            foreach ($restoredPath in $recoveredAtStart) { Write-Host "Recovered hidden Pointframe install: $restoredPath" }
+        }
+        finally { Exit-DesktopLock }
+    }
+}
+
 if ($MetricsPath) {
     Get-TranscriptMetrics $MetricsPath $Agent | ConvertTo-Json -Depth 5 -Compress | Write-Output
     exit 0
@@ -1493,6 +1745,7 @@ if ($SelfTest) {
     }
     catch {
         [Console]::Error.WriteLine("FAILED: trial harness self-test: $($_.Exception.Message)")
+        [Console]::Error.WriteLine($_.ScriptStackTrace)
         exit 1
     }
 }
@@ -1526,7 +1779,8 @@ if ($Matrix) {
     foreach ($matrixApp in 'pkhex', 'dngrep', 'electron') {
         foreach ($matrixAgent in @('claude')) {
             $directory = if ($OutDirectory) { Join-Path $OutDirectory "$matrixApp-$matrixAgent" } else { Join-Path $root "$stamp-$matrixApp-$matrixAgent" }
-            $outcome = Invoke-Trial $matrixApp $matrixAgent $Version $directory $AgentModel $AgentEffort 'change' @() '' $FreshMachine
+            $trialParameters = New-TrialInvocationParameters -AppName $matrixApp -AgentName $matrixAgent -PinnedVersion $Version -OutputDirectory $directory -RunModel $AgentModel -RunEffort $AgentEffort -TaskName 'change' -SkillList @() -PluginDirectory '' -FreshMachine:$FreshMachine
+            $outcome = Invoke-Trial @trialParameters
             $summary += "$matrixApp/$matrixAgent=$outcome"
             $worst = [Math]::Max($worst, (Get-ExitCodeForOutcome $outcome))
         }
@@ -1553,7 +1807,8 @@ $summary = @()
 $worst = 0
 for ($index = 1; $index -le $Repeat; $index++) {
     $runDirectory = if ($Repeat -gt 1) { Join-Path $directory ("{0:D2}" -f $index) } else { $directory }
-    $outcome = Invoke-Trial $App $Agent $Version $runDirectory $AgentModel $AgentEffort $Task $Skills $ClaudePluginDir $FreshMachine
+    $trialParameters = New-TrialInvocationParameters -AppName $App -AgentName $Agent -PinnedVersion $Version -OutputDirectory $runDirectory -RunModel $AgentModel -RunEffort $AgentEffort -TaskName $Task -SkillList $Skills -PluginDirectory $ClaudePluginDir -FreshMachine:$FreshMachine
+    $outcome = Invoke-Trial @trialParameters
     $result = Read-JsonFile (Join-Path $runDirectory 'result.json')
     $metrics = Get-Fact $result 'metrics' $null
     $summary += [pscustomobject]@{
@@ -1566,3 +1821,7 @@ for ($index = 1; $index -le $Repeat; $index++) {
 }
 if ($Repeat -gt 1 -or $PSBoundParameters.ContainsKey('Repeat')) { Write-Host 'REPEAT SUMMARY'; Write-Host (Format-RepeatSummary $summary) }
 exit $worst
+
+
+
+

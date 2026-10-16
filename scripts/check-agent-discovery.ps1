@@ -1106,6 +1106,8 @@ function Invoke-SelfTest
             New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
             Copy-Item -LiteralPath (Join-Path $RepoRoot $relative) -Destination $target -Recurse
         }
+        New-Item -ItemType Directory -Force -Path (Join-Path $guideRoot 'docs' 'cli') | Out-Null
+        Copy-Item -LiteralPath (Join-Path $RepoRoot 'docs' 'cli' 'verify-spec.md') -Destination (Join-Path $guideRoot 'docs' 'cli')
         $cases++
         $clean = [System.Collections.Generic.List[string]]::new()
         Test-AgentGuidesInSync $guideRoot $clean
@@ -1118,7 +1120,7 @@ function Invoke-SelfTest
         $cases++
         $drifted = [System.Collections.Generic.List[string]]::new()
         Test-AgentGuidesInSync $guideRoot $drifted
-        if (@($drifted | Where-Object { $_.Contains('differs from the guide') }).Count -ne 2)
+        if (@($drifted | Where-Object { $_.Contains('differs from its source') }).Count -ne 2)
         {
             $failures.Add("a changed guide should drift both generated copies but reported: $($drifted -join ' | ')")
         }

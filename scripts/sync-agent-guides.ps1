@@ -12,6 +12,8 @@ Generated files (do not edit by hand):
       its own front matter (kept from the file) followed by the guide
   plugin/pointframe/skills/create-desktop-verification-skill/references/recipe.md
       the guide, unchanged
+  plugin/pointframe/skills/create-desktop-verification-skill/references/verify-spec.md
+      docs/cli/verify-spec.md, unchanged (the spec schema, bundled so an agent never fetches it from the web)
 
 Line endings are compared without regard to CR; files are written with CRLF like the rest of the repository.
 Exit 0 when in sync, 1 on drift (-Check) or a missing source, 2 on bad arguments.
@@ -39,6 +41,8 @@ $Root = (Resolve-Path -LiteralPath $Root).Path
 $GuidePath = 'Pointframe.Mcp/Guides/verify-desktop-work.md'
 $SkillPath = 'plugin/pointframe/skills/verify-desktop-work/SKILL.md'
 $RecipePath = 'plugin/pointframe/skills/create-desktop-verification-skill/references/recipe.md'
+$SpecSourcePath = 'docs/cli/verify-spec.md'
+$SpecCopyPath = 'plugin/pointframe/skills/create-desktop-verification-skill/references/verify-spec.md'
 
 function ConvertTo-Lf([string]$Text)
 {
@@ -66,6 +70,13 @@ if (-not $guide.EndsWith("`n"))
     $guide += "`n"
 }
 
+$spec = Read-Lf $SpecSourcePath
+if ($null -eq $spec)
+{
+    Write-Host "ERROR sync-agent-guides: the spec reference $SpecSourcePath is missing."
+    exit 1
+}
+
 $skill = Read-Lf $SkillPath
 $frontMatter = $null
 if ($null -ne $skill -and $skill -match '(?s)\A(---\n.*?\n---\n)')
@@ -81,6 +92,7 @@ if ($null -eq $frontMatter)
 $expected = [ordered]@{
     $SkillPath = $frontMatter + $guide
     $RecipePath = $guide
+    $SpecCopyPath = $spec
 }
 
 $drift = [System.Collections.Generic.List[string]]::new()
@@ -93,7 +105,7 @@ foreach ($relative in $expected.Keys)
     }
     if ($Check)
     {
-        $state = if ($null -eq $current) { 'is missing' } else { 'differs from the guide' }
+        $state = if ($null -eq $current) { 'is missing' } else { 'differs from its source' }
         $drift.Add("ERROR sync-agent-guides: $relative $state. Run: pwsh scripts/sync-agent-guides.ps1")
         continue
     }

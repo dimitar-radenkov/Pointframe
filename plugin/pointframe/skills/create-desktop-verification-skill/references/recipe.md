@@ -63,7 +63,9 @@ client needs no configuration and no restart.
 
    Every criterion needs a check that names it with `criterion`. A scenario with criteria needs one
    negative control: a check with `"expectFailure": true` and a deliberately wrong expectation. The spec
-   fields are in `docs/cli/verify-spec.md` of the Pointframe repository.
+   fields are in `references/verify-spec.md` next to the `create-desktop-verification-skill` skill, or
+   `docs/cli/verify-spec.md` in the Pointframe repository. Read the file from disk; do not fetch Pointframe
+   docs from the web, because the example above covers the common case.
 3. **Name controls by `automationId` when the app has one, otherwise by `role` and `name`.** If a control
    has no automation id, give it one in the app (`AutomationProperties.AutomationId` in WPF, `Name` in
    WinForms) rather than guessing. See Roles below.
@@ -264,8 +266,9 @@ Rules for the generated skill:
 
 - The executable steps live only in `.pointframe/verify.json`. The skill and its feature files name
   scenarios by id and say how to run them; they do not copy steps, so they cannot drift from the spec.
-- Write one file per feature under `features/`, each with four H2 sections (Sub-features, How to get to
-  it from the user's point of view, Driving it with Pointframe, Gotchas), listed in `features/README.md`.
+- Write one file per feature under `features/`, each with exactly four H2 sections, named exactly
+  `Sub-features`, `How to get to it (user POV)`, `Driving it with Pointframe` and `Gotchas` (tools check the
+  headings), listed in `features/README.md`.
 - Prove the skill once, end to end, with `pointframe verify run`, and confirm that the evidence files
   exist after the run, before telling anyone it works. Say what stays unproved.
 
