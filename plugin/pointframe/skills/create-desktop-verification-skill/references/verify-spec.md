@@ -158,7 +158,7 @@ A `check` body holds an element (as above) and these fields.
 
 Gate commands and the app run with your permissions, so the CLI approves them before
 the first run: by fixed rules, by policy for standard commands (decision D-011 in the
-[knowledge base](../knowledge-base/features/cli-mcp.md)), by the approver agent, or by
+[knowledge base](../knowledge-base/features/verify.md)), by the approver agent, or by
 you with `pointframe verify trust`. The approval digest covers the gates and the app
 (`id`, `run`, working folder, and timeout of each gate; and the app's id, executable,
 arguments, working folder, and isolation, with paths resolved to full paths). Steps,

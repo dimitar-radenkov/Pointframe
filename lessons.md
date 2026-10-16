@@ -1017,46 +1017,6 @@ A window picker that enumerates `EnumWindows` after showing its own overlay wind
 
 For any picker UI that lists other application windows, enumerate the candidates before showing picker overlays. The z-order at enumeration time must reflect the pre-picker state.
 
-## Smart redaction phone regex can shadow IPv4 when OCR inserts spaces around dot separators
-
-### Problem
-
-IPv4 values were sometimes still redacted as `Phone` (or remained redacted even when the IPv4 category was excluded) when OCR tokenized them with spacing artifacts like `203 . 0 . 113 . 42`.
-
-### Root cause
-
-The phone pattern allows digits, dots, and spaces, so OCR-spaced IPv4 strings matched the phone regex. The IPv4 guard only checked strict contiguous IPv4 text, so values with inserted whitespace were not rejected as phone candidates.
-
-### What fixed it
-
-- normalize matched phone candidates by removing whitespace before IPv4 validation
-- treat normalized strict-IPv4 matches as IPv4-like and reject them from phone classification
-- add regression tests for OCR-spaced IPv4 and for the "IPv4 excluded" setting to ensure no fallback to phone
-
-### Takeaway
-
-When matching OCR-derived text, classification predicates must account for OCR formatting noise (especially inserted whitespace) before overlap checks between broad and specific regex categories.
-
-## Smart redaction on real captures needs OCR-confusable digit fallback for numeric patterns
-
-### Problem
-
-Phone and IPv4 redaction could fail on real screenshots even though regexes were correct. OCR misread digits in those lines (for example `555` as `SSS`, `168` as `16B`, and trailing `7` as `'`), so strict numeric patterns never matched.
-
-### Root cause
-
-Detection only evaluated raw OCR text (plus spacing/compact fallbacks). It had no pass that normalizes common OCR character confusions for numeric tokens, so misrecognized digits were treated as hard mismatches.
-
-### What fixed it
-
-- add an OCR-digit-normalization fallback pass for `Phone` and `Ipv4` rules
-- normalize common confusables (`S→5`, `B→8`, `O→0`, `I/l→1`, `±→5`, `'→7`) before pattern evaluation in that fallback
-- keep strict regex/predicate checks as the final gate so fallback broadens recall without weakening category validation
-
-### Takeaway
-
-For OCR-driven redaction, strict regexes should stay strict, but numeric-sensitive categories need a bounded confusable-character fallback to remain robust on real UI captures.
-
 ## Turning off single-file native bundling silently breaks the installer, not the dev build
 
 ### Problem

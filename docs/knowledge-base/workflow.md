@@ -122,7 +122,7 @@ Every behavior change gets an independent review from a different agent than its
 ## Verification and desktop checks
 
 <!-- rule:W-23 roles=all -->
-- **Done gate (in force).** `pwsh scripts/verify.ps1` passes on the final tree and writes the gitignored verdict file `verdict.json` under `artifacts/verify`; see [CI, CD, and versioning](tooling.md#ci-cd-and-versioning). Receipts are bound to the head and the working-tree hash, so a stale one is detectable.
+- **Done gate (in force).** `pwsh scripts/verify.ps1` passes on the final tree and writes the gitignored verdict file `verdict.json` under `artifacts/verify`; see [Local gates and merging](tooling.md#local-gates-and-merging). Receipts are bound to the head and the working-tree hash, so a stale one is detectable.
 <!-- rule:W-24 roles=coordinator,executor -->
 - **Real-environment check.** When runtime behavior changes, run the real app: `pwsh scripts/desktop-tests.ps1` for the regression selection, with `-Repeat N` for stress. The desktop is announced and kept to 30 minutes at a time; check the input desktop is not locked first.
 <!-- rule:W-25 roles=coordinator -->

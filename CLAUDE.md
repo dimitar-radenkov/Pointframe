@@ -58,7 +58,7 @@ pwsh scripts/verify.ps1
 
 The rules every change keeps (composition, MVVM, settings, undo, DPI, new annotation tools) are the [Architecture rules](docs/knowledge-base/knowledge-base.md#architecture-rules) in the knowledge base core, which `/kb-init` prints; the why, the flows, and the recipes are in the sections they link.
 
-- **`pointframe verify` is not `scripts/verify.ps1`.** The product feature (F-39 in `docs/knowledge-base/features/cli-mcp.md`) lives in `Pointframe.Cli/Verification/` with tests in `Pointframe.Tests/Cli/`; `pwsh scripts/verify.ps1` is only this repo's done-gate. For manual trials use an installed or copied CLI, never `Pointframe.Cli/bin`.
+- **`pointframe verify` is not `scripts/verify.ps1`.** The product feature (F-39 in `docs/knowledge-base/features/verify.md`) lives in `Pointframe.Cli/Verification/` with tests in `Pointframe.Tests/Cli/`; `pwsh scripts/verify.ps1` is only this repo's done-gate. For manual trials use an installed or copied CLI, never `Pointframe.Cli/bin`.
 
 ## Code Style
 
@@ -85,6 +85,6 @@ Base version is in `version.json` (major.minor); patch auto-increments with comm
 ## Docs
 
 - `docs/developer-guide.md` — setup, conventions, patterns
-- `docs/knowledge-base/knowledge-base.md` — knowledge base core, cross-cutting: architecture rules, composition, shared invariants and how-tos, feature and decision indexes; next to it `file-map.md`, `references.md`, `tooling.md`, `workflow.md`, and `decisions.md` (decisions that span areas); `docs/knowledge-base/features/*.md` — one file per feature area; use `/kb-init`, `/kb-read`, `/kb-write`, `/kb-check`
+- `docs/knowledge-base/knowledge-base.md` — knowledge base core, cross-cutting: architecture rules, feature and decision indexes; next to it `composition.md` (composition and shared invariants), `how-tos.md`, `maintenance.md`, `file-map.md`, `references.md`, `tooling.md`, `workflow.md`, and `decisions.md` (decisions that span areas); `docs/knowledge-base/features/*.md` — one file per feature area; use `/kb-init`, `/kb-read`, `/kb-write`, `/kb-check`
 - `lessons.md` — reusable lessons from past bugs and workflow traps
 - `plan/` — roadmap and feature plans (local-only, not in git)

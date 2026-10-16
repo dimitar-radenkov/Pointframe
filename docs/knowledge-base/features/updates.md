@@ -28,7 +28,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 
 - Window services ignore UI events that arrive after their window closed; late progress callbacks after close are a crash source.
 - `LastUpdateOfferUtc` and `LastRunVersion` are app-owned state: Settings Save copies them from the current settings and Restore defaults keeps them, like `InstallId`.
-- The installer asset name and the `v<version>` tag are produced by the CD workflow; the updater's expectations and the workflow change together. See [CI, CD, and versioning](../tooling.md#ci-cd-and-versioning).
+- The installer asset name and the `v<version>` tag are produced by the CD workflow; the updater's expectations and the workflow change together. See [Workflows](../tooling.md#workflows).
 
 **Tests.** `Pointframe.Tests/Services/AutoUpdateServiceTests.cs`, `Pointframe.Tests/Services/GitHubUpdateServiceTests.cs`, `Pointframe.Tests/Services/UpdateDownloadWindowServiceTests.cs`, `Pointframe.Tests/Services/AppVersionServiceTests.cs`, `Pointframe.Tests/ViewModels/UpdateDownloadViewModelTests.cs`, `Pointframe.Tests/ViewModels/AboutViewModelTests.cs`, `Pointframe.Tests/Services/UpdateOfferPolicyTests.cs`, `Pointframe.Tests/Services/TrayIconManagerTests.cs`, `Pointframe.Tests/AppTests.cs`.
 

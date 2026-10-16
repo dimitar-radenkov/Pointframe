@@ -8,7 +8,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 
 | ID | Feature | Triggered from | Entry point | Telemetry | Tests | Read first |
 |---|---|---|---|---|---|---|
-| F-34 | App lifecycle and usage telemetry | Startup, exit, heartbeat, unhandled errors | `Pointframe/App.xaml.cs`, `Pointframe/Services/Infrastructure/TelemetryService.cs`, `Pointframe/Services/Infrastructure/TelemetryHeartbeatService.cs` | `app_started`, `startup_completed`, `app_closed`, `app_heartbeat`, `unhandled_exception`, `hotkey_status` | `Pointframe.Tests/AppTests.cs`, `Pointframe.Tests/Services/TelemetryServiceTests.cs`, `Pointframe.Tests/Services/TelemetryEventCatalogTests.cs` | [Telemetry](#telemetry-pipeline), [App bootstrap](../knowledge-base.md#app-bootstrap-di-and-messaging) |
+| F-34 | App lifecycle and usage telemetry | Startup, exit, heartbeat, unhandled errors | `Pointframe/App.xaml.cs`, `Pointframe/Services/Infrastructure/TelemetryService.cs`, `Pointframe/Services/Infrastructure/TelemetryHeartbeatService.cs` | `app_started`, `startup_completed`, `app_closed`, `app_heartbeat`, `unhandled_exception`, `hotkey_status` | `Pointframe.Tests/AppTests.cs`, `Pointframe.Tests/Services/TelemetryServiceTests.cs`, `Pointframe.Tests/Services/TelemetryEventCatalogTests.cs` | [Telemetry](#telemetry-pipeline), [App bootstrap](../composition.md#app-bootstrap-di-and-messaging) |
 | F-44 | CLI and MCP operation telemetry: one anonymous event per MCP tool call or CLI command, first-run notice, opt-out | Every CLI command and MCP `tools/call` in official release builds | `Pointframe.Telemetry/OperationTelemetryFactory.cs`, `Pointframe.Telemetry/OperationTelemetry.cs`, `Pointframe.Mcp/McpTelemetryFilter.cs`, `Pointframe.Cli/Application/CliApplication.cs` | — | `Pointframe.Tests/Telemetry/OperationTelemetryTests.cs`, `Pointframe.Tests/Mcp/McpTelemetryTests.cs`, `Pointframe.Tests/Cli/CliTelemetryTests.cs`, `Pointframe.Tests/Cli/VerificationOutcomeTests.cs`, `Pointframe.Tests/Mcp/RestartWaitTelemetryTests.cs` | [CLI and MCP operation telemetry](#cli-and-mcp-operation-telemetry) |
 
 Recording failures emit diagnostic `recording_failed` with required `phase` (`start`, `capture`, `encode`, `finalize`, `stop`), `reason`, and up to three distinct `inner_types`; `ffmpeg_exit_code` is optional. The event carries no exception messages or paths. `scripts/usage-report.ps1` groups these by version, phase, and reason.
@@ -64,7 +64,7 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 | `TelemetryHeartbeatService` | Hosted service emitting `app_heartbeat` with uptime and session data |
 | `ActivationTelemetryService` | First-run and activation funnel events |
 
-**Configuration.** `Pointframe/appsettings.json` ships `ApplicationInsights:ConnectionString` empty, so source builds and CI send nothing. The CD workflow injects the real string and verifies the injection before publishing. A developer can set a personal string in `appsettings.Local.json`, which is loaded after `appsettings.json`. See [CI, CD, and versioning](../tooling.md#ci-cd-and-versioning).
+**Configuration.** `Pointframe/appsettings.json` ships `ApplicationInsights:ConnectionString` empty, so source builds and CI send nothing. The CD workflow injects the real string and verifies the injection before publishing. A developer can set a personal string in `appsettings.Local.json`, which is loaded after `appsettings.json`. See [Workflows](../tooling.md#workflows).
 
 **Invariants.**
 
