@@ -466,7 +466,15 @@ function Invoke-MergedCleanup([string]$Branch)
             Write-Host "WARNING worktree not removed (uncommitted changes? still in use?): $removed"
         }
     }
-    & git -C $mainTree push origin --delete $Branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
+    $remoteBranch = & git -C $mainTree ls-remote --exit-code --heads origin $Branch 2>&1
+    if ($LASTEXITCODE -eq 0)
+    {
+        & git -C $mainTree push origin --delete $Branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
+    }
+    else
+    {
+        Write-Host "Remote branch $Branch already deleted."
+    }
     & git -C $mainTree branch -D $Branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
 
     $pull = & git -C $mainTree pull -q --ff-only 2>&1
