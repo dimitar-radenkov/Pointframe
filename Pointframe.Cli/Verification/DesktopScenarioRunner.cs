@@ -380,6 +380,16 @@ internal sealed class DesktopScenarioRunner
                             continue;
                         }
 
+                        // The last poll can end after the deadline; the server left its refusal uncounted, so make one final counted attempt.
+                        if (restart.Code == "TargetStillRunning" && isPoll)
+                        {
+                            restart = ActionResult(index, step, description, await _client.CallToolAsync(
+                                "desktop_restart_app",
+                                new { sessionId, actionId = NewActionId() },
+                                LaunchTimeout,
+                                cancellationToken).ConfigureAwait(false));
+                        }
+
                         // Agents read "restart" as "start over" and put it first; the server's own message does
                         // not tell them that the step never closes the app.
                         if (restart.Code == "TargetStillRunning")
