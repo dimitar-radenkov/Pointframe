@@ -221,6 +221,34 @@ public sealed class DesktopSelectorActionTests
         fixture.Observations.Verify(service => service.Resolve(It.IsAny<string>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task SemanticEntryBySelectorAcceptsEmptyAndWhitespaceText(string text)
+    {
+        var fixture = new Fixture(Snapshot(false, Element("el-9-1", WindowA, "Edit", "Name", "nameBox")));
+        fixture.UiAutomation.Setup(provider => provider.TrySetValue("el-9-1", text)).Returns(true);
+
+        var response = await fixture.Tools.EnterTextAsync(
+            SessionId, Guid.NewGuid().ToString(), text, semanticValue: true, automationId: "nameBox");
+
+        Assert.Equal("Complete", response.Dispatch);
+        Assert.Null(response.Error);
+        fixture.UiAutomation.Verify(provider => provider.TrySetValue("el-9-1", text), Times.Once);
+    }
+
+    [Fact]
+    public async Task SemanticEntryWithMissingTextIsInvalidAndDispatchesNothing()
+    {
+        var fixture = new Fixture(Snapshot(false, Element("el-9-1", WindowA, "Edit", "Name", "nameBox")));
+
+        var response = await fixture.Tools.EnterTextAsync(
+            SessionId, Guid.NewGuid().ToString(), null!, semanticValue: true, automationId: "nameBox");
+
+        Assert.Equal("InvalidRequest", response.Error?.Code);
+        fixture.UiAutomation.Verify(provider => provider.TrySetValue(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
     [Fact]
     public async Task SemanticEntryBySelectorRefusesAnAmbiguousField()
     {

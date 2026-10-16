@@ -106,6 +106,45 @@ public sealed class DesktopAutomationWorkerTests
         Assert.Equal("InvokePending", response.Code);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ProviderSetsEmptyAndWhitespaceValues(string value)
+    {
+        var ui = new RecordingUiProvider();
+        var provider = new DesktopAutomationWorkerProvider(new RecordingInputService(), ui);
+        var request = new DesktopAutomationWorkerRequest(
+            1,
+            "set-value",
+            DesktopAutomationWorkerProtocol.Operations.SetValue,
+            JsonSerializer.Serialize(new { elementRef = "element-1", value }));
+
+        var response = await provider.HandleAsync(request, CancellationToken.None);
+
+        Assert.True(response.Succeeded);
+        Assert.Equal([value], ui.SetValues);
+    }
+
+    [Theory]
+    [InlineData("{\"elementRef\":\"element-1\"}")]
+    [InlineData("{\"elementRef\":\"element-1\",\"value\":null}")]
+    public async Task ProviderRejectsMissingOrNullSetValue(string payload)
+    {
+        var ui = new RecordingUiProvider();
+        var provider = new DesktopAutomationWorkerProvider(new RecordingInputService(), ui);
+        var request = new DesktopAutomationWorkerRequest(
+            1,
+            "set-value",
+            DesktopAutomationWorkerProtocol.Operations.SetValue,
+            payload);
+
+        var response = await provider.HandleAsync(request, CancellationToken.None);
+
+        Assert.False(response.Succeeded);
+        Assert.Equal("InvalidPayload", response.Code);
+        Assert.Empty(ui.SetValues);
+    }
+
     [Fact]
     public async Task ProviderPreservesNativeWindowHandleAcrossTheWorkerBoundary()
     {
@@ -409,8 +448,14 @@ public sealed class DesktopAutomationWorkerTests
 
     private sealed class RecordingUiProvider(UiInvokeOutcome invokeOutcome = UiInvokeOutcome.Completed) : IWindowsUiAutomationActionProvider
     {
+        public List<string> SetValues { get; } = [];
+
         public UiInvokeOutcome TryInvoke(string elementRef) => invokeOutcome;
 
-        public bool TrySetValue(string elementRef, string value) => true;
+        public bool TrySetValue(string elementRef, string value)
+        {
+            SetValues.Add(value);
+            return true;
+        }
     }
 }

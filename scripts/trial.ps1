@@ -3,12 +3,14 @@ param(
     [ValidateSet('pkhex', 'dngrep', 'electron', 'wpf-sample')][string]$App,
     [ValidateSet('claude', 'codex')][string]$Agent = 'claude',
     [ValidateSet('change', 'create-skill')][string]$Task = 'change',
+    [ValidateSet('installed', 'cold')][string]$Configuration,
     [string]$Version,
     [string]$OutDirectory,
     [switch]$Matrix,
     [switch]$SelfTest,
     [switch]$FreshMachine,
     [string]$MetricsPath,
+    [string]$Rescore,
     [int]$TimeoutMinutes = 30,
     [switch]$AllowCodexFullAccess,
     [string]$AgentModel,
@@ -94,12 +96,12 @@ function New-TrialInvocationParameters {
     param(
         [string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory,
         [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string]$RunPromptPrefix = '',
-        [string[]]$SkillList = @(), [string]$PluginDirectory = '', [switch]$FreshMachine
+        [string[]]$SkillList = @(), [string]$PluginDirectory = '', [string]$Configuration = 'cold', [switch]$FreshMachine
     )
     return @{
         AppName = $AppName; AgentName = $AgentName; PinnedVersion = $PinnedVersion
         OutputDirectory = $OutputDirectory; RunModel = $RunModel; RunEffort = $RunEffort
-        TaskName = $TaskName; PromptPrefix = $RunPromptPrefix; SkillList = $SkillList; PluginDirectory = $PluginDirectory
+        TaskName = $TaskName; PromptPrefix = $RunPromptPrefix; SkillList = $SkillList; PluginDirectory = $PluginDirectory; Configuration = $Configuration
         FreshMachine = [bool]$FreshMachine
     }
 }
@@ -371,6 +373,8 @@ function Get-TrialOutcome {
     if ($reasons.Count -gt 0) { return [pscustomobject]@{ Outcome = 'fail'; Reasons = @($reasons) } }
 
     $expected = Get-Fact $Facts 'expectedVersion' $null
+    $latestAfter = Get-Fact $Facts 'latestReleaseAfterRun' $null
+    if ($expected -and $latestAfter -and $latestAfter -ne $expected) { $reasons.Add("latest release drifted from $expected to $latestAfter during the run") }
     $seen = [ordered]@{
         cli = Get-Fact $Facts 'cliVersion' $null
         mcp = Get-Fact $Facts 'mcpVersion' $null
@@ -798,7 +802,7 @@ function Get-DefectResult {
 
 function Get-TranscriptMetrics {
     param([string]$Path, [string]$Agent = 'claude')
-    $metrics = [ordered]@{ turns = $null; toolCalls = $null; commands = $null; inputTokens = $null; cacheCreationInputTokens = $null; cachedInputTokens = $null; totalInputTokens = $null; outputTokens = $null; costUsd = $null }
+    $metrics = [ordered]@{ turns = $null; toolCalls = $null; toolEventTypes = [ordered]@{}; unknownItemTypes = [ordered]@{}; commands = $null; inputTokens = $null; cacheCreationInputTokens = $null; cachedInputTokens = $null; totalInputTokens = $null; outputTokens = $null; costUsd = $null }
     if (-not (Test-Path -LiteralPath $Path)) { return $metrics }
     foreach ($line in [IO.File]::ReadLines($Path)) {
         try {
@@ -807,7 +811,16 @@ function Get-TranscriptMetrics {
                 $type = Get-Fact $resultEvent 'type' ''
                 if ($type -eq 'item.completed') {
                     $item = Get-Fact $resultEvent 'item' $null
-                    if ((Get-Fact $item 'type' '') -in 'command_execution', 'mcp_tool_call') { if ($null -eq $metrics.toolCalls) { $metrics.toolCalls = 0 }; $metrics.toolCalls++ }
+                    $itemType = [string](Get-Fact $item 'type' '')
+                    $allowedToolTypes = @('command_execution', 'mcp_tool_call', 'web_search', 'file_change', 'patch_apply', 'file_patch')
+                    if ($itemType -in $allowedToolTypes) {
+                        if ($null -eq $metrics.toolCalls) { $metrics.toolCalls = 0 }; $metrics.toolCalls++
+                        if ($null -eq $metrics.toolEventTypes) { $metrics.toolEventTypes = [ordered]@{} }
+                        if (-not $metrics.toolEventTypes.Contains($itemType)) { $metrics.toolEventTypes[$itemType] = 0 }; $metrics.toolEventTypes[$itemType]++
+                    }
+                    elseif ($itemType -and $itemType -notin 'agent_message', 'reasoning') {
+                        if (-not $metrics.unknownItemTypes.Contains($itemType)) { $metrics.unknownItemTypes[$itemType] = 0 }; $metrics.unknownItemTypes[$itemType]++
+                    }
                 }
                 if ($type -eq 'turn.completed') {
                     $usage = Get-Fact $resultEvent 'usage' $null
@@ -825,7 +838,7 @@ function Get-TranscriptMetrics {
             $type = Get-Fact $resultEvent 'type' ''
             if ($type -eq 'assistant') {
                 foreach ($block in @(Get-Fact (Get-Fact $resultEvent 'message' $null) 'content' @())) {
-                    if ((Get-Fact $block 'type' '') -eq 'tool_use') { if ($null -eq $metrics.toolCalls) { $metrics.toolCalls = 0 }; $metrics.toolCalls++ }
+                    if ((Get-Fact $block 'type' '') -eq 'tool_use') { if ($null -eq $metrics.toolCalls) { $metrics.toolCalls = 0 }; $metrics.toolCalls++; $toolName = [string](Get-Fact $block 'name' 'unknown'); if ($null -eq $metrics.toolEventTypes) { $metrics.toolEventTypes = [ordered]@{} }; if (-not $metrics.toolEventTypes.Contains($toolName)) { $metrics.toolEventTypes[$toolName] = 0 }; $metrics.toolEventTypes[$toolName]++ }
                 }
             }
             if ($type -eq 'result') {
@@ -844,6 +857,102 @@ function Get-TranscriptMetrics {
         catch { $metrics['note'] = "transcript line could not be parsed: $($_.Exception.Message)" }
     }
     return $metrics
+}
+
+function Test-SkillActivation {
+    param([string]$Path, [string]$AgentName, $SkillSetup, $Isolation)
+    $script:LastOtherSkillsActivated = @()
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    $paths = @($SkillSetup | ForEach-Object { [string](Get-Fact $_ 'destination' '') } | Where-Object { $_ })
+    $relativePaths = @($SkillSetup | ForEach-Object { ([string](Get-Fact $_ 'relativePath' '')).Replace('/', '\').Replace('\\', '\') } | Where-Object { $_ })
+    $pointframeSkills = @{}
+    $otherSkillNames = @{}
+    $otherSkillsActivated = @{}
+    $pointframeActivated = $false
+    foreach ($skill in $SkillSetup) {
+        $relative = [string](Get-Fact $skill 'relativePath' '')
+        $name = Split-Path $relative -Leaf
+        if (-not $name) { continue }
+        $sourcePath = [string](Get-Fact $skill 'source' '')
+        $skillFile = if ($sourcePath) { Join-Path $sourcePath 'SKILL.md' } else { '' }
+        $isPointframe = $name -in @('create-desktop-verification-skill', 'verify-desktop-work')
+        if (-not $isPointframe -and (Test-Path -LiteralPath $skillFile)) { $isPointframe = (Get-Content -LiteralPath $skillFile -Raw) -match '(?i)Pointframe' }
+        if ($isPointframe) { $pointframeSkills[$name] = $true } else { $otherSkillNames[$name] = $true }
+    }
+    $pluginPath = [string](Get-Fact (Get-Fact $Isolation 'claude' $null) 'pluginDirectory' '')
+    if ($pluginPath) {
+        $paths += $pluginPath
+        $pluginSkillsRoot = Join-Path $pluginPath 'skills'
+        if (Test-Path -LiteralPath $pluginSkillsRoot -PathType Container) {
+            foreach ($pluginSkill in Get-ChildItem -LiteralPath $pluginSkillsRoot -Directory) { $pointframeSkills[$pluginSkill.Name] = $true }
+        }
+    }
+    if ($AgentName -eq 'claude') {
+        foreach ($line in [IO.File]::ReadLines($Path)) {
+            try {
+                $event = $line | ConvertFrom-Json
+                if ($event.type -ne 'assistant') { continue }
+                foreach ($block in @(Get-Fact $event.message 'content' @())) {
+                    if ((Get-Fact $block 'type' '') -eq 'tool_use' -and (Get-Fact $block 'name' '') -eq 'Skill') {
+                        $skillName = [string](Get-Fact (Get-Fact $block 'input' $null) 'skill' '')
+                        $normalizedSkillName = $skillName.Trim().TrimStart('/')
+                        if ($normalizedSkillName -match '^pointframe:') { $pointframeActivated = $true }
+                        elseif ($pointframeSkills.ContainsKey($normalizedSkillName)) { $pointframeActivated = $true }
+                        elseif ($normalizedSkillName -and -not $normalizedSkillName.Contains(':')) { $otherSkillsActivated[$normalizedSkillName] = $true }
+                    }
+                    $readPath = ([string](Get-Fact (Get-Fact $block 'input' $null) 'file_path' '')).Replace('/', '\')
+                    if ((Get-Fact $block 'name' '') -eq 'Read' -and $readPath -match '(?i)(SKILL\.md|references\\.+\.md)$') {
+                        foreach ($skill in $SkillSetup) {
+                            $root = ([string](Get-Fact $skill 'destination' '')).Replace('/', '\').TrimEnd([char]'\')
+                            $skillName = Split-Path ([string](Get-Fact $skill 'relativePath' '')) -Leaf
+                            if ($root -and $readPath.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                                if ($pointframeSkills.ContainsKey($skillName)) { $pointframeActivated = $true }
+                                elseif ($otherSkillNames.ContainsKey($skillName)) { $otherSkillsActivated[$skillName] = $true }
+                            }
+                        }
+                        if ($pluginPath) {
+                            $pluginSkillsRoot = (Join-Path $pluginPath 'skills').Replace('/', '\').TrimEnd([char]'\') + '\'
+                            if ($readPath.StartsWith($pluginSkillsRoot, [StringComparison]::OrdinalIgnoreCase)) {
+                                $pluginRelative = $readPath.Substring($pluginSkillsRoot.Length)
+                                $pluginSkillName = $pluginRelative.Split([char]'\')[0]
+                                if ($pointframeSkills.ContainsKey($pluginSkillName)) { $pointframeActivated = $true }
+                            }
+                        }
+                    }
+                }
+            } catch { }
+        }
+        $script:LastOtherSkillsActivated = @($otherSkillsActivated.Keys | Sort-Object)
+        return [bool]$pointframeActivated
+    }
+    foreach ($line in [IO.File]::ReadLines($Path)) {
+        try {
+            $event = $line | ConvertFrom-Json
+            $item = Get-Fact $event 'item' $null
+            if ((Get-Fact $event 'type' '') -eq 'item.completed' -and (Get-Fact $item 'type' '') -eq 'command_execution') {
+                $command = [string](Get-Fact $item 'command' '')
+                $normalizedCommand = $command.Replace('/', '\')
+                foreach ($skill in $SkillSetup) {
+                    $relativePath = ([string](Get-Fact $skill 'relativePath' '')).Replace('/', '\').Replace('\\', '\')
+                    $name = Split-Path ([string](Get-Fact $skill 'relativePath' '')) -Leaf
+                    if ($normalizedCommand -match [regex]::Escape($relativePath) + '(?:\\SKILL\.md|\\references\\[^\s"'']+\.md)') {
+                        if ($pointframeSkills.ContainsKey($name)) { $pointframeActivated = $true }
+                        elseif ($otherSkillNames.ContainsKey($name)) { $otherSkillsActivated[$name] = $true }
+                    }
+                }
+            }
+        } catch { }
+    }
+    $script:LastOtherSkillsActivated = @($otherSkillsActivated.Keys | Sort-Object)
+    return [bool]$pointframeActivated
+}
+
+function Get-OtherSkillsActivated { return @($script:LastOtherSkillsActivated) }
+
+function Test-ColdSkillInput {
+    param([string]$SkillPath)
+    $skillFile = Join-Path $SkillPath 'SKILL.md'
+    return -not ((Test-Path $skillFile -PathType Leaf) -and (Get-Content $skillFile -Raw) -match '(?i)Pointframe')
 }
 
 function Get-LimitEvaluation {
@@ -1012,10 +1121,13 @@ function Test-Self {
     if (-not $forwarded.FreshMachine -or $forwarded.TaskName -ne 'create-skill' -or $forwarded.PluginDirectory -ne 'plugin') {
         throw 'Entry-point parameter forwarding dropped -FreshMachine or another named argument.'
     }
-    $prefixed = New-TrialInvocationParameters -AppName 'wpf-sample' -AgentName 'claude' -PinnedVersion '' -OutputDirectory 'out' -RunModel '' -RunEffort '' -TaskName 'create-skill' -RunPromptPrefix '/create-verification-skill'
+        $prefixed = New-TrialInvocationParameters -AppName 'wpf-sample' -AgentName 'claude' -PinnedVersion '' -OutputDirectory 'out' -RunModel '' -RunEffort '' -TaskName 'create-skill' -RunPromptPrefix '/create-verification-skill' -Configuration 'installed'
     if ($prefixed.PromptPrefix -ne '/create-verification-skill') { throw 'Entry-point parameter forwarding dropped -PromptPrefix.' }
-    $samplePrompt = Get-AgentPrompt ([pscustomobject]@{ change = 'change task' }) '' 'create-skill' $prefixed.PromptPrefix
+    $samplePrompt = Get-AgentPrompt ([pscustomobject]@{ change = 'change task' }) '' 'create-skill' $prefixed.PromptPrefix 'installed'
     if (-not $samplePrompt.StartsWith("/create-verification-skill`n`n")) { throw 'Create-skill prompt prefix was not prepended with a blank line.' }
+    if ($samplePrompt -match 'Pointframe is not installed' -or $samplePrompt -match 'Use only its public documentation') { throw 'Installed prompt incorrectly excludes the installed skill.' }
+    $coldPrompt = Get-AgentPrompt ([pscustomobject]@{ change = 'change task' }) '' 'create-skill' '' 'cold'
+    if ($coldPrompt -notmatch 'Pointframe is not installed' -or $coldPrompt -notmatch 'Use only its public documentation') { throw 'Cold prompt lost its public documentation restriction.' }
     if ((Get-AgentPrompt ([pscustomobject]@{ change = 'change task' }) '' 'change' 'ignored') -match '^ignored') { throw 'Prompt prefix was applied to a non-create-skill task.' }
 
     $apps = Get-Content -LiteralPath $script:AppsPath -Raw | ConvertFrom-Json
@@ -1286,6 +1398,9 @@ diff --git a/notes.md b/notes.md
         [IO.File]::WriteAllText($codexLog, '{"type":"item.completed","item":{"type":"command_execution"}}' + "`n" + '{"type":"item.completed","item":{"type":"mcp_tool_call"}}' + "`n" + '{"type":"turn.completed","usage":{"input_tokens":12,"cached_input_tokens":4,"output_tokens":6}}' + "`n" + '{"type":"turn.completed","usage":{"input_tokens":8,"cached_input_tokens":2,"output_tokens":3}}' + "`n")
         $codexMetrics = Get-TranscriptMetrics $codexLog 'codex'
         if ($codexMetrics.toolCalls -ne 2 -or $codexMetrics.inputTokens -ne 20 -or $codexMetrics.cachedInputTokens -ne 6 -or $codexMetrics.totalInputTokens -ne 20 -or $codexMetrics.outputTokens -ne 9 -or $codexMetrics.turns -ne 2) { throw 'Codex transcript metrics are wrong.' }
+        $realSnippet = Join-Path $script:FixtureDirectory 'codex-tool-events.jsonl'
+        $realMetrics = Get-TranscriptMetrics $realSnippet 'codex'
+        if ($realMetrics.toolCalls -ne 3 -or $realMetrics.toolEventTypes.web_search -ne 2 -or $realMetrics.toolEventTypes.command_execution -ne 1) { throw 'Real Codex event fixture is not counted by completed tool item.' }
         $codexWithNoiseLog = Join-Path $scratch 'codex-noise.jsonl'
         [IO.File]::WriteAllText($codexWithNoiseLog, '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":2}}' + "`nnot json`n" + '{"type":"turn.completed","usage":{"input_tokens":3,"output_tokens":1}}' + "`n")
         $codexWithNoise = Get-TranscriptMetrics $codexWithNoiseLog 'codex'
@@ -1294,6 +1409,88 @@ diff --git a/notes.md b/notes.md
         [IO.File]::WriteAllText($unparsedLog, 'not json' + "`n")
         $unparsedMetrics = Get-TranscriptMetrics $unparsedLog 'codex'
         foreach ($metricName in 'turns', 'toolCalls', 'inputTokens', 'cachedInputTokens', 'outputTokens') { if ($null -ne $unparsedMetrics[$metricName]) { throw "Unparsed transcript metric '$metricName' must be null." } }
+        $unknownLog = Join-Path $scratch 'codex-unknown.jsonl'
+        [IO.File]::WriteAllText($unknownLog, '{"type":"item.completed","item":{"type":"future_tool"}}' + "`n")
+        $unknownMetrics = Get-TranscriptMetrics $unknownLog 'codex'
+        if ($unknownMetrics.toolCalls -or $unknownMetrics.unknownItemTypes.future_tool -ne 1) { throw 'Unknown Codex item types must be recorded separately and not counted as tools.' }
+        $skillLog = Join-Path $scratch 'activation.jsonl'
+        $pointframeSkillSource = Join-Path $scratch 'verify[thing]'; New-Item -ItemType Directory -Path $pointframeSkillSource -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $pointframeSkillSource 'SKILL.md') -Value 'Pointframe helper'
+        $copiedSkill = [pscustomobject]@{ source = $pointframeSkillSource; destination = 'C:\trial\.agents\skills\verify[thing]'; relativePath = '.agents/skills/verify[thing]' }
+        [IO.File]::WriteAllText($skillLog, '{"type":"item.completed","item":{"type":"command_execution","command":"cat .agents/skills/verify[thing]/SKILL.md"}}' + "`n")
+        if (-not (Test-SkillActivation $skillLog 'codex' @($copiedSkill) $null)) { throw 'Codex activation missed a relative forward-slash skill path containing [' }
+        $coldCodexLog = Join-Path $scratch 'activation-cold-codex.jsonl'
+        [IO.File]::WriteAllText($coldCodexLog, '{"type":"item.completed","item":{"type":"command_execution","command":"cat references/SKILL.md"}}' + "`n")
+        if (Test-SkillActivation $coldCodexLog 'codex' @() $null) { throw 'Cold Codex activation must not match generic references or SKILL.md.' }
+        $claudePstackLog = Join-Path $scratch 'activation-pstack.jsonl'
+        [IO.File]::WriteAllText($claudePstackLog, '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"pstack"}}]}}' + "`n")
+        $pstackSkill = Join-Path $scratch 'create-verification-skill'; New-Item -ItemType Directory -Path $pstackSkill -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $pstackSkill 'SKILL.md') -Value 'Create verification for an application using its public docs.'
+        $pstackCopy = [pscustomobject]@{ source = $pstackSkill; destination = 'C:\trial\.claude\skills\create-verification-skill'; relativePath = '.claude/skills/create-verification-skill' }
+        if (Test-SkillActivation $claudePstackLog 'claude' @($pstackCopy) $null) { throw 'Claude pstack Skill use must not count as Pointframe activation.' }
+        if ((Get-OtherSkillsActivated) -join ',' -ne 'pstack') { throw 'The exact non-Pointframe skill name from a Skill call must be reported.' }
+        $claudePluginLog = Join-Path $scratch 'activation-plugin.jsonl'
+        [IO.File]::WriteAllText($claudePluginLog, '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"pointframe:verify"}}]}}' + "`n")
+        if (-not (Test-SkillActivation $claudePluginLog 'claude' @() ([pscustomobject]@{ claude = [pscustomobject]@{ pluginDirectory = 'C:\plugins\pointframe' } }))) { throw 'Installed Pointframe plugin Skill use was not counted.' }
+        $claudeCopiedLog = Join-Path $scratch 'activation-copied.jsonl'
+        [IO.File]::WriteAllText($claudeCopiedLog, '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"verify[thing]"}}]}}' + "`n")
+        if (-not (Test-SkillActivation $claudeCopiedLog 'claude' @($copiedSkill) $null)) { throw 'Claude copied Pointframe skill activation was not counted.' }
+        Set-Content -LiteralPath (Join-Path $copiedSkill.source 'SKILL.md') -Value 'Pointframe skill'
+        $claudeReferenceLog = Join-Path $scratch 'activation-reference.jsonl'
+        $referenceReadPath = Join-Path $copiedSkill.destination 'references/recipe.md'
+        $referenceEvent = [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Read'; input = [ordered]@{ file_path = $referenceReadPath } }) } }
+        [IO.File]::WriteAllText($claudeReferenceLog, (($referenceEvent | ConvertTo-Json -Depth 6 -Compress) + "`n"))
+        if (-not (Test-SkillActivation $claudeReferenceLog 'claude' @($copiedSkill) $null)) { throw 'Claude Read of a Pointframe skill reference was not counted.' }
+        $claudeForwardReadLog = Join-Path $scratch 'activation-forward-read.jsonl'
+        $forwardReadEvent = [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Read'; input = [ordered]@{ file_path = $copiedSkill.destination.Replace('\', '/') + '/SKILL.md' } }) } }
+        [IO.File]::WriteAllText($claudeForwardReadLog, (($forwardReadEvent | ConvertTo-Json -Depth 6 -Compress) + "`n"))
+        if (-not (Test-SkillActivation $claudeForwardReadLog 'claude' @($copiedSkill) $null)) { throw 'Claude Read with forward slashes did not match the full copied skill path.' }
+        $pluginRoot = Join-Path $scratch 'pointframe-plugin'
+        $pluginSkillRoot = Join-Path $pluginRoot 'skills\verify[thing]'
+        New-Item -ItemType Directory -Path (Join-Path $pluginSkillRoot 'references') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $pluginSkillRoot 'SKILL.md') -Value 'Pointframe plugin skill'
+        $pluginReadLog = Join-Path $scratch 'activation-plugin-read.jsonl'
+        $pluginReadEvent = [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Read'; input = [ordered]@{ file_path = (Join-Path $pluginSkillRoot 'references\recipe.md') } }) } }
+        [IO.File]::WriteAllText($pluginReadLog, (($pluginReadEvent | ConvertTo-Json -Depth 6 -Compress) + "`n"))
+        if (-not (Test-SkillActivation $pluginReadLog 'claude' @() ([pscustomobject]@{ claude = [pscustomobject]@{ pluginDirectory = $pluginRoot } }))) { throw 'Claude plugin-only Read under a discovered plugin skill folder was not counted.' }
+        $otherSkill2 = Join-Path $scratch 'create-another-skill'; New-Item -ItemType Directory -Path $otherSkill2 -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $otherSkill2 'SKILL.md') -Value 'General helper skill.'
+        $otherCopy2 = [pscustomobject]@{ source = $otherSkill2; destination = 'C:\trial\.claude\skills\create-another-skill'; relativePath = '.claude/skills/create-another-skill' }
+        $otherReadLog = Join-Path $scratch 'activation-other-read.jsonl'
+        $otherReadEvent = [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Read'; input = [ordered]@{ file_path = (Join-Path $otherCopy2.destination 'references\recipe.md') } }) } }
+        [IO.File]::WriteAllText($otherReadLog, (($otherReadEvent | ConvertTo-Json -Depth 6 -Compress) + "`n"))
+        if (Test-SkillActivation $otherReadLog 'claude' @($otherCopy2) $null) { throw 'Claude Read of another skill must not count as Pointframe activation.' }
+        if ((Get-OtherSkillsActivated) -join ',' -ne 'create-another-skill') { throw 'Claude Read of another skill reference must report its skill name.' }
+        $multipleOtherLog = Join-Path $scratch 'activation-multiple-other.jsonl'
+        $multipleOtherEvents = @(
+            [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Skill'; input = [ordered]@{ skill = 'builtin/unrelated' } }, [ordered]@{ type = 'tool_use'; name = 'Skill'; input = [ordered]@{ skill = 'create-verification-skill' } }, [ordered]@{ type = 'tool_use'; name = 'Skill'; input = [ordered]@{ skill = 'create-another-skill' } }, [ordered]@{ type = 'tool_use'; name = 'Skill'; input = [ordered]@{ skill = 'verify[thing]' } }) } },
+            [ordered]@{ type = 'assistant'; message = [ordered]@{ content = @([ordered]@{ type = 'tool_use'; name = 'Skill'; input = [ordered]@{ skill = 'create-verification-skill' } }) } }
+        )
+        [IO.File]::WriteAllLines($multipleOtherLog, [string[]]@($multipleOtherEvents | ForEach-Object { $_ | ConvertTo-Json -Depth 6 -Compress }))
+        if (-not (Test-SkillActivation $multipleOtherLog 'claude' @($pstackCopy, $otherCopy2, $copiedSkill) $null)) { throw 'Pointframe activation after other skill calls was missed.' }
+        if ((Get-OtherSkillsActivated) -join ',' -ne 'builtin/unrelated,create-another-skill,create-verification-skill') { throw 'Other skill calls must be exactly named, de-duplicated, and collected alongside Pointframe activation.' }
+        $codexOtherLog = Join-Path $scratch 'activation-codex-other.jsonl'
+        $codexOtherEvents = @(
+            [ordered]@{ type = 'item.completed'; item = [ordered]@{ type = 'command_execution'; command = 'cat .claude/skills/create-another-skill/SKILL.md' } },
+            [ordered]@{ type = 'item.completed'; item = [ordered]@{ type = 'command_execution'; command = 'cat .agents/skills/verify[thing]/SKILL.md' } },
+            [ordered]@{ type = 'item.completed'; item = [ordered]@{ type = 'command_execution'; command = 'cat .claude/skills/create-another-skill/references/recipe.md' } }
+        )
+        [IO.File]::WriteAllLines($codexOtherLog, [string[]]@($codexOtherEvents | ForEach-Object { $_ | ConvertTo-Json -Depth 6 -Compress }))
+        if (-not (Test-SkillActivation $codexOtherLog 'codex' @($otherCopy2, $copiedSkill) $null)) { throw 'Codex activation after other skill reads was missed.' }
+        if ((Get-OtherSkillsActivated) -join ',' -ne 'create-another-skill') { throw 'Codex other skill reads must be collected and de-duplicated alongside Pointframe activation.' }
+        if (-not (Test-ColdSkillInput $pstackSkill)) { throw 'Cold pstack create-verification-skill must be allowed.' }
+        $coldPointframe = Join-Path $scratch 'cold-pointframe'; New-Item -ItemType Directory -Path $coldPointframe -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $coldPointframe 'SKILL.md') -Value 'Pointframe verify workflow'
+        if (Test-ColdSkillInput $coldPointframe) { throw 'Cold configuration must reject a skill mentioning Pointframe.' }
+        $driftFacts = [pscustomobject]@{ expectedVersion = '1.0.0'; latestReleaseAfterRun = '1.0.1'; cliVersion = '1.0.0'; mcpVersion = '1.0.0'; verifierVersion = '1.0.0'; verifyStatus = 'pass'; fresh = $true; criterionTiedToChange = $true; negativeControl = $true; reportsVerified = $true; leftoverProcesses = 0; defectCheck = [pscustomobject]@{ result = 'failed-expected' } }
+        $drift = Get-TrialOutcome $driftFacts
+        if ($drift.Outcome -ne 'invalid' -or ($drift.Reasons -join ' ') -notmatch 'latest release drifted') { throw 'Latest release drift must invalidate scoring.' }
+        $rescoreFolder = Join-Path $scratch 'rescore-fixture'; New-Item -ItemType Directory -Path $rescoreFolder -Force | Out-Null
+        $rescoreTranscript = Join-Path $rescoreFolder 'transcript.jsonl'
+        [IO.File]::WriteAllText($rescoreTranscript, '{"type":"turn.completed","usage":{"input_tokens":2,"output_tokens":1}}' + "`n")
+        [ordered]@{ agent='codex'; transcript='transcript.jsonl'; metrics=[ordered]@{ minutes=7; toolCalls=0 }; agentRun=[ordered]@{ minutes=9 }; limits=[ordered]@{ minutes=1; toolCalls=5; totalInputTokens=1000 }; outcome='fail'; gate=[ordered]@{ result='fail' } } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $rescoreFolder 'result.json')
+        $rescored = Invoke-TrialRescore $rescoreFolder
+        if ($rescored.metrics.minutes -ne 7) { throw 'Rescore must preserve minutes from metrics, not agentRun or limits.' }
         $localClone = Join-Path $scratch 'local-project'
         $localEntry = Get-Fact $apps.apps 'wpf-sample'
         $localCloneResult = New-TrialClone $localEntry $localClone
@@ -1479,15 +1676,16 @@ function New-TrialClone {
 }
 
 function Get-AgentPrompt {
-    param($AppEntry, [string]$PinnedVersion, [string]$TaskName = 'change', [string]$Prefix = '')
+    param($AppEntry, [string]$PinnedVersion, [string]$TaskName = 'change', [string]$Prefix = '', [string]$Configuration = 'cold')
     $versionLine = if ($PinnedVersion) { "`nUse Pointframe release v$PinnedVersion (CLI and MCP server)." } else { '' }
     $taskText = if ($TaskName -eq 'create-skill') { 'Create a verification skill for this Windows desktop app so any coding agent can prove its features work, and prove it once.' } else { $AppEntry.change }
+    $pointframeStatus = if ($TaskName -eq 'create-skill' -and $Configuration -eq 'installed') { 'Pointframe is available as an installed skill/plugin and may be used. The public documentation is a fallback:' } else { 'Pointframe is not installed. Use only its public documentation:' }
     $prompt = @"
 You are working in this repository: a Windows desktop application. Task: $taskText
 
 Before you finish, the change must be verified on the RUNNING application with Pointframe (a Windows tool that
 lets coding agents verify desktop apps), set up so the verification is repeatable and binding for this project.
-Pointframe is not installed. Use only its public documentation: https://dimitar-radenkov.github.io/Pointframe/
+${pointframeStatus} https://dimitar-radenkov.github.io/Pointframe/
 and https://github.com/dimitar-radenkov/Pointframe (README and docs/cli). Work autonomously; nobody will answer
 questions. When done, state whether the verification passed and where its verdict is.$versionLine
 "@
@@ -1672,7 +1870,7 @@ function Invoke-DefectCheck {
 }
 
 function Invoke-Trial {
-    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory, [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string]$PromptPrefix = '', [string[]]$SkillList = @(), [string]$PluginDirectory = '', [switch]$FreshMachine)
+    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory, [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string]$PromptPrefix = '', [string[]]$SkillList = @(), [string]$PluginDirectory = '', [string]$Configuration = 'cold', [switch]$FreshMachine)
     $SkillList = @($SkillList | Where-Object { $_ })
     if ($null -eq $PluginDirectory) { $PluginDirectory = '' }
     $config = Get-Content -LiteralPath $script:AppsPath -Raw | ConvertFrom-Json
@@ -1750,10 +1948,14 @@ function Invoke-Trial {
         $clone = New-TrialClone $appEntry $trialDirectory
         $record.clone = $clone
         if (@(Get-Fact $appEntry 'tasks' @('change')) -notcontains $TaskName) { throw "App '$AppName' does not opt in to task '$TaskName'." }
-        $prompt = Get-AgentPrompt $appEntry $PinnedVersion $TaskName $PromptPrefix
+        $prompt = Get-AgentPrompt $appEntry $PinnedVersion $TaskName $PromptPrefix $Configuration
         $record.prompt = $prompt
+        $record.promptSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($prompt))).ToLowerInvariant()
+        $record.configuration = $Configuration
+        $record.compatibilityVersionOverride = [bool]$PinnedVersion
         $copiedSkills = @(Copy-TrialSkills $SkillList $trialDirectory $AgentName)
         $record.skillSetup = $copiedSkills
+        $record.skillFolderHashes = @($copiedSkills)
         $ignoredSkillPaths = @($copiedSkills | ForEach-Object { $_.relativePath })
 
         if ($AgentName -eq 'claude') {
@@ -1778,6 +1980,9 @@ function Invoke-Trial {
         $facts.timedOut = $run.TimedOut
         $record.agentRun = [ordered]@{ exitCode = $run.ExitCode; timedOut = $run.TimedOut; minutes = [Math]::Round($run.Seconds / 60, 2); timeoutMinutes = $TimeoutMinutes; processesRecorded = @($run.Recorded).Count }
         $record.metrics = Get-TranscriptMetrics $transcriptPath $AgentName
+        $script:LastOtherSkillsActivated = @()
+        $record.skillActivated = Test-SkillActivation $transcriptPath $AgentName $record.skillSetup $record.isolation
+        $record.otherSkillsActivated = @(Get-OtherSkillsActivated)
         $record.metrics.minutes = [Math]::Round($run.Seconds / 60, 2)
         $limits = Get-LimitEvaluation $record.metrics $MaxToolCalls $MaxInputTokens $MaxMinutes
         if ($TaskName -eq 'create-skill' -or $MaxToolCalls -gt 0 -or $MaxInputTokens -gt 0 -or $MaxMinutes -gt 0) { $record.limits = $limits }
@@ -1794,6 +1999,11 @@ function Invoke-Trial {
         [void](Stop-RecordedProcesses $leftover)
 
         if (-not $run.TimedOut) {
+            if (-not $PinnedVersion) {
+                $postRelease = & gh release view --repo $script:ReleaseRepository --json tagName 2>&1
+                if ($LASTEXITCODE -eq 0) { $facts.latestReleaseAfterRun = ((($postRelease -join "`n") | ConvertFrom-Json).tagName -replace '^v', '') }
+                else { $facts.harnessError = "Could not recheck latest release after run: $postRelease" }
+            }
             # Facts from the agent's verification, read with the allowlisted environment.
             $verdictPath = Join-Path $trialDirectory 'artifacts\pointframe-verify\verdict.json'
             $verdict = Read-JsonFile $verdictPath
@@ -1892,6 +2102,35 @@ if ($MetricsPath) {
     exit 0
 }
 
+function Invoke-TrialRescore {
+    param([string]$Folder)
+    $folder = (Resolve-Path -LiteralPath $Folder -ErrorAction Stop).Path
+    $resultPath = Join-Path $folder 'result.json'
+    $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+    $agentName = [string](Get-Fact $result 'agent' '')
+    $transcript = [string](Get-Fact $result 'transcript' '')
+    if (-not [IO.Path]::IsPathRooted($transcript)) { $transcript = Join-Path $folder $transcript }
+    if (-not (Test-Path -LiteralPath $transcript)) { throw "Transcript not found: $transcript" }
+    $metrics = Get-TranscriptMetrics $transcript $agentName
+    $oldCalls = Get-Fact (Get-Fact $result 'metrics' $null) 'toolCalls' $null
+    $limits = Get-Fact $result 'limits' $null
+    $minutes = Get-Fact (Get-Fact $result 'metrics' $null) 'minutes' $null
+    if ($null -eq $minutes) { $minutes = Get-Fact (Get-Fact $result 'agentRun' $null) 'minutes' $null }
+    $metrics['minutes'] = $minutes
+    $newLimits = Get-LimitEvaluation $metrics ([int](Get-Fact $limits 'toolCalls' 15)) ([long](Get-Fact $limits 'totalInputTokens' 786000)) ([int](Get-Fact $limits 'minutes' 10))
+    $priorGate = Get-Fact (Get-Fact $result 'gate' $null) 'result' $null
+    $newGate = if ($null -eq $newLimits.withinLimits) { 'unmeasured' } elseif ($newLimits.withinLimits -and (Get-Fact $result 'outcome' '') -eq 'pass-clean') { 'pass' } else { 'fail' }
+    $rescore = [ordered]@{ rescoredUtc = [DateTime]::UtcNow.ToString('o'); transcript = $transcript; oldToolCalls = $oldCalls; newToolCalls = $metrics.toolCalls; metrics = $metrics; limits = $newLimits; oldGate = $priorGate; gate = $newGate; toolEventTypes = $metrics.toolEventTypes }
+    $rescore | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $folder 'rescore.json') -Encoding utf8NoBOM
+    return $rescore
+}
+
+if ($Rescore) {
+    $rescore = Invoke-TrialRescore $Rescore
+    Write-Host "RESCORE $Rescore oldCalls=$($rescore.oldToolCalls) newCalls=$($rescore.newToolCalls) gate=$($rescore.gate)"
+    exit 0
+}
+
 if ($SelfTest) {
     try {
         $detail = Test-Self
@@ -1913,6 +2152,19 @@ if ($Matrix -and $Agent -eq 'codex') {
 if ($Task -eq 'create-skill' -and $Matrix) {
     [Console]::Error.WriteLine('-Matrix supports the change task only.')
     exit 2
+}
+
+if ($Task -eq 'create-skill') {
+    if (-not $PSBoundParameters.ContainsKey('Configuration')) { [Console]::Error.WriteLine('-Configuration installed|cold is required for create-skill.'); exit 2 }
+    if ($Configuration -eq 'installed') {
+        if (-not $Skills -and -not $ClaudePluginDir) { [Console]::Error.WriteLine('installed configuration requires -Skills or -ClaudePluginDir.'); exit 2 }
+    }
+    else {
+        if ($ClaudePluginDir) { [Console]::Error.WriteLine('cold configuration does not accept -ClaudePluginDir.'); exit 2 }
+        foreach ($skillPath in @($Skills | ForEach-Object { $_ -split ',' } | Where-Object { $_ })) {
+            if (-not (Test-ColdSkillInput $skillPath)) { [Console]::Error.WriteLine("cold configuration refuses Pointframe skill '$skillPath'."); exit 2 }
+        }
+    }
 }
 
 if ($Agent -eq 'codex' -and -not $AllowCodexFullAccess) {
@@ -1962,7 +2214,7 @@ $summary = @()
 $worst = 0
 for ($index = 1; $index -le $Repeat; $index++) {
     $runDirectory = if ($Repeat -gt 1) { Join-Path $directory ("{0:D2}" -f $index) } else { $directory }
-    $trialParameters = New-TrialInvocationParameters -AppName $App -AgentName $Agent -PinnedVersion $Version -OutputDirectory $runDirectory -RunModel $AgentModel -RunEffort $AgentEffort -TaskName $Task -RunPromptPrefix $PromptPrefix -SkillList $Skills -PluginDirectory $ClaudePluginDir -FreshMachine:$FreshMachine
+    $trialParameters = New-TrialInvocationParameters -AppName $App -AgentName $Agent -PinnedVersion $Version -OutputDirectory $runDirectory -RunModel $AgentModel -RunEffort $AgentEffort -TaskName $Task -RunPromptPrefix $PromptPrefix -SkillList $Skills -PluginDirectory $ClaudePluginDir -Configuration $Configuration -FreshMachine:$FreshMachine
     $outcome = Invoke-Trial @trialParameters
     $result = Read-JsonFile (Join-Path $runDirectory 'result.json')
     $metrics = Get-Fact $result 'metrics' $null

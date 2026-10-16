@@ -139,7 +139,7 @@ public sealed class WindowsUiAutomationProvider :
 
     public bool TrySetValue(string elementRef, string value)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        ArgumentNullException.ThrowIfNull(value);
         return _backend is IWindowsUiAutomationActionBackend actionBackend
             && actionBackend.TrySetValue(elementRef, value);
     }
