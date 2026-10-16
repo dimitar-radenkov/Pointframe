@@ -68,6 +68,7 @@ internal sealed class McpPackageInstaller : IMcpPackageInstaller
             }
 
             Directory.CreateDirectory(_rootDirectory);
+            using var activationLock = AcquireActivationLock();
             if (Directory.Exists(installDirectory) && !File.Exists(installation.ExecutablePath))
             {
                 Directory.Delete(installDirectory, recursive: true);
@@ -75,7 +76,14 @@ internal sealed class McpPackageInstaller : IMcpPackageInstaller
 
             if (!Directory.Exists(installDirectory))
             {
-                Directory.Move(stagingDirectory, installDirectory);
+                try
+                {
+                    Directory.Move(stagingDirectory, installDirectory);
+                }
+                catch (IOException) when (File.Exists(installation.ExecutablePath))
+                {
+                    // Another process activated the same version first; its install is valid, so use it.
+                }
             }
 
             if (!File.Exists(installation.ExecutablePath))
@@ -92,6 +100,38 @@ internal sealed class McpPackageInstaller : IMcpPackageInstaller
             {
                 Directory.Delete(stagingDirectory, recursive: true);
             }
+        }
+    }
+
+    // Activation is synchronous (no awaits between acquire and release), so the mutex stays on one thread. It is
+    // per user session and keyed by the install root, so concurrent first-time runs serialize instead of racing
+    // the exists-check and Directory.Move.
+    private ActivationLock AcquireActivationLock()
+    {
+        var key = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(_rootDirectory).ToUpperInvariant())))[..32];
+        var mutex = new Mutex(false, $"Local\\Pointframe.Mcp.Install.{key}");
+        try
+        {
+            if (!mutex.WaitOne(TimeSpan.FromMinutes(2)))
+            {
+                mutex.Dispose();
+                throw new IOException("Another Pointframe MCP installation is still running; try again in a moment.");
+            }
+        }
+        catch (AbandonedMutexException)
+        {
+            // The previous holder ended without releasing; this thread now owns the lock.
+        }
+
+        return new ActivationLock(mutex);
+    }
+
+    private sealed class ActivationLock(Mutex mutex) : IDisposable
+    {
+        public void Dispose()
+        {
+            mutex.ReleaseMutex();
+            mutex.Dispose();
         }
     }
 

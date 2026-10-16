@@ -792,8 +792,22 @@ function Test-ClaudePlugin([string]$PluginRoot, [System.Collections.Generic.List
     }
 }
 
+function Test-AgentGuidesInSync([string]$Root, [System.Collections.Generic.List[string]]$Problems)
+{
+    $sync = Join-Path $PSScriptRoot 'sync-agent-guides.ps1'
+    $output = @(& pwsh -NoProfile -NonInteractive -File $sync -Check -Root $Root 2>&1 | ForEach-Object { "$_" })
+    if ($LASTEXITCODE -ne 0)
+    {
+        foreach ($line in $output | Where-Object { $_ -match '\S' })
+        {
+            Add-Problem $Problems $line
+        }
+    }
+}
+
 function Test-ClaudePluginRepository([string]$Root, [System.Collections.Generic.List[string]]$Problems)
 {
+    Test-AgentGuidesInSync $Root $Problems
     $ci = Read-RepoFile $Root '.github/workflows/ci.yml'
     if ($null -eq $ci -or $ci -notmatch "(?s)push:.*?paths-ignore:\s*\r?\n\s*- 'plugin/\*\*'")
     {
@@ -1081,6 +1095,39 @@ function Invoke-SelfTest
         {
             Remove-Item -LiteralPath $copy -Recurse -Force -ErrorAction SilentlyContinue
         }
+    }
+
+    $guideRoot = Join-Path ([IO.Path]::GetTempPath()) ("agent-guides-" + [guid]::NewGuid().ToString('N'))
+    try
+    {
+        foreach ($relative in @('Pointframe.Mcp/Guides', 'plugin/pointframe/skills'))
+        {
+            $target = Join-Path $guideRoot $relative
+            New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+            Copy-Item -LiteralPath (Join-Path $RepoRoot $relative) -Destination $target -Recurse
+        }
+        New-Item -ItemType Directory -Force -Path (Join-Path $guideRoot 'docs' 'cli') | Out-Null
+        Copy-Item -LiteralPath (Join-Path $RepoRoot 'docs' 'cli' 'verify-spec.md') -Destination (Join-Path $guideRoot 'docs' 'cli')
+        $cases++
+        $clean = [System.Collections.Generic.List[string]]::new()
+        Test-AgentGuidesInSync $guideRoot $clean
+        if ($clean.Count -ne 0)
+        {
+            $failures.Add("the agent guides should be in sync but reported: $($clean -join ' | ')")
+        }
+        $guideFile = Join-Path $guideRoot 'Pointframe.Mcp/Guides/verify-desktop-work.md'
+        Add-Content -LiteralPath $guideFile -Value "A drifted line."
+        $cases++
+        $drifted = [System.Collections.Generic.List[string]]::new()
+        Test-AgentGuidesInSync $guideRoot $drifted
+        if (@($drifted | Where-Object { $_.Contains('differs from its source') }).Count -ne 2)
+        {
+            $failures.Add("a changed guide should drift both generated copies but reported: $($drifted -join ' | ')")
+        }
+    }
+    finally
+    {
+        Remove-Item -LiteralPath $guideRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     if ($failures.Count -gt 0)

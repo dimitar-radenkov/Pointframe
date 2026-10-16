@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Pointframe.Cli;
 using Pointframe.Mcp;
 using Pointframe.Mcp.Configuration;
 using Xunit;
@@ -67,21 +68,37 @@ public sealed class VerifyDesktopWorkGuideTests : IDisposable
     }
 
     [Fact]
-    public void PolicySampleIsAcceptedByTheLoader()
+    public void SpecSampleIsAcceptedByTheLoader()
     {
-        var sample = Regex.Match(_guide, "```json\\s*(\\{.*?\\})\\s*```", RegexOptions.Singleline).Groups[1].Value;
-        var executable = Path.Combine(_root, "MyApp.exe");
-        File.WriteAllBytes(executable, [0]);
-        var policy = sample
-            .Replace(@"C:\\absolute\\existing\\folder", JsonEncoded(_root), StringComparison.Ordinal)
-            .Replace(@"C:\\absolute\\path\\MyApp.exe", JsonEncoded(executable), StringComparison.Ordinal)
-            .Replace(@"C:\\absolute\\path", JsonEncoded(_root), StringComparison.Ordinal);
-        var policyPath = Path.Combine(_root, "policy.json");
-        File.WriteAllText(policyPath, policy);
+        var sample = Regex.Match(_guide, @"```json\s*(\{.*?\})\s*```", RegexOptions.Singleline).Groups[1].Value;
+        var specPath = Path.Combine(_root, ".pointframe", "verify.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(specPath)!);
+        File.WriteAllText(specPath, sample);
 
-        var loaded = new DesktopTestingPolicyLoader().LoadAndValidate(policyPath);
+        var spec = VerificationSpecLoader.Load(specPath);
 
-        Assert.Equal("my-app", Assert.Single(loaded.Profiles).Id);
+        Assert.Equal("my-app", spec.App!.Id);
+        Assert.Equal("save-text", Assert.Single(spec.Scenarios).Id);
+    }
+
+    [Theory]
+    [InlineData("pointframe verify run")]
+    [InlineData("pointframe verify setup")]
+    [InlineData("pointframe verify trust")]
+    [InlineData("`ListItem`")]
+    [InlineData("`list item` never matches")]
+    [InlineData("## If you are generating a verify-<app> skill")]
+    public void GuideTeachesTheSpecFirstPath(string term)
+    {
+        Assert.Contains(term, _guide, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GuideNeverAsksForAHandWrittenPolicy()
+    {
+        Assert.DoesNotContain("allowedActions", _guide, StringComparison.Ordinal);
+        Assert.DoesNotContain("--desktop-policy", _guide, StringComparison.Ordinal);
+        Assert.DoesNotContain("--force", _guide, StringComparison.Ordinal);
     }
 
     [Fact]
