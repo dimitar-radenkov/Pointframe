@@ -16,7 +16,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 | F-20 | Blur redaction burned into the video | Blur tool while recording | `Pointframe/Services/Recording/RecordingRedactionSession.cs` | — | `Pointframe.Tests/Services/RecordingRedactionSessionTests.cs` | [Recording pipeline](#recording-pipeline) |
 | F-21 | Cursor effects | Recording settings | `Pointframe/Services/Recording/RecordingCursorEffectsService.cs`, `Pointframe/Services/Infrastructure/MouseHookService.cs` | — | `Pointframe.Tests/Services/RecordingCursorEffectsServiceTests.cs` | [Recording pipeline](#recording-pipeline) |
 | F-22 | Trim a recording | Tray recent recording, "Trim recording" | `Pointframe/ViewModels/TrimViewModel.cs`, `Pointframe/Views/TrimWindow.xaml.cs`, `Pointframe/Services/Recording/VideoTrimService.cs` | `video_trim_opened`, `video_trim_started`, `video_trim_completed` | `Pointframe.Tests/ViewModels/TrimViewModelTests.cs`, `Pointframe.Tests/Services/VideoTrimServiceTests.cs` | [Recording pipeline](#recording-pipeline) |
-| F-23 | Export a recording as GIF | Tray recent recording, GIF export | `Pointframe/Services/Recording/GifExportService.cs` | `gif_export_started`, `gif_export_completed` | `Pointframe.Tests/Services/GifExportServiceTests.cs` | [Recording pipeline](#recording-pipeline), [Runtime paths and external binaries](../knowledge-base.md#runtime-paths-and-external-binaries) |
+| F-23 | Export a recording as GIF | Tray recent recording, GIF export | `Pointframe/Services/Recording/GifExportService.cs` | `gif_export_started`, `gif_export_completed` | `Pointframe.Tests/Services/GifExportServiceTests.cs` | [Recording pipeline](#recording-pipeline), [Runtime paths and external binaries](../references.md#runtime-paths-and-external-binaries) |
 
 ## Recording pipeline
 
@@ -40,7 +40,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 6. Stop contains worker and finalization failures inside `ScreenRecordingService`, disposes the pipeline/writer, and restores the microphone's initial mute state. A failed stop sets `LastStopFailed`, emits one diagnostic `recording_failed` event, logs local exception details and recent ffmpeg stderr, and the HUD shows a failure toast without publishing `RecordingCompletedMessage`. Only a successful stop publishes completion. `GifExportService` and `VideoTrimService` post-process through ffmpeg. `WatermarkTokenResolver` expands watermark text templates. See [Recording transcription](transcription.md#recording-transcription).
 7. Committed blur elements retain their `RecordingRedactionRegion` identity. Recording annotation undo removes that exact region from the frame redaction snapshot, and redo restores it. The event sidecar uses an unbounded producer queue so event bursts do not fail before recording cleanup.
 
-`FfmpegResolver` order: `AppContext` data key override, `ffmpeg.exe` next to the binary, `Assets\ffmpeg\ffmpeg.exe`, then `PATH`. See [Runtime paths](../knowledge-base.md#runtime-paths-and-external-binaries).
+`FfmpegResolver` order: `AppContext` data key override, `ffmpeg.exe` next to the binary, `Assets\ffmpeg\ffmpeg.exe`, then `PATH`. See [Runtime paths](../references.md#runtime-paths-and-external-binaries).
 
 **Invariants.**
 
@@ -75,6 +75,8 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 - Lesson: Dropped recording frames shorten the final MP4 duration
 - Lesson: A recording worker fault must be observed before finalization is reported
 - Lesson: WinMM device names are truncated — use WASAPI (MMDeviceEnumerator) for microphone enumeration
+- Lesson: Smart redaction phone regex can shadow IPv4 when OCR inserts spaces around dot separators
+- Lesson: Smart redaction on real captures needs OCR-confusable digit fallback for numeric patterns
 **Tests.** Services: `Pointframe.Tests/Services/ScreenRecordingServiceTests.cs`, `Pointframe.Tests/Services/FFMpegVideoWriterTests.cs`, `Pointframe.Tests/Services/VideoWriterFactoryTests.cs`, `Pointframe.Tests/Services/RecordingMicrophoneSessionTests.cs`, `Pointframe.Tests/Services/RecordingCursorEffectsServiceTests.cs`, `Pointframe.Tests/Services/GifExportServiceTests.cs`, `Pointframe.Tests/Services/VideoTrimServiceTests.cs`, `Pointframe.Tests/Services/WatermarkTokenResolverTests.cs`. Models and ViewModels: `Pointframe.Tests/Models/RecordingSessionGeometryTests.cs`, `Pointframe.Tests/ViewModels/RecordingHudViewModelTests.cs`, `Pointframe.Tests/ViewModels/TrimViewModelTests.cs`. Windows: `Pointframe.Tests/RecordingHudPositionTests.cs`, `Pointframe.Tests/RecordingOverlayWindowTests.cs`, `Pointframe.Tests/OverlayWindowRecordingFlowTests.cs`, `Pointframe.Tests/OverlayWindowRecordingAnnotationTests.cs`. Automation: `Pointframe.AutomationTests/Smoke/RecordingOverlaySmokeTests.cs`, `Pointframe.AutomationTests/Smoke/RecordingHudInteractionTests.cs`.
 
 ## Recording width and height are even

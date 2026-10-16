@@ -1,3 +1,5 @@
+Start every session with `/kb-init` (Codex: `pwsh scripts/kb.ps1 init`; coordinators add `-Role coordinator`).
+
 # AGENTS.md
 
 ## Project
@@ -18,8 +20,8 @@ pwsh scripts/verify.ps1
 
 ## Required reading and workflow
 
-- Read `docs/knowledge-base/workflow.md` before starting a task.
-- Before architecture or cross-subsystem work, read the relevant sections of `docs/knowledge-base/knowledge-base.md`.
+- `pwsh scripts/kb.ps1 init` prints the workflow rules for your role (`docs/knowledge-base/workflow.md`); read the sections it names.
+- `init` also prints `docs/knowledge-base/knowledge-base.md`, the architecture and cross-subsystem rules; add a file, feature, or topic (`pwsh scripts/kb.ps1 init <target>`) for its sections and lessons.
 - Before changing UI flow or window-lifecycle code—overlay, dialogs, hotkeys, capture, tray, recording, DPI, or multi-monitor behavior—read `lessons.md` first.
 - After changes under `Pointframe/` or `Pointframe.Data/`, state in the final response whether the knowledge base needs an add, update, or nothing. Update it when durable architecture, behavior, invariants, or paths changed.
 - Executors never commit or push. The coordinating agent commits, opens PRs, and merges per the owner's charter; see `docs/knowledge-base/workflow.md`.
@@ -44,7 +46,7 @@ pwsh scripts/verify.ps1
 
 ## Documentation
 
-- `docs/knowledge-base/knowledge-base.md` contains durable architecture, decisions, invariants, how-tos, and references.
+- `docs/knowledge-base/knowledge-base.md` contains durable architecture, decisions, invariants, and how-tos; `file-map.md`, `references.md`, `tooling.md`, and `workflow.md` sit next to it.
 - `lessons.md` contains concise bug post-mortems and reusable implementation traps.
 - `plan/` contains local-only plans and roadmap material.
 - The product's `pointframe verify` feature is F-39 in `docs/knowledge-base/features/cli-mcp.md`; its code is in `Pointframe.Cli/Verification/` and its tests are in `Pointframe.Tests/Cli/`. `pwsh scripts/verify.ps1` is this repository's done-gate and is a different thing. For manual trials of `pointframe verify`, use an installed or copied CLI, never `Pointframe.Cli/bin`.

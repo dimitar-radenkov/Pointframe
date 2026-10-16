@@ -1,0 +1,134 @@
+{
+  "coreBytes": 33508,
+  "sections": {
+    "features/cli-mcp.md#packaging-and-configuration": 55665,
+    "features/cli-mcp.md#spec-driven-verification-runs": 25378,
+    "features/recording.md#recording-pipeline": 8833,
+    "file-map.md#file-map": 21235,
+    "tooling.md#ci-cd-and-versioning": 17844
+  },
+  "workflowRules": {
+    "W-01": [
+      "coordinator"
+    ],
+    "W-02": [
+      "all"
+    ],
+    "W-03": [
+      "coordinator"
+    ],
+    "W-04": [
+      "coordinator",
+      "reviewer"
+    ],
+    "W-05": [
+      "coordinator"
+    ],
+    "W-06": [
+      "all"
+    ],
+    "W-07": [
+      "coordinator"
+    ],
+    "W-08": [
+      "coordinator"
+    ],
+    "W-09": [
+      "all"
+    ],
+    "W-10": [
+      "coordinator"
+    ],
+    "W-11": [
+      "coordinator",
+      "executor"
+    ],
+    "W-12": [
+      "coordinator",
+      "executor"
+    ],
+    "W-13": [
+      "coordinator"
+    ],
+    "W-14": [
+      "coordinator"
+    ],
+    "W-15": [
+      "coordinator",
+      "executor"
+    ],
+    "W-16": [
+      "coordinator"
+    ],
+    "W-17": [
+      "coordinator",
+      "reviewer"
+    ],
+    "W-18": [
+      "coordinator",
+      "reviewer"
+    ],
+    "W-19": [
+      "coordinator",
+      "reviewer"
+    ],
+    "W-20": [
+      "coordinator"
+    ],
+    "W-21": [
+      "coordinator"
+    ],
+    "W-22": [
+      "coordinator"
+    ],
+    "W-23": [
+      "all"
+    ],
+    "W-24": [
+      "coordinator",
+      "executor"
+    ],
+    "W-25": [
+      "coordinator"
+    ],
+    "W-26": [
+      "all"
+    ],
+    "W-27": [
+      "all"
+    ],
+    "W-28": [
+      "coordinator"
+    ],
+    "W-29": [
+      "coordinator"
+    ],
+    "W-30": [
+      "coordinator"
+    ],
+    "W-31": [
+      "coordinator"
+    ],
+    "W-32": [
+      "coordinator"
+    ],
+    "W-33": [
+      "coordinator"
+    ],
+    "W-34": [
+      "coordinator"
+    ],
+    "W-35": [
+      "all"
+    ],
+    "W-36": [
+      "coordinator"
+    ],
+    "W-37": [
+      "coordinator"
+    ],
+    "W-38": [
+      "coordinator"
+    ]
+  }
+}

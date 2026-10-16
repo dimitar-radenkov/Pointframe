@@ -9,7 +9,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 | ID | Feature | Triggered from | Entry point | Telemetry | Tests | Read first |
 |---|---|---|---|---|---|---|
 | F-27 | Recent captures and recordings menus | Tray submenus | `Pointframe/Services/Infrastructure/TrayIconManager.cs` | — | `Pointframe.Tests/Services/TrayIconManagerTests.cs` | [App bootstrap](../knowledge-base.md#app-bootstrap-di-and-messaging) |
-| F-28 | Open snips, videos, and logs folders | Tray "Open Folders" | `Pointframe/Services/Infrastructure/TrayIconManager.cs` | — | — | [Runtime paths and external binaries](../knowledge-base.md#runtime-paths-and-external-binaries) |
+| F-28 | Open snips, videos, and logs folders | Tray "Open Folders" | `Pointframe/Services/Infrastructure/TrayIconManager.cs` | — | — | [Runtime paths and external binaries](../references.md#runtime-paths-and-external-binaries) |
 | F-43 | First-run welcome | First eligible ordinary app launch, including login startup | `Pointframe/Services/Infrastructure/WelcomeEligibilityPolicy.cs`, `Pointframe/ViewModels/WelcomeViewModel.cs`, `Pointframe/Views/WelcomeWindow.xaml` | `onboarding_shown`, `onboarding_action`, `hotkey_status`; region snip uses `source=onboarding` | `Pointframe.Tests/Services/WelcomeEligibilityPolicyTests.cs`, `Pointframe.Tests/ViewModels/WelcomeViewModelTests.cs`, `Pointframe.AutomationTests/Smoke/WelcomeWindowSmokeTests.cs` | [User settings](settings.md#user-settings), [Capture overlay and selection](capture.md#capture-overlay-and-selection), [App bootstrap](../knowledge-base.md#app-bootstrap-di-and-messaging) |
 
 ## First-run welcome

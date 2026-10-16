@@ -409,3 +409,7 @@ plan/*.jsonl
 
 # Local coordination notes (plans, status, private Claude-Codex dialogues); never published
 plan/
+
+# kb.ps1 selftest fixtures (synthetic knowledge bases; the fixture plan/ folder holds a synthetic status.json)
+!scripts/kb-fixtures/**/*.md
+!scripts/kb-fixtures/**/plan/

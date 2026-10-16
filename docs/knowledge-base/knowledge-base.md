@@ -1,6 +1,9 @@
 # Pointframe Knowledge Base
 
-Durable, agent-readable project knowledge. This file holds what is cross-cutting: how the app is composed, rules every area must keep, shared recipes, paths, and CI, plus generated indexes of features and decisions. Each feature area has its own file under `docs/knowledge-base/features/`; open one only when the task touches that area. Start with the [Feature index](#feature-index) or run `/kb-read <file, area, F-NN, or topic>` (`pwsh scripts/kb.ps1 read ...`).
+Durable, agent-readable project knowledge. Start every session with `/kb-init` (Codex: `pwsh scripts/kb.ps1 init`; coordinators add `-Role coordinator`): it prints this file, the workflow rules for your role, environment facts, and, with a target, the sections and lessons for that file, feature, or topic.
+This file holds what is cross-cutting: how the app is composed, rules every area must keep, and shared recipes, plus generated indexes of features and decisions.
+Next to it: [file-map.md](file-map.md) (which sections to read before editing a path), [references.md](references.md) (runtime paths, binaries, configuration), [tooling.md](tooling.md) (CI, CD, versioning, merge and release scripts), [workflow.md](workflow.md) (agent roles and rules), [decisions.md](decisions.md), and one file per feature area under `docs/knowledge-base/features/`; open an area file only when the task touches that area.
+Start with the [Feature index](#feature-index) or run `/kb-read <file, area, F-NN, or topic>` (`pwsh scripts/kb.ps1 read ...`).
 
 Last full review against the code: 2026-09-05.
 
@@ -10,7 +13,10 @@ Last full review against the code: 2026-09-05.
 
 | Knowledge | Goes to |
 |---|---|
-| Composition, DI, messaging; rules that hold for every area; recipes any area uses; paths, pipelines, CI | This file |
+| Composition, DI, messaging; architecture rules and rules that hold for every area; recipes any area uses | This file |
+| Where files live on disk, external binaries, configuration keys | `docs/knowledge-base/references.md` |
+| Workflows, local gates, merge and release scripts, versioning, installer and packaging rules | `docs/knowledge-base/tooling.md` |
+| Which sections to read before editing a path | `docs/knowledge-base/file-map.md` |
 | A decision that spans areas | `docs/knowledge-base/decisions.md` |
 | One area's features, flows, entry points, area-only invariants, recipes, and decisions, its lessons | `docs/knowledge-base/features/<area>.md` |
 | Bug post-mortems (Problem, Root cause, What fixed it, Takeaway) | `lessons.md`, then a `- Lesson:` line in the owning section |
@@ -20,7 +26,9 @@ Last full review against the code: 2026-09-05.
 | How agents plan, assign, review, and merge work | `docs/knowledge-base/workflow.md` |
 | Test counts, PR numbers, "verified on my machine" | The PR description |
 
-**This file's structure.** A generated [Feature index](#feature-index), the [File map](#file-map), then five fixed groups, each a `##` heading with one `###` section per topic (Decisions holds only a generated index):
+### Structure and conventions
+
+**This file's structure.** A generated [Feature index](#feature-index), the [Architecture rules](#architecture-rules), then four fixed groups, each a `##` heading with one `###` section per topic (Decisions holds only a generated index). `references.md` and `tooling.md` follow the References layout, and the File map lives in `file-map.md`.
 
 | Group | Section layout |
 |---|---|
@@ -32,28 +40,64 @@ Last full review against the code: 2026-09-05.
 
 **A feature area file's structure.** `# <Area>`, a one-line scope, then `## Features`: one row per user-facing feature, `| ID | Feature | Triggered from | Entry point | Telemetry | Tests | Read first |`, with a stable `F-NN` ID that is never renumbered or reused. Then one `##` section per topic, using the Subsystems, Invariants, or How-tos layout above. A new area gets a new file; split a file that passes about 150 lines.
 
-**Conventions the script checks.** In every file: repo paths in backticks exist; `- Lesson: <exact heading from lessons.md>` bullets match `lessons.md`; links such as `[Recording pipeline](features/recording.md#recording-pipeline)` resolve to a heading in the target file; a section has at most one `**Files.**` line; no two headings in one file share an anchor. Feature IDs are unique across files; every feature names an entry point and links a section; every telemetry event named exists in `TelemetryEvents`, and every event there belongs to some feature; every smoke test in `Pointframe.AutomationTests/Smoke/` belongs to some feature. Every File map pattern matches a tracked file, and every tracked file matches a row. A `lessons.md` entry that no section links is reported as a warning, because `kb.ps1 read` and the hook never show it. The table of contents and the Feature index are generated. CI runs `kb.ps1 check -NoFix`, and the project hook in `.claude/settings.json` runs `kb.ps1 hook` when an agent reads or edits a file.
+**Sections.** A section is a `##` or `###` heading and the text up to the next heading of any level. A `###` section also carries the text between its `##` heading and the first `###` (its parent preamble), so reading it costs both. A `##` heading that only groups `###` sections is a container: `kb read` and the File map point at the `###` sections, and a File map or feature row that links a container is an error. In an area file the `## Features` table is not a section.
 
-**Writing rules.** Say why, not only what. Replace stale text in place; never append a correction below an old statement. Prefer a table or a short list over prose. Keep a section under about 80 lines. Absolute dates only. No status badges or task journals.
+**Conventions the script checks.** In every file: repo paths in backticks exist; `- Lesson: <exact heading from lessons.md>` bullets match `lessons.md`; links such as `[Recording pipeline](features/recording.md#recording-pipeline)` resolve to a heading in the target file; a section has at most one `**Files.**` line; no two headings in one file share an anchor.
+Feature IDs are unique across files; every feature names an entry point and links a section; every telemetry event named exists in `TelemetryEvents`, and every event there belongs to some feature; every smoke test in `Pointframe.AutomationTests/Smoke/` belongs to some feature. Every File map pattern matches a tracked file, and every tracked file matches a row.
+In `lessons.md` every lesson has exactly one Problem, What fixed it, and Takeaway subsection (Root cause is optional) and is reachable: a `- Lesson:` line in a section that a File map row, a feature row, or a task-suite task reaches. The table of contents, the Feature index, and the decision index are generated. CI runs `kb.ps1 check -NoFix`, `scripts/verify.ps1` runs `kb.ps1 selftest` first, and the project hook in `.claude/settings.json` runs `kb.ps1 hook` when an agent reads or edits a file; it says each section, feature, and lesson once per session.
 
-**Maintenance.** Three skills, all backed by `scripts/kb.ps1`. Edit them only under `.claude/skills/kb-*`; `check` regenerates the Codex copies in `.agents/skills/`.
+**Writing rules.** Say why, not only what. Replace stale text in place; never append a correction below an old statement. Prefer a table or a short list over prose. Keep a section under 8 KB (checked, see Budgets). Absolute dates only. No status badges or task journals.
+
+### Budgets, task suite, and rule IDs
+
+**Budgets.** A section over 8192 bytes (a `###` section counts its parent preamble) and this file over 12288 bytes are errors unless `docs/knowledge-base/kb-baseline.json` lists them at their current size or more. `kb.ps1 check` lowers a listed entry when the section shrinks and drops it when the section fits, and never raises one; a new or grown violation fails. Write new knowledge into a section that stays under the budget, or split. Aim for 8-10 KB in this file.
+Warnings, not errors: a prose line over 600 characters (tables and `**Files.**` lines are exempt), an area file over 40 KB, and changelog phrasing in an area file (`since YYYY-MM-DD`, `added YYYY-MM-DD`, `As of YYYY`; decision dates are exempt).
+
+**Measuring.** `pwsh scripts/kb.ps1 stats [-Json]` prints bytes and estimated tokens (bytes / 4) per file and section, the bytes `init` prints per part, and, for each task in `docs/knowledge-base/kb-tasks.json` (a file path, an `F-NN`, or a topic), the required-section, lesson, and hook bytes and the recall of its expected sections and lessons. `check` fails when a task's recall drops below 1.0, so a routing change that hides a section or lesson is caught. `init` with a target aims at 25 KB in total and prints an overage line when a part passes its budget: core 12 KB, environment 1.5 KB, status 2 KB, target 12 KB, and rules 4 KB for an executor or reviewer but 16 KB for the coordinator, who owns review, merge, status, and model allocation and so carries most of `workflow.md`. A new rule that pushes a role past its budget should be shortened or moved into a section the role reads on demand.
+
+**Workflow rule IDs.** `workflow.md` marks each canonical rule with `<!-- rule:W-NN roles=<all|coordinator|executor|reviewer list> -->` on the line before its bullet, paragraph, or table, and names extra sections a role should read with `<!-- rule-section roles=... -->` before a `##` heading. IDs are stable and never reused. `kb init` prints the rules of the agent's role verbatim, with their IDs; `check` fails on a missing or duplicate ID, an unknown role, or a trigger that points at no heading. Each marker needs a nonempty list of valid roles, and every block below the first `##` heading must be a marked rule or sit under a trigger. The ID and roles of every rule are also registered in `docs/knowledge-base/kb-baseline.json` (`workflowRules`): `check -NoFix` fails when a registered ID is missing, its roles changed, or an ID is unregistered, because a trigger can hide a deleted marker. `check` without `-NoFix` only adds new IDs; removing a rule or changing its roles is a hand edit of the JSON, visible in review.
+
+### Maintenance commands
+
+**Maintenance.** Four skills, all backed by `scripts/kb.ps1`. Edit them only under `.claude/skills/kb-*`; `check` regenerates the Codex copies in `.agents/skills/`.
 
 | Skill | Does | Script |
 |---|---|---|
+| `/kb-init [coordinator\|executor\|reviewer] [target]` | Starts a session: this file, the role's workflow rules, environment facts, and the target's sections and top lessons (a menu for a broad topic) | `pwsh scripts/kb.ps1 init [-Role <role>] [target]` |
 | `/kb-read <file, area, F-NN, or topic>` | Lists the sections, features, and lessons to read | `pwsh scripts/kb.ps1 read <target> [-All]` |
-| `/kb-write [topic]` | Adds or updates knowledge; with no topic, sweeps the current diff | `pwsh scripts/kb.ps1 changed [-Base <ref>]` |
-| `/kb-check` | Refreshes the generated blocks, checks every file, fixes what it reports | `pwsh scripts/kb.ps1 check` (CI: `check -NoFix`) |
+| `/kb-write [topic]` | Adds or updates knowledge within the budgets; with no topic, sweeps the current diff | `pwsh scripts/kb.ps1 changed [-Base <ref>]` |
+| `/kb-check` | Refreshes the generated blocks and the baseline, checks every file, fixes what it reports | `pwsh scripts/kb.ps1 check` (CI: `check -NoFix`) |
 
-When a change adds a folder, a project, or a file that belongs to a different section than its folder's row says, add or narrow a File map row in the same change. When it adds, removes, or rewires a user-facing feature, a telemetry event, or a smoke test, update the feature's row in its area file in the same change.
+`pwsh scripts/kb.ps1 selftest` runs the tool against synthetic fixtures in `scripts/kb-fixtures/` (section routing, hook dedup, baseline growth and shrinkage, rule IDs, `init` order and role filtering, the status allowlist, topic menus); `scripts/verify.ps1` runs it before `check -NoFix`.
 
+When a change adds a folder, a project, or a file that belongs to a different section than its folder's row says, add or narrow a File map row in the same change; a row may not be broader than the section that owns its files. When it adds, removes, or rewires a user-facing feature, a telemetry event, or a smoke test, update the feature's row in its area file in the same change.
+
+**Optional SessionStart hook.** To print `kb init` at the start of every Claude Code session, add this to your own `settings.local.json` in the `.claude` folder (it is gitignored); do not commit it to `settings.json`. The guard keeps a resumed or compacted session from printing it twice, because a `SessionStart` hook receives the session ID on standard input:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -Command '$j = [Console]::In.ReadToEnd() | ConvertFrom-Json; $g = Join-Path $env:TEMP \"pointframe-kb-init-$($j.session_id)\"; if (-not (Test-Path $g)) { New-Item $g -Force | Out-Null; & ./scripts/kb.ps1 init }'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
 ## Contents
 
 <!-- toc -->
 
 - [Feature index](#feature-index)
-- [File map](#file-map)
 - [Subsystems](#subsystems)
   - [App bootstrap, DI, and messaging](#app-bootstrap-di-and-messaging)
+- [Architecture rules](#architecture-rules)
 - [Decisions](#decisions)
 - [Invariants](#invariants)
   - [Settings are read at the point of use and persisted through three files](#settings-are-read-at-the-point-of-use-and-persisted-through-three-files)
@@ -62,9 +106,6 @@ When a change adds a folder, a project, or a file that belongs to a different se
 - [How-tos](#how-tos)
   - [Add a user setting](#add-a-user-setting)
   - [Register a service](#register-a-service)
-- [References](#references)
-  - [Runtime paths and external binaries](#runtime-paths-and-external-binaries)
-  - [CI, CD, and versioning](#ci-cd-and-versioning)
 
 <!-- /toc -->
 
@@ -86,109 +127,6 @@ Generated from the area files under `docs/knowledge-base/features/`. Each featur
 - [CLI and MCP](features/cli-mcp.md): F-35 CLI: capture/OCR/recording plus managed MCP install, status, and doctor for VS Code, and `mcp serve` (the stdio launcher a project's agent config runs); F-36 MCP capture, OCR, recording, and library tools; F-37 MCP desktop testing tools, signed reports, and exportable scenarios; F-39 CLI: spec-driven verification (`verify init`, `setup`, `run`, `scenario add`, `status`, `trust`, `task start`, `hook stop`, `agent`): gates, desktop scenarios, frozen task criteria, project onboarding, interactive desktop tools for the spec's app; F-45 Claude plugin: the pinned MCP server plus the desktop-verification, verification-skill generator, and capture skills, installed from the Claude plugin directory (the skills also install with `npx skills add`)
 
 <!-- /features -->
-
-## File map
-
-Answers "I am about to change this file: what must I read first?" Every tracked file matches at least one row; **every** matching row applies, and rows run from coarse to fine. A row names the sections to read before editing; the lessons are inside those sections.
-
-Fastest route: let the script resolve it. It prints the matching rows, the features that use the file, the linked sections with their line numbers, every other section that names the exact file, and the most relevant lessons:
-
-```powershell
-pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
-```
-
-**Pattern syntax** (anchored at the repo root like `.gitignore`; unlike CODEOWNERS, where the last match wins, every matching row applies): `*` matches within one folder, `**` crosses folders, `?` is one character. A pattern without `/` matches only root files. Several patterns in one cell are separated by commas. `—` in "Read first" means no section owns the area yet.
-
-**Rules the script checks.** Every pattern matches at least one tracked file. Every tracked file matches at least one row, so a new top-level folder or project fails the check until it gets a row. No row is redundant: a row whose files and links all sit inside another row is an error. Descriptions stay under 160 characters; explanation belongs in a section. Every link points at a heading. Tests are mapped by folder only: a test file is named after the class it covers, so look up that class.
-
-**Repository and build**
-
-| Path | What lives here | Read first |
-|---|---|---|
-| `*`, `.vscode/**` | Root config: solution, central package versions, NBGV `version.json`, local tools, editor and MCP client config | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `lessons.md`, `docs/**`, `.claude/**`, `.codex/**`, `.agents/skills/kb-*/**`, `scripts/kb.ps1` | Agent and contributor docs, this file, the kb skills and their script, the Claude Code and Codex project hooks, and the generated Codex skill copies | [How to maintain this file](#how-to-maintain-this-file), [Agent workflow](workflow.md), [D-006](decisions.md#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area) |
-| `docs/cli/**`, `docs/mcp-desktop-testing/**`, `README.md` | CLI and MCP user docs; the DocsSync tests fail when they drift from the code | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
-| `docs/appinsights*` | Kusto queries and the workbook template | [Telemetry](features/telemetry.md#telemetry-pipeline) |
-| `scripts/update-download-badges.ps1` | Download totals across all releases as shields.io endpoint badges, built by the Pages workflow; offline `-SelfTest` | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `scripts/usage-report.ps1`, `scripts/tests/usage-report/**` | Usage report from Application Insights (activation, cohorts, retention, onboarding, failures, website) and the offline fixtures its `-SelfTest` shapes | [Telemetry](features/telemetry.md#telemetry-pipeline) |
-| `scripts/measure-mcp-payloads.ps1` | Offline self-test and MCP stdio payload inventory with a per-run fixture desktop policy | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
-| `scripts/merge-pr.ps1`, `scripts/tests/merge-pr/**` | Agent merge tool: receipt- and review-gated checked-head merge, `-PinOnly`, auto-merge wait and cleanup; offline fixtures | [CI, CD, and versioning](#ci-cd-and-versioning), [Agent workflow](workflow.md) |
-| `scripts/record-review.ps1`, `scripts/lib/review-record.ps1` | Validates and writes the independent review record for a head SHA under git's common directory | [Agent workflow](workflow.md) |
-| `scripts/agent-run.ps1`, `scripts/tests/agent-run/**` | Checked Codex executor launcher with brief and policy validation, runtime budgets, token accounting, and cost records; offline decision fixtures | [CI, CD, and versioning](#ci-cd-and-versioning), [Agent workflow](workflow.md) |
-| `scripts/codex-ask.ps1`, `scripts/lib/codex.ps1` | Codex consultation helper (explicit model, effort, session; rejects stale output) and the Codex policy it shares with `agent-run.ps1` | [Agent workflow](workflow.md) |
-| `scripts/status.ps1`, `scripts/tests/status/**` | Authoritative status store, GitHub #186 and handoff renderer; offline rendering fixtures | [CI, CD, and versioning](#ci-cd-and-versioning), [Agent workflow](workflow.md) |
-| `scripts/lib/tree-hash.ps1` | Shared working-tree hash and verify receipt freshness decisions used by verify and merge scripts | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `scripts/check-agent-discovery.ps1`, `scripts/tests/agent-discovery/**` | Offline check of the agent page, llms.txt, and directory drafts against README, packaging, and the CD asset list; `-Online`, `-Snapshot`; its good fixture tree | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
-| `scripts/check-released-desktop.ps1` | Coordinator's post-release or candidate desktop qualification of CLI/MCP packages; offline `-SelfTest` | [Packaging and configuration](features/cli-mcp.md#packaging-and-configuration) |
-| `scripts/release-impact.ps1`, `scripts/check-release-channels.ps1`, `scripts/tests/release-channels/**` | Release risk classification and channel state tracking with offline fixtures | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `scripts/test-scripts.ps1` | Offline `-SelfTest` of every coordinator and release script; fails on a git-ignored fixture | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `scripts/trial.ps1`, `scripts/trials/**`, `scripts/tests/trial/**` | Fresh-agent trial harness: app definitions, isolated agent run, harness-side scoring; fixtures for its offline `-SelfTest` | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `scripts/check-workflow-scripts.ps1`, `scripts/tests/workflow-scripts/**` | Parses the PowerShell in workflow `run:` blocks, and the good and bad fixtures its self-test runs | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `scripts/verify.ps1` | The one local verify command: build, format, tests, kb, workflows, discovery, script self-tests; JSON verdict; `-ReuseIfFresh` | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `scripts/desktop-tests.ps1` | Interactive Windows Release desktop regression selection, repeated TRX evidence, and optional real-app verification | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `scripts/test-agent-onboarding.ps1` | Agent onboarding acceptance: client registration, MCPB check, fixture capture over stdio; `-AgentSmoke`; `-Client claude-plugin` | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation) |
-| `scripts/update-plugin-pin.ps1` | Pins `plugin/pointframe/server.lock.json` and the plugin version to a release (called by `merge-pr.ps1 -Auto -Worktree`) | [Claude plugin](features/cli-mcp.md#claude-plugin) |
-| `scripts/sync-agent-guides.ps1` | Writes the generated skill copies of the desktop verification guide; `-Check` reports drift (run by `check-agent-discovery.ps1`) | [Claude plugin](features/cli-mcp.md#claude-plugin) |
-| `plugin/**` | The Claude plugin for the Anthropic plugin directory: manifest, `.mcp.json`, start script, lock file, skills | [Claude plugin](features/cli-mcp.md#claude-plugin) |
-| `.github/**`, `winget/**`, `website/**` | Workflows, Dependabot, release drafter, winget manifests, the GitHub Pages site | [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `installer/**`, `Pointframe/Properties/**` | Inno Setup script, installer build and smoke scripts, publish profile | [D-004](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them), [Installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list), [D-005](features/transcription.md#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app) |
-| `Directory.Packages.props`, `Pointframe/Pointframe.csproj` | Package versions and app project references; a package that ships a native binary changes the installer file list | [D-004](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them), [Installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list) |
-| `packaging/**` | CLI and MCP zip packaging, MCP stdio smoke script, directory submission drafts (`packaging/directory-submissions/`) | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation), [MCP command list](features/cli-mcp.md#the-mcp-command-list-resource-must-name-every-registered-tool) |
-
-**WPF app: `Pointframe/`**
-
-| Path | What lives here | Read first |
-|---|---|---|
-| `Pointframe/*`, `Pointframe/Assets/**`, `Pointframe/Automation/**` | Host startup, DI registration, project file, automation launch options | [App bootstrap](#app-bootstrap-di-and-messaging), [D-001](decisions.md#d-001-mvvm-plus-di-is-the-composition-model), [Register a service](#register-a-service) |
-| `Pointframe/app.manifest`, `Pointframe/Native/**` | PerMonitorV2 manifest, Win32 interop, per-monitor DPI helpers | [DIPs and physical pixels](#dips-and-physical-pixels-are-converted-explicitly-per-monitor) |
-| `Pointframe/appsettings.json`, `Pointframe/Services/Infrastructure/AppPaths.cs` | Configuration and on-disk locations | [Runtime paths and external binaries](#runtime-paths-and-external-binaries) |
-| `Pointframe/Services/Messaging/**` | Event aggregator and message records | [App bootstrap](#app-bootstrap-di-and-messaging) |
-| `Pointframe/Services/Infrastructure/**` | Cross-cutting singletons: dialogs, files, processes, hotkeys, tray, theme, errors | [App bootstrap](#app-bootstrap-di-and-messaging), [Register a service](#register-a-service) |
-| `Pointframe/Services/Infrastructure/*UserSettings*`, `Pointframe/Services/Infrastructure/*Theme*`, `Pointframe/Services/Infrastructure/*Hotkey*`, `Pointframe/Themes/**` | Settings persistence, theme switching, hotkey bindings | [User settings](features/settings.md#user-settings), [Settings invariant](#settings-are-read-at-the-point-of-use-and-persisted-through-three-files) |
-| `Pointframe/Services/Infrastructure/*Telemetry*` | Telemetry client, event catalog, heartbeat, activation | [Telemetry](features/telemetry.md#telemetry-pipeline) |
-| `Pointframe/Services/Infrastructure/*Ocr*` | WPF-side OCR for the overlay lasso; library search reads text indexed by the catalog worker | [Capture overlay and selection](features/capture.md#capture-overlay-and-selection), [Capture library](features/library.md#capture-library-and-data-layer) |
-| `Pointframe/Services/Infrastructure/*Microphone*`, `Pointframe/Services/Infrastructure/*MouseHook*` | WASAPI microphone enumeration; global mouse hook used by recording cursor effects, the overlay, and capture launch | [Recording pipeline](features/recording.md#recording-pipeline) |
-| `Pointframe/Services/Infrastructure/*AppVersion*`, `Pointframe/Services/Update/**` | Release check, download, version source | [Update flow](features/updates.md#update-flow) |
-| `Pointframe/Services/Capture/**` | Capture launch, selection session, screen and window capture, clipboard, image files | [Capture overlay and selection](features/capture.md#capture-overlay-and-selection) |
-| `Pointframe/Services/Share/**` | Configurable multipart capture upload and HTTPS link extraction | [Upload a capture and copy its link](features/capture.md#features), [Share destination settings](features/settings.md#share-destination-settings) |
-| `Pointframe/Services/Capture/*CaptureLibrary*`, `Pointframe/Services/Capture/*CaptureTextLookup*` | Library listing, search, OCR text cache | [Capture library](features/library.md#capture-library-and-data-layer) |
-| `Pointframe/Services/Annotation/**` | Canvas renderer, geometry, interaction controller, shape handlers | [Annotation engine](features/annotation.md#annotation-engine), [Undo invariant](features/annotation.md#undo-groups-are-added-only-on-commit), [Add an annotation tool](features/annotation.md#add-an-annotation-tool) |
-| `Pointframe/Services/Recording/**` | Recording session, ffmpeg writer, HUD and overlay coordinators, redaction, GIF, trim, watermarks | [Recording pipeline](features/recording.md#recording-pipeline), [Even dimensions](features/recording.md#recording-width-and-height-are-even) |
-| `Pointframe/Services/Recording/*Coordinator.cs`, `Pointframe/Services/Recording/RecordingOverlayNativeInterop.cs`, `Pointframe/Views/OverlayWindow.RecordingHud.cs`, `Pointframe/Views/RecordingOverlay*` | Placing the recording HUD, border, and annotation surface on the target monitor | [Recording pipeline](features/recording.md#recording-pipeline), [DIPs and physical pixels](#dips-and-physical-pixels-are-converted-explicitly-per-monitor) |
-| `Pointframe/Services/Recording/*Ffmpeg*`, `Pointframe/Services/Recording/FFMpeg*` | ffmpeg discovery and the video writer process | [Runtime paths and external binaries](#runtime-paths-and-external-binaries) |
-| `Pointframe/Services/Recording/Beautif*`, `Pointframe/Services/Recording/*ScreenshotWatermark*` | Screenshot post-processing reached from the overlay toolbar | [Capture overlay and selection](features/capture.md#capture-overlay-and-selection), [User settings](features/settings.md#user-settings) |
-| `Pointframe/Services/Transcription/**`, `Pointframe/Models/Transcript*` | Whisper transcription queue, model resolution, subtitles | [Recording transcription](features/transcription.md#recording-transcription), [D-005](features/transcription.md#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app) |
-| `Pointframe/Models/**`, `Pointframe/ViewModels/**`, `Pointframe/Views/**` | Models, ViewModels, and windows; the finer rows below name the owning subsystem | [D-001](decisions.md#d-001-mvvm-plus-di-is-the-composition-model) |
-| `Pointframe/Models/Annotation*`, `Pointframe/Models/ShapeParameters.cs`, `Pointframe/ViewModels/Annotation*`, `Pointframe/ViewModels/RecordingAnnotation*`, `Pointframe/Views/OverlayWindow.RecordingAnnotation.cs` | Tools, shape parameters, style presets, annotation state and undo | [Annotation engine](features/annotation.md#annotation-engine), [Undo invariant](features/annotation.md#undo-groups-are-added-only-on-commit), [Add an annotation tool](features/annotation.md#add-an-annotation-tool) |
-| `Pointframe/Models/Selection*`, `Pointframe/Models/BeautifyBackground.cs`, `Pointframe/ViewModels/Overlay*`, `Pointframe/ViewModels/Beautifier*`, `Pointframe/Views/OverlayWindow*`, `Pointframe/Views/Overlay*`, `Pointframe/Views/Selection*`, `Pointframe/Views/PinnedScreenshot*`, `Pointframe/Views/Beautifier*` | Overlay window partials, selection windows, pin and beautify | [Capture overlay and selection](features/capture.md#capture-overlay-and-selection), [DIPs and physical pixels](#dips-and-physical-pixels-are-converted-explicitly-per-monitor) |
-| `Pointframe/Models/Recording*`, `Pointframe/Services/Messaging/Recording*`, `Pointframe/Services/Messaging/Trim*`, `Pointframe/ViewModels/RecordingHud*`, `Pointframe/ViewModels/Trim*`, `Pointframe/Views/OverlayWindow.Recording*`, `Pointframe/Views/RecordingOverlay*`, `Pointframe/Views/Countdown*`, `Pointframe/Views/Trim*` | Recording geometry, events, redaction regions, HUD, countdown, trim | [Recording pipeline](features/recording.md#recording-pipeline) |
-| `Pointframe/Models/RecordingSessionGeometry.cs` | The one geometry model per recording session | [D-003](features/recording.md#d-003-recording-uses-one-authoritative-session-geometry), [Even dimensions](features/recording.md#recording-width-and-height-are-even), [DIPs and physical pixels](#dips-and-physical-pixels-are-converted-explicitly-per-monitor) |
-| `Pointframe/Models/UserSettings.cs`, `Pointframe/Models/Settings*`, `Pointframe/Models/Hotkey*`, `Pointframe/Models/AppTheme.cs`, `Pointframe/Models/*Watermark*`, `Pointframe/ViewModels/Settings*`, `Pointframe/Views/Settings*` | Settings model, settings window and its sections | [User settings](features/settings.md#user-settings), [Settings invariant](#settings-are-read-at-the-point-of-use-and-persisted-through-three-files), [Add a user setting](#add-a-user-setting) |
-| `Pointframe/Models/Capture*`, `Pointframe/ViewModels/Library*`, `Pointframe/Views/Library*` | Library window and capture items | [Capture library](features/library.md#capture-library-and-data-layer) |
-| `Pointframe/Models/UpdateCheck*`, `Pointframe/Services/Messaging/Update*`, `Pointframe/ViewModels/UpdateDownload*`, `Pointframe/Views/UpdateDownload*`, `Pointframe/ViewModels/About*`, `Pointframe/Views/About*` | Update settings, download window, About window with the manual update check | [Update flow](features/updates.md#update-flow) |
-
-**Other projects**
-
-| Path | What lives here | Read first |
-|---|---|---|
-| `Pointframe.Telemetry/**`, `website/privacy.html` | Operation telemetry shared by the CLI and MCP server (allowlist, opt-out, exporter) and the hosted privacy policy | [CLI and MCP operation telemetry](features/telemetry.md#cli-and-mcp-operation-telemetry) |
-| `Pointframe.Engine/**`, `Pointframe.Cli/**`, `Pointframe.Mcp/**`, `Pointframe.DesktopTestFixture/**` | WPF-free capture, recording, OCR, and desktop automation engine; the CLI and MCP hosts; the WinForms fixture the desktop tools drive | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation), [Spec-driven verification runs](features/cli-mcp.md#spec-driven-verification-runs) |
-| `.pointframe/**` | Pointframe's fixture verification spec and real WPF app spec for `verify run` | [Spec-driven verification runs](features/cli-mcp.md#spec-driven-verification-runs) |
-| `.github/workflows/verify-samples.yml`, `samples/verify/**` | Release CLI verification samples and their Windows CI job | [Spec-driven verification runs](features/cli-mcp.md#spec-driven-verification-runs) |
-| `Pointframe.Mcp/Resources/**`, `Pointframe.Mcp/Tools/**` | Tool methods and the command list resource; a new tool also updates the contract test sets, `test-mcp-stdio.ps1`, and both READMEs | [MCP command list](features/cli-mcp.md#the-mcp-command-list-resource-must-name-every-registered-tool) |
-| `Pointframe.Engine/Library/**`, `Pointframe.Data/**` | Capture catalog, import and index worker, EF Core context, repositories, migrations | [Capture library](features/library.md#capture-library-and-data-layer) |
-| `Pointframe.Data/DependencyInjection.cs`, `Pointframe.Data/Services/**` | Data service registration and the startup migration | [App bootstrap](#app-bootstrap-di-and-messaging) |
-
-**Tests**
-
-| Path | What lives here | Read first |
-|---|---|---|
-| `Pointframe.Tests/**` | xUnit and Moq unit tests; run in CI | Look up the class under test |
-| `Pointframe.Tests/Mcp/**`, `Pointframe.Tests/Engine/**`, `Pointframe.Tests/Cli/**`, `Pointframe.Tests/DocsSync/**` | Engine, CLI, and MCP tests, and docs-sync tests that fail when docs drift from code | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation), [MCP command list](features/cli-mcp.md#the-mcp-command-list-resource-must-name-every-registered-tool) |
-| `Pointframe.Tests/Services/Handlers/**` | Annotation shape handler tests | [Annotation engine](features/annotation.md#annotation-engine) |
-| `Pointframe.AutomationTests/**` | FlaUI smoke tests against the real app and MCP desktop observation/input tests; required local selection is driven by `scripts/desktop-tests.ps1` | [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation), [CI, CD, and versioning](#ci-cd-and-versioning) |
-| `Pointframe.AutomationTests/Installer/**` | Installer smoke tests | [Installer file list](#everything-emitted-next-to-the-exe-must-be-in-the-installer-file-list), [D-004](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them) |
-| `Pointframe.AutomationTests/Support/AutomationIds.cs`, `Pointframe.AutomationTests/Smoke/*AnnotationTool*` | Toolbar automation ids and per-tool smoke coverage | [Add an annotation tool](features/annotation.md#add-an-annotation-tool) |
 
 ## Subsystems
 
@@ -242,6 +180,18 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 
 - Lesson: Automation-mode window replacement should not rely on OnLastWindowClose
 - Lesson: Tray-launched file dialog can lose focus in a tray-only WPF app
+
+## Architecture rules
+
+Rules to keep in every change. The why, the flows, and the recipes are in the sections they link.
+
+- **Composition.** `App.xaml.cs` builds the Generic Host; every service and window is registered in `AppServiceRegistration.cs`. Singleton for long-lived state, transient per operation. See [App bootstrap](#app-bootstrap-di-and-messaging).
+- **MVVM.** ViewModels inherit `ObservableObject`; `[ObservableProperty]` on `private _camelCase` fields, `[RelayCommand]` on private methods, never `OnPropertyChanged()` by hand. Every public service has an `I<ServiceName>` interface and a DI registration.
+- **Settings.** Read `IUserSettingsService.Current` at the point of use; never cache it in a field. A new setting changes `UserSettings.cs` and `SettingsViewModel.Save()` together. See [Add a user setting](#add-a-user-setting).
+- **Undo.** The undo stack grows only in `AnnotationViewModel.CommitGroup()`; shape handlers track elements only in `Commit`, never drafts. See [Undo groups](features/annotation.md#undo-groups-are-added-only-on-commit).
+- **DPI.** WPF works in DIPs, screen and GDI in physical pixels, per monitor; `RecordingSessionGeometry.cs` is canonical, and recording width and height are even. See [DIPs and physical pixels](#dips-and-physical-pixels-are-converted-explicitly-per-monitor).
+- **`pointframe verify` is not `scripts/verify.ps1`.** The product feature (F-39 in `docs/knowledge-base/features/cli-mcp.md`) lives in `Pointframe.Cli/Verification/` with tests in `Pointframe.Tests/Cli/`; `pwsh scripts/verify.ps1` is only this repo's done-gate. For manual trials use an installed or copied CLI, never `Pointframe.Cli/bin`.
+- **New annotation tool.** Follow [Add an annotation tool](features/annotation.md#add-an-annotation-tool); it includes the automation ids and smoke tests.
 
 ## Decisions
 
@@ -380,110 +330,3 @@ dotnet test Pointframe.Tests/Pointframe.Tests.csproj --filter "FullyQualifiedNam
 `Pointframe.Tests/AppTests.cs` builds the container and resolves the core services, so a missing registration fails there before it fails at runtime.
 
 **Files.** `Pointframe/AppServiceRegistration.cs`. See [App bootstrap](#app-bootstrap-di-and-messaging) and [D-001](decisions.md#d-001-mvvm-plus-di-is-the-composition-model).
-
-## References
-
-### Runtime paths and external binaries
-
-**Per-user files.** Root: `%LOCALAPPDATA%\Pointframe` (`AppPaths.LocalAppDataDirectory`).
-
-| File | Purpose | Owner |
-|---|---|---|
-| `logs\pointframe-<date>.log` | Serilog rolling log; `Logging:RetainedFileCountLimit` in `appsettings.json` caps retained files | `AppPaths.RollingLogPath` |
-| `settings.json` | User settings | `UserSettingsService` |
-| `pointframe.db` | SQLite database for the capture text cache | `AppPaths.PointframeDatabasePath`, `Pointframe.Data` |
-
-Screenshots and recordings go to the folder chosen in settings.
-
-**ffmpeg.** `FfmpegResolver.Resolve()` order:
-
-1. `AppContext` data key `SnippingTool.FfmpegPath` (set by tests or a host).
-2. `ffmpeg.exe` next to the application binary. The installer's optional "ffmpeg" component downloads a BtbN GPL win64 build from the `n9.0` release branch to this location; the CD workflow bundles the same build into the MCP package and fails the release if it rejects the microphone recording arguments. Never point either at `master-latest`: its options change without notice (see [Recording pipeline](features/recording.md#recording-pipeline)).
-3. `Assets\ffmpeg\ffmpeg.exe` under the binary folder.
-4. Bare `ffmpeg.exe`, resolved through `PATH`.
-
-`ResolveRequired(purpose)` throws `FileNotFoundException` with a user-facing message when an explicit location is missing. MP4 recording, GIF export, trim, and video watermark all need it.
-
-**Configuration and overrides.**
-
-| Key | Where | Effect |
-|---|---|---|
-| `ApplicationInsights:ConnectionString` | `appsettings.json` | Empty in source; CD injects the real value |
-| `Logging:RetainedFileCountLimit` | `appsettings.json` | Rolling log retention |
-| Any key above | `appsettings.Local.json` | Optional local override, loaded after `appsettings.json` and copied to output only if present |
-| `SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH` | environment | Redirects `settings.json` for automation tests |
-| `SNIPPINGTOOL_AUTOMATION_DATA_DIRECTORY` | environment | Redirects app data, database, logs, and the default screenshot import root for isolated desktop tests |
-| Automation launch options | command line, parsed by `AutomationLaunchOptions.Parse` | Drives `Pointframe.AutomationTests` scenarios |
-
-Identifiers still prefixed `SnippingTool` are pre-rename names kept for compatibility. Renaming one touches the automation project and the installer together.
-
-**Files.** `Pointframe/Services/Infrastructure/AppPaths.cs`, `Pointframe/Services/Infrastructure/UserSettingsService.cs`, `Pointframe/Services/Recording/FfmpegResolver.cs`, `Pointframe/appsettings.json`, `Pointframe/App.xaml.cs`, `Pointframe/Automation/AutomationLaunchOptions.cs`, `installer/Pointframe.iss`.
-
-### CI, CD, and versioning
-
-**Workflows.**
-
-| Workflow | Trigger | Does |
-|---|---|---|
-| `.github/workflows/ci.yml` | push to `master` unless it changes only `plugin/**`; PR to `master` (feature branches run once, through their PR; a newer push cancels the older PR run, a master push is never cancelled) | two parallel jobs, both required checks (keep the names). `unit-tests`: restore and build `Pointframe.Tests` in Release, MCP contract and discovery tests, `dotnet test` with `--filter "Category!=Integration"`, upload the Cobertura file as an artifact. `package-checks`: restore `Pointframe`, `Pointframe.Mcp` and `Pointframe.Cli`, `dotnet format Pointframe/Pointframe.csproj --verify-no-changes --no-restore`, publish the MCP server and CLI, MCP stdio smoke test, knowledge base check, workflow script check, agent discovery check. `~/.nuget/packages` is cached (key: hash of every `*.csproj`, `Directory.*.props/targets`, `global.json`, `dotnet-tools.json`; saved by `unit-tests`, only restored by `package-checks`; the win-x64 runtime packs are excluded and downloaded by restore). Job `coverage` (not required, `continue-on-error`, `needs: unit-tests`) downloads the artifact and uploads to Codecov, so a Codecov outage cannot delay or fail a merge. CD waits for the whole CI workflow run (`workflow_run`), not for one job |
-| `.github/workflows/cd.yml` | after CI completes on `master` | only successful push runs publish; serialized runs check out the triggering commit SHA, skip build/release work when a complete non-draft release already exists, target new release tags at that SHA, tolerate duplicate MCP Registry versions, and upload a `release-version` artifact; otherwise compute the version with nbgv, inject the App Insights connection string and verify it, publish self-contained single-file, sign the exe when the certificate secret exists, build the CLI and MCP packages, create stable CLI/MCP asset aliases and their checksums, build the Inno Setup installer from `installer/Pointframe.iss`, sign it, upload `Pointframe-<version>-x64-Setup`, create the GitHub Release tagged `v<version>`, then publish the MCP server's `server.json` to the MCP Registry (GitHub OIDC; the job has `id-token: write`) |
-| `.github/workflows/desktop-automation.yml` | manual (`workflow_dispatch`) | runs the same required, skip-checked selection as `scripts/desktop-tests.ps1` on an interactive Windows runner |
-| `.github/workflows/winget-release.yml` | after CD completes on `master`, or manual with a version | takes the release version from CD's `release-version` artifact for workflow runs (waiting up to 15 minutes for a rerun of CD to finish first, since artifacts are per run, not per attempt) (manual version/tag inputs remain available), then submits the winget manifest updates with `winget-releaser` pinned to a commit SHA, one matrix entry per package: `DimitarRadenkov.Pointframe` (the installer) and `DimitarRadenkov.Pointframe.Cli` (the CLI ZIP). An entry whose package is not yet in `microsoft/winget-pkgs` warns and skips instead of failing, because the releaser cannot create a new package |
-| `.github/workflows/codeql.yml`, `.github/workflows/release-drafter.yml`, `.github/workflows/dependabot-auto-merge.yml` | as named | static analysis (job `Analyze (csharp)`, required; `build-mode: none`, so no restore or build and code produced by source generators is not analyzed; `.github/codeql/codeql-config.yml` ignores tests, automation tests, fixture, samples and tooling folders so only shipping code is extracted; stays on `windows-latest` because the projects target `net10.0-windows`), release-notes draft, Dependabot merges (`gh pr merge --auto`) |
-| `.github/workflows/pages.yml` | push to `master`, published release, daily schedule | deploys the website from `website/`, plus download-count badge JSON built by `scripts/update-download-badges.ps1` (the stock shields badges count only the newest 100 releases or the newest release) |
-
-**Gates a change must pass locally.** One command runs what CI's unit job runs, and a change is ready only when it passes:
-
-```powershell
-pwsh scripts/verify.ps1                                    # preflight, build, format, tests, kb, workflows; exit 0 only when all pass
-pwsh scripts/verify.ps1 -Filter "FullyQualifiedName~Foo"   # narrow tests while iterating; the verdict is "partial"
-pwsh scripts/verify.ps1 -Skip kb,format                    # leave gates out while iterating; also "partial"
-```
-
-- Gates run in order: preflight (no running process holds the `bin/Release` output), Release build of `Pointframe.Tests`, `dotnet format --verify-no-changes` on the main project, the unit lane (`Category!=Integration`), `scripts/kb.ps1 check -NoFix`, and the workflows gate (`scripts/check-workflow-scripts.ps1`: its `-SelfTest` against `scripts/tests/workflow-scripts/`, then a parse of every `shell: pwsh` or `powershell` `run:` block in `.github/workflows/*.yml` after replacing each `${{ ... }}` with a placeholder; CI runs the same two commands in the "Workflow script check" step), and the discovery gate (`scripts/check-agent-discovery.ps1`: its `-SelfTest`, then the offline checks; CI runs both in the "Agent discovery check" step), and the scripts gate (`scripts/test-scripts.ps1`: the offline `-SelfTest` of every coordinator and release script, and no git-ignored file under `scripts/tests`, since a fixture the `*.md` rule ignored once existed only in the worktree that wrote it; CI runs it on a clean checkout in the "Script self-tests" step). The workflows gate catches syntax errors only, such as `"$tag:"`; a runtime mistake such as a tolerated native failure with no `exit 0` still needs review. Tests are skipped when the build fails; the other gates always run, so one pass reports every problem.
-- It builds Release, like CI, so the editor's MCP connector holding the Debug output does not block it.
-- It writes verdict.json and one log per gate into the gitignored artifacts/verify folder. The verdict holds each gate's status and failure details (compiler errors, format diffs, failed test names with their assert message, kb errors) and `treeHash`, the git tree of the working tree it verified, so a verdict from before a later edit is detectable as stale.
-- Only `status: pass` (`complete: true`) is a final verdict. `partial` means gates were skipped or tests filtered.
-
-**Merging a pull request.** Order: commit work -> `pwsh scripts/merge-pr.ps1 -PinOnly -Worktree <path>` -> `pwsh scripts/verify.ps1` -> `pwsh scripts/record-review.ps1` -> push and `gh pr create` -> `pwsh scripts/merge-pr.ps1 -Pr <number|branch> -Worktree <path> -Auto`. `-PinOnly` updates and commits the plugin pin locally before verification. Both waiting merge and `-Auto` require `-Worktree`, artifacts/verify/verdict.json complete/pass and matching the PR head and current working-tree hash, and a passing independent review record for the head (see [Agent workflow](workflow.md#review)); there is no bypass switch. Waiting mode requires every configured check to be present with none pending, then squash-merges with `--match-head-commit`; cleanup occurs only after GitHub says MERGED. A receipt for an ancestor still counts when the only later change is the two plugin pin files and `check-agent-discovery.ps1` passes, so when a release lands after verification `-Auto` commits and pushes the pin itself instead of forcing another `verify.ps1`. `-Auto` prints `AUTO-MERGE ENABLED (not merged yet)` on success. Add `-WaitMerged` to poll through merge and clean up; it stops on CLOSED, failed/cancelled checks, or timeout. Exit 1: receipt refusal, failed/cancelled check, timeout, closed PR, or merge not completed; 2: gh missing or unauthenticated; 3: conflicting PR; 4: `git pull --ff-only` failed after merge. `-SelfTest` covers decision and receipt fixtures under `scripts/tests/merge-pr/`.
-
-Status lives in plan/status.json; `scripts/status.ps1 -Publish` renders GitHub issue #186 and the owned handoff region. Publish at every stage change.
-
-Every Codex executor run goes through `scripts/agent-run.ps1`; Sonnet subagent briefs are checked with `-ValidateOnly`. Each run appends one cost record to the local, gitignored agent-runs.jsonl under plan/, the cost source for the weekly retro.
-
-**Fresh-agent trials.** `pwsh scripts/trial.ps1 -App pkhex|dngrep|electron|wpf-sample [-Version x.y.z] [-OutDirectory <dir>]`, or `-Matrix` for the three OSS apps in sequence (Claude only), is the quality metric for the CLI and MCP: a coding agent that has never seen Pointframe adds a small UI change to an app and must set up verification from the public docs. App definitions (pinned commit or `localPath`, change prompt, workaround patterns) are in `scripts/trials/apps.json`. `wpf-sample` is local: the harness copies `samples/verify/wpf` without `reference/`, `bin` and `obj`, and its git baseline commit stands in for the pinned commit. The harness scores, not the agent, and writes `result.json` plus one summary line. `result.json` holds `metrics` (`toolCalls`, `totalInputTokens` with cache reads and creation counted, `minutes`) and, with `-MaxToolCalls`, `-MaxInputTokens` or `-MaxMinutes`, a `limits` record that never changes the outcome; an unmeasured limit is `notMeasured`, never within limits. The agent gets an allowlisted environment (no `POINTFRAME_*`, no `ELECTRON_RUN_AS_NODE`, no Pointframe PATH entry; probed in a real child), the agent is Claude Code (`claude-sonnet-5-5`, `-AgentModel` overrides) with project settings and an empty strict MCP config, and every run has a 30 minute limit. `-Agent codex` runs `codex exec` with full access, so the script refuses it unless `-AllowCodexFullAccess` is passed; the owner approves that per package. `-Task create-skill` (apps opt in; today `wpf-sample`) asks the agent to create a verification skill and prove it once; it is `pass-clean` only with an agent-written `SKILL.md` named `verify-*`, a `features/` file with the four pstack H2s naming a scenario in the spec, a fresh pass with a criterion and a negative control, evidence that exists after the run, and a failing defect variant described in `apps.json`. Skills copied in by `-Skills` never count as the agent's work. Create-skill runs also get a `gate` (pass-clean and within the default 15 calls, 786,000 total input tokens, 10 minutes). `-ClaudePluginDir` loads a plugin and allows the `Skill` tool; Claude create-skill runs need `-AllowClaudeBypassPermissions` (`--permission-mode bypassPermissions`), because `claude -p` refuses writes under `.claude/` with allow rules, absolute rules, `acceptEdits` or Bash, and the owner approves it per package like Codex full access; `-Repeat N` runs one configuration N times with a summary table. `-FreshMachine` hides the real `Programs\Pointframe.Cli` and `Programs\Pointframe.Mcp` folders under the known-folder LocalAppData by renaming them for the run, because the .NET CLI resolves that folder through the Windows API and ignores a `LOCALAPPDATA` override; an older install would otherwise be auto-updated and hide the fresh-machine path. A recovery marker is written before each rename and removed only after a successful restore; the agent's own installs move into the trial output as evidence; a harness start under the desktop lock restores markers left by a crash. The user PATH is put back to its raw baseline value and kind only when the run changed it by additions alone. `-PromptPrefix` prepends text such as `/create-verification-skill` to the task prompt (the pstack entry run). Create-skill runs need `-Configuration installed` (a Pointframe skill or plugin is present; the prompt says it may be used, with the public docs as a fallback, and never commands it) or `cold` (no Pointframe skill; pstack's own skill is allowed; the prompt points at the public docs). `skillActivated` records whether a Pointframe skill was invoked or its `SKILL.md` or `references` were read, and `otherSkillsActivated` lists other skills used. Without `-Version` the harness resolves the latest release before the run, keeps the version out of the prompt, and scores release drift (a newer release, or agent CLI/MCP versions that differ) `invalid`; `-Version` is a compatibility exercise and is labelled so. `toolCalls` counts every completed tool event: every Claude `tool_use`, and Codex `command_execution`, `mcp_tool_call`, `web_search` and file-change items (other item types are listed in `unknownItemTypes`, not counted). `-Rescore <folder>` recomputes metrics, limits and gate from a stored transcript into `rescore.json`. A run is `pass-clean` only when `verify status` is pass and fresh, a passed criterion names the new element, a negative control passed, every report proof verifies, nothing the run started is still running, the CLI and MCP versions the agent used equal the requested release, and the defect check fails: the final project, with everything but the Pointframe config put back to the pinned commit, must fail `verify run` at the missing change. A diff with workaround patterns (`BeginInvoke`, `Thread.Sleep`, ...) the prompt did not ask for is `pass-workaround`; leaked environment, a version mismatch or an inconclusive defect check is `invalid`. Only `pass-clean` counts as a pass; the others are never counted as clean. Cleanup kills only processes the run recorded, matched by PID and start time. `-SelfTest` is offline and scores the fixtures in `scripts/tests/trial/`; it is not part of `scripts/verify.ps1`, which wires each script's self-test by hand.
-
-- Lesson: PowerShell variable names are case-insensitive, so a local can collide with a switch parameter
-
-The format gate covers the main project only. Do not run `dotnet format` on `Pointframe.Tests`; it would rewrite many unrelated files.
-
-**Release qualification.** Every merge to master cuts a release, so qualify risky changes before merging and watch the channels after. Before merging a PR, run `pwsh scripts/release-impact.ps1`; it prints `desktop-qualification: required` when the diff touches the shipping projects, `packaging/**`, `cd.yml`, project files, or central build configuration. When required, run `pwsh scripts/check-released-desktop.ps1 -BuildCandidate` on the interactive desktop: it builds both packages as version `0.0.0-candidate` (ffmpeg from `$env:FFMPEG_PATH` or `PATH`), hashes them, and runs the same desktop steps as a release check, labelled `candidate` in `result.json`. `-CandidateDirectory <dir>` tests packages you already have, and `-PackageOnly` stops after the packages are built or located and hashed, without touching the desktop. After each release, run `pwsh scripts/check-release-channels.ps1 -Version <x> -Watch` under a watchdog. It reports one state per channel (the GitHub release, each winget package, the MCP Registry, the plugin pin) and exits 1 on any failed channel, so report a failed channel at once: a failed Winget Release run otherwise goes unnoticed.
-
-**Versioning.**
-
-- `version.json` holds `major.minor`. Nerdbank.GitVersioning adds the patch from commit height, so a full clone (`fetch-depth: 0`) is required.
-- `publicReleaseRefSpec` marks `master` and `v*` tags as public; other branches get a pre-release suffix.
-- Bump `version.json` to start a new minor; never hand-edit a patch.
-- `dotnet-tools.json` pins `nbgv` and `dotnet-ef`; run `dotnet tool restore` after cloning.
-
-**Installer and packaging.**
-
-- `installer/Pointframe.iss` is the Inno Setup script; `installer/build-installer.ps1` and `installer/test-installer.ps1` build and check it locally. Its ARP `AppPublisher` is the source of truth that the winget manifests must mirror.
-- `winget/` holds the first manifest of each winget package (`DimitarRadenkov.Pointframe`, `DimitarRadenkov.Pointframe.Cli`). The MCP server is listed in the official MCP Registry, published by CD; see [Standalone CLI and MCP automation](features/cli-mcp.md#standalone-cli-and-mcp-automation).
-- CD publishes both immutable versioned CLI/MCP assets and stable aliases (`Pointframe.Cli-win-x64.zip`, `Pointframe.Mcp-win-x64.mcpb`, and matching `.sha256` files). Use the aliases for `releases/latest/download` links and Shields.io badges; they prevent release-version changes from breaking those links.
-- Renaming anything in the delivery path (exe name, installer name, package id) touches the workflows, the installer, the winget manifests, and the updater's asset-name expectation together.
-- Lesson: A floating action tag moved upstream and broke every release
-
-**Files.** `.github/workflows/ci.yml`, `.github/codeql/codeql-config.yml`, `.github/workflows/cd.yml`, `.github/workflows/desktop-automation.yml`, `.github/workflows/winget-release.yml`, `scripts/verify.ps1`, `scripts/check-workflow-scripts.ps1`, `version.json`, `dotnet-tools.json`, `installer/Pointframe.iss`. See [Update flow](features/updates.md#update-flow) and [Telemetry](features/telemetry.md#telemetry-pipeline).
-
-**Lessons.**
-
-- Lesson: Rename migrations must update hardcoded delivery paths in workflows and installer assets together
-- Lesson: WinGet ARP publisher matching must follow the installer metadata exactly
-- Lesson: Winget package renames need a one-time upstream bootstrap before automated updates can work
-- Lesson: Renamed winget packages need a distinct installer identity if they are published as a new package ID
-- Lesson: Coverage workflows should run for fix branches and not hard-require a Codecov token on public repos
-- Lesson: CI publish of a self-contained exe needs `<RuntimeIdentifiers>` even with `--runtime win-x64` on the command line
-- Lesson: workflow_run checks out the default branch HEAD, not the commit that triggered it
-- Lesson: PowerShell reads "$name:" inside a string as a scoped variable
-- Lesson: A pwsh step fails with the last native exit code unless the script exits 0
