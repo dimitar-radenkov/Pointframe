@@ -15,6 +15,7 @@ public sealed class WorkerDesktopAutomationService :
     private readonly IDesktopAutomationWorkerHost _host;
     private readonly DesktopControlGuard _controlGuard;
     private readonly int _warmupMilliseconds;
+    private readonly int _hitTestMilliseconds = DesktopTestingLimits.HitTestMilliseconds;
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private bool _started;
 
@@ -33,9 +34,12 @@ public sealed class WorkerDesktopAutomationService :
     internal WorkerDesktopAutomationService(
         IDesktopAutomationWorkerHost host,
         int warmupMilliseconds = DesktopTestingLimits.WorkerWarmupMilliseconds,
-        DesktopControlGuard? controlGuard = null)
+        DesktopControlGuard? controlGuard = null,
+        int hitTestMilliseconds = DesktopTestingLimits.HitTestMilliseconds)
     {
         ArgumentNullException.ThrowIfNull(host);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(hitTestMilliseconds);
+        _hitTestMilliseconds = hitTestMilliseconds;
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(warmupMilliseconds);
         _host = host;
         _warmupMilliseconds = warmupMilliseconds;
@@ -110,8 +114,30 @@ public sealed class WorkerDesktopAutomationService :
         };
     }
 
-    public bool ElementOwnsPoint(string elementRef, int x, int y) =>
-        DispatchUi(DesktopAutomationWorkerProtocol.Operations.HitTest, new { elementRef, x, y });
+    public bool ElementOwnsPoint(string elementRef, int x, int y)
+    {
+        // A hung provider must not hold the caller: the wait has a deadline, and a timeout abandons the worker
+        // exactly as an inspection timeout does. Not knowing is a refusal, never a click.
+        try
+        {
+            using var timeout = new CancellationTokenSource(_hitTestMilliseconds);
+            var response = DispatchAsync(
+                    DesktopAutomationWorkerProtocol.Operations.HitTest,
+                    new { elementRef, x, y },
+                    timeout.Token)
+                .GetAwaiter()
+                .GetResult();
+            return response.Succeeded;
+        }
+        catch (Exception exception) when (exception is OperationCanceledException
+            or IOException
+            or InvalidDataException
+            or InvalidOperationException
+            or TimeoutException)
+        {
+            return false;
+        }
+    }
 
     public bool TrySetValue(string elementRef, string value) =>
         DispatchUi(DesktopAutomationWorkerProtocol.Operations.SetValue, new { elementRef, value });

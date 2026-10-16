@@ -668,6 +668,50 @@ public sealed class DesktopSelectorActionTests
             fixture.Tools.EnterTextAsync(SessionId, Guid.NewGuid().ToString(), "hello", "observation-1", blank, 1, 1));
     }
 
+    [Fact]
+    public async Task HungHitTestRefusesWithinTheDeadlineAbandonsTheWorkerAndClicksNothing()
+    {
+        var host = new HangingHitTestHost();
+        await using var worker = new WorkerDesktopAutomationService(host, hitTestMilliseconds: 200);
+        var fixture = new Fixture(Snapshot(false, At("el-1", new PixelBounds(100, 200, 40, 20))), hitTestOverride: worker);
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), automationId: "saveButton");
+
+        stopwatch.Stop();
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"took {stopwatch.Elapsed}");
+        Assert.Equal("TargetOccluded", response.Error?.Code);
+        Assert.Equal("NotStarted", response.Dispatch);
+        Assert.Equal(1, host.AbandonCalls);
+        fixture.Input.Verify(input => input.ClickAsync(It.IsAny<DesktopClickRequest>(), It.IsAny<DesktopProcessIdentity>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.UiAutomation.Verify(provider => provider.TryInvoke(It.IsAny<string>()), Times.Never);
+    }
+
+    private sealed class HangingHitTestHost : IDesktopAutomationWorkerHost
+    {
+        public int AbandonCalls { get; private set; }
+
+        public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public async Task<DesktopAutomationWorkerResponse> DispatchAsync(DesktopAutomationWorkerRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request.Operation == DesktopAutomationWorkerProtocol.Operations.HitTest)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return new DesktopAutomationWorkerResponse(DesktopAutomationWorkerProtocol.Version, request.RequestId, true, "Ok");
+        }
+
+        public ValueTask AbandonAsync()
+        {
+            AbandonCalls++;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     [Theory]
     [InlineData("desktop_invoke", new[] { "elementRef", "automationId", "role", "name", "windowRef" })]
     [InlineData("desktop_enter_text", new[] { "text", "observationRef", "imageRef", "x", "y", "semanticValue", "elementRef", "automationId", "role", "name", "windowRef" })]
@@ -702,7 +746,7 @@ public sealed class DesktopSelectorActionTests
         private readonly DesktopUiSnapshot _snapshot;
         private readonly Queue<DesktopUiSnapshot> _later = new();
 
-        public Fixture(DesktopUiSnapshot snapshot, IDesktopActionCoordinator? realCoordinator = null, IDesktopTestReportService? realReports = null, bool noHitTest = false)
+        public Fixture(DesktopUiSnapshot snapshot, IDesktopActionCoordinator? realCoordinator = null, IDesktopTestReportService? realReports = null, bool noHitTest = false, IWindowsUiAutomationHitTestProvider? hitTestOverride = null)
         {
             _snapshot = snapshot;
             var process = new DesktopProcessIdentity(ProcessRef, 1, DateTimeOffset.UtcNow, "target.exe", "hash");
@@ -764,7 +808,7 @@ public sealed class DesktopSelectorActionTests
                 new DesktopTestingHostOptions(Enabled: true, WorkerMode: false, PolicyPath: null, WorkerPipeName: null, ParentProcessId: null),
                 Provider.Object,
                 WindowBounds.Object,
-                noHitTest ? null : HitTest.Object);
+                noHitTest ? null : hitTestOverride ?? HitTest.Object);
         }
 
         public Mock<IWindowsUiAutomationHitTestProvider> HitTest { get; } = new();

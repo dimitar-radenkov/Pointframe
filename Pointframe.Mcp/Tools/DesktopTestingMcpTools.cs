@@ -30,6 +30,7 @@ internal sealed class DesktopTestingMcpTools(
 {
     // The click-or-pattern method of an invoke by actionId, so a replayed actionId still reports how it was done.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> InvokeMethods = new(StringComparer.Ordinal);
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<string> InvokeMethodOrder = new();
 
     [McpServerTool(Name = "desktop_list_apps", Title = "List desktop applications", ReadOnly = true, Destructive = false, Idempotent = true, UseStructuredContent = true)]
     [Description("Lists the application profiles the desktop testing policy approves: for each, its id, the executable file name, and how many actions it allows. Pass an id as profileId to desktop_start_test_session. It never lists running processes or attach candidates.")]
@@ -500,12 +501,15 @@ internal sealed class DesktopTestingMcpTools(
         await AnnotateActionAsync(sessionId, actionId, "invoke", result, cancellationToken).ConfigureAwait(false);
         if (dispatched && method is not null)
         {
-            if (InvokeMethods.Count >= DesktopTestingLimits.MaxActionCapacity)
+            // Oldest first, so the newest replays keep their method; the ledger evicts on the same capacity.
+            if (InvokeMethods.TryAdd(actionId, method))
             {
-                InvokeMethods.Clear();
+                InvokeMethodOrder.Enqueue(actionId);
+                while (InvokeMethodOrder.Count > DesktopTestingLimits.MaxActionCapacity && InvokeMethodOrder.TryDequeue(out var oldest))
+                {
+                    InvokeMethods.TryRemove(oldest, out _);
+                }
             }
-
-            InvokeMethods[actionId] = method;
         }
         else if (!dispatched && InvokeMethods.TryGetValue(actionId, out var recordedMethod))
         {
