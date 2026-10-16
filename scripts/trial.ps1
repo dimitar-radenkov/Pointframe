@@ -931,17 +931,68 @@ function Complete-TrialRun {
         }
         $Record.gate = [ordered]@{ result = if ($scored.Outcome -eq 'pass-clean' -and $withinLimits -eq $true) { 'pass' } else { 'fail' }; reasons = @($gateReasons) }
     }
+    return (Save-TrialResult -Record $Record -Facts $Facts -Scored $scored -OutputDirectory $OutputDirectory -TaskName $TaskName)
+}
+
+function Save-TrialResult {
+    param(
+        [Parameter(Mandatory)]$Record,
+        [Parameter(Mandatory)]$Facts,
+        [Parameter(Mandatory)]$Scored,
+        [Parameter(Mandatory)][string]$OutputDirectory,
+        [Parameter(Mandatory)][string]$TaskName,
+        [scriptblock]$Writer = { param($Path, $Content) Set-Content -LiteralPath $Path -Value $Content -Encoding utf8NoBOM }
+    )
     $Record.facts = $Facts
     $Record.finishedUtc = [DateTime]::UtcNow.ToString('o')
-    try { $Record | ConvertTo-Json -Depth 14 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'result.json') -Encoding utf8NoBOM }
-    catch { $Facts.harnessError = "Could not write result.json: $($_.Exception.Message)"; $Record.facts = $Facts }
-    return $scored
+    $resultPath = Join-Path $OutputDirectory 'result.json'
+    try {
+        $json = $Record | ConvertTo-Json -Depth 14
+        & $Writer $resultPath $json
+    }
+    catch {
+        $writeReason = "Could not write result.json: $($_.Exception.Message)"
+        $Facts.harnessError = if ($Facts.harnessError) { "$($Facts.harnessError); $writeReason" } else { $writeReason }
+        $Scored.Outcome = 'invalid'
+        $Scored.Reasons = @($Scored.Reasons) + $writeReason
+        $Record.outcome = 'invalid'
+        $Record.reasons = @($Scored.Reasons)
+        $Record.facts = $Facts
+        if ($TaskName -eq 'create-skill') {
+            $Record.gate.result = 'fail'
+            $Record.gate.reasons = @($Record.gate.reasons) + $writeReason
+        }
+        [Console]::Error.WriteLine($writeReason)
+        $fallbackPath = Join-Path $OutputDirectory 'result.failed.json'
+        try {
+            $fallback = [ordered]@{ outcome = 'invalid'; reasons = @($Scored.Reasons); facts = $Facts; resultWriteFailed = $true } | ConvertTo-Json -Depth 8
+            & $Writer $fallbackPath $fallback
+            [Console]::Error.WriteLine("Minimal failure result written to '$fallbackPath'.")
+        }
+        catch { [Console]::Error.WriteLine("Could not write fallback failure result '$fallbackPath': $($_.Exception.Message)") }
+    }
+    return $Scored
 }
 
 # ---------------------------------------------------------------------------------------------------------------
 # Self test (offline: no network, desktop, or agents)
 
 function Test-Self {
+    $persistScratch = Join-Path ([IO.Path]::GetTempPath()) ("pf-trial-persist-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $persistScratch -Force | Out-Null
+    try {
+        $persistFacts = [ordered]@{ harnessError = $null }
+        $persistRecord = [ordered]@{ outcome = 'pass-clean'; reasons = @(); gate = [ordered]@{ result = 'pass'; reasons = @() }; facts = $null }
+        $persistScored = [pscustomobject]@{ Outcome = 'pass-clean'; Reasons = @() }
+        $writerState = @{ Calls = 0 }
+        $failingWriter = { param($Path, $Content) $writerState.Calls++; if ($Path -like '*result.json') { throw 'injected writer failure' }; [IO.File]::WriteAllText($Path, $Content) }.GetNewClosure()
+        $persisted = Save-TrialResult -Record $persistRecord -Facts $persistFacts -Scored $persistScored -OutputDirectory $persistScratch -TaskName 'create-skill' -Writer $failingWriter
+        $writerCalls = $writerState.Calls
+        if ($persisted.Outcome -ne 'invalid' -or $persistRecord.gate.result -ne 'fail' -or ($persistRecord.reasons -join ' ') -notmatch 'injected writer failure' -or $writerCalls -ne 2 -or -not (Test-Path (Join-Path $persistScratch 'result.failed.json'))) {
+            throw 'A result persistence failure must invalidate the outcome and gate, report its reason, and attempt a fallback result.'
+        }
+    }
+    finally { Remove-Item -LiteralPath $persistScratch -Recurse -Force -ErrorAction SilentlyContinue }
     $genericFacts = [System.Collections.Generic.Dictionary[string, string]]::new()
     $genericFacts['key'] = 'generic'
     $hashFacts = @{ key = 'hashtable' }
