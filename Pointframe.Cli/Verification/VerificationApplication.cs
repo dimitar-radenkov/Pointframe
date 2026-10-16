@@ -61,7 +61,6 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         "task_id_invalid",
     };
 
-
     internal static readonly JsonSerializerOptions VerdictJson = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -343,7 +342,9 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
             ?? results.FirstOrDefault(result => result.Status != VerificationStatus.Pass)?.Id;
         var nextStep = context.NoBuildGate
             ? VerificationNextSteps.For("stale", "no_build_gate")
-            : VerificationNextSteps.For(status, null, failureId: failedId);
+            : status == VerificationStatus.Fail && results.Any(result => result.Steps.Any(step => step.Code == "InspectionIncomplete"))
+                ? VerificationNextSteps.For(status, "inspection_incomplete")
+                : VerificationNextSteps.For(status, null, failureId: failedId);
         var verdict = Verdict(context, status, gates, results, nextStep: nextStep);
         await WriteVerdictAsync(verdict, context.OutputDirectory, cancellationToken);
         if (context.Task is { SpecChanged: true })

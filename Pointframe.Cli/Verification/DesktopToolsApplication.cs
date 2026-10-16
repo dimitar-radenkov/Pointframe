@@ -18,7 +18,8 @@ internal sealed record DesktopSetupResponse(
     bool ServerInstalled,
     IReadOnlyList<string>? Tools,
     IReadOnlyList<string> Warnings,
-    VerificationNextStep? NextStep);
+    VerificationNextStep? NextStep,
+    object? FirstCall = null);
 
 // `mcp serve` and `verify setup`: interactive desktop tools for the app a project's verification spec
 // declares, under the same approval as `verify run` (the spec's commands are trusted, or nothing starts).
@@ -218,8 +219,9 @@ internal sealed class DesktopToolsApplication(
             tools,
             warnings,
             success
-                ? new VerificationNextStep("none", null, null, "Restart your agent session, then call desktop_list_apps.")
-                : VerificationNextSteps.For("error", failureCode, failureMessage)));
+                ? new VerificationNextStep("none", null, null, "Restart your agent session, then call desktop_start_test_session with firstCall.arguments.")
+                : VerificationNextSteps.For("error", failureCode, failureMessage),
+            success ? new { tool = "desktop_start_test_session", arguments = new { actionId = Guid.NewGuid().ToString(), profileId = spec.App.Id } } : null));
         if (!success)
         {
             await standardError.WriteLineAsync($"Pointframe verify setup failed [{failureCode}]: {failureMessage}");

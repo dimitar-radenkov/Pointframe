@@ -48,7 +48,15 @@ public sealed record DesktopTestingCheckResponse(
     bool Matches,
     int MatchCount,
     McpCaptureError? Error = null,
-    string? ActualValue = null);
+    string? ActualValue = null,
+    DesktopNextStep? NextStep = null);
+
+public sealed record DesktopNextStep(
+    string Kind,
+    string Tool,
+    IReadOnlyDictionary<string, object?>? Arguments,
+    int? RetryAfterSeconds = null,
+    string? Reason = null);
 
 public sealed record DesktopTestingActionResponse(
     int SchemaVersion,
@@ -60,7 +68,9 @@ public sealed record DesktopTestingActionResponse(
     string? SessionRef = null,
     string? TargetRef = null,
     IReadOnlyList<DesktopAppSummary>? Apps = null,
-    string? Method = null);
+    string? Method = null,
+    string? ActionId = null,
+    DesktopNextStep? NextStep = null);
 
 public sealed record DesktopAppSummary(string Id, string ExecutableName, int AllowedActionCount);
 

@@ -1,5 +1,6 @@
 using Pointframe.Engine;
 using Pointframe.Engine.Automation.Models;
+using Pointframe.Engine.Automation.Services;
 using Pointframe.Mcp.Automation;
 
 namespace Pointframe.Mcp;
@@ -69,7 +70,13 @@ public static class DesktopTestingResponseMapper
             response.Error,
             response.Ocr);
     }
-    public static DesktopTestingCheckResponse MapCheck(DesktopUiCheckEvaluation evaluation)
+    public static DesktopTestingCheckResponse MapCheck(
+        DesktopUiCheckEvaluation evaluation,
+        string? sessionId = null,
+        DesktopCheckSpec? spec = null,
+        bool negativeControl = false,
+        string? criterionId = null,
+        bool reportBearing = false)
     {
         ArgumentNullException.ThrowIfNull(evaluation);
         return new DesktopTestingCheckResponse(
@@ -81,14 +88,38 @@ public static class DesktopTestingResponseMapper
             evaluation.Matches,
             evaluation.MatchCount,
             evaluation.ErrorCode is null ? null : new McpCaptureError(evaluation.ErrorCode, evaluation.Message ?? evaluation.ErrorCode),
-            evaluation.ActualValue);
+            evaluation.ActualValue,
+            RecoveryFor(evaluation.ErrorCode, sessionId, spec, negativeControl, criterionId, reportBearing));
     }
 
     // A negative control inverts only the verdict. Matches stays the oracle's raw answer, so a reader can
     // see that the wrong expectation was rejected rather than that the oracle said yes.
-    public static DesktopTestingCheckResponse MapNegativeControl(DesktopUiCheckEvaluation evaluation)
+    public static DesktopTestingCheckResponse MapNegativeControl(
+        DesktopUiCheckEvaluation evaluation,
+        string? sessionId = null,
+        DesktopCheckSpec? spec = null,
+        string? criterionId = null,
+        bool reportBearing = false)
     {
-        var response = MapCheck(evaluation);
+        // Inverting an answer read from a partial tree would turn "not seen" into a passing control.
+        if (evaluation.IsTruncated)
+        {
+            return MapCheck(
+                new DesktopUiCheckEvaluation(
+                    false,
+                    false,
+                    evaluation.MatchCount,
+                    "InspectionIncomplete",
+                    "The UI Automation tree was truncated, so a negative control cannot be established.",
+                    IsTruncated: true),
+                sessionId,
+                spec,
+                negativeControl: true,
+                criterionId,
+                reportBearing);
+        }
+
+        var response = MapCheck(evaluation, sessionId, spec, negativeControl: true, criterionId, reportBearing);
         if (!evaluation.StateAvailable)
         {
             return response;
@@ -131,7 +162,120 @@ public static class DesktopTestingResponseMapper
             result.ObservationStatus.ToString(),
             result.Error is null ? null : new McpCaptureError(result.Error.Code, result.Error.Message),
             sessionRef,
-            targetRef);
+            targetRef,
+            ActionId: result.ActionId,
+            NextStep: RecoveryFor(result.Error?.Code, sessionRef));
+    }
+
+    // A hint with arguments is a complete, schema-valid call. Where a valid call needs input only the agent
+    // has (a window ref, capture bounds), the hint is guidance-only: Arguments is null and Reason says what
+    // the agent must do first.
+    public static DesktopNextStep? RecoveryFor(
+        string? code,
+        string? sessionId = null,
+        DesktopCheckSpec? spec = null,
+        bool negativeControl = false,
+        string? criterionId = null,
+        bool reportBearing = false)
+    {
+        switch (code)
+        {
+            case "InspectionIncomplete" or "ProviderUnavailable" or "UiaUnavailable" or "InspectionTimeout":
+                return CheckRecovery(code, sessionId, spec, negativeControl, criterionId, reportBearing);
+
+            case "ProfileNotFound" or "UnknownProfile":
+                return new DesktopNextStep(
+                    "list_profiles",
+                    "desktop_list_apps",
+                    new Dictionary<string, object?> { ["actionId"] = Guid.NewGuid().ToString() },
+                    Reason: "List the approved profile ids, then pass one as profileId to desktop_start_test_session.");
+
+            case "TargetStillRunning":
+                return new DesktopNextStep(
+                    "close_then_restart",
+                    "desktop_press_keys",
+                    null,
+                    Reason: "The previous process is still running. Close the app through its own UI, or press Alt+F4 with desktop_press_keys on its window (window_ref from desktop_observe_app). Then call desktop_check_ui with kind processExited until it passes, then call desktop_restart_app again with a new actionId.");
+
+            case "StaleObservation" or "StaleObservationRef":
+                return new DesktopNextStep(
+                    "observe_then_retry",
+                    "desktop_observe_app",
+                    null,
+                    Reason: $"The observation_ref is stale. Call desktop_observe_app{SessionPhrase(sessionId)} with captureBoundsPixels of the app window, then repeat the action with the new refs and a new actionId.");
+
+            case "ElementNotFound":
+                return new DesktopNextStep(
+                    "observe_then_retry",
+                    "desktop_observe_app",
+                    null,
+                    Reason: $"No element matched. Call desktop_observe_app{SessionPhrase(sessionId)} with captureBoundsPixels of the app window and includeUiAutomation true, find the element's element_ref, automationId, or role and name, then repeat the action.");
+            default:
+                return null;
+        }
+    }
+
+    private static string SessionPhrase(string? sessionId) => sessionId is null ? string.Empty : $" with sessionId '{sessionId}'";
+
+    private static DesktopNextStep? CheckRecovery(
+        string code,
+        string? sessionId,
+        DesktopCheckSpec? spec,
+        bool negativeControl,
+        string? criterionId,
+        bool reportBearing)
+    {
+        if (sessionId is null || spec is null)
+        {
+            return null;
+        }
+
+        var cause = code == "InspectionIncomplete"
+            ? "The UI Automation walk stopped early"
+            : "UI Automation was not available";
+        if (reportBearing)
+        {
+            // The inconclusive check stays recorded and keeps this session's report inconclusive, so a retry in
+            // the same session cannot produce passing evidence. Passing evidence needs a fresh session.
+            // Ending the session would close the app and, after a grace period, kill its process tree, so it is
+            // never the executable step; the first call only reads and persists the report.
+            return new DesktopNextStep(
+                "fresh_session",
+                "desktop_get_test_report",
+                new Dictionary<string, object?> { ["sessionId"] = sessionId },
+                Reason: $"{cause}, and this session's report keeps the inconclusive check, so it cannot become passing. First read and keep this report. Then finish any diagnostics and save whatever state you need from the app, because desktop_end_test_session closes it. Only then end this session, start a new one with desktop_start_test_session using the same profileId and the same acceptance criteria, repeat the actions, and run this check again{(criterionId is null ? string.Empty : $" with criterionId '{criterionId}'")}, scoped with an automationId if possible.");
+        }
+
+        var arguments = new Dictionary<string, object?> { ["sessionId"] = sessionId, ["kind"] = spec.Kind };
+        AddIfSet(arguments, "automationId", spec.AutomationId);
+        AddIfSet(arguments, "role", spec.Role);
+        AddIfSet(arguments, "name", spec.Name);
+        AddIfSet(arguments, "windowRef", spec.WindowRef);
+        AddIfSet(arguments, "expected", spec.Expected);
+        arguments["timeoutSeconds"] = spec.TimeoutSeconds;
+        if (negativeControl)
+        {
+            arguments["expectFailure"] = true;
+        }
+        else
+        {
+            AddIfSet(arguments, "criterionId", criterionId);
+        }
+
+        return new DesktopNextStep(
+            "diagnostic_retry",
+            "desktop_check_ui",
+            arguments,
+            code == "InspectionIncomplete" ? 1 : 2,
+            $"{cause}. This retry is diagnostic only: the inconclusive check stays in this session's report and the retry cannot change that verdict.");
+    }
+
+    private static void AddIfSet(Dictionary<string, object?> arguments, string name, string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+        {
+            arguments[name] = value;
+        }
     }
 
     private static string? Truncate(string? value)

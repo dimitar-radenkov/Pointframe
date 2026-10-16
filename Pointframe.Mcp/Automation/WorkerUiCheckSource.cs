@@ -56,7 +56,30 @@ public sealed class WorkerUiCheckSource(
             return new DesktopUiCheckEvaluation(false, false, 0, snapshot.ErrorCode ?? "ProviderUnavailable");
         }
 
-        return Evaluate(snapshot.Elements, condition);
+        var evaluation = Evaluate(snapshot.Elements, condition);
+        if (!snapshot.IsTruncated)
+        {
+            return evaluation;
+        }
+
+        // DesktopUiCheckService accepts any match count for exists and absent, so a found element proves
+        // exists and refutes absent. Every other kind (state predicates and the window checks) needs exactly
+        // one match, so an unseen duplicate could flip its verdict; only an already visible second match
+        // (an ambiguous target) is final.
+        var witnessed = condition is DesktopUiCheckCondition.Exists or DesktopUiCheckCondition.Absent;
+        if (evaluation.MatchCount > 0 && (witnessed || evaluation.MatchCount > 1))
+        {
+            return evaluation with { IsTruncated = true };
+        }
+
+        return new DesktopUiCheckEvaluation(
+            false,
+            false,
+            evaluation.MatchCount,
+            "InspectionIncomplete",
+            "The UI Automation tree was truncated before this conclusion could be established.",
+            evaluation.ActualValue,
+            IsTruncated: true);
     }
 
     internal static DesktopUiCheckEvaluation Evaluate(
