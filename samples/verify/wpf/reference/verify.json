@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "app": {
+    "id": "contacts",
+    "executable": "bin/Debug/net10.0-windows/WpfSample.exe"
+  },
+  "gates": [{ "id": "build", "run": "dotnet build WpfSample.csproj" }],
+  "scenarios": [{
+    "id": "add-contact",
+    "criteria": ["A non-empty name is added and the status confirms it.", "An empty name is rejected without adding an item."],
+    "steps": [
+      { "invoke": { "automationId": "addButton" } },
+      { "check": { "kind": "textEquals", "automationId": "statusText", "expected": "Name is required", "criterion": "C2" } },
+      { "enterText": { "automationId": "nameBox", "text": "Ada Lovelace" } },
+      { "invoke": { "automationId": "addButton" } },
+      { "check": { "kind": "textEquals", "automationId": "statusText", "expected": "Added Ada Lovelace", "criterion": "C1" } },
+      { "check": { "kind": "exists", "role": "ListItem", "name": "Ada Lovelace", "criterion": "C1" } },
+      { "check": { "kind": "textEquals", "automationId": "statusText", "expected": "Not added Ada Lovelace", "expectFailure": true, "timeoutSeconds": 1 } }
+    ]
+  }]
+}

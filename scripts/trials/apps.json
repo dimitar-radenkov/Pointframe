@@ -38,6 +38,14 @@
       "changeMarkers": ["Trial"],
       "expectedDefectFailure": { "codes": ["ElementNotFound", "CheckFailed"], "mention": "Trial" },
       "workaroundPatterns": ["setTimeout", "setImmediate"]
+    },
+    "wpf-sample": {
+      "localPath": "samples/verify/wpf",
+      "change": "Add a Clear button with AutomationProperties.AutomationId=\"clearButton\". Clicking it empties the contact list and sets the status text to exactly \"Cleared\".",
+      "changeMarkers": ["Clear", "clearButton", "Cleared"],
+      "expectedDefectFailure": { "codes": ["ElementNotFound", "CheckFailed"], "mention": "clearButton" },
+      "excludePaths": ["reference"],
+      "workaroundPatterns": []
     }
   }
 }
