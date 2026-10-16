@@ -52,6 +52,21 @@ public sealed class VerifyDesktopWorkGuideTests : IDisposable
     }
 
     [Fact]
+    public void GuideTeachesSelectorsBeforeObservation()
+    {
+        var selectorPath = _guide.IndexOf("**Use selectors first.**", StringComparison.Ordinal);
+        var observationPath = _guide.IndexOf("Use `desktop_observe_app` to explore an unknown UI", StringComparison.Ordinal);
+
+        Assert.True(selectorPath >= 0);
+        Assert.True(observationPath > selectorPath);
+        Assert.Contains("`semanticValue: true`", _guide, StringComparison.Ordinal);
+        Assert.Contains("`automationId`", _guide, StringComparison.Ordinal);
+        Assert.Contains("`chord: \"Ctrl+S\"`", _guide, StringComparison.Ordinal);
+        Assert.Contains("`InspectionIncomplete`", _guide, StringComparison.Ordinal);
+        Assert.Contains("`AmbiguousTarget`", _guide, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PolicySampleIsAcceptedByTheLoader()
     {
         var sample = Regex.Match(_guide, "```json\\s*(\\{.*?\\})\\s*```", RegexOptions.Singleline).Groups[1].Value;

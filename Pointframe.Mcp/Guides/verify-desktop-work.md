@@ -46,14 +46,36 @@ did not pass; `None` stores none.
 2. **Start a session.** Call `desktop_start_test_session` with a new UUID `actionId`, the `profileId`,
    and `criteria`. It launches the app and returns `sessionRef`. The criteria are numbered `C1`, `C2`,
    ... in your order, hashed, and frozen: you cannot change them in this session.
-3. **Do the steps.** Call `list_displays` for monitor bounds, then `desktop_observe_app` with those
-   bounds to see the screen and get `observationRef`, `imageRef`, and element refs. Act with
-   `desktop_invoke` (preferred for buttons), `desktop_enter_text`, `desktop_click`,
-   `desktop_press_keys`, `desktop_drag`, or `desktop_scroll`. Every action needs a new UUID
-   `actionId`. You do not need a tool to make one: any well-formed UUID that you have not used
-   before in this server works, for example `00000000-0000-4000-8000-000000000001`, then `...0002`.
-   Reusing one with different arguments is rejected. Observation refs expire after 30 seconds, so
-   observe again before each action.
+3. **Use selectors first.** For a known field and button, start the session, enter text with
+   `desktop_enter_text` using `semanticValue: true` and a selector, invoke the button with
+   `desktop_invoke` using a selector, then check the criterion with `desktop_check_ui`. This is the
+   four-call first check (session start, enter text, invoke, check); it needs no display discovery or
+   observation. For example, after starting with `criteria: ["The status shows Saved"]` and getting
+   `sessionId`, use these arguments in order:
+
+   ```json
+   {"sessionId":"<sessionId>","actionId":"00000000-0000-4000-8000-000000000002","text":"hello","semanticValue":true,"automationId":"textBox"}
+   {"sessionId":"<sessionId>","actionId":"00000000-0000-4000-8000-000000000003","automationId":"saveButton"}
+   {"sessionId":"<sessionId>","kind":"textEquals","automationId":"statusLabel","expected":"Saved","timeoutSeconds":5,"criterionId":"C1"}
+   ```
+
+   `desktop_enter_text` accepts `automationId`, or `role` with `name`, when `semanticValue` is
+   `true`; it sets the value through UI Automation. `desktop_invoke` accepts the same selectors.
+   Selectors must resolve to exactly one element. Use `desktop_observe_app` to explore an unknown UI,
+   identify a selector or window, or get an image/element reference for an operation that needs one.
+   `desktop_click`, `desktop_drag`, and `desktop_scroll` use image coordinates; coordinate-based
+   `desktop_enter_text` also needs an observation. `desktop_focus_window` needs a `windowRef` from an
+   observation. These refs expire after 30 seconds, so observe again before using them.
+
+   Every action needs a new UUID `actionId`. You do not need a tool to make one: any well-formed UUID
+   that you have not used before in this server works, for example `00000000-0000-4000-8000-000000000001`,
+   then `...0002`. Reusing one with different arguments is rejected. If a selector returns
+   `AmbiguousTarget`, observe the matches and narrow the selector or add `windowRef`; if it returns
+   `InspectionIncomplete`, observe the UI and retry with a new `actionId`. Those failures send no
+   input. Follow a response's `nextStep` when supplied.
+
+   For a keyboard chord, call `desktop_press_keys` with `chord: "Ctrl+S"` and a current target
+   `windowRef` or `observationRef`; focus the window first with `desktop_focus_window` when needed.
 4. **Check each criterion.** Call `desktop_check_ui` with `criterionId` set to `C1`, `C2`, .... Kinds:
    `exists`, `absent`, `enabled`, `toggleEquals`, `selectionEquals`, `textEquals`, `windowExists`,
    `windowAbsent`, `processExited`. For `enabled`, `expected` is `true` or `false`. For
@@ -89,7 +111,9 @@ did not pass; `None` stores none.
   be read, or the negative control is missing. This is not a pass.
 
 Every evaluated check counts, so a failing check you ran "just to look" fails the report. Use
-`desktop_observe_app` to explore, and `desktop_check_ui` only for checks you mean.
+`desktop_observe_app` to explore, and `desktop_check_ui` only for checks you mean. Selector errors
+`InspectionIncomplete` and `AmbiguousTarget` mean the target was not established and no input was
+sent; use the response's `nextStep`, observe to inspect the UI, and retry with a new `actionId`.
 
 ## What to return to the user
 
