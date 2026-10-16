@@ -56,7 +56,29 @@ public sealed class WorkerUiCheckSource(
             return new DesktopUiCheckEvaluation(false, false, 0, snapshot.ErrorCode ?? "ProviderUnavailable");
         }
 
-        return Evaluate(snapshot.Elements, condition);
+        var evaluation = Evaluate(snapshot.Elements, condition);
+        if (!snapshot.IsTruncated)
+        {
+            return evaluation;
+        }
+
+        // A target that was found in the inspected part decides the check normally: a found element
+        // proves existence, a mismatch on it is real, and a found element makes absence false. Finding
+        // nothing proves nothing, because the target, a duplicate, or the thing absence needs to rule
+        // out may sit in the part of the tree that was never inspected.
+        if (evaluation.MatchCount > 0)
+        {
+            return evaluation with { IsTruncated = true };
+        }
+
+        return new DesktopUiCheckEvaluation(
+            false,
+            false,
+            evaluation.MatchCount,
+            "InspectionIncomplete",
+            "The UI Automation tree was truncated before this conclusion could be established.",
+            evaluation.ActualValue,
+            IsTruncated: true);
     }
 
     internal static DesktopUiCheckEvaluation Evaluate(

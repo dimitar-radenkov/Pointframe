@@ -81,7 +81,8 @@ public static class DesktopTestingResponseMapper
             evaluation.Matches,
             evaluation.MatchCount,
             evaluation.ErrorCode is null ? null : new McpCaptureError(evaluation.ErrorCode, evaluation.Message ?? evaluation.ErrorCode),
-            evaluation.ActualValue);
+            evaluation.ActualValue,
+            RecoveryFor(evaluation.ErrorCode));
     }
 
     // A negative control inverts only the verdict. Matches stays the oracle's raw answer, so a reader can
@@ -131,8 +132,33 @@ public static class DesktopTestingResponseMapper
             result.ObservationStatus.ToString(),
             result.Error is null ? null : new McpCaptureError(result.Error.Code, result.Error.Message),
             sessionRef,
-            targetRef);
+            targetRef,
+            ActionId: result.ActionId,
+            NextStep: RecoveryFor(result.Error?.Code));
     }
+
+    public static DesktopNextStep? RecoveryFor(string? code) => code switch
+    {
+        "InspectionIncomplete" => new(
+            "scope_or_retry",
+            "desktop_check_ui",
+            new Dictionary<string, object?> { ["note"] = "Scope the check with windowRef or automationId, or repeat it once the UI has settled." },
+            1),
+        "TargetStillRunning" => new(
+            "wait",
+            "desktop_check_ui",
+            new Dictionary<string, object?> { ["kind"] = "processExited", ["note"] = "Close the app through its own UI, wait for processExited, then call desktop_restart_app again." },
+            2),
+        "StaleObservation" or "StaleObservationRef" => new("observe_then_retry", "desktop_observe_app", new Dictionary<string, object?>()),
+        "ElementNotFound" => new(
+            "observe_then_retry",
+            "desktop_observe_app",
+            new Dictionary<string, object?> { ["note"] = "Observe again and use a current element ref, automationId, or role and name." }),
+        "ProfileNotFound" or "UnknownProfile" => new("list_profiles", "desktop_list_apps", new Dictionary<string, object?>()),
+        "ProviderUnavailable" or "UiaUnavailable" or "InspectionTimeout" => new("retry", "desktop_observe_app", new Dictionary<string, object?>(), 2),
+        "TargetUnavailable" or "WindowUnavailable" => new("observe_then_retry", "desktop_observe_app", new Dictionary<string, object?>()),
+        _ => null,
+    };
 
     private static string? Truncate(string? value)
     {

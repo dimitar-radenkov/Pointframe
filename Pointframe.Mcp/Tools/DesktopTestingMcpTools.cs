@@ -48,11 +48,11 @@ internal sealed class DesktopTestingMcpTools(
     }
 
     [McpServerTool(Name = "desktop_start_test_session", Title = "Start desktop test session", ReadOnly = false, Destructive = false, UseStructuredContent = true)]
-    [Description("Starts one approved desktop application profile or attaches to an explicitly approved process.")]
+    [Description("Starts one approved desktop application profile. Attaching to an already-running application is not supported by this server.")]
     public async Task<DesktopTestingActionResponse> StartTestSessionAsync(
         [Description("A UUID action identifier.")] string actionId,
         [Description("The policy profile to launch. Must match a profile id declared in the desktop testing policy file.")] string profileId,
-        [Description("Reserved for attaching to an already-running approved process. Attaching is not implemented by this host; leave unset to launch the profile.")] string? appRef = null,
+        [Description("Attaching is not supported. Leave unset to launch the approved profile.")] string? appRef = null,
         [Description("Optional plain-text acceptance criteria, written before the work starts, frozen and hashed as C1, C2, ... in order. When supplied, the report passes only if every criterion is covered by a passing desktop_check_ui call naming its id and at least one negative control (expectFailure) passed.")] IReadOnlyList<string>? criteria = null,
         CancellationToken cancellationToken = default)
     {

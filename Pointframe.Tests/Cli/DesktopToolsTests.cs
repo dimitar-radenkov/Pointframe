@@ -335,6 +335,9 @@ public sealed class DesktopToolsTests : IDisposable
         Assert.Equal("fixture", response.GetProperty("profileId").GetString());
         Assert.Equal(_fixture.McpPath, response.GetProperty("serverPath").GetString());
         Assert.Equal("none", response.GetProperty("nextStep").GetProperty("kind").GetString());
+        Assert.Equal("desktop_start_test_session", response.GetProperty("firstCall").GetProperty("tool").GetString());
+        Assert.Equal("fixture", response.GetProperty("firstCall").GetProperty("arguments").GetProperty("profileId").GetString());
+        Assert.True(Guid.TryParse(response.GetProperty("firstCall").GetProperty("arguments").GetProperty("actionId").GetString(), out _));
         Assert.Contains("Restart your agent session", response.GetProperty("nextStep").GetProperty("text").GetString(), StringComparison.Ordinal);
         Assert.Contains("desktop_start_test_session", response.GetProperty("tools").EnumerateArray().Select(item => item.GetString()));
         Assert.False(File.Exists(Path.Combine(_fixture.Root, ".codex", "config.toml")));

@@ -131,7 +131,7 @@ static string ServerInstructions(bool desktopTestingEnabled, string? telemetryNo
     (telemetryNotice is null ? string.Empty : telemetryNotice + " ") +
     (desktopTestingEnabled
         ? "Desktop testing is enabled: to verify a change in a running desktop app and return a signed proof, read the resource " +
-          $"{PointframeMcpResources.VerifyDesktopWorkGuideUri} before calling any desktop_ tool."
+          $"{PointframeMcpResources.VerifyDesktopWorkGuideUri} before calling any desktop_ tool. Sessions launch an approved profile; attaching to an already-running app is not supported."
         : "Desktop testing tools are disabled on this server. To learn how an agent verifies its desktop work once they are enabled, read the resource " +
           $"{PointframeMcpResources.VerifyDesktopWorkGuideUri}.");
 

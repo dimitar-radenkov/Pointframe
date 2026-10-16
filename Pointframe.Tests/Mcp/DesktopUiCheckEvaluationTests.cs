@@ -2,12 +2,153 @@ using Pointframe.Engine;
 using Pointframe.Engine.Automation.Models;
 using Pointframe.Mcp;
 using Pointframe.Mcp.Automation;
+using Pointframe.Engine.Automation.Services;
+using Moq;
 using Xunit;
 
 namespace Pointframe.Tests.Mcp;
 
 public class DesktopUiCheckEvaluationTests
 {
+    private static WorkerUiCheckSource SourceFor(bool truncated, params DesktopUiElementSnapshot[] elements)
+    {
+        var observations = new Mock<IDesktopUiObservationProvider>();
+        observations.Setup(provider => provider.Inspect(It.IsAny<DesktopObservationRequest>()))
+            .Returns(new DesktopUiSnapshot(DesktopUiAutomationStatus.Available, elements, DateTimeOffset.UtcNow, IsTruncated: truncated));
+        return new WorkerUiCheckSource(observations.Object, new Mock<IDesktopProcessController>().Object);
+    }
+
+    private static DesktopProcessIdentity Process() => new("process-1", 1, DateTimeOffset.UtcNow, "app.exe", "hash");
+
+    [Fact]
+    public async Task TruncatedTreeWithMissingTargetIsInconclusiveWithRecoveryHint()
+    {
+        var result = await SourceFor(true).EvaluateAsync(Process(), new DesktopUiCheckCondition.Exists(ById("missing")), CancellationToken.None);
+
+        Assert.False(result.StateAvailable);
+        Assert.Equal("InspectionIncomplete", result.ErrorCode);
+        var response = DesktopTestingResponseMapper.MapCheck(result);
+        Assert.Equal("inconclusive", response.Verification);
+        Assert.Equal("InspectionIncomplete", response.Error!.Code);
+        Assert.NotNull(response.NextStep);
+        Assert.Equal("desktop_check_ui", response.NextStep!.Tool);
+    }
+
+    [Fact]
+    public async Task TruncatedTreeWithApparentAbsenceIsInconclusive()
+    {
+        var absent = await SourceFor(true).EvaluateAsync(Process(), new DesktopUiCheckCondition.Absent(ById("missing")), CancellationToken.None);
+        var windowAbsent = await SourceFor(true).EvaluateAsync(Process(), new DesktopUiCheckCondition.WindowAbsent("window-z"), CancellationToken.None);
+
+        Assert.Equal("inconclusive", DesktopTestingResponseMapper.MapCheck(absent).Verification);
+        Assert.Equal("InspectionIncomplete", absent.ErrorCode);
+        Assert.Equal("inconclusive", DesktopTestingResponseMapper.MapCheck(windowAbsent).Verification);
+    }
+
+    [Fact]
+    public async Task TruncatedTreeWithUnseenTargetOfAStatePredicateIsInconclusive()
+    {
+        var source = SourceFor(true, Element("el-1-0", automationId: "other"));
+
+        var text = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.TextEquals(ById("saveButton"), "Save"), CancellationToken.None);
+        var enabled = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.Enabled(ById("saveButton"), true), CancellationToken.None);
+
+        Assert.Equal("InspectionIncomplete", text.ErrorCode);
+        Assert.Equal("InspectionIncomplete", enabled.ErrorCode);
+        Assert.False(text.StateAvailable);
+    }
+
+    [Fact]
+    public async Task TruncatedTreeNeverTurnsIntoAPassingNegativeControl()
+    {
+        var result = await SourceFor(true).EvaluateAsync(Process(), new DesktopUiCheckCondition.Exists(ById("missing")), CancellationToken.None);
+
+        var response = DesktopTestingResponseMapper.MapNegativeControl(result);
+
+        Assert.Equal("inconclusive", response.Verification);
+    }
+
+    [Fact]
+    public async Task TruncatedTreeStillDecidesWhenTheTargetWasFound()
+    {
+        var source = SourceFor(true, Element("el-1-0", automationId: "saveButton", text: "Save"));
+
+        var exists = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.Exists(ById("saveButton")), CancellationToken.None);
+        var mismatch = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.TextEquals(ById("saveButton"), "Other"), CancellationToken.None);
+        var absent = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.Absent(ById("saveButton")), CancellationToken.None);
+
+        Assert.Equal("passed", DesktopTestingResponseMapper.MapCheck(exists).Verification);
+        Assert.Equal("failed", DesktopTestingResponseMapper.MapCheck(mismatch).Verification);
+        Assert.Equal("failed", DesktopTestingResponseMapper.MapCheck(absent).Verification);
+    }
+
+    [Fact]
+    public async Task CompleteTreeKeepsItsVerdicts()
+    {
+        var source = SourceFor(false, Element("el-1-0", automationId: "saveButton", text: "Save"));
+
+        var found = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.TextEquals(ById("saveButton"), "Save"), CancellationToken.None);
+        var mismatch = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.TextEquals(ById("saveButton"), "Other"), CancellationToken.None);
+        var missing = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.Exists(ById("missing")), CancellationToken.None);
+        var absent = await source.EvaluateAsync(Process(), new DesktopUiCheckCondition.Absent(ById("missing")), CancellationToken.None);
+
+        Assert.Equal("passed", DesktopTestingResponseMapper.MapCheck(found).Verification);
+        Assert.Equal("failed", DesktopTestingResponseMapper.MapCheck(mismatch).Verification);
+        Assert.Equal("failed", DesktopTestingResponseMapper.MapCheck(missing).Verification);
+        Assert.Equal("passed", DesktopTestingResponseMapper.MapCheck(absent).Verification);
+        Assert.Null(DesktopTestingResponseMapper.MapCheck(missing).NextStep);
+    }
+
+    [Theory]
+    [InlineData("ProviderUnavailable", "desktop_observe_app")]
+    [InlineData("InspectionTimeout", "desktop_observe_app")]
+    [InlineData("ProfileNotFound", "desktop_list_apps")]
+    [InlineData("UnknownProfile", "desktop_list_apps")]
+    [InlineData("StaleObservation", "desktop_observe_app")]
+    [InlineData("StaleObservationRef", "desktop_observe_app")]
+    [InlineData("ElementNotFound", "desktop_observe_app")]
+    [InlineData("TargetStillRunning", "desktop_check_ui")]
+    [InlineData("InspectionIncomplete", "desktop_check_ui")]
+    public void KnownErrorCodesCarryARecoveryNextStep(string code, string tool)
+    {
+        var check = DesktopTestingResponseMapper.MapCheck(new DesktopUiCheckEvaluation(false, false, 0, code));
+        var action = DesktopTestingResponseMapper.MapAction(new DesktopActionResult(
+            DesktopTestingLimits.SchemaVersion,
+            Guid.NewGuid().ToString(),
+            DesktopOperationStatus.Completed,
+            DesktopDispatchStatus.NotStarted,
+            DesktopVerificationStatus.Inconclusive,
+            DesktopObservationStatus.NotRequested,
+            new DesktopOperationError(code, "x")));
+
+        Assert.Equal(tool, check.NextStep!.Tool);
+        Assert.Equal(tool, action.NextStep!.Tool);
+    }
+
+    [Fact]
+    public void UnknownErrorCodesAddNoNextStep()
+    {
+        var check = DesktopTestingResponseMapper.MapCheck(new DesktopUiCheckEvaluation(false, false, 0, "SomethingNew"));
+
+        Assert.Null(check.NextStep);
+    }
+
+    [Fact]
+    public void ActionResponsesEchoTheCallersActionId()
+    {
+        var actionId = Guid.NewGuid().ToString();
+        var action = DesktopTestingResponseMapper.MapAction(new DesktopActionResult(
+            DesktopTestingLimits.SchemaVersion,
+            actionId,
+            DesktopOperationStatus.Completed,
+            DesktopDispatchStatus.Complete,
+            DesktopVerificationStatus.NotRequested,
+            DesktopObservationStatus.NotRequested));
+
+        Assert.Equal(actionId, action.ActionId);
+        Assert.Null(action.NextStep);
+    }
+
     [Fact]
     public void ExistsMatchesAnElementByAutomationId()
     {

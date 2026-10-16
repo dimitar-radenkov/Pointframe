@@ -310,6 +310,75 @@ public sealed class VerificationOutcomeTests : IDisposable
         Assert.True(result.InfrastructureFailure);
     }
 
+    [Fact]
+    public async Task Runner_TruncatedObservationWithoutTheElement_IsInfrastructureNotElementNotFound()
+    {
+        var fake = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            ObserveResponse = _ => new
+            {
+                observationRef = "obs-1",
+                isTruncated = true,
+                images = new[] { new { imageRef = "img-1" } },
+                elements = new[] { new { elementRef = "el-other", windowRef = "win-1", role = "Edit", automationId = "other" } },
+            },
+        };
+
+        var result = await FastRunner(fake).RunAsync(Scenario("""[ { "invoke": { "automationId": "saveButton" } } ]"""), CancellationToken.None);
+
+        var step = result.Steps.Single(item => item.Kind == "invoke");
+        Assert.Equal("InspectionIncomplete", step.Code);
+        Assert.Contains("not an app defect", step.Message, StringComparison.Ordinal);
+        Assert.Contains("automationId", step.Message, StringComparison.Ordinal);
+        Assert.True(result.InfrastructureFailure);
+        Assert.NotEqual(VerificationStatus.Pass, result.Status);
+    }
+
+    [Fact]
+    public async Task Runner_TruncatedObservationThatContainsTheElement_StillResolves()
+    {
+        var fake = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            ObserveResponse = _ => new
+            {
+                observationRef = "obs-1",
+                isTruncated = true,
+                images = new[] { new { imageRef = "img-1" } },
+                elements = new[] { new { elementRef = "el-saveButton", windowRef = "win-1", role = "Button", automationId = "saveButton" } },
+            },
+        };
+
+        var result = await FastRunner(fake).RunAsync(Scenario("""[ { "invoke": { "automationId": "saveButton" } } ]"""), CancellationToken.None);
+
+        Assert.Equal(VerificationStatus.Pass, result.Steps.Single(item => item.Kind == "invoke").Status);
+    }
+
+    [Fact]
+    public async Task Runner_InconclusiveInspectionIncompleteCheck_IsInfrastructure()
+    {
+        var fake = new FakeMcp(await _fixture.WriteSealedBundleAsync(criterionPassed: true))
+        {
+            CheckResponse = _ => new { verification = "inconclusive", stateAvailable = false, matches = false, matchCount = 0, error = new { code = "InspectionIncomplete", message = "truncated" } },
+        };
+
+        var result = await FastRunner(fake).RunAsync(Scenario("""[ { "check": { "kind": "exists", "automationId": "saveButton" } } ]"""), CancellationToken.None);
+
+        var step = result.Steps.Single(item => item.Kind == "check");
+        Assert.Equal("InspectionIncomplete", step.Code);
+        Assert.True(result.InfrastructureFailure);
+        Assert.NotEqual(VerificationStatus.Pass, result.Status);
+    }
+
+    [Fact]
+    public void NextStep_ForIncompleteInspection_TellsTheAgentToScopeTheCheck()
+    {
+        var next = VerificationNextSteps.For(VerificationStatus.Fail, "inspection_incomplete");
+
+        Assert.Equal("run_command", next.Kind);
+        Assert.Contains("automationId", next.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Fix failing", next.Text, StringComparison.Ordinal);
+    }
+
     private static DesktopScenarioRunner FastRunner(FakeMcp fake) =>
         new(fake.Mock.Object, "fixture", [new CaptureRectangle(0, 0, 1920, 1080)], TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
 

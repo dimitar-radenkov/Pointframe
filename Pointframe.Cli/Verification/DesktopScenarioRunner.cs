@@ -29,7 +29,6 @@ internal sealed class DesktopScenarioRunner
         "TargetStillRunning",
     };
 
-
     private static readonly TimeSpan ActionTimeout = TimeSpan.FromSeconds(60);
     private const int MaxCandidates = 5;
     private static readonly TimeSpan LaunchTimeout = TimeSpan.FromSeconds(90);
@@ -433,6 +432,12 @@ internal sealed class DesktopScenarioRunner
                         ? actualValue.GetString()
                         : null;
                     var (code, message) = ErrorOf(checkResult);
+                    if (code == "InspectionIncomplete")
+                    {
+                        _stepInfrastructure = true;
+                        message = $"{message} This is not an app defect. Scope the check with an automationId or windowRef, or retry.";
+                    }
+
                     if (code == "ElementNotFound")
                     {
                         var observed = await ObserveAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -464,8 +469,10 @@ internal sealed class DesktopScenarioRunner
         IReadOnlyList<string> seen = [];
         IReadOnlyList<JsonElement> observed = [];
         var infrastructure = false;
+        var lastTruncated = false;
         while (true)
         {
+            lastTruncated = false;
             var observationResult = await ObserveAsync(sessionId, cancellationToken).ConfigureAwait(false);
             var observation = Structured(observationResult);
             var (code, message) = ErrorOf(observationResult);
@@ -480,6 +487,8 @@ internal sealed class DesktopScenarioRunner
             {
                 var all = elements.EnumerateArray().ToArray();
                 var matches = locator is null ? all.Take(1).ToArray() : all.Where(element => Matches(element, locator)).ToArray();
+                lastTruncated = observation.TryGetProperty("isTruncated", out var truncated) && truncated.ValueKind == JsonValueKind.True;
+
                 if (matches.Length > 1)
                 {
                     var candidates = matches.Take(MaxCandidates).Select(Candidate);
@@ -511,6 +520,16 @@ internal sealed class DesktopScenarioRunner
 
             if (DateTimeOffset.UtcNow >= deadline)
             {
+                if (lastTruncated)
+                {
+                    // The walk hit its budget before it could establish that the element is missing, so this is
+                    // not a result about the app.
+                    _stepInfrastructure = true;
+                    return ResolvedElement.Failed(
+                        "InspectionIncomplete",
+                        $"UI Automation stopped before it could establish whether {locator?.ToString() ?? "any element of the app"} exists. This is not an app defect. Scope the step with an automationId or windowRef, or retry.");
+                }
+
                 _stepInfrastructure = infrastructure;
                 var target = locator?.ToString() ?? "any element of the app";
                 var hint = seen.Count == 0 ? "The app exposed no automation ids." : $"Automation ids seen: {string.Join(", ", seen)}.";
