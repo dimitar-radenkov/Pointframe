@@ -44,12 +44,6 @@
       "PowerShell(git ls-files *)",
       "PowerShell(git branch --show-current)",
       "PowerShell(tasklist *)"
-    ],
-    "ask": [
-      "Bash(git commit *)",
-      "Bash(git push *)",
-      "PowerShell(git commit *)",
-      "PowerShell(git push *)"
     ]
   },
   "hooks": {
