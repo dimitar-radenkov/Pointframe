@@ -19,7 +19,7 @@ Lets an AI agent see and record the Windows desktop: list monitors and windows, 
 Author: Dimitar Radenkov (https://github.com/dimitar-radenkov/Pointframe)
 Homepage: https://github.com/dimitar-radenkov/Pointframe
 Repository: https://github.com/dimitar-radenkov/Pointframe.git
-Documentation: https://github.com/dimitar-radenkov/Pointframe/blob/master/README.md
+Documentation: https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp/README.md
 Support: https://github.com/dimitar-radenkov/Pointframe/issues
 License: MIT
 Keywords: mcp, screenshot, screen-capture, ocr, screen-recording, redaction, windows, ai-agents, pointframe

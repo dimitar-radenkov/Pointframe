@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 Checks that what agents and directories read about Pointframe is consistent with the repository: the agent page,
-llms.txt, the directory submission drafts, the README install commands, and the release assets the pipeline publishes.
+llms.txt, the directory submission drafts, the README and MCP reference install commands, and the release assets the pipeline publishes.
 
   pwsh scripts/check-agent-discovery.ps1                # offline checks; exit 1 on any problem
   pwsh scripts/check-agent-discovery.ps1 -SelfTest      # run the checks on scripts/tests/agent-discovery fixtures
@@ -10,12 +10,12 @@ llms.txt, the directory submission drafts, the README install commands, and the 
 
 Offline checks: the page, llms.txt, both drafts, the sitemap and pages.yml exist; every relative link and every
 in-page anchor resolves; every github.com/dimitar-radenkov/Pointframe link is well formed and its README or blob
-anchor exists; every code-block line on the page is a line of README.md or docs/cli/README.md, and the README
-registration commands are on the page; version-free release asset names are published by cd.yml and have a versioned
+anchor exists; every code-block line on the page is a line of README.md, docs/mcp/README.md or docs/cli/README.md, and the
+registration commands in README.md and docs/mcp/README.md are on the page; version-free release asset names are published by cd.yml and have a versioned
 counterpart in packaging/; every tool in the MCPB manifest is on the page and in both drafts; the page and llms.txt
 are in the sitemap, the index, and pages.yml; the telemetry disclosure is complete: no text still claims "no telemetry",
-the agent page, both drafts, the README Privacy Policy, and website/privacy.html name the opt-out, every property the code
-sends is disclosed, the MCPB manifest links the privacy page, and the source build carries no connection string.
+the agent page, both drafts, README.md, PRIVACY.md, and website/privacy.html name the opt-out, PRIVACY.md has the Privacy Policy
+section, every property the code sends is disclosed in PRIVACY.md and website/privacy.html, the MCPB manifest links the privacy page, and the source build carries no connection string.
 
 Claude plugin checks (plugin/pointframe, the directory's rules that can be checked offline): plugin.json fields and name
 pattern, README of at least 40 words outside code blocks that names the pinned download, the opt-out, and the privacy page,
@@ -48,6 +48,8 @@ $Sitemap = 'website/sitemap.xml'
 $Index = 'website/index.html'
 $Readme = 'README.md'
 $CliReadme = 'docs/cli/README.md'
+$McpDoc = 'docs/mcp/README.md'
+$PrivacyDoc = 'PRIVACY.md'
 $CdWorkflow = '.github/workflows/cd.yml'
 $PagesWorkflow = '.github/workflows/pages.yml'
 $McpPackaging = 'packaging/build-mcp-package.ps1'
@@ -145,7 +147,7 @@ function Add-Problem([System.Collections.Generic.List[string]]$Problems, [string
 
 function Test-FilesExist([string]$Root, [System.Collections.Generic.List[string]]$Problems)
 {
-    $required = @($AgentPage, $Llms, $Sitemap, $Index, $Readme, $CdWorkflow, $PagesWorkflow, $McpPackaging, $PrivacyPage, $TelemetrySource, $TelemetryConfig) + $Submissions
+    $required = @($AgentPage, $Llms, $Sitemap, $Index, $Readme, $McpDoc, $PrivacyDoc, $CdWorkflow, $PagesWorkflow, $McpPackaging, $PrivacyPage, $TelemetrySource, $TelemetryConfig) + $Submissions
     foreach ($path in $required)
     {
         if (-not (Test-Path -LiteralPath (Join-Path $Root $path) -PathType Leaf))
@@ -276,12 +278,17 @@ function Test-GitHubLinks([string]$Root, [System.Collections.Generic.List[string
 function Test-InstallCommands([string]$Root, [System.Collections.Generic.List[string]]$Problems)
 {
     $page = Read-RepoFile $Root $AgentPage
-    $readme = Read-RepoFile $Root $Readme
-    if (-not $page -or -not $readme)
+    $readmeText = Read-RepoFile $Root $Readme
+    $mcpText = Read-RepoFile $Root $McpDoc
+    if (-not $page -or -not $readmeText -or -not $mcpText)
     {
         return
     }
-    $known = [System.Collections.Generic.HashSet[string]]::new([string[]]@(Get-TrimmedLines $readme))
+    $known = [System.Collections.Generic.HashSet[string]]::new([string[]]@(Get-TrimmedLines $readmeText))
+    foreach ($line in (Get-TrimmedLines $mcpText))
+    {
+        [void]$known.Add($line)
+    }
     $cliReadme = Read-RepoFile $Root $CliReadme
     if ($cliReadme)
     {
@@ -296,16 +303,16 @@ function Test-InstallCommands([string]$Root, [System.Collections.Generic.List[st
     {
         if (-not $known.Contains($line))
         {
-            Add-Problem $Problems "$AgentPage code line is not in README.md: $line"
+            Add-Problem $Problems "$AgentPage code line is not in README.md, docs/mcp/README.md or docs/cli/README.md: $line"
         }
     }
 
     $mustAppear = '^(claude mcp add|codex mcp add|pointframe mcp (install|doctor)|tar -xf|\.\\Pointframe\.Cli\.exe install$|Invoke-WebRequest)'
-    foreach ($line in (Get-FencedLines $readme))
+    foreach ($line in (@(Get-FencedLines $readmeText) + @(Get-FencedLines $mcpText)))
     {
         if ($line -match $mustAppear -and $line -notmatch '--dry-run' -and $pageLines -notcontains $line)
         {
-            Add-Problem $Problems "$AgentPage is missing the README install command: $line"
+            Add-Problem $Problems "$AgentPage is missing the README or MCP reference install command: $line"
         }
     }
 
@@ -320,7 +327,7 @@ function Test-InstallCommands([string]$Root, [System.Collections.Generic.List[st
         {
             if ($line -match '^(claude|codex) mcp add' -and -not $known.Contains($line))
             {
-                Add-Problem $Problems "$path install command is not in README.md: $line"
+                Add-Problem $Problems "$path install command is not in README.md, docs/mcp/README.md or docs/cli/README.md: $line"
             }
         }
     }
@@ -337,7 +344,7 @@ function Test-ReleaseAssetNames([string]$Root, [System.Collections.Generic.List[
     }
     $assetPattern = 'Pointframe\.(?:Cli|Mcp)-win-x64\.(?:zip|mcpb)(?:\.sha256)?'
     $named = [System.Collections.Generic.HashSet[string]]::new()
-    foreach ($path in (@($AgentTexts) + @($Readme)))
+    foreach ($path in (@($AgentTexts) + @($Readme, $McpDoc)))
     {
         $text = Read-RepoFile $Root $path
         if (-not $text)
@@ -472,7 +479,7 @@ function Test-TelemetryDisclosure([string]$Root, [System.Collections.Generic.Lis
     }
 
     $optOut = 'POINTFRAME_TELEMETRY_OPTOUT'
-    $disclosures = @($AgentPage, 'packaging/directory-submissions/claude-local-extension-directory.txt', $Readme, $PrivacyPage)
+    $disclosures = @($AgentPage, 'packaging/directory-submissions/claude-local-extension-directory.txt', $Readme, $PrivacyDoc, $PrivacyPage)
     foreach ($path in $disclosures)
     {
         $text = Read-RepoFile $Root $path
@@ -512,10 +519,10 @@ function Test-TelemetryDisclosure([string]$Root, [System.Collections.Generic.Lis
         Add-Problem $Problems "$Sitemap does not list $PrivacyUrl."
     }
 
-    $readmeText = Read-RepoFile $Root $Readme
-    if ($readmeText -and $readmeText -notmatch '(?m)^## Privacy Policy\s*$')
+    $privacyDocText = Read-RepoFile $Root $PrivacyDoc
+    if ($privacyDocText -and $privacyDocText -notmatch '(?m)^## Privacy Policy\s*$')
     {
-        Add-Problem $Problems "$Readme has no '## Privacy Policy' section."
+        Add-Problem $Problems "$PrivacyDoc has no '## Privacy Policy' section."
     }
 
     $script = Read-RepoFile $Root $McpPackaging
@@ -534,7 +541,7 @@ function Test-TelemetryDisclosure([string]$Root, [System.Collections.Generic.Lis
         }
         foreach ($key in $keys)
         {
-            foreach ($path in @($Readme, $PrivacyPage))
+            foreach ($path in @($PrivacyDoc, $PrivacyPage))
             {
                 $text = Read-RepoFile $Root $path
                 if ($text -and $text.IndexOf("``$key``", [StringComparison]::Ordinal) -lt 0 -and $text.IndexOf("<code>$key</code>", [StringComparison]::Ordinal) -lt 0)
@@ -828,7 +835,7 @@ function Test-ShortPathInstall([string]$Root, [System.Collections.Generic.List[s
             break
         }
     }
-    foreach ($path in @($Readme, 'docs/cli/verify.md', $Llms))
+    foreach ($path in @('docs/cli/verify.md', $Llms))
     {
         $text = Read-RepoFile $Root $path
         if ($text -and -not (Get-TrimmedLines $text).Contains($install))
@@ -1043,7 +1050,8 @@ function Invoke-SelfTest
         @{ Name = 'missing llms.txt'; Expect = 'website/llms.txt is missing'; Apply = { param($r) Remove-Item (Join-Path $r 'website' 'llms.txt') } },
         @{ Name = 'broken relative link'; Expect = 'nope.html'; Apply = { param($r) Edit-FixtureFile $r 'website/windows-screenshot-mcp-server.html' 'href="./index.html"' 'href="./nope.html"' } },
         @{ Name = 'malformed repo link'; Expect = 'malformed repository link'; Apply = { param($r) Edit-FixtureFile $r 'website/llms.txt' 'https://github.com/dimitar-radenkov/Pointframe/releases/latest)' 'https://github.com/dimitar-radenkov/pointframe/releases/latest)' } },
-        @{ Name = 'dead README anchor'; Expect = 'no heading there has that anchor'; Apply = { param($r) Edit-FixtureFile $r 'website/llms.txt' 'Pointframe#pointframe-mcp-server' 'Pointframe#no-such-section' } },
+        @{ Name = 'dead README anchor'; Expect = 'no heading there has that anchor'; Apply = { param($r) Edit-FixtureFile $r 'website/llms.txt' 'docs/mcp/README.md#pointframe-mcp-server' 'docs/mcp/README.md#no-such-section' } },
+        @{ Name = 'MCP reference command drifted from the page'; Expect = 'is missing the README or MCP reference install command'; Apply = { param($r) Edit-FixtureFile $r 'docs/mcp/README.md' 'codex mcp add pointframe' 'codex mcp add pointframe3' } },
         @{ Name = 'drifted install command'; Expect = 'code line is not in README.md'; Apply = { param($r) Edit-FixtureFile $r 'website/windows-screenshot-mcp-server.html' 'claude mcp add --scope user' 'claude mcp add --scope project' } },
         @{ Name = 'drifted draft command'; Expect = 'install command is not in README.md'; Apply = { param($r) Edit-FixtureFile $r 'packaging/directory-submissions/mcp-so-issue.txt' 'codex mcp add pointframe' 'codex mcp add pointframe2' } },
         @{ Name = 'asset not published'; Expect = 'does not publish it'; Apply = { param($r) Edit-FixtureFile $r '.github/workflows/cd.yml' 'packaging/output/Pointframe.Mcp-win-x64.mcpb' 'packaging/output/Other.mcpb' } },
@@ -1055,6 +1063,10 @@ function Invoke-SelfTest
         @{ Name = 'opt-out missing on agent page'; Expect = 'does not name the opt-out'; Apply = { param($r) Edit-FixtureFile $r 'website/windows-screenshot-mcp-server.html' 'POINTFRAME_TELEMETRY_OPTOUT' 'POINTFRAME_OTHER' } },
         @{ Name = 'privacy page missing from sitemap'; Expect = 'privacy.html'; Apply = { param($r) Edit-FixtureFile $r 'website/sitemap.xml' 'Pointframe/privacy.html' 'Pointframe/other.html' } },
         @{ Name = 'undisclosed telemetry property'; Expect = "does not disclose the telemetry property 'host'"; Apply = { param($r) Edit-FixtureFile $r 'website/privacy.html' '<code>host</code>' '<code>machine</code>' } },
+        @{ Name = 'undisclosed telemetry property in PRIVACY.md'; Expect = "PRIVACY.md does not disclose the telemetry property 'host'"; Apply = { param($r) Edit-FixtureFile $r 'PRIVACY.md' '`host`' '`machine`' } },
+        @{ Name = 'privacy policy section missing'; Expect = "PRIVACY.md has no '## Privacy Policy' section"; Apply = { param($r) Edit-FixtureFile $r 'PRIVACY.md' '## Privacy Policy' '## Policy' } },
+        @{ Name = 'opt-out missing in PRIVACY.md'; Expect = 'PRIVACY.md does not name the opt-out'; Apply = { param($r) Edit-FixtureFile $r 'PRIVACY.md' 'POINTFRAME_TELEMETRY_OPTOUT' 'POINTFRAME_OTHER' } },
+        @{ Name = 'opt-out missing in README'; Expect = 'README.md does not name the opt-out'; Apply = { param($r) Edit-FixtureFile $r 'README.md' 'POINTFRAME_TELEMETRY_OPTOUT' 'POINTFRAME_OTHER' } },
         @{ Name = 'manifest without privacy policy'; Expect = 'does not set privacy_policies'; Apply = { param($r) Edit-FixtureFile $r 'packaging/build-mcp-package.ps1' 'privacy_policies' 'privacy_links' } },
         @{ Name = 'connection string in source'; Expect = 'carries a connection string in source'; Apply = { param($r) Edit-FixtureFile $r 'Pointframe.Telemetry/telemetry.json' '"ConnectionString": ""' '"ConnectionString": "InstrumentationKey=abc"' } }
     )
@@ -1144,7 +1156,6 @@ function Invoke-SelfTest
         New-Item -ItemType Directory -Force -Path (Join-Path $guideRoot 'website') | Out-Null
         Copy-Item -LiteralPath (Join-Path $RepoRoot 'docs' 'cli' 'verify-spec.md') -Destination (Join-Path $guideRoot 'docs' 'cli')
         Copy-Item -LiteralPath (Join-Path $RepoRoot 'docs' 'cli' 'verify.md') -Destination (Join-Path $guideRoot 'docs' 'cli')
-        Copy-Item -LiteralPath (Join-Path $RepoRoot 'README.md') -Destination $guideRoot
         Copy-Item -LiteralPath (Join-Path $RepoRoot 'website' 'llms.txt') -Destination (Join-Path $guideRoot 'website')
         $cases++
         $clean = [System.Collections.Generic.List[string]]::new()

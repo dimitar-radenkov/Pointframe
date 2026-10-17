@@ -26,7 +26,8 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 |---|---|---|
 | `*`, `.vscode/**` | Root config: solution, central package versions, NBGV `version.json`, local tools, editor and MCP client config | [Release qualification and versioning](tooling.md#release-qualification-and-versioning) |
 | `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `lessons.md`, `docs/**`, `.claude/**`, `.codex/**`, `.agents/skills/kb-*/**`, `scripts/kb.ps1`, `scripts/kb-fixtures/**` | Agent and contributor docs, this file, the kb skills and their script, the Claude Code and Codex project hooks, and the generated Codex skill copies | [How to maintain this file](knowledge-base.md#how-to-maintain-this-file), [Agent workflow](workflow.md), [D-006](decisions.md#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area) |
-| `docs/cli/**`, `docs/mcp-desktop-testing/**`, `README.md` | CLI and MCP user docs; the DocsSync tests fail when they drift from the code | [Docs-sync tests](features/cli-mcp.md#docs-sync-tests) |
+| `docs/cli/**`, `docs/mcp/**`, `docs/mcp-desktop-testing/**` | CLI and MCP user docs; the DocsSync tests fail when they drift from the code | [Docs-sync tests](features/cli-mcp.md#docs-sync-tests) |
+| `README.md`, `PRIVACY.md`, `docs/app.md`, `docs/images/**` | Landing page (at most 10,240 B, old anchors kept as stubs), privacy policy and telemetry catalog, desktop app guide, doc images | [Docs-sync tests](features/cli-mcp.md#docs-sync-tests) |
 | `docs/appinsights*` | Kusto queries and the workbook template | [Telemetry](features/telemetry.md#telemetry-pipeline) |
 | `scripts/update-download-badges.ps1` | Download totals across all releases as shields.io endpoint badges, built by the Pages workflow; offline `-SelfTest` | [Workflows](tooling.md#workflows) |
 | `scripts/usage-report.ps1`, `scripts/tests/usage-report/**` | Usage report from Application Insights (activation, cohorts, retention, onboarding, failures, website) and the offline fixtures its `-SelfTest` shapes | [Telemetry](features/telemetry.md#telemetry-pipeline) |
@@ -37,7 +38,7 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 | `scripts/codex-ask.ps1`, `scripts/lib/codex.ps1` | Codex consultation helper (explicit model, effort, session; rejects stale output) and the Codex policy it shares with `agent-run.ps1` | [Agent workflow](workflow.md) |
 | `scripts/status.ps1`, `scripts/tests/status/**` | Authoritative status store, GitHub #186 and handoff renderer; offline rendering fixtures | [Local gates and merging](tooling.md#local-gates-and-merging), [Agent workflow](workflow.md) |
 | `scripts/lib/tree-hash.ps1` | Shared working-tree hash and verify receipt freshness decisions used by verify and merge scripts | [Local gates and merging](tooling.md#local-gates-and-merging) |
-| `scripts/check-agent-discovery.ps1`, `scripts/tests/agent-discovery/**` | Offline check of the agent page, llms.txt, and directory drafts against README, packaging, and the CD asset list; `-Online`, `-Snapshot`; its good fixture tree | [Embedded guide and discovery size](features/cli-mcp.md#embedded-guide-and-discovery-size) |
+| `scripts/check-agent-discovery.ps1`, `scripts/tests/agent-discovery/**` | Offline check of the agent page, llms.txt and drafts against the READMEs, `PRIVACY.md`, packaging and CD assets; `-Online`, `-Snapshot`; fixtures | [Embedded guide and discovery size](features/cli-mcp.md#embedded-guide-and-discovery-size) |
 
 ### Release, verification, and packaging scripts
 
@@ -112,7 +113,7 @@ pwsh scripts/kb.ps1 read Pointframe/Views/OverlayWindow.Recording.cs
 | `Pointframe.Cli/Verification/DesktopScenarioRunner.cs`, `Pointframe.Cli/Verification/McpStdioToolClient.cs` | The desktop scenario runner and the MCP stdio client it drives | [Desktop UI checks and selector actions](features/verify.md#desktop-ui-checks-and-selector-actions), [D-007](features/verify.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service) |
 | `.pointframe/**` | Pointframe's fixture verification spec and real WPF app spec for `verify run` | [Overview and run flow](features/verify.md#overview-and-run-flow) |
 | `.github/workflows/verify-samples.yml`, `samples/verify/**` | Release CLI verification samples and their Windows CI job | [Overview and run flow](features/verify.md#overview-and-run-flow) |
-| `Pointframe.Mcp/Resources/**`, `Pointframe.Mcp/Tools/**` | Tool methods and the command list resource; a new tool also updates the contract test sets, `test-mcp-stdio.ps1`, and both READMEs | [MCP command list](features/cli-mcp.md#the-mcp-command-list-resource-must-name-every-registered-tool) |
+| `Pointframe.Mcp/Resources/**`, `Pointframe.Mcp/Tools/**` | Tool methods and the command list resource; a new tool also updates the contract test sets, `test-mcp-stdio.ps1`, and the two MCP READMEs | [MCP command list](features/cli-mcp.md#the-mcp-command-list-resource-must-name-every-registered-tool) |
 | `Pointframe.Engine/Library/**`, `Pointframe.Data/**` | Capture catalog, import and index worker, EF Core context, repositories, migrations | [Capture library](features/library.md#capture-library-and-data-layer) |
 | `Pointframe.Data/DependencyInjection.cs`, `Pointframe.Data/Services/**` | Data service registration and the startup migration | [App bootstrap](composition.md#app-bootstrap-di-and-messaging) |
 

@@ -16,9 +16,9 @@ public sealed class McpToolDocumentationTests
     private const string DesktopTestingToolsHeading = "## Available opt-in tools";
 
     [Fact]
-    public void Readme_DocumentsEveryDirectTool()
+    public void McpReadme_DocumentsEveryDirectTool()
     {
-        var section = ReadSection(FindRepoFile("README.md"), DirectToolsHeading, "\n### ");
+        var section = ReadSection(FindRepoFile(Path.Combine("docs", "mcp", "README.md")), DirectToolsHeading, "\n### ");
 
         var undocumented = PointframeCommandCatalog.DirectTools
             .Where(name => !section.Contains($"`{name}`", StringComparison.Ordinal))
@@ -26,7 +26,7 @@ public sealed class McpToolDocumentationTests
 
         Assert.True(
             undocumented.Length == 0,
-            $"README.md '{DirectToolsHeading}' section is missing these registered MCP tools: {string.Join(", ", undocumented)}");
+            $"docs/mcp/README.md '{DirectToolsHeading}' section is missing these registered MCP tools: {string.Join(", ", undocumented)}");
     }
 
     [Fact]

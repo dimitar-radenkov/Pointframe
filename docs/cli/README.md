@@ -7,8 +7,8 @@ recording a whole monitor to MP4. It uses
 `Pointframe.Engine` directly and does not start the Pointframe tray
 application or any WPF window.
 
-To make an agent finish only on a passing check in your own .NET or Node project,
-see [Make your agent finish only on a passing check](verify.md).
+To let an agent verify your own project, in the real UI of a Windows app or with
+build and test gates, see [Let your coding agent test the real Windows UI](verify.md).
 
 ## Requirements
 
@@ -810,7 +810,7 @@ desktop or a working `ffmpeg.exe`; use a real `displays`, `capture`, or
 
 ## Privacy and telemetry
 
-Official release builds of the CLI send one anonymous event per command: the command name (`other` for anything unrecognized), whether it succeeded, a coarse duration bucket, `cli`, the version, and a random install ID stored in `%LOCALAPPDATA%\Pointframe\agent-install-id` (not tied to a name, account, or machine). Arguments, paths, output, error text, and user or machine names are never sent, `--help` and `--version` send nothing, and source builds send nothing. The first run prints a one-time notice to standard error. Opt out with `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1`, or put `{"optOut": true}` in `%LOCALAPPDATA%\Pointframe\agent-telemetry.json`. See the [Privacy Policy](../../README.md#privacy-policy).
+Official release builds of the CLI send one anonymous event per command: the command name (`other` for anything unrecognized), whether it succeeded, a coarse duration bucket, `cli`, the version, and a random install ID stored in `%LOCALAPPDATA%\Pointframe\agent-install-id` (not tied to a name, account, or machine). Arguments, paths, output, error text, and user or machine names are never sent, `--help` and `--version` send nothing, and source builds send nothing. The first run prints a one-time notice to standard error. Opt out with `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1`, or put `{"optOut": true}` in `%LOCALAPPDATA%\Pointframe\agent-telemetry.json`. See the [Privacy Policy](../../PRIVACY.md#privacy-policy).
 
 ## Troubleshooting
 

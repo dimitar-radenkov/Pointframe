@@ -17,7 +17,7 @@ Generated files (do not edit by hand):
 
 Generated regions (the text between the short-path:begin and short-path:end comments; the markers must already exist):
   the guide's own short-path region (section "Short path for coding agents") is the source; it is copied into
-  README.md, docs/cli/verify.md and website/llms.txt. Edit the region only in the guide.
+  docs/cli/verify.md and website/llms.txt. Edit the region only in the guide.
 
 Line endings are compared without regard to CR; files are written with CRLF like the rest of the repository.
 Exit 0 when in sync, 1 on drift (-Check) or a missing source, 2 on bad arguments.
@@ -47,7 +47,7 @@ $SkillPath = 'plugin/pointframe/skills/verify-desktop-work/SKILL.md'
 $RecipePath = 'plugin/pointframe/skills/create-desktop-verification-skill/references/recipe.md'
 $SpecSourcePath = 'docs/cli/verify-spec.md'
 $SpecCopyPath = 'plugin/pointframe/skills/create-desktop-verification-skill/references/verify-spec.md'
-$RegionTargets = @('README.md', 'docs/cli/verify.md', 'website/llms.txt')
+$RegionTargets = @('docs/cli/verify.md', 'website/llms.txt')
 $RegionBegin = '<!-- short-path:begin'
 $RegionEnd = '<!-- short-path:end -->'
 

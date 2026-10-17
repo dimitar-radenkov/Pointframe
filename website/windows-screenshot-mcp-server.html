@@ -167,7 +167,7 @@ tar -xf $mcpb -C $dir</code></pre>
                     <p>In VS Code you can also run <strong>MCP: Add Server</strong> from the Command Palette, choose <strong>Command (stdio)</strong>, and enter the path to <code>Pointframe.Mcp.exe</code>. To check the connection, ask the agent to list your displays; it should call <code>list_displays</code>. The <code>pointframe://server-info</code> resource reports the server version and whether <code>ffmpeg</code> was found for recording. The server is also listed in the official <a href="https://registry.modelcontextprotocol.io/v0/servers?search=pointframe" target="_blank" rel="noopener noreferrer">MCP Registry</a> as <code>io.github.dimitar-radenkov/pointframe-mcp</code>.</p>
 
                     <h2 id="tools">All eleven tools</h2>
-                    <p>Discovery: <code>list_displays</code>, <code>list_windows</code>. Capture: <code>capture_monitor</code>, <code>capture_window</code>. OCR: <code>read_text_from_monitor</code>, <code>read_text_from_window</code>. Saved captures: <code>search_captures</code>, <code>get_capture</code>. Recording: <code>start_recording</code>, <code>get_recording_status</code>, <code>stop_recording</code>. The full reference is in the <a href="https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server" target="_blank" rel="noopener noreferrer">README</a>, and a plain-text summary for agents is in <a href="./llms.txt">llms.txt</a>.</p>
+                    <p>Discovery: <code>list_displays</code>, <code>list_windows</code>. Capture: <code>capture_monitor</code>, <code>capture_window</code>. OCR: <code>read_text_from_monitor</code>, <code>read_text_from_window</code>. Saved captures: <code>search_captures</code>, <code>get_capture</code>. Recording: <code>start_recording</code>, <code>get_recording_status</code>, <code>stop_recording</code>. The full reference is in the <a href="https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp/README.md" target="_blank" rel="noopener noreferrer">MCP reference</a>, and a plain-text summary for agents is in <a href="./llms.txt">llms.txt</a>.</p>
                     <h2>Things to ask your agent</h2>
                     <ul>
                         <li>"Take a screenshot of my second monitor and tell me why the layout looks broken."</li>
@@ -190,7 +190,7 @@ tar -xf $mcpb -C $dir</code></pre>
                         <p>Free and open source under the MIT license. Windows 10 and 11, interactive desktop session required.</p>
                         <div class="hero-actions compact-actions">
                             <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb" class="primary-button js-utm-link" data-utm-campaign="mcp_server" data-utm-medium="cta" data-utm-content="mcp_server_article_cta" data-track-event="website_cta_clicked" data-cta-type="download_mcp" data-cta-location="article_cta">Download the MCP server</a>
-                            <a href="https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server" class="secondary-link" target="_blank" rel="noopener noreferrer">Read the full tool reference</a>
+                            <a href="https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp/README.md" class="secondary-link" target="_blank" rel="noopener noreferrer">Read the full tool reference</a>
                             <a href="./llms.txt" class="secondary-link">llms.txt for agents</a>
                         </div>
                     </div>

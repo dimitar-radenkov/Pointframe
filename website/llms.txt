@@ -1,8 +1,8 @@
 # Pointframe
 
-> Pointframe is a free, open-source (MIT) Windows tool for screen capture, annotation, and recording. Its standalone MCP server and CLI let AI agents list monitors and windows, capture screenshots, read on-screen text with Windows OCR, search saved captures, and record redacted MP4s. Everything runs locally; official builds of the MCP server and the CLI send only anonymous usage counts (tool or command name, outcome, duration bucket, host, client type, version, random install ID), and POINTFRAME_TELEMETRY_OPTOUT=1 or DO_NOT_TRACK=1 turns that off. Windows 10 and 11, interactive desktop session required.
+> Pointframe lets your coding agent test the real Windows UI. It is a free, open-source (MIT) toolkit, Windows x64 only: agents inspect your app, interact with its controls, and run repeatable checks with screenshots and signed evidence (`pointframe verify run`). Its standalone MCP server and CLI also let AI agents list monitors and windows, capture screenshots, read on-screen text with Windows OCR, search saved captures, and record redacted MP4s; the same project ships a screenshot and recording tray app for people. Everything runs locally; official builds of the MCP server and the CLI send only anonymous usage counts (tool or command name, outcome, duration bucket, host, client type, version, random install ID), and POINTFRAME_TELEMETRY_OPTOUT=1 or DO_NOT_TRACK=1 turns that off. Windows 10 and 11, interactive desktop session required.
 
-Install the MCP server for Claude Desktop (open the .mcpb bundle), Claude Code (`claude mcp add`), Codex (`codex mcp add`), VS Code, or Cursor. The exact commands are on the agent page below and in the README.
+Install the MCP server for Claude Desktop (open the .mcpb bundle), Claude Code (`claude mcp add`), Codex (`codex mcp add`), VS Code, or Cursor. The exact commands are on the agent page below and in the MCP reference.
 
 ## Short path for coding agents
 
@@ -50,14 +50,14 @@ The spec fields are in [verify-spec.md](https://github.com/dimitar-radenkov/Poin
 ## Agents
 
 - [Windows screenshot MCP server for AI agents](https://dimitar-radenkov.github.io/Pointframe/windows-screenshot-mcp-server.html): what the server does, install steps per client, the eleven tools, and the privacy model
-- [Make your coding agent prove it's done](https://dimitar-radenkov.github.io/Pointframe/verify-coding-agents-windows.html): keep Claude Code or Codex working until your own build and tests pass
+- [Let your coding agent test the real Windows UI](https://dimitar-radenkov.github.io/Pointframe/verify-coding-agents-windows.html): inspect your app, drive its controls, and run repeatable checks with screenshots and signed evidence; build and test gates and a Stop hook included
 - [Coding agents: verify a Windows desktop app in six steps](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify.md#coding-agents-start-here)
 
 ## Documentation
 
-- [README: MCP server](https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server): tools, resources, workflow, and per-client install
+- [MCP reference](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp/README.md): tools, resources, workflow, and per-client install
 - [Privacy policy](https://dimitar-radenkov.github.io/Pointframe/privacy.html): what the desktop app, CLI, and MCP server collect, where it goes, retention, and the opt-out
-- [README: privacy policy](https://github.com/dimitar-radenkov/Pointframe#privacy-policy): the same policy in the repository
+- [PRIVACY.md](https://github.com/dimitar-radenkov/Pointframe/blob/master/PRIVACY.md#privacy-policy): the same policy in the repository
 - [CLI guide](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/README.md): commands, JSON output, exit codes, and the MCP installer
 - [Desktop-testing MCP guide](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp-desktop-testing/README.md): the opt-in tools that drive a Windows app, off by default
 - [pointframe verify](https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify.md): declarative done-checks for coding agents

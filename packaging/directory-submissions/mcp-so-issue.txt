@@ -21,7 +21,7 @@ Install:
    claude mcp add --scope user pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
 3. Codex:
    codex mcp add pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
-4. VS Code and Cursor: JSON snippets and the download-and-verify steps are in https://github.com/dimitar-radenkov/Pointframe#connect-your-mcp-client
+4. VS Code and Cursor: JSON snippets and the download-and-verify steps are in https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp/README.md#connect-your-mcp-client
 
 Server config (mcpServers format):
 {
@@ -47,4 +47,4 @@ Tools (11):
 
 Resources: pointframe://commands, pointframe://server-info
 
-Links: Docs https://github.com/dimitar-radenkov/Pointframe#pointframe-mcp-server | llms.txt https://dimitar-radenkov.github.io/Pointframe/llms.txt | MCP Registry https://registry.modelcontextprotocol.io/v0/servers?search=pointframe | Releases https://github.com/dimitar-radenkov/Pointframe/releases/latest
+Links: Docs https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/mcp/README.md | llms.txt https://dimitar-radenkov.github.io/Pointframe/llms.txt | MCP Registry https://registry.modelcontextprotocol.io/v0/servers?search=pointframe | Releases https://github.com/dimitar-radenkov/Pointframe/releases/latest
