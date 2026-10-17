@@ -98,6 +98,7 @@ internal sealed class McpManagementApplication(
 
     private static string ToErrorCode(Exception exception) => exception switch
     {
+        McpReleaseAssetMissingException => McpReleaseAssetMissingException.Code,
         HttpRequestException => "download_failed",
         InvalidDataException => "package_verification_failed",
         JsonException => "client_config_invalid",

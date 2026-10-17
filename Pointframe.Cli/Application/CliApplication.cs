@@ -8,6 +8,27 @@ using Pointframe.Telemetry;
 
 namespace Pointframe.Cli;
 
+// Test-only overrides of the production wiring in RunAsync: the install pipeline (package source, installer)
+// stays the production code; only identity, network handler, folders and external processes are replaced.
+internal sealed record CliHostSeams
+{
+    internal string? Version { get; init; }
+
+    internal bool IsReleaseBuild { get; init; }
+
+    internal HttpMessageHandler? Handler { get; init; }
+
+    internal string? InstallRoot { get; init; }
+
+    internal string? ConfigurationPath { get; init; }
+
+    internal VerificationStore? Store { get; init; }
+
+    internal IMcpHealthChecker? HealthChecker { get; init; }
+
+    internal Func<VerificationServices, VerificationServices>? CustomizeVerification { get; init; }
+}
+
 internal sealed class CliApplication
 {
     private const int SchemaVersion = 1;
@@ -36,7 +57,8 @@ internal sealed class CliApplication
         TextWriter standardOutput,
         TextWriter standardError,
         CancellationToken cancellationToken = default,
-        IOperationTelemetry? telemetry = null)
+        IOperationTelemetry? telemetry = null,
+        CliHostSeams? seams = null)
     {
         telemetry ??= OperationTelemetryFactory.Create(
             TelemetryHost.Cli,
@@ -46,7 +68,7 @@ internal sealed class CliApplication
         string? commandName = null;
         var started = Stopwatch.GetTimestamp();
         TelemetryOutcome? classified = null;
-        var exitCode = await RunCoreAsync(args, standardOutput, standardError, cancellationToken, name => commandName = name, value => classified = value);
+        var exitCode = await RunCoreAsync(args, standardOutput, standardError, cancellationToken, name => commandName = name, value => classified = value, seams);
         if (commandName is not ("help" or "version"))
         {
             var outcome = exitCode == 0
@@ -72,7 +94,8 @@ internal sealed class CliApplication
         TextWriter standardError,
         CancellationToken cancellationToken,
         Action<string> onCommand,
-        Action<TelemetryOutcome> onOutcome)
+        Action<TelemetryOutcome> onOutcome,
+        CliHostSeams? seams)
     {
         try
         {
@@ -106,9 +129,9 @@ internal sealed class CliApplication
 
             if (string.Equals(command.Name, "verify", StringComparison.Ordinal))
             {
-                using var httpClient = new HttpClient();
-                var installer = new McpPackageInstaller(new GitHubMcpPackageSource(httpClient), McpInstallRoot());
-                var verifyApplication = CreateVerificationApplication(installer, standardOutput, standardError);
+                using var httpClient = CreateHttpClient(seams);
+                var installer = new McpPackageInstaller(CreateMcpPackageSource(httpClient, seams), seams?.InstallRoot ?? McpInstallRoot());
+                var verifyApplication = CreateVerificationApplication(installer, standardOutput, standardError, seams);
                 var verifyExitCode = await verifyApplication.RunAsync(command, cancellationToken);
                 if (verifyApplication.Outcome is { } verifyOutcome)
                 {
@@ -122,25 +145,25 @@ internal sealed class CliApplication
             {
                 // Standard output belongs to the MCP server this process hands its stdio to, so the
                 // verification code gets a writer that discards anything it would print there.
-                using var httpClient = new HttpClient();
-                var installer = new McpPackageInstaller(new GitHubMcpPackageSource(httpClient), McpInstallRoot());
-                var verifyApplication = CreateVerificationApplication(installer, TextWriter.Null, standardError);
+                using var httpClient = CreateHttpClient(seams);
+                var installer = new McpPackageInstaller(CreateMcpPackageSource(httpClient, seams), seams?.InstallRoot ?? McpInstallRoot());
+                var verifyApplication = CreateVerificationApplication(installer, TextWriter.Null, standardError, seams);
                 return await verifyApplication.ServeAsync(command, Environment.CurrentDirectory, cancellationToken);
             }
 
             if (string.Equals(command.Name, "mcp", StringComparison.Ordinal))
             {
-                using var httpClient = new HttpClient();
-                var installRoot = McpInstallRoot();
-                var configurationPath = Path.Combine(
+                using var httpClient = CreateHttpClient(seams);
+                var installRoot = seams?.InstallRoot ?? McpInstallRoot();
+                var configurationPath = seams?.ConfigurationPath ?? Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                     "Code",
                     "User",
                     "mcp.json");
                 var mcpApplication = new McpManagementApplication(
-                    new McpPackageInstaller(new GitHubMcpPackageSource(httpClient), installRoot),
+                    new McpPackageInstaller(CreateMcpPackageSource(httpClient, seams), installRoot),
                     new VsCodeMcpConfigurator(configurationPath),
-                    new McpStdioHealthChecker(),
+                    seams?.HealthChecker ?? new McpStdioHealthChecker(),
                     standardOutput,
                     standardError);
                 return await mcpApplication.RunAsync(command, cancellationToken);
@@ -303,26 +326,31 @@ internal sealed class CliApplication
         return stopResult.Success ? 0 : 1;
     }
 
-    private static VerificationApplication CreateVerificationApplication(McpPackageInstaller installer, TextWriter standardOutput, TextWriter standardError)
+    private static VerificationApplication CreateVerificationApplication(McpPackageInstaller installer, TextWriter standardOutput, TextWriter standardError, CliHostSeams? seams)
     {
-        var (agent, _) = AgentSelection.Create(AgentSelection.Read(VerificationStore.Default));
-        return new VerificationApplication(
-            new VerificationServices(
-                new McpStdioToolClientFactory(),
-                () => installer.GetCurrent()?.ExecutablePath,
-                new ShellCommandRunner(),
-                new GitWorkingTreeReader(),
-                VerificationStore.Default,
-                new ConsoleConfirmation(standardError),
-                new AgentExaminer(agent),
-                VerifierVersion: GetVersion(),
-                Reviewer: new AgentReviewer(agent),
-                HookInput: Console.IsInputRedirected ? Console.In : null,
-                Approver: new AgentApprover(agent),
-                McpInstaller: installer),
-            standardOutput,
-            standardError);
+        var store = seams?.Store ?? VerificationStore.Default;
+        var (agent, _) = AgentSelection.Create(AgentSelection.Read(store));
+        var services = new VerificationServices(
+            new McpStdioToolClientFactory(),
+            () => installer.GetCurrent()?.ExecutablePath,
+            new ShellCommandRunner(),
+            new GitWorkingTreeReader(),
+            store,
+            new ConsoleConfirmation(standardError),
+            new AgentExaminer(agent),
+            VerifierVersion: seams?.Version is { } version ? $"Pointframe CLI {version}" : GetVersion(),
+            Reviewer: new AgentReviewer(agent),
+            HookInput: Console.IsInputRedirected ? Console.In : null,
+            Approver: new AgentApprover(agent),
+            McpInstaller: installer);
+        return new VerificationApplication(seams?.CustomizeVerification?.Invoke(services) ?? services, standardOutput, standardError);
     }
+
+    private static HttpClient CreateHttpClient(CliHostSeams? seams) =>
+        seams?.Handler is { } handler ? new HttpClient(handler, disposeHandler: false) : new HttpClient();
+
+    private static GitHubMcpPackageSource CreateMcpPackageSource(HttpClient httpClient, CliHostSeams? seams) =>
+        seams is null ? CreateMcpPackageSource(httpClient) : CreateMcpPackageSource(seams.Version, seams.IsReleaseBuild, httpClient);
 
     private static string McpInstallRoot() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -345,4 +373,22 @@ internal sealed class CliApplication
         var assemblyVersion = Assembly.GetEntryAssembly()?.GetName().Version;
         return $"Pointframe CLI {assemblyVersion?.ToString() ?? "0.0.0"}";
     }
+
+    internal static GitHubMcpPackageSource CreateMcpPackageSource(HttpClient httpClient)
+    {
+        var isReleaseBuild = typeof(CliApplication).Assembly
+            .GetCustomAttributes(typeof(AssemblyMetadataAttribute), false)
+            .Cast<AssemblyMetadataAttribute>()
+            .Any(attribute => attribute.Key == "PointframeReleaseBuild" && attribute.Value == "true");
+        return CreateMcpPackageSource(GetVersion().Split(' ').LastOrDefault(), isReleaseBuild, httpClient);
+    }
+
+    internal static GitHubMcpPackageSource CreateMcpPackageSource(string? version, bool isReleaseBuild, HttpMessageHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        return CreateMcpPackageSource(version, isReleaseBuild, new HttpClient(handler, disposeHandler: false));
+    }
+
+    private static GitHubMcpPackageSource CreateMcpPackageSource(string? version, bool isReleaseBuild, HttpClient httpClient) =>
+        new(httpClient, version, isReleaseBuild);
 }
