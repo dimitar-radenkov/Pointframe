@@ -1,6 +1,7 @@
 ---
 name: kb-read
-description: Find what the Pointframe knowledge base says before you change or explain something - the sections, user-facing features (F-NN), and past-bug lessons for a file, an area, a feature ID, or a topic. Use when the user types /kb-read; before editing a file you have not worked on in this session; when asked how an area or feature works, where a feature lives, or what to watch out for.
+user-invocable: false
+description: Find what the Pointframe knowledge base says before you change or explain something - the sections, user-facing features (F-NN), and past-bug lessons for a file, an area, a feature ID, or a topic. Use before editing a file you have not worked on in this session; when asked how an area or feature works, where a feature lives, or what to watch out for.
 ---
 
 # /kb-read: what to read first

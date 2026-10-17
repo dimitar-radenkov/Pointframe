@@ -1,6 +1,7 @@
 ---
 name: kb-write
-description: Write to the Pointframe knowledge base - add new knowledge or update stale knowledge in docs/knowledge-base/knowledge-base.md (cross-cutting) or docs/knowledge-base/features/<area>.md (one area, with F-NN feature rows). Use when the user types /kb-write; asks to document, write down, or update architecture, a feature, a subsystem, a decision, an invariant, a how-to, or a reference fact; or when a finished feature, refactor, fix, rename, or move changed how an area works.
+user-invocable: false
+description: Write to the Pointframe knowledge base - add new knowledge or update stale knowledge in docs/knowledge-base/knowledge-base.md (cross-cutting) or docs/knowledge-base/features/<area>.md (one area, with F-NN feature rows). Use when asked to document, write down, or update architecture, a feature, a subsystem, a decision, an invariant, a how-to, or a reference fact; or when a finished feature, refactor, fix, rename, or move changed how an area works.
 ---
 
 # /kb-write: add or update knowledge

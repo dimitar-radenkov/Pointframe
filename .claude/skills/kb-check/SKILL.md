@@ -1,6 +1,7 @@
 ---
 name: kb-check
-description: Check the Pointframe knowledge base against the code and fix what it reports - paths, lessons, links across files, feature IDs, telemetry and smoke-test coverage, File map coverage, and the generated table of contents, Feature index, and Codex skill copies. Use when the user types /kb-check; after /kb-write; after renaming, moving, or adding files, telemetry events, or smoke tests; or when CI's "Knowledge base check" step fails.
+user-invocable: false
+description: Check the Pointframe knowledge base against the code and fix what it reports - paths, lessons, links across files, feature IDs, telemetry and smoke-test coverage, File map coverage, and the generated table of contents, Feature index, and Codex skill copies. Use after writing to the knowledge base; after renaming, moving, or adding files, telemetry events, or smoke tests; or when CI's "Knowledge base check" step fails.
 ---
 
 # /kb-check: check and fix
