@@ -527,6 +527,21 @@ public sealed class DesktopToolsTests : IDisposable
     }
 
     [Fact]
+    public async Task Setup_MissingReleaseAssetPreservesStableErrorCode()
+    {
+        SetupProject();
+        var installer = new Mock<IMcpPackageInstaller>();
+        installer.Setup(item => item.InstallLatestAsync(false, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new McpReleaseAssetMissingException("6.7.123", new Uri("https://example.test/missing")));
+
+        var exit = await SetupAsync(mcpPath: null, installer: installer.Object);
+
+        Assert.Equal(1, exit);
+        using var json = JsonDocument.Parse(_output.ToString());
+        Assert.Equal(McpReleaseAssetMissingException.Code, json.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task Setup_SmokeFailureIsReportedWithACodeAndTheFilesAreStillWritten()
     {
         SetupProject();

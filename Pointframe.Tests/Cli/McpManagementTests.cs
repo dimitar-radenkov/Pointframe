@@ -211,6 +211,25 @@ public sealed class McpManagementTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_InstallMissingReleaseAssetWritesStableErrorCode()
+    {
+        var installer = new Mock<IMcpPackageInstaller>();
+        installer.Setup(item => item.InstallLatestAsync(false, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new McpReleaseAssetMissingException("6.7.123", new Uri("https://example.test/missing")));
+        var configurator = new Mock<IMcpClientConfigurator>();
+        configurator.SetupGet(item => item.ConfigurationPath).Returns(@"C:\Code\mcp.json");
+        var healthChecker = new Mock<IMcpHealthChecker>();
+        var output = new StringWriter();
+        var application = new McpManagementApplication(installer.Object, configurator.Object, healthChecker.Object, output, new StringWriter());
+
+        var exitCode = await application.RunAsync(new CliCommand("mcp", McpAction: "install", McpClient: "vscode"), CancellationToken.None);
+
+        Assert.Equal(1, exitCode);
+        using var response = JsonDocument.Parse(output.ToString());
+        Assert.Equal(McpReleaseAssetMissingException.Code, response.RootElement.GetProperty("Code").GetString());
+    }
+
+    [Fact]
     public async Task CheckAsync_MissingExecutable_ReturnsPackageNotInstalled()
     {
         var checker = new McpStdioHealthChecker();

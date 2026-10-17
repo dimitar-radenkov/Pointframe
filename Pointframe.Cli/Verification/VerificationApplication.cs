@@ -975,6 +975,11 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
+                    if (exception is McpReleaseAssetMissingException)
+                    {
+                        return new McpResolution(null, McpReleaseAssetMissingException.Code, exception.Message);
+                    }
+
                     return Mismatch(installed.Version, CliVersion(), exception.Message);
                 }
             }
@@ -1008,6 +1013,11 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
+            if (exception is McpReleaseAssetMissingException)
+            {
+                return new McpResolution(null, McpReleaseAssetMissingException.Code, exception.Message);
+            }
+
             return new McpResolution(null, "mcp_not_found", $"{McpNotFoundMessage} The automatic install failed: {exception.Message}");
         }
     }

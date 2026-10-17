@@ -147,7 +147,9 @@ internal sealed class DesktopToolsApplication(
             }
             catch (Exception exception) when (exception is HttpRequestException or InvalidDataException or IOException or UnauthorizedAccessException)
             {
-                failureCode = "mcp_install_failed";
+                failureCode = exception is McpReleaseAssetMissingException
+                    ? McpReleaseAssetMissingException.Code
+                    : "mcp_install_failed";
                 failureMessage = $"The Pointframe MCP server was not found and could not be installed: {exception.Message}";
             }
         }

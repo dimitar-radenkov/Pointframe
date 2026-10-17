@@ -24,6 +24,7 @@ dotnet publish $projectPath `
     /p:PublishTrimmed=false `
     /p:PublishDir="$publishDirectory\" `
     /p:Version=$Version `
+    /p:PointframeReleaseBuild=true `
     --nologo
 if ($LASTEXITCODE -ne 0)
 {

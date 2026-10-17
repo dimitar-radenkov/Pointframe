@@ -59,7 +59,8 @@ The script writes the ZIP and SHA-256 file under
 
 ## Install and verify the MCP server for VS Code
 
-The CLI can download the latest published Pointframe MCP bundle, verify its
+The CLI can download the Pointframe MCP bundle from its own release (source and
+development builds use the latest release), verify its
 SHA-256 checksum, install it under a versioned directory in
 `%LOCALAPPDATA%\Programs\Pointframe.Mcp`, and add the `pointframe` server to VS
 Code's user-level `mcp.json`:
