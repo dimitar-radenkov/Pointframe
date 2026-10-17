@@ -41,14 +41,15 @@ Warnings, not errors: a prose line over 600 characters (tables and `**Files.**` 
 
 ### Maintenance commands
 
-**Maintenance.** Four skills, all backed by `scripts/kb.ps1`. Edit them only under `.claude/skills/kb-*`; `check` regenerates the Codex copies in `.agents/skills/`.
+**Maintenance.** Five skills, all backed by `scripts/kb.ps1`. The owner types two: `/kb-init` to start and `/kb-done` to finish. `kb-read`, `kb-write`, and `kb-check` are model-only (`user-invocable: false`, hidden from the `/` menu); agents call them on their own. Edit them only under `.claude/skills/kb-*`; `check` regenerates the Codex copies in `.agents/skills/`.
 
 | Skill | Does | Script |
 |---|---|---|
 | `/kb-init [coordinator\|executor\|reviewer] [target]` | Starts a session: this file, the role's workflow rules, environment facts, and the target's sections and top lessons (a menu for a broad topic) | `pwsh scripts/kb.ps1 init [-Role <role>] [target]` |
-| `/kb-read <file, area, F-NN, or topic>` | Lists the sections, features, and lessons to read | `pwsh scripts/kb.ps1 read <target> [-All]` |
-| `/kb-write [topic]` | Adds or updates knowledge within the budgets; with no topic, sweeps the current diff | `pwsh scripts/kb.ps1 changed [-Base <ref>]` |
-| `/kb-check` | Refreshes the generated blocks and the baseline, checks every file, fixes what it reports | `pwsh scripts/kb.ps1 check` (CI: `check -NoFix`) |
+| `kb-read <file, area, F-NN, or topic>` | Lists the sections, features, and lessons to read | `pwsh scripts/kb.ps1 read <target> [-All]` |
+| `kb-write [topic]` | Adds or updates knowledge within the budgets; with no topic, sweeps the current diff | `pwsh scripts/kb.ps1 changed [-Base <ref>]` |
+| `kb-check` | Refreshes the generated blocks and the baseline, checks every file, fixes what it reports | `pwsh scripts/kb.ps1 check` (CI: `check -NoFix`) |
+| `/kb-done [coordinator\|executor\|reviewer]` | Closes the work: updates the knowledge base or records it as reviewed unchanged, runs `check`, `dotnet format` and `verify.ps1`, and for a coordinator writes the status checkpoint. Never commits, pushes, or merges | `pwsh scripts/kb.ps1 changed -Base <merge-base>`, `check`, `pwsh scripts/verify.ps1` |
 
 `pwsh scripts/kb.ps1 selftest` runs the tool against synthetic fixtures in `scripts/kb-fixtures/` (section routing, hook dedup, baseline growth and shrinkage, rule IDs, `init` order and role filtering, the status allowlist, topic menus); `scripts/verify.ps1` runs it before `check -NoFix`.
 
