@@ -1,13 +1,9 @@
 # Fixture
 
-## Pointframe MCP Server
+Fixture landing page. Opt out of telemetry with `POINTFRAME_TELEMETRY_OPTOUT=1`; see [PRIVACY.md](PRIVACY.md).
 
-```powershell
-Invoke-WebRequest "$release/Pointframe.Mcp-win-x64.mcpb" -OutFile $mcpb
-claude mcp add --scope user pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
-codex mcp add pointframe -- "$env:LOCALAPPDATA\Programs\Pointframe.Mcp\Pointframe.Mcp.exe"
-```
+## Moved sections
 
-## Privacy Policy
+### Pointframe MCP Server
 
-Fixture. Opt out with `POINTFRAME_TELEMETRY_OPTOUT=1`. Properties: `name`, `host`.
+Moved to [docs/mcp/README.md](docs/mcp/README.md).

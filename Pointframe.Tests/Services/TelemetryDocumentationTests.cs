@@ -10,7 +10,7 @@ public sealed class TelemetryDocumentationTests
     private const string SectionHeading = "### What is collected";
 
     [Fact]
-    public void Readme_DocumentsEveryCatalogEvent()
+    public void PrivacyDocument_DocumentsEveryCatalogEvent()
     {
         var documented = ParseDocumentedEvents().Keys;
         var undocumented = TelemetryEventCatalog.All
@@ -21,11 +21,11 @@ public sealed class TelemetryDocumentationTests
 
         Assert.True(
             undocumented.Length == 0,
-            $"Telemetry events missing from the README privacy table: {string.Join(", ", undocumented)}");
+            $"Telemetry events missing from the PRIVACY.md table: {string.Join(", ", undocumented)}");
     }
 
     [Fact]
-    public void Readme_DoesNotDocumentUnknownEvents()
+    public void PrivacyDocument_DoesNotDocumentUnknownEvents()
     {
         var stale = ParseDocumentedEvents().Keys
             .Where(name => !TelemetryEventCatalog.TryGetDefinition(name, out _))
@@ -34,11 +34,11 @@ public sealed class TelemetryDocumentationTests
 
         Assert.True(
             stale.Length == 0,
-            $"README privacy table documents events that no longer exist in the catalog: {string.Join(", ", stale)}");
+            $"PRIVACY.md table documents events that no longer exist in the catalog: {string.Join(", ", stale)}");
     }
 
     [Fact]
-    public void Readme_DocumentsRequiredPropertiesOfEveryEvent()
+    public void PrivacyDocument_DocumentsRequiredPropertiesOfEveryEvent()
     {
         var documented = ParseDocumentedEvents();
 
@@ -53,20 +53,20 @@ public sealed class TelemetryDocumentationTests
             {
                 Assert.True(
                     properties.Contains($"`{required}`", StringComparison.Ordinal),
-                    $"README row for '{definition.Name}' does not document required property '{required}'.");
+                    $"PRIVACY.md row for '{definition.Name}' does not document required property '{required}'.");
             }
         }
     }
 
     [Fact]
-    public void Readme_DocumentsActualHeartbeatInterval()
+    public void PrivacyDocument_DocumentsActualHeartbeatInterval()
     {
         var documented = ParseDocumentedEvents();
         var hours = (int)TelemetryHeartbeatService.HeartbeatInterval.TotalHours;
 
         Assert.True(
             documented[TelemetryEvents.AppHeartbeat].Contains($"every {hours} hours", StringComparison.Ordinal),
-            $"README must state the real heartbeat interval ({TelemetryHeartbeatService.HeartbeatInterval}).");
+            $"PRIVACY.md must state the real heartbeat interval ({TelemetryHeartbeatService.HeartbeatInterval}).");
     }
 
     private static Dictionary<string, string> ParseDocumentedEvents()
@@ -103,23 +103,23 @@ public sealed class TelemetryDocumentationTests
 
     private static string ReadCollectedSection()
     {
-        var readmePath = FindReadme();
-        var content = File.ReadAllText(readmePath);
+        var documentPath = FindPrivacyDocument();
+        var content = File.ReadAllText(documentPath);
 
         var start = content.IndexOf(SectionHeading, StringComparison.Ordinal);
-        Assert.True(start >= 0, $"'{SectionHeading}' heading was not found in {readmePath}.");
+        Assert.True(start >= 0, $"'{SectionHeading}' heading was not found in {documentPath}.");
 
         var afterHeading = start + SectionHeading.Length;
         var end = content.IndexOf("\n### ", afterHeading, StringComparison.Ordinal);
         return end < 0 ? content[afterHeading..] : content[afterHeading..end];
     }
 
-    private static string FindReadme()
+    private static string FindPrivacyDocument()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(directory.FullName, "README.md");
+            var candidate = Path.Combine(directory.FullName, "PRIVACY.md");
             if (File.Exists(candidate))
             {
                 return candidate;
@@ -128,6 +128,6 @@ public sealed class TelemetryDocumentationTests
             directory = directory.Parent;
         }
 
-        throw new InvalidOperationException("README.md was not found in any parent directory.");
+        throw new InvalidOperationException("PRIVACY.md was not found in any parent directory.");
     }
 }

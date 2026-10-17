@@ -1,9 +1,17 @@
-# Make your agent finish only on a passing check
+# Let your coding agent test the real Windows UI
 
-`pointframe verify` runs your project's own build and test commands and writes a
-verdict. A Stop hook then keeps your coding agent (Claude Code or Codex) working
-until the last verdict is a fresh pass. This page shows how to set it up in your
-own project. The full reference is in the [CLI README](README.md#verify-a-desktop-app-from-a-spec).
+`pointframe verify` lets an agent verify a change to a Windows desktop app in its
+real UI: it runs your project's own build and test commands and, for each scenario
+in the spec, launches the built app, drives it through its controls, and writes a
+verdict with screenshots and a signed evidence bundle. A Stop hook then keeps your
+coding agent (Claude Code or Codex) working until the last verdict is a fresh pass,
+with two exceptions: the agent may stop unverified when verify hits
+an error only a person can fix, such as an untrusted or invalid spec, and after
+five blocks.
+The stop message then says the work was not verified. Build and test
+gates run headless, including in CI; checks of the real UI need an unlocked,
+interactive Windows session. This page shows how to set it up in your own
+project. The full reference is in the [CLI README](README.md#verify-a-desktop-app-from-a-spec).
 The fields of the spec file are in the [spec reference](verify-spec.md).
 
 ## Coding agents: start here

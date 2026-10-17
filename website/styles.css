@@ -1176,3 +1176,15 @@ h1, h2, h3, h4 {
     .command-text { font-size: 0.8rem; }
     .install-tabs { justify-content: center; }
 }
+
+.agent-entrance {
+    max-width: 760px;
+    margin: 0 auto 24px;
+    padding: 16px 24px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.1) 0%, rgba(129, 140, 248, 0.1) 100%);
+    border: 1px solid rgba(125, 211, 252, 0.2);
+    text-align: center;
+}
+
+.agent-entrance p { margin: 0 0 8px; }

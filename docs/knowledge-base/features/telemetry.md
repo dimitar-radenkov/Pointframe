@@ -72,7 +72,7 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 - The product logger uses an empty OpenTelemetry resource with only `service.name=Pointframe` and `service.instance.id=desktop`; do not add environment, host, process, or OS detectors. `OTEL_*` environment overrides are ignored for this channel, Live Metrics is disabled, and the schema version is `2`.
 - Before export, drop event properties not declared by the event definition. Keep schema warnings in the local log only; they report event and property names, never property values. The Azure exporter otherwise uses the machine name as `ai.cloud.roleInstance` when no resource is set explicitly.
 - The outbound payload includes the event name, declared event properties, random install ID when available, per-run session ID, app version, `telemetry_channel`, and `telemetry_schema_version`. Azure derives country and city from the connection IP; the app does not send a machine name, user/domain name, file path, or automatic host details.
-- The README section `### What is collected` lists every catalog event with its required properties and nothing else. `TelemetryDocumentationTests` parses that table and fails the build on drift, so an event change and its README row ship in the same change.
+- The `PRIVACY.md` section `### What is collected` lists every catalog event with its required properties and nothing else. `TelemetryDocumentationTests` parses that table and fails the build on drift, so an event change and its `PRIVACY.md` row ship in the same change.
 - Properties are labels (tool, capture type, URL host), never content. Do not add file paths, OCR text, or image data.
 
 **Analysis.** Kusto queries and the workbook template: `docs/appinsights-feature-usage-queries.kql` and `docs/appinsights-pointframe-workbook.all-in-one.template.json`.
@@ -90,7 +90,7 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 
 **Context.** Without an identifier, 3,744 agent events in ten days could not be split into users: the owner's trials, CI runners, and outside users looked the same, and a tool that failed 39 of 39 times could be one agent retrying or a bug for everyone.
 
-**Decision.** The CLI and the MCP server send `agent_install_id`, a random 32-hex ID stored in `%LOCALAPPDATA%\Pointframe\agent-install-id` and shared by both hosts on one Windows account. It is not derived from the user, machine, or account. Opting out deletes it. The notice, README, privacy page, plugin README, and directory submission texts say so.
+**Decision.** The CLI and the MCP server send `agent_install_id`, a random 32-hex ID stored in `%LOCALAPPDATA%\Pointframe\agent-install-id` and shared by both hosts on one Windows account. It is not derived from the user, machine, or account. Opting out deletes it. The notice, README, `PRIVACY.md`, privacy page, plugin README, and directory submission texts say so.
 
 **Alternatives rejected.** No identifier: cannot count users or retention. A per-run ID: shows sessions but not users or returns.
 

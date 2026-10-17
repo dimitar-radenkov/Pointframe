@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Make Your Coding Agent Prove It's Done | Pointframe</title>
-    <meta name="description" content="Use pointframe verify to keep Claude Code or Codex working on Windows until your own build and tests pass on the current files. A Stop hook blocks false done claims.">
+    <title>Let Your Coding Agent Test the Real Windows UI | Pointframe</title>
+    <meta name="description" content="Pointframe lets Claude Code, Codex, and other coding agents inspect your Windows app, interact with its controls, and run repeatable checks with screenshots and signed evidence. Free, open source, Windows x64.">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://dimitar-radenkov.github.io/Pointframe/verify-coding-agents-windows.html">
     <link rel="icon" href="./favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="./app-icon.png">
     <meta property="og:type" content="article">
-    <meta property="og:title" content="Make Your Coding Agent Prove It's Done | Pointframe">
-    <meta property="og:description" content="A Stop hook that keeps your coding agent working until your own checks pass on the current files.">
+    <meta property="og:title" content="Let Your Coding Agent Test the Real Windows UI | Pointframe">
+    <meta property="og:description" content="Agents inspect your app, interact with its controls, and run repeatable checks with screenshots and signed evidence.">
     <meta property="og:url" content="https://dimitar-radenkov.github.io/Pointframe/verify-coding-agents-windows.html">
     <meta property="og:site_name" content="Pointframe">
     <meta property="og:image" content="https://dimitar-radenkov.github.io/Pointframe/social-preview.png">
@@ -19,8 +19,8 @@
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="Pointframe social preview showing screen capture, recording, and OCR workflow highlights.">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Make Your Coding Agent Prove It's Done | Pointframe">
-    <meta name="twitter:description" content="Keep Claude Code or Codex working until your own build and tests pass on the current files.">
+    <meta name="twitter:title" content="Let Your Coding Agent Test the Real Windows UI | Pointframe">
+    <meta name="twitter:description" content="Let Claude Code or Codex drive your Windows app and hand back screenshots and signed evidence.">
     <meta name="twitter:image" content="https://dimitar-radenkov.github.io/Pointframe/social-preview.png">
     <meta name="twitter:image:alt" content="Pointframe social preview showing screen capture, recording, and OCR workflow highlights.">
     <link rel="stylesheet" href="./styles.css">
@@ -28,10 +28,10 @@
         {
             "@context": "https://schema.org",
             "@type": "TechArticle",
-            "headline": "Make your coding agent prove it's done",
-            "description": "Use pointframe verify to keep Claude Code or Codex working on Windows until your own build and tests pass on the current files. A Stop hook blocks false done claims.",
+            "headline": "Let your coding agent test the real Windows UI",
+            "description": "Pointframe lets coding agents inspect your Windows app, interact with its controls, and run repeatable checks with screenshots and signed evidence. Free, open source, Windows x64.",
             "url": "https://dimitar-radenkov.github.io/Pointframe/verify-coding-agents-windows.html",
-            "about": "pointframe verify, a Stop hook for Claude Code and Codex on Windows"
+            "about": "pointframe verify, desktop verification of Windows apps for Claude Code, Codex, and other coding agents"
         }
     </script>
     <script type="application/ld+json">
@@ -41,26 +41,26 @@
             "mainEntity": [
                 {
                     "@type": "Question",
-                    "name": "Does a passing verdict prove my code is correct?",
+                    "name": "Does it need the desktop app?",
                     "acceptedAnswer": {
                         "@type": "Answer",
-                        "text": "No. It proves that your own checks, such as dotnet build and dotnet test or your npm scripts, pass on the exact files in your working tree."
+                        "text": "No. The CLI and the MCP server are standalone: no tray app and no .NET runtime. The desktop app is the separate screenshot tool for people."
                     }
                 },
                 {
                     "@type": "Question",
-                    "name": "Does the agent always stay blocked until the checks pass?",
+                    "name": "Can it run headless?",
                     "acceptedAnswer": {
                         "@type": "Answer",
-                        "text": "No. The hook blocks a failing stop at most five times in a session. After that the agent may stop, and the message says the work was not verified."
+                        "text": "Build and test gates can, including in CI. Checks of the real UI need an unlocked, interactive Windows session; a Windows service in session 0 cannot capture the user desktop."
                     }
                 },
                 {
                     "@type": "Question",
-                    "name": "Which platforms and agents does it support?",
+                    "name": "What does a pass establish?",
                     "acceptedAnswer": {
                         "@type": "Answer",
-                        "text": "Windows x64, with a Stop hook for Claude Code and for Codex. The toolchain your checks call must already be installed."
+                        "text": "That the gates and scenarios your spec configures all passed. A spec with only gates passes without launching an app, so UI coverage is only what your scenarios check. Trust a pass only when pointframe verify status reports fresh: true. Freshness covers the Git-visible working tree, the spec and the active-task snapshot. A spec with scenarios but no gates can pass but is never fresh (no_build_gate). Files ignored by .gitignore and verify's own output are not counted. It does not prove your code is correct."
                     }
                 }
             ]
@@ -78,19 +78,19 @@
             <div class="nav-links">
                 <a href="./index.html#mcp-cli" class="nav-link">MCP &amp; CLI</a>
                 <a href="./index.html#resources" class="nav-link">Guides</a>
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="nav-link js-utm-link" data-utm-campaign="verify_agents" data-utm-medium="cta" data-utm-content="verify_agents_nav" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="nav">Download</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Cli-win-x64.zip" class="nav-link js-utm-link" data-utm-campaign="verify_agents" data-utm-medium="cta" data-utm-content="verify_agents_nav" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="nav">Download</a>
             </div>
         </div>
     </nav>
 
     <main class="hero article-hero">
         <div class="container hero-panel">
-            <p class="hero-eyebrow">pointframe verify for Claude Code and Codex on Windows</p>
-            <h1 class="hero-title article-title">Make your coding agent prove it's done</h1>
-            <p class="hero-copy">Coding agents often say "done" without evidence. <code>pointframe verify</code> runs your project's own build and test commands and writes a verdict. A Stop hook then keeps Claude Code or Codex working until the last verdict is a fresh pass on the files as they are now.</p>
+            <p class="hero-eyebrow">pointframe verify for Claude Code, Codex, and other coding agents</p>
+            <h1 class="hero-title article-title">Let your coding agent test the real Windows UI</h1>
+            <p class="hero-copy">Pointframe lets agents inspect your app, interact with its controls, and run repeatable checks with screenshots and signed evidence. <code>pointframe verify run</code> runs your build and test gates and, for each scenario in the spec, launches the built app, drives it through its real controls, and writes a verdict. Free, open source, Windows x64.</p>
             <div class="hero-actions">
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="primary-button js-utm-link" data-utm-campaign="verify_agents" data-utm-medium="cta" data-utm-content="verify_agents_hero" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="hero">Download the CLI</a>
-                <a href="#setup" class="secondary-link">Set it up in your project</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Cli-win-x64.zip" class="primary-button js-utm-link" data-utm-campaign="verify_agents" data-utm-medium="cta" data-utm-content="verify_agents_hero" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="hero">Download the CLI</a>
+                <a href="#setup" class="secondary-link">Set up your agent</a>
             </div>
         </div>
     </main>
@@ -100,71 +100,64 @@
             <div class="content-shell">
                 <article class="content-card">
                     <h2>The problem: "done" without evidence</h2>
-                    <p>An agent that edits code can end its turn with a confident summary while the build is broken or a test fails. You find out later, in review or in CI. What you want is a rule the agent cannot talk its way around: the work is finished only when your own checks pass on the current files.</p>
+                    <p>An agent that edits a desktop app can end its turn with a confident summary while the build is broken, a test fails, or the window shows the wrong thing. Unit tests do not see the real UI. You find out later, in review or by clicking through the app yourself. What you want is a check the agent cannot talk its way around: the work is finished only when your build, your tests, and a scenario in the running app all pass on the current files.</p>
 
                     <h2>How it works</h2>
                     <ul>
-                        <li><strong>Your own checks.</strong> The spec in <code>.pointframe/verify.json</code> lists gates, which are commands you already run. For a .NET solution these are <code>dotnet build</code> and <code>dotnet test</code>; for a Node project they are your <code>npm</code> scripts.</li>
-                        <li><strong>A verdict tied to the files.</strong> A pass is tied to the exact files in your working tree. Change a file and the pass is no longer fresh.</li>
-                        <li><strong>A Stop hook.</strong> When the agent tries to stop without a fresh pass, the hook runs the checks. If they fail, it blocks the stop and tells the agent what failed.</li>
-                        <li><strong>Optional desktop evidence.</strong> If your project is a Windows desktop app, the spec can also hold scenarios that drive the running app and produce signed evidence. They are optional and not needed for build and test checks.</li>
+                        <li><strong>A spec in your repository.</strong> <code>.pointframe/verify.json</code> lists gates, which are commands you already run (<code>dotnet build</code>, <code>dotnet test</code>, or your <code>npm</code> scripts), and scenarios for the built app.</li>
+                        <li><strong>Real UI, real controls.</strong> A scenario launches your built exe and drives it through UI Automation: invoke a button, enter text, check what the window shows. Each scenario names its criteria and carries a negative control, a check with a deliberately wrong expectation that must fail.</li>
+                        <li><strong>Signed evidence.</strong> Each scenario writes a signed bundle: <code>report.json</code>, <code>evidence/</code> screenshots, and an <code>index.html</code>, plus a <code>verdict.json</code> for the run.</li>
+                        <li><strong>A pass tied to the files.</strong> Trust a pass only when <code>pointframe verify status</code> reports <code>"fresh": true</code>. Freshness covers the Git-visible working tree, the spec and the active-task snapshot. A spec with scenarios but no gates can pass but is never fresh (<code>no_build_gate</code>). Files ignored by <code>.gitignore</code> and verify's own output are not counted.</li>
+                        <li><strong>A Stop hook, if you want one.</strong> When the agent tries to stop without a fresh pass, the hook runs the checks and, if they fail, blocks the stop and tells the agent what failed. It does not hold forever: the agent may stop unverified after five blocks or on an error only a person can fix, such as an untrusted or invalid spec, and the message then says the work was not verified.</li>
                     </ul>
 
-                    <h2>What it looks like</h2>
-                    <p>A real trial: the agent was asked for a small change, and the checks failed when it tried to finish. The hook blocked the stop and passed the failure back.</p>
-                    <pre class="code-sample"><code>Pointframe verify failed (block 1 of 5), so this work is not done yet.
-...
-error CS0117: 'MathOps' does not contain a definition for 'Divide'</code></pre>
-                    <p>The agent added <code>Divide</code> and tried to finish again. The hook ran the checks, they passed, and the stop was allowed. Then:</p>
-                    <pre class="code-sample"><code>pointframe verify status
-...
-"status": "pass",
-"fresh": true</code></pre>
-                    <p>The ellipses mark output left out here. <code>fresh: true</code> means the pass was made on the files as they are now.</p>
+                    <h2>What the evidence looks like</h2>
+                    <p>This is a screenshot from a signed evidence bundle of a passing run on the WPF Contacts sample in the repository. The scenario checked that an empty name is rejected, then added a contact and checked the status line.</p>
+                    <p><img src="./verify-evidence-wpf-sample.png" alt="Evidence screenshot from a passing verify run: the Contacts sample shows Ada Lovelace in the list and the status line reads Added Ada Lovelace" width="612" height="441" loading="lazy"></p>
+                    <p>You can reproduce it: the sample and its <a href="https://github.com/dimitar-radenkov/Pointframe/tree/master/samples/verify/wpf" target="_blank" rel="noopener noreferrer">reference spec</a> are in the repository.</p>
 
-                    <h2 id="setup">Install and set up</h2>
-                    <p>Download <code>Pointframe.Cli-&lt;version&gt;-win-x64.zip</code> and its <code>.sha256</code> file from the <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" target="_blank" rel="noopener noreferrer">latest release</a>, check the hash, extract the ZIP, and from that folder run:</p>
+                    <h2 id="setup">Set up your agent</h2>
+                    <p>Download <code>Pointframe.Cli-win-x64.zip</code> and its <code>.sha256</code> file from the <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" target="_blank" rel="noopener noreferrer">latest release</a>, check the hash, extract the ZIP, and from that folder run:</p>
                     <pre class="code-sample"><code>.\Pointframe.Cli.exe install</code></pre>
-                    <p>This copies the CLI to <code>%LOCALAPPDATA%\Programs\Pointframe.Cli</code> and adds it to your user <code>Path</code>. Open a new terminal and restart your agent so it sees the new <code>Path</code>. The winget package <code>DimitarRadenkov.Pointframe.Cli</code> is awaiting acceptance; until it appears in <code>winget search</code>, use the ZIP.</p>
-                    <p>Then, from your project root:</p>
-                    <pre class="code-sample"><code>pointframe verify init
+                    <p>This copies the CLI to <code>%LOCALAPPDATA%\Programs\Pointframe.Cli</code> and adds it to your user <code>Path</code>. Open a new terminal and restart your agent so it sees the new <code>Path</code>. Then, from your project root, point the spec at your built exe and run it:</p>
+                    <pre class="code-sample"><code>pointframe verify init --app bin/Release/net10.0-windows/MyApp.exe
 pointframe verify run
 pointframe verify status</code></pre>
-                    <p><code>verify init</code> detects your gates and writes the spec plus a Stop hook for Claude Code and Codex. Existing settings are kept, and running it again is safe. Commit <code>.pointframe/verify.json</code> and the hook files so the whole team gets them. Standard commands such as <code>dotnet build</code> and <code>npm test</code> are approved automatically; for anything else you approve the commands once with <code>pointframe verify trust</code>.</p>
+                    <p><code>verify init</code> writes the spec and a Stop hook for Claude Code and Codex; add one scenario to the spec, with an action, the resulting state, and a negative control. The guide has the six-step recipe an agent can follow on its own, and <code>pointframe verify setup</code> gives your agent interactive desktop tools for exactly your app. Commit <code>.pointframe/verify.json</code> so the whole team gets it. Interacting with an app's controls is off until you set it up for that app.</p>
 
                     <h2>Run it in CI too</h2>
-                    <p>The hook is a local safety net. It can be absent on a fresh clone, skipped, or used up after five blocks. A CI job is the check nobody can skip. The guide has a ready workflow that downloads a pinned CLI release, checks its hash, and verifies the repository; see <a href="https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify.md#run-in-ci" target="_blank" rel="noopener noreferrer">Run in CI</a>.</p>
+                    <p>Build and test gates run headless, so CI can run them. A CI job is the check nobody can skip: the hook is a local safety net that can be absent on a fresh clone or used up after five blocks. The guide has a ready workflow that downloads a pinned CLI release, checks its hash, and verifies the repository; see <a href="https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify.md#run-in-ci" target="_blank" rel="noopener noreferrer">Run in CI</a>.</p>
 
                     <h2>Honest limits</h2>
                     <ul>
-                        <li>It does not prove your code is correct. It proves that your own checks pass on the current files.</li>
-                        <li>It runs on Windows x64, and the toolchain your checks call must already be installed.</li>
-                        <li><strong>Stopped is not verified.</strong> The hook blocks a failing stop at most five times in a session. After that the agent may stop, and the message says the work was NOT verified. The agent may also stop with that message when only a person can fix the problem, such as an untrusted or invalid spec.</li>
+                        <li>It does not prove your code is correct. It proves that the gates and scenarios your spec configures passed; a spec with only gates passes without launching an app.</li>
+                        <li>UI checks need an unlocked, interactive Windows desktop session, and they take over the mouse and keyboard while they run. It runs on Windows x64, and the toolchain your gates call must already be installed.</li>
+                        <li><strong>Stopped is not verified.</strong> The hook blocks a failing stop at most five times in a session. After that the agent may stop, and the message says the work was NOT verified.</li>
                         <li>Before you trust "done", run <code>pointframe verify status</code> and look for <code>"status": "pass"</code> and <code>"fresh": true</code>. For a project that matters, require a pass in CI as well.</li>
                     </ul>
 
                     <div class="cta-panel">
-                        <h3>Keep your agent honest</h3>
+                        <h3>Give your agent the real UI</h3>
                         <p>Free and open source under the MIT license. Windows x64.</p>
                         <div class="hero-actions compact-actions">
-                            <a href="https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify.md" class="primary-button js-utm-link" target="_blank" rel="noopener noreferrer" data-utm-campaign="verify_agents" data-utm-medium="cta" data-utm-content="verify_agents_article_cta" data-track-event="website_cta_clicked" data-cta-type="read_docs" data-cta-location="article_cta">Read the verify guide</a>
-                            <a href="https://github.com/dimitar-radenkov/Pointframe/tree/master/samples/verify" class="secondary-link" target="_blank" rel="noopener noreferrer">Try the .NET and Node samples</a>
+                            <a href="https://github.com/dimitar-radenkov/Pointframe/blob/master/docs/cli/verify.md#coding-agents-start-here" class="primary-button js-utm-link" target="_blank" rel="noopener noreferrer" data-utm-campaign="verify_agents" data-utm-medium="cta" data-utm-content="verify_agents_article_cta" data-track-event="website_cta_clicked" data-cta-type="read_docs" data-cta-location="article_cta">Read the verification recipe</a>
+                            <a href="https://github.com/dimitar-radenkov/Pointframe/tree/master/samples/verify" class="secondary-link" target="_blank" rel="noopener noreferrer">Try the WPF, .NET and Node samples</a>
                         </div>
                     </div>
 
                     <h2>Frequently asked questions</h2>
                     <div class="faq-list">
                         <details class="faq-item">
-                            <summary>Does a passing verdict prove my code is correct?</summary>
-                            <p>No. It proves that your own checks, such as <code>dotnet build</code> and <code>dotnet test</code> or your npm scripts, pass on the exact files in your working tree.</p>
+                            <summary>Does it need the desktop app?</summary>
+                            <p>No. The CLI and the MCP server are standalone: no tray app and no .NET runtime. The desktop app is the separate screenshot tool for people.</p>
                         </details>
                         <details class="faq-item">
-                            <summary>Does the agent always stay blocked until the checks pass?</summary>
-                            <p>No. The hook blocks a failing stop at most five times in a session. After that the agent may stop, and the message says the work was not verified.</p>
+                            <summary>Can it run headless?</summary>
+                            <p>Build and test gates can, including in CI. Checks of the real UI need an unlocked, interactive Windows session; a Windows service in session 0 cannot capture the user desktop.</p>
                         </details>
                         <details class="faq-item">
-                            <summary>Which platforms and agents does it support?</summary>
-                            <p>Windows x64, with a Stop hook for Claude Code and for Codex. The toolchain your checks call must already be installed.</p>
+                            <summary>What does a pass establish?</summary>
+                            <p>That the gates and scenarios your spec configures all passed. A spec with only gates passes without launching an app, so UI coverage is only what your scenarios check. Trust a pass only when pointframe verify status reports fresh: true. Freshness covers the Git-visible working tree, the spec and the active-task snapshot. A spec with scenarios but no gates can pass but is never fresh (no_build_gate). Files ignored by .gitignore and verify's own output are not counted. It does not prove your code is correct.</p>
                         </details>
                     </div>
                 </article>
@@ -195,7 +188,7 @@ pointframe verify status</code></pre>
             <div class="footer-links">
                 <a href="./index.html">Home</a>
                 <a href="https://github.com/dimitar-radenkov/Pointframe">GitHub</a>
-                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest" class="js-utm-link" data-utm-campaign="verify_agents" data-utm-medium="cta" data-utm-content="verify_agents_footer" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="footer">Download</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Cli-win-x64.zip" class="js-utm-link" data-utm-campaign="verify_agents" data-utm-medium="cta" data-utm-content="verify_agents_footer" data-track-event="website_cta_clicked" data-cta-type="download_release" data-cta-location="footer">Download</a>
             </div>
         </div>
     </footer>

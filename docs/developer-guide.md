@@ -35,6 +35,9 @@ dotnet build Pointframe/Pointframe.csproj
 
 # Run the application
 dotnet run --project Pointframe/Pointframe.csproj
+
+# Build the standalone MCP host
+dotnet build Pointframe.Mcp/Pointframe.Mcp.csproj
 ```
 
 The app launches minimised to the system tray. Press `Print Screen` to open the capture overlay.
@@ -376,7 +379,7 @@ The process is PerMonitorV2 (`app.manifest`), so every monitor has its own scale
 ### MCP desktop-testing driver
 
 The opt-in driver contracts and worker are documented in
-[MCP desktop testing](mcp-desktop-testing.md). They are intentionally separate
+[MCP desktop testing](mcp-desktop-testing/README.md). They are intentionally separate
 from the target WPF product: do not add target launch modes, storage overrides,
 synthetic controls, or machine-specific policies. The public MCP package
 currently exposes only the five capture/OCR/recording tools, and desktop gates
@@ -386,3 +389,37 @@ remain unverified unless a disposable interactive environment supplies evidence.
 - Inno Setup script. Includes `CloseApplications` (prompts to close a running instance before upgrading) and an optional component that downloads ffmpeg next to the app.
 - `installer\build-installer.ps1` builds it locally (requires Inno Setup 6); `installer\test-installer.ps1` checks the output.
 - Its ARP `AppPublisher` is the source of truth that the winget manifests must match.
+
+---
+
+## 15. Versioning
+
+Versions are managed automatically by [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning).
+
+- The base version (`major.minor`) is declared in [`version.json`](../version.json).
+- The patch number is derived from the **commit height** — it increments automatically with every commit, so you never need to touch it manually.
+- On a tagged release (`v*`) the version has no pre-release suffix (e.g. `1.2.5`). On non-release builds a short commit hash is appended (e.g. `1.2.5-g1a2b3c4`).
+
+To bump the version:
+
+| Goal | Action |
+|---|---|
+| Bug-fix / patch | Nothing — commit height auto-increments |
+| New feature (minor) | Edit `version.json` → `"version": "1.3"` |
+| Breaking change (major) | Edit `version.json` → `"version": "2.0"` |
+
+---
+
+## 16. Tech Stack
+
+- **WPF / .NET 10**
+- **CommunityToolkit.Mvvm** — `[ObservableProperty]`, `[RelayCommand]`
+- **Microsoft.Extensions.DependencyInjection** — constructor injection throughout
+- **Serilog** — file + debug logging (`%LOCALAPPDATA%\Pointframe\logs\`)
+- **ffmpeg** — external encoder used for MP4 recording and GIF export
+- **Microsoft.Extensions.Hosting** — Generic Host + `BackgroundService` for the auto-update background loop
+- **Windows.Media.Ocr** — built-in Windows OCR for text extraction
+- **Hardcodet.Wpf.TaskbarNotification** — system tray icon
+- **Nerdbank.GitVersioning** — automatic semantic versioning from git history
+- **xUnit** — unit tests
+- **Azure Monitor / OpenTelemetry** — anonymous usage telemetry (disabled when connection string is absent)
