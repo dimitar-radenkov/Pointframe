@@ -53,6 +53,7 @@ The owner sets direction and holds the decisions the charter reserves. The coord
 | Coordinator | Claude main session | Plans, writes briefs, assigns, reads results critically, accepts or returns them, integrates shared files (indexes, KB, numbering), commits, opens PRs, merges, reports |
 | Executor | Sonnet subagent or Codex (`gpt-6-luna`, workspace-write) | Delivers one whole result from a brief. Never commits, pushes, or opens a PR |
 | Reviewer | A different agent than the executor | Checks the result against the criteria, read-only |
+| Helper | Haiku 5.5 subagent (trial) | Read-only summaries for the coordinator |
 
 <!-- rule:W-07 roles=coordinator -->
 - **The coordinator does not execute whole results.** Delegate early: a task of more than about 5-10 steps, or one with its own run-test-fix loop, goes to an executor from the start. One executor gets the whole result; no agent per command. Fixes go back to the same executor: for a Sonnet subagent, continue the same subagent. Returning a fix to the same Codex executor through the launcher is **planned**; until then a fix is a new launcher run whose brief includes the previous run's report and the review findings. An incorrect review finding is rejected with a stated reason.
@@ -60,6 +61,15 @@ The owner sets direction and holds the decisions the charter reserves. The coord
 - **Allocation.** Aim for 40-60% of eligible packages to Codex as a rolling target, never a per-task quota. Capability and remaining capacity decide exceptions. Codex suits scripts and code without visual judgment; Sonnet suits visual, MCP, and cross-file work.
 <!-- rule:W-37 roles=coordinator -->
 - **Models.** Cheapest model that can do the work: `gpt-6-luna` at `medium` effort by default, `high` effort for concurrency, lifecycle, and DPI work. Raise effort before raising the model. Only generation-6 models are used; the top tier needs owner approval. Brainstorm, retros, and heavy review use the strong tier (see Review). Set model and effort per run; never change persistent Codex configuration unless asked. Use only model names confirmed by Codex configuration or its model listing.
+<!-- rule:W-39 roles=coordinator -->
+- **Haiku 5.5 trial.** Haiku 5.5 (`claude-haiku-5-5`, Agent model `haiku`) is allowed only for this scope until the 2026-11-02 retro; no automatic renewal.
+  - **Mechanical executor:** only when all four small-fix conditions (W-08) hold, or for a generated or link fix with an explicit expected transformation and allowed paths. KB, index, and numbering edits stay with the coordinator (W-09): Haiku proposes the patch, the coordinator applies it.
+  - **Never Haiku:** reviewer (light or heavy), KB prose rewriting or compression, lifecycle, DPI, privacy, release, and verify-truthfulness work.
+  - **Review:** a Haiku executor's change gets an independent light review (Codex `gpt-6-luna`) and an ordinary review record; `-SmallFix` stays coordinator-only (W-20 unchanged).
+<!-- rule:W-42 roles=coordinator,helper -->
+- **Haiku helper scope.** Read-only, with bounded time and output: summarise verify and CI logs and long review files; code search; watchdog triage. A helper starts with `pwsh scripts/kb.ps1 init -Role helper` (a subagent cannot type `/kb-init`); the brief says so.
+<!-- rule:W-40 roles=coordinator,reviewer,helper -->
+- **Summaries are navigation, not evidence.** The coordinator reads exit codes and structured verdicts bound to the current head and tree itself. A helper summary lists every failed, cancelled, missing, or incomplete check with the raw path and line, and every blocking review finding with its location. Missing or contradictory evidence is reported as unknown, never PASS.
 <!-- rule:W-08 roles=coordinator -->
 - **Small-fix exception.** The coordinator may edit directly only when all hold: about 10 changed non-generated lines in at most 2 files; mechanical, with no runtime behavior change or new logic; no privacy, security, lifecycle, packaging, persistence, or workflow-gate impact; no diagnose-test-repair loop. Log each use and count them in the report, so three small fixes cannot hide substantial coordinator execution.
 <!-- rule:W-09 roles=all -->
@@ -80,8 +90,11 @@ One brief serves either executor. Required headings, checked by `scripts/agent-r
 | Existing coverage to read first: exact files, tests, KB sections | No open-ended discovery |
 | Acceptance cases, including known lifecycle cases (focus, cancellation, legacy users, recording-only users, older clients) | The reviewer needs a criterion per case |
 | Authorized repairs | The executor repairs without asking |
+| Absolute worktree paths, explicit working directory per write and process | The shell starts in the main checkout |
 | Stop conditions | Stop after the first real environment failure (sandbox, missing tool, authentication) and report. Missing build outputs are not one; build them. Never retry an identical failing command |
 | Exact checks | Sandbox-safe: `dotnet format Pointframe/Pointframe.csproj --no-restore`, and every `dotnet test --filter` adds `&Category!=Integration` |
+
+- Lesson: An executor's relative path or default working directory can write into the main checkout
 
 <!-- rule-section roles=coordinator,executor -->
 ## Execution budgets
@@ -169,6 +182,7 @@ The coordinator commits, opens PRs, and merges. Executors never commit or push. 
 <!-- rule:W-38 roles=coordinator -->
 - **Weekly retro.** Every Monday, a dated document under `plan/retros/` with the work done, what went well and badly with causes, Claude and Codex token use, and next actions. Retros use strong models, with Codex challenging the draft.
 - **Metrics to watch.** Coordinator versus executor tokens, questions asked to the owner, activation (`scripts/usage-report.ps1`), and counted small-fix exceptions.
+- **Haiku measurement.** Every Haiku run, accepted or rejected, is a line in the local `agent-runs.jsonl` under `plan/`: model, task or run id, task kind, minutes, outcome (accepted, redone, rejected), raw artifact path and size, bytes the coordinator then read, review and rework minutes, failures and timeouts, and summary omissions or false verdicts found. Gross estimated input tokens avoided = unread raw bytes / 4. The coordinator spot-checks accepted summaries against raw evidence. The 2026-11-02 retro decides the trial; savings are assessed net of helper and review costs.
 <!-- rule:W-35 roles=all -->
 - **Trap to avoid.** Rules that live only in memory were not followed (D-016). When a correction is durable, put it in the owning section here or in a feature file as scope, check, and required evidence; use `lessons.md` when there is a reusable failure mechanism.
 

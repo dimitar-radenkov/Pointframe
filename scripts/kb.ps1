@@ -4,7 +4,7 @@ The Pointframe knowledge base tool: docs/knowledge-base/knowledge-base.md (the c
 the other files next to it (file-map.md, references.md, tooling.md, decisions.md, workflow.md) and
 docs/knowledge-base/features/*.md (one file per feature area). The /kb-init, /kb-read, /kb-write, and /kb-check skills call it.
 
-  pwsh scripts/kb.ps1 init [-Role coordinator|executor|reviewer] [target]   # session start: core, role rules, environment, optional target
+  pwsh scripts/kb.ps1 init [-Role coordinator|executor|reviewer|helper] [target]   # session start: core, role rules, environment, optional target
   pwsh scripts/kb.ps1 read <path|area|F-NN|topic> [...] [-All]   # what to read: sections, features, top 5 lessons (-All: every lesson)
   pwsh scripts/kb.ps1 read                                       # the Feature index and the area files
   pwsh scripts/kb.ps1 check                                      # refresh generated blocks and the baseline, then check everything; exit 1 on errors
@@ -43,14 +43,14 @@ param(
     [switch]$All,
     [switch]$NoFix,
     [string]$Base = 'HEAD',
-    [ValidateSet('coordinator', 'executor', 'reviewer')]
+    [ValidateSet('coordinator', 'executor', 'reviewer', 'helper')]
     [string]$Role = 'executor',
     [switch]$Json,
     [string]$Root,
     [switch]$NoProbe
 )
 
-$usage = 'Usage: kb.ps1 init [-Role coordinator|executor|reviewer] [target] | read <path|area|F-NN|topic> [...] [-All] | check [-NoFix] | stats [-Json] | selftest | changed [-Base <ref>] | hook'
+$usage = 'Usage: kb.ps1 init [-Role coordinator|executor|reviewer|helper] [target] | read <path|area|F-NN|topic> [...] [-All] | check [-NoFix] | stats [-Json] | selftest | changed [-Base <ref>] | hook'
 $Targets = @($Targets | Where-Object { $_ })
 $stray = @($Targets | Where-Object { $_.StartsWith('-') })
 if ($stray.Count -gt 0 -or ($Targets.Count -gt 0 -and $Command -notin @('read', 'init')))
@@ -265,6 +265,12 @@ function Invoke-SelfTest
         $r = Invoke-Kb @('check') $added
         $registered = Get-Content -Raw -LiteralPath (Join-Path $added (Join-Path $kbRel 'kb-baseline.json')) | ConvertFrom-Json
         Assert-Case ($r.Exit -eq 0 -and @($registered.workflowRules.'W-05') -contains 'executor' -and $registered.workflowRules.'W-04') 'check without -NoFix registers a new rule and keeps the others' ($r.Out + ($registered | ConvertTo-Json -Compress))
+        $helper = New-Copy 'rules-helper-role'
+        Edit-Text $helper $wf { param($t) $t.TrimEnd() + "`n`n<!-- rule:W-05 roles=helper -->`nHelper rule text.`n" }
+        $r = Invoke-Kb @('check') $helper
+        Assert-Case ($r.Exit -eq 0) 'check registers a helper rule' $r.Out
+        $r = Invoke-Kb @('init', '-Role', 'helper', '-NoProbe') $helper
+        Assert-Case ($r.Exit -eq 0 -and $r.Out -match 'Workflow rules for role helper' -and $r.Out -match 'Helper rule text' -and $r.Out -match '\[W-01\]' -and $r.Out -notmatch 'Coordinator only rule text' -and $r.Out -notmatch 'Executor rule text' -and $r.Out -notmatch 'Reviewer rule text') 'init -Role helper prints helper and shared rules only' $r.Out
         $emptyRule = New-Copy 'rules-empty-roles'
         Edit-Text $emptyRule $wf { param($t) $t.Replace('rule:W-03 roles=coordinator', 'rule:W-03 roles=,') }
         $r = Invoke-Kb @('check', '-NoFix') $emptyRule
@@ -334,7 +340,7 @@ $SectionLimit = 8192
 $CoreLimit = 12288
 $ProseLineLimit = 600
 $AreaFileLimit = 40960
-$KnownRoles = @('all', 'coordinator', 'executor', 'reviewer')
+$KnownRoles = @('all', 'coordinator', 'executor', 'reviewer', 'helper')
 $PartBudgets = [ordered]@{ core = 12288; rules = 4096; environment = 1536; status = 2048; target = 12288 }
 $InitTargetBudget = 25600
 $DefaultBase = if ($Root) { $RepoRoot } else { (Get-Location).Path }
@@ -976,7 +982,7 @@ if ($workflowDoc)
         }
         else
         {
-            $errors.Add("${where}: malformed rule marker; use <!-- rule:W-NN roles=all|coordinator|executor|reviewer[,...] --> or <!-- rule-section roles=... -->")
+            $errors.Add("${where}: malformed rule marker; use <!-- rule:W-NN roles=all|coordinator|executor|reviewer|helper[,...] --> or <!-- rule-section roles=... -->")
         }
     }
 }
@@ -2431,7 +2437,7 @@ if ($workflowDoc)
 # Workflow rules: every role has rules.
 if ($workflowDoc)
 {
-    foreach ($roleName in @('coordinator', 'executor', 'reviewer'))
+    foreach ($roleName in @('coordinator', 'executor', 'reviewer', 'helper'))
     {
         if (@(Get-RoleRules $roleName).Count -eq 0)
         {

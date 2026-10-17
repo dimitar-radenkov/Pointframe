@@ -122,6 +122,18 @@
     ],
     "W-38": [
       "coordinator"
+    ],
+    "W-39": [
+      "coordinator"
+    ],
+    "W-40": [
+      "coordinator",
+      "reviewer",
+      "helper"
+    ],
+    "W-42": [
+      "coordinator",
+      "helper"
     ]
   }
 }
