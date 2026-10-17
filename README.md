@@ -27,6 +27,12 @@
   <img src="docs/images/verify-evidence-wpf-sample.png" alt="Evidence screenshot from a passing verify run: the Contacts sample shows Ada Lovelace in the list and the status line reads Added Ada Lovelace" width="400">
 </p>
 
+<p align="center">
+  <a href="https://dimitar-radenkov.github.io/Pointframe/verify-demo.mp4"><img src="website/verify-demo-poster.png" alt="Poster of a 30-second demo: a failing verify run, the fix, the same check passing, and the evidence page" width="640"></a>
+</p>
+
+<p align="center"><sub>30-second demo on the same sample: fail, fix, pass, evidence. Click to watch.</sub></p>
+
 This is a real evidence screenshot from a passing run of the [WPF sample](samples/verify/wpf) (its [reference spec](samples/verify/wpf/reference/verify.json) is in the repo, so you can reproduce it).
 
 ## Pick your door

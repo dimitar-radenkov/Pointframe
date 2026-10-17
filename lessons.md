@@ -1726,3 +1726,21 @@ Briefs require absolute worktree paths and an explicit working directory for eve
 ### Takeaway
 
 Never rely on the current directory when an agent works in a linked worktree: give every write an absolute path inside the worktree and every process an explicit working directory, then confirm the main checkout is still clean.
+
+## A demo recorded on a personal desktop can capture private windows and account prompts
+
+### Problem
+
+On 2026-10-17 the README demo was recorded on the owner's working desktop. `pointframe record` captures a whole monitor, with personal windows (browser, chat apps) open, and the first take showed an Edge sync prompt with the owner's e-mail address. The take was deleted before review and re-recorded.
+
+### Root cause
+
+`record` has no region option, so everything on the monitor is in the raw file. A fresh, isolated Edge profile still offers to sign in with the Windows account, and Windows toasts can appear at any moment.
+
+### What fixed it
+
+A topmost, non-activating dark backdrop covered the monitor, and only the demo windows were placed above it. Edge ran with `--disable-sync --disable-features=msImplicitSignin,msEdgeOnRampFRE`; `--inprivate` with `--app` opens no window. Toasts were disabled for the recording (`ToastEnabled=0`) and restored afterwards. The final clip was cropped to the backdrop, and every frame was reviewed at 2 fps before anything was committed. Raw takes stayed outside the repository.
+
+### Takeaway
+
+Treat any screen recording on a real desktop as private until every frame has been looked at: isolate the demo windows on a backdrop, suppress sign-in prompts and notifications, keep raw takes out of git, and re-record rather than crop or blur a frame that shows something personal.
