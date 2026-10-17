@@ -5,13 +5,13 @@ description: Start a Pointframe session - print the knowledge base core, the wor
 
 # /kb-init: start every session here
 
-`/kb-init [coordinator|executor|reviewer] [target]` prints what a session needs, in one command:
+`/kb-init [coordinator|executor|reviewer|helper] [target]` prints what a session needs, in one command:
 
 ```powershell
-pwsh scripts/kb.ps1 init [-Role coordinator|executor|reviewer] [target]
+pwsh scripts/kb.ps1 init [-Role coordinator|executor|reviewer|helper] [target]
 ```
 
-The role is the first argument when it is one of the three words, otherwise `executor`. The coordinating session that plans, briefs, reviews, and merges uses `coordinator`; an agent that only checks a result uses `reviewer`. The target is optional: a file path, an `F-NN` feature ID, an area, or a topic such as `dpi`.
+The role is the first argument when it is one of the four words, otherwise `executor`. The coordinating session that plans, briefs, reviews, and merges uses `coordinator`; an agent that only checks a result uses `reviewer`; a read-only Haiku helper uses `helper`. A subagent cannot type slash commands, so a coordinator starts every helper by telling it in the brief to run `pwsh scripts/kb.ps1 init -Role helper`, or pastes that output into the brief. The target is optional: a file path, an `F-NN` feature ID, an area, or a topic such as `dpi`.
 
 It prints, in order:
 

@@ -1708,3 +1708,21 @@ The canonical guide states the role vocabulary and how to learn a role from an o
 ### Takeaway
 
 Write selector roles as one-word control type names. When a test double accepts an input the real backend would reject, the test teaches the wrong contract; feed doubles real values.
+
+## An executor's relative path or default working directory can write into the main checkout
+
+### Problem
+
+On 2026-10-16 and 2026-10-17 two Sonnet executors working in `Pointframe.worktrees\...` wrote into the main checkout `C:\Users\dimit\source\repos\Pointframe`: a .NET script whose working directory stayed in the main checkout, and a PowerShell edit with a relative path. Both were reverted with `git checkout`.
+
+### Root cause
+
+The agent's shell starts in the main checkout and the working directory resets between calls, so a relative path or an unset working directory resolves there, not in the worktree.
+
+### What fixed it
+
+Briefs require absolute worktree paths and an explicit working directory for every write and every process, and the coordinator checks the main checkout's `git status` after every executor run.
+
+### Takeaway
+
+Never rely on the current directory when an agent works in a linked worktree: give every write an absolute path inside the worktree and every process an explicit working directory, then confirm the main checkout is still clean.
