@@ -99,6 +99,11 @@
         <div class="container">
             <div class="content-shell">
                 <article class="content-card">
+                    <h2 id="demo">See it run</h2>
+                    <video controls preload="none" poster="./verify-demo-poster.png" width="1280" height="720" style="width:100%;height:auto;border-radius:8px">
+                        <source src="./verify-demo.mp4" type="video/mp4">
+                    </video>
+                    <p>A real run on the WPF Contacts sample (<a href="https://github.com/dimitar-radenkov/Pointframe/tree/master/samples/verify/wpf" target="_blank" rel="noopener noreferrer">samples/verify/wpf</a>, spec: <a href="https://github.com/dimitar-radenkov/Pointframe/blob/master/samples/verify/wpf/reference/verify.json" target="_blank" rel="noopener noreferrer">reference/verify.json</a>). The scenario fails because the contact is never added to the list, the missing lines are added, the same unchanged scenario passes in the real UI, and the evidence page opens. Waits are sped up and labelled; the edit shown is scripted for the recording, and both verify runs are real. Recorded with <code>pointframe record</code>.</p>
                     <h2>The problem: "done" without evidence</h2>
                     <p>An agent that edits a desktop app can end its turn with a confident summary while the build is broken, a test fails, or the window shows the wrong thing. Unit tests do not see the real UI. You find out later, in review or by clicking through the app yourself. What you want is a check the agent cannot talk its way around: the work is finished only when your build, your tests, and a scenario in the running app all pass on the current files.</p>
 
