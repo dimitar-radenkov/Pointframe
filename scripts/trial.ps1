@@ -5,6 +5,8 @@ param(
     [ValidateSet('change', 'create-skill')][string]$Task = 'change',
     [ValidateSet('installed', 'cold')][string]$Configuration,
     [string]$Version,
+    [ValidateSet('web', 'readme')][string]$Entry = 'web',
+    [string]$DocsRef,
     [string]$OutDirectory,
     [switch]$Matrix,
     [switch]$SelfTest,
@@ -29,7 +31,7 @@ param(
 # Pointframe (from its public docs only) so the change is verified on the running app. The harness, not the agent,
 # scores the run. Outcomes: pass-clean, pass-workaround, fail, timeout, invalid. Only pass-clean counts as a pass.
 #
-#   pwsh scripts/trial.ps1 -App pkhex [-Version 6.7.85] [-OutDirectory <dir>]
+#   pwsh scripts/trial.ps1 -App pkhex [-Version 6.7.85] [-Entry web|readme] [-DocsRef <git ref>] [-OutDirectory <dir>]
 #   pwsh scripts/trial.ps1 -Matrix        # all 3 apps, sequentially
 #   pwsh scripts/trial.ps1 -App wpf-sample -Task create-skill [-Skills <dir>[,<dir>]] [-Repeat 2]
 #   pwsh scripts/trial.ps1 -App wpf-sample -Agent codex -AllowCodexFullAccess [-AgentModel gpt-6-luna] [-AgentEffort medium]
@@ -97,14 +99,94 @@ function New-TrialInvocationParameters {
     param(
         [string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory,
         [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string]$RunPromptPrefix = '',
-        [string[]]$SkillList = @(), [string]$PluginDirectory = '', [string]$Configuration = 'cold', [switch]$FreshMachine
+        [string[]]$SkillList = @(), [string]$PluginDirectory = '', [string]$Configuration = 'cold', [switch]$FreshMachine,
+        [string]$Entry = 'web', [string]$DocsRef = ''
     )
     return @{
         AppName = $AppName; AgentName = $AgentName; PinnedVersion = $PinnedVersion
         OutputDirectory = $OutputDirectory; RunModel = $RunModel; RunEffort = $RunEffort
         TaskName = $TaskName; PromptPrefix = $RunPromptPrefix; SkillList = $SkillList; PluginDirectory = $PluginDirectory; Configuration = $Configuration
         FreshMachine = [bool]$FreshMachine
+        Entry = $Entry; DocsRef = $DocsRef
     }
+}
+
+function New-DocsSnapshot {
+    param([Parameter(Mandatory)][string]$Ref, [Parameter(Mandatory)][string]$Destination)
+    $commit = (& git -C $script:RepositoryRoot rev-parse "$Ref^{commit}").Trim()
+    if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') { throw "Docs ref '$Ref' did not resolve to a commit." }
+    $tracked = @(& git -C $script:RepositoryRoot ls-tree -r --name-only $commit)
+    if ($LASTEXITCODE -ne 0) { throw "Could not list files at docs ref '$Ref'." }
+    $paths = [string[]]@($tracked | Where-Object { $_ -in @('README.md', 'website/llms.txt', 'PRIVACY.md') -or $_ -like 'docs/*' -or ($_ -match '^[^/]+\.md$') } | Select-Object -Unique)
+    [Array]::Sort($paths, [StringComparer]::Ordinal)
+    if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Recurse -Force }
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    $archive = Join-Path ([IO.Path]::GetTempPath()) ("pf-docs-" + [guid]::NewGuid().ToString('N') + '.zip')
+    try {
+        & git -C $script:RepositoryRoot archive --format=zip -o $archive $commit -- @paths
+        if ($LASTEXITCODE -ne 0) { throw "Could not export docs ref '$Ref'." }
+        Expand-Archive -LiteralPath $archive -DestinationPath $Destination -Force
+    }
+    finally { Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue }
+    $sha = [Security.Cryptography.IncrementalHash]::CreateHash([Security.Cryptography.HashAlgorithmName]::SHA256)
+    try {
+        $files = @(Get-ChildItem -LiteralPath $Destination -File -Recurse)
+        $relativePaths = [System.Collections.Generic.List[string]]::new()
+        foreach ($file in $files) { $relativePaths.Add($file.FullName.Substring($Destination.Length).TrimStart('\','/').Replace('\','/')) }
+        $relativePaths.Sort([StringComparer]::Ordinal)
+        foreach ($relative in $relativePaths) {
+            $file = Join-Path $Destination ($relative.Replace('/', '\'))
+            $nameBytes = [Text.Encoding]::UTF8.GetBytes($relative + "`0")
+            $sha.AppendData($nameBytes)
+            $sha.AppendData([IO.File]::ReadAllBytes($file))
+            $sha.AppendData([byte[]]@(0))
+        }
+        $hash = [Convert]::ToHexString($sha.GetHashAndReset()).ToLowerInvariant()
+    }
+    finally { $sha.Dispose() }
+    return [pscustomobject]@{ Commit = $commit; Sha256 = $hash; Path = $Destination; Files = @(Get-ChildItem -LiteralPath $Destination -File -Recurse).Count }
+}
+
+function Test-DocsRef {
+    param([string]$Ref)
+    if ([string]::IsNullOrWhiteSpace($Ref)) { return $false }
+    $commit = & git -C $script:RepositoryRoot rev-parse --verify "$Ref^{commit}" 2>$null
+    return $LASTEXITCODE -eq 0 -and ([string]$commit).Trim() -match '^[0-9a-f]{40}$'
+}
+
+function Get-TranscriptDocsMetrics {
+    param([string]$Agent, $ToolEvent)
+    $type = [string](Get-Fact $ToolEvent 'type' '')
+    $name = [string](Get-Fact $ToolEvent 'name' '')
+    $input = Get-Fact $ToolEvent 'input' $null
+    $fields = [System.Collections.Generic.List[string]]::new()
+    $fetchAction = $false
+    if ($Agent -eq 'codex') {
+        $fetchAction = $type -eq 'web_search'
+        foreach ($field in 'command', 'query', 'arguments') {
+            $value = Get-Fact $ToolEvent $field $null
+            if ($null -ne $value) { $fields.Add($(if ($value -is [string]) { $value } else { $value | ConvertTo-Json -Depth 20 -Compress })) }
+        }
+        if ($type -eq 'command_execution' -and [string](Get-Fact $ToolEvent 'command' '') -match '(?i)\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm)\b') { $fetchAction = $true }
+        if ($type -in 'file_change', 'patch_apply', 'file_patch') {
+            foreach ($field in 'path', 'file_path', 'filePath', 'changes') {
+                $value = Get-Fact $ToolEvent $field $null
+                if ($null -ne $value) { $fields.Add(($value | ConvertTo-Json -Depth 20 -Compress)) }
+            }
+        }
+    }
+    else {
+        $fetchAction = $name -match '(?i)(WebFetch|WebSearch|Fetch|Search)' -or ($name -match '(?i)^(Bash|Shell|Terminal)$' -and [string](Get-Fact $input 'command' '') -match '(?i)\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm)\b')
+        foreach ($field in 'command', 'query', 'arguments', 'file_path', 'path', 'url') {
+            $value = Get-Fact $input $field $null
+            if ($null -ne $value) { $fields.Add($(if ($value -is [string]) { $value } else { $value | ConvertTo-Json -Depth 20 -Compress })) }
+        }
+    }
+    $payload = $fields -join "`n"
+    $isRead = $name -match '(?i)^(Read|ReadFile|Get-Content|cat|type)$' -or $payload -match '(?i)\b(?:Get-Content|cat|type|read)\b[^\r\n]*pointframe-docs'
+    $localRead = $isRead -and $payload -match '(?i)pointframe-docs[\\/][^\s"'',}]*'
+    $docsUrl = $fetchAction -and $payload -match '(?i)https?://(?:dimitar-radenkov\.github\.io/[^\s"'',}]*|github\.com/dimitar-radenkov/Pointframe(?:/(?:blob|tree|raw)/[^\s"'',}]*)?/?(?:#[^\s"'',}]*)?(?=$|[\s"'',})]))'
+    return [pscustomobject]@{ LocalRead = [bool]$localRead; WebFetch = [bool]$docsUrl }
 }
 
 function Get-Sha256Hex {
@@ -799,11 +881,12 @@ function Get-DefectResult {
 
 function Get-TranscriptMetrics {
     param([string]$Path, [string]$Agent = 'claude')
-    $metrics = [ordered]@{ turns = $null; toolCalls = $null; toolEventTypes = [ordered]@{}; unknownItemTypes = [ordered]@{}; commands = $null; inputTokens = $null; cacheCreationInputTokens = $null; cachedInputTokens = $null; totalInputTokens = $null; outputTokens = $null; costUsd = $null }
+    $metrics = [ordered]@{ turns = $null; toolCalls = $null; toolEventTypes = [ordered]@{}; unknownItemTypes = [ordered]@{}; commands = $null; inputTokens = $null; cacheCreationInputTokens = $null; cachedInputTokens = $null; totalInputTokens = $null; outputTokens = $null; costUsd = $null; docsLocalReads = 0; docsWebFetches = 0 }
     if (-not (Test-Path -LiteralPath $Path)) { return $metrics }
     foreach ($line in [IO.File]::ReadLines($Path)) {
         try {
             $resultEvent = $line | ConvertFrom-Json
+            $toolPayloads = @()
             if ($Agent -eq 'codex') {
                 $type = Get-Fact $resultEvent 'type' ''
                 if ($type -eq 'item.completed') {
@@ -811,6 +894,7 @@ function Get-TranscriptMetrics {
                     $itemType = [string](Get-Fact $item 'type' '')
                     $allowedToolTypes = @('command_execution', 'mcp_tool_call', 'web_search', 'file_change', 'patch_apply', 'file_patch')
                     if ($itemType -in $allowedToolTypes) {
+                        $toolPayloads += $item
                         if ($null -eq $metrics.toolCalls) { $metrics.toolCalls = 0 }; $metrics.toolCalls++
                         if ($null -eq $metrics.toolEventTypes) { $metrics.toolEventTypes = [ordered]@{} }
                         if (-not $metrics.toolEventTypes.Contains($itemType)) { $metrics.toolEventTypes[$itemType] = 0 }; $metrics.toolEventTypes[$itemType]++
@@ -830,13 +914,23 @@ function Get-TranscriptMetrics {
                     $metrics.outputTokens += [long](Get-Fact $usage 'output_tokens' 0)
                     $metrics.turns++
                 }
+                foreach ($payload in $toolPayloads) {
+                    $docsMetrics = Get-TranscriptDocsMetrics 'codex' $payload
+                    if ($docsMetrics.LocalRead) { $metrics.docsLocalReads++ }
+                    if ($docsMetrics.WebFetch) { $metrics.docsWebFetches++ }
+                }
                 continue
             }
             $type = Get-Fact $resultEvent 'type' ''
             if ($type -eq 'assistant') {
                 foreach ($block in @(Get-Fact (Get-Fact $resultEvent 'message' $null) 'content' @())) {
-                    if ((Get-Fact $block 'type' '') -eq 'tool_use') { if ($null -eq $metrics.toolCalls) { $metrics.toolCalls = 0 }; $metrics.toolCalls++; $toolName = [string](Get-Fact $block 'name' 'unknown'); if ($null -eq $metrics.toolEventTypes) { $metrics.toolEventTypes = [ordered]@{} }; if (-not $metrics.toolEventTypes.Contains($toolName)) { $metrics.toolEventTypes[$toolName] = 0 }; $metrics.toolEventTypes[$toolName]++ }
+                    if ((Get-Fact $block 'type' '') -eq 'tool_use') { $toolPayloads += $block; if ($null -eq $metrics.toolCalls) { $metrics.toolCalls = 0 }; $metrics.toolCalls++; $toolName = [string](Get-Fact $block 'name' 'unknown'); if ($null -eq $metrics.toolEventTypes) { $metrics.toolEventTypes = [ordered]@{} }; if (-not $metrics.toolEventTypes.Contains($toolName)) { $metrics.toolEventTypes[$toolName] = 0 }; $metrics.toolEventTypes[$toolName]++ }
                 }
+            }
+            foreach ($payload in $toolPayloads) {
+                $docsMetrics = Get-TranscriptDocsMetrics 'claude' $payload
+                if ($docsMetrics.LocalRead) { $metrics.docsLocalReads++ }
+                if ($docsMetrics.WebFetch) { $metrics.docsWebFetches++ }
             }
             if ($type -eq 'result') {
                 $metrics.turns = Get-Fact $resultEvent 'num_turns' $null
@@ -1126,6 +1220,54 @@ function Test-Self {
     $coldPrompt = Get-AgentPrompt ([pscustomobject]@{ change = 'change task' }) '' 'create-skill' '' 'cold'
     if ($coldPrompt -notmatch 'Pointframe is not installed' -or $coldPrompt -notmatch 'Use only its public documentation') { throw 'Cold prompt lost its public documentation restriction.' }
     if ((Get-AgentPrompt ([pscustomobject]@{ change = 'change task' }) '' 'change' 'ignored') -match '^ignored') { throw 'Prompt prefix was applied to a non-create-skill task.' }
+    $webDefaultPrompt = Get-AgentPrompt ([pscustomobject]@{ change = 'README trial task' }) '6.7.85'
+    $webExplicitPrompt = Get-AgentPrompt ([pscustomobject]@{ change = 'README trial task' }) '6.7.85' 'change' '' 'cold' 'web' 'C:\trial\pointframe-docs'
+    if ($webDefaultPrompt -cne $webExplicitPrompt -or $webDefaultPrompt -notmatch 'https://dimitar-radenkov\.github\.io/Pointframe/' -or $webDefaultPrompt -notmatch 'https://github\.com/dimitar-radenkov/Pointframe') { throw 'The default web prompt changed.' }
+    $readmePrompt = Get-AgentPrompt ([pscustomobject]@{ change = 'README trial task' }) '6.7.85' 'change' '' 'cold' 'readme' 'C:\trial\pointframe-docs'
+    if ($readmePrompt -notmatch 'C:\\trial\\pointframe-docs' -or $readmePrompt -notmatch 'README\.md' -or $readmePrompt -notmatch 'Do not browse the web' -or $readmePrompt -match '(?i)(?:github\.com/dimitar-radenkov|dimitar-radenkov\.github\.io)/Pointframe') { throw 'The readme prompt lacks local instructions or includes a Pointframe documentation URL.' }
+    $expectedWebPrompt = @"
+You are working in this repository: a Windows desktop application. Task: README trial task
+
+Before you finish, the change must be verified on the RUNNING application with Pointframe (a Windows tool that
+lets coding agents verify desktop apps), set up so the verification is repeatable and binding for this project.
+Pointframe is not installed. Use only its public documentation: https://dimitar-radenkov.github.io/Pointframe/
+and https://github.com/dimitar-radenkov/Pointframe (README and docs/cli). Work autonomously; nobody will answer
+questions. When done, state whether the verification passed and where its verdict is.
+"@
+    $expectedWebPrompt += "`nUse Pointframe release v6.7.85 (CLI and MCP server)."
+    if ($webDefaultPrompt -cne $expectedWebPrompt) { throw 'The default web prompt no longer matches the origin/master prompt.' }
+    & pwsh -NoProfile -File $PSCommandPath -Entry readme 2>$null
+    if ($LASTEXITCODE -ne 2) { throw "The missing DocsRef parameter guard exited $LASTEXITCODE instead of 2." }
+    & pwsh -NoProfile -File $PSCommandPath -Entry readme -DocsRef 'refs/heads/this-ref-must-not-exist' 2>$null
+    if ($LASTEXITCODE -ne 2) { throw "The invalid DocsRef parameter guard exited $LASTEXITCODE instead of 2." }
+
+    $fixtureRepo = Join-Path ([IO.Path]::GetTempPath()) ("pf-trial-docs-repo-" + [guid]::NewGuid().ToString('N'))
+    $fixtureOut = Join-Path ([IO.Path]::GetTempPath()) ("pf-trial-docs-snapshot-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $fixtureRepo -Force | Out-Null
+    try {
+        [IO.File]::WriteAllText((Join-Path $fixtureRepo 'README.md'), "fixture readme`n")
+        New-Item -ItemType Directory -Path (Join-Path $fixtureRepo 'docs') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $fixtureRepo 'src') -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $fixtureRepo 'docs/guide.md'), "fixture guide`n")
+        [IO.File]::WriteAllText((Join-Path $fixtureRepo 'src/x.cs'), "fixture source`n")
+        [IO.File]::WriteAllText((Join-Path $fixtureRepo 'fixture.md'), "top-level docs`n")
+        & git -C $fixtureRepo init -q
+        & git -C $fixtureRepo add -- README.md docs/guide.md fixture.md src/x.cs
+        & git -C $fixtureRepo -c user.name=Trial -c user.email=trial@example.invalid commit -qm 'docs fixture'
+        $priorRoot = $script:RepositoryRoot
+        try {
+            $script:RepositoryRoot = $fixtureRepo
+            $snapshotA = New-DocsSnapshot 'HEAD' $fixtureOut
+            $snapshotB = New-DocsSnapshot 'HEAD' $fixtureOut
+            if ($snapshotA.Sha256 -ne $snapshotB.Sha256 -or $snapshotA.Commit -ne $snapshotB.Commit) { throw 'A docs snapshot SHA is not stable for the same fixture ref.' }
+            if (-not (Test-Path -LiteralPath (Join-Path $fixtureOut 'README.md')) -or -not (Test-Path -LiteralPath (Join-Path $fixtureOut 'docs/guide.md')) -or (Test-Path -LiteralPath (Join-Path $fixtureOut 'PRIVACY.md')) -or (Test-Path -LiteralPath (Join-Path $fixtureOut 'src/x.cs'))) { throw 'Docs snapshot selection did not include expected files, skip missing paths, or exclude unrelated source.' }
+        }
+        finally { $script:RepositoryRoot = $priorRoot }
+    }
+    finally {
+        Remove-Item -LiteralPath $fixtureRepo -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $fixtureOut -Recurse -Force -ErrorAction SilentlyContinue
+    }
 
     $apps = Get-Content -LiteralPath $script:AppsPath -Raw | ConvertFrom-Json
     foreach ($name in 'pkhex', 'dngrep', 'electron') {
@@ -1386,12 +1528,20 @@ diff --git a/notes.md b/notes.md
         [IO.File]::WriteAllText($claudeLog, '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tool-1","name":"Read"}]}}' + "`n" + '{"type":"result","num_turns":52,"total_cost_usd":1.5,"usage":{"input_tokens":10,"cache_creation_input_tokens":11,"cache_read_input_tokens":7,"output_tokens":3}}' + "`n")
         $metrics = Get-TranscriptMetrics $claudeLog
         if ($metrics.turns -ne 52 -or $metrics.costUsd -ne 1.5 -or $metrics.outputTokens -ne 3 -or $metrics.toolCalls -ne 1 -or $metrics.cacheCreationInputTokens -ne 11 -or $metrics.totalInputTokens -ne 28) { throw 'Claude transcript metrics are wrong.' }
+        $claudeDocsLog = Join-Path $scratch 'claude-docs.jsonl'
+        [IO.File]::WriteAllText($claudeDocsLog, '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"C:\\trial\\pointframe-docs\\README.md"}},{"type":"tool_use","name":"WebFetch","input":{"url":"https://dimitar-radenkov.github.io/Pointframe/"}},{"type":"tool_use","name":"WebFetch","input":{"url":"https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/pointframe.zip"}}]}}' + "`n")
+        $claudeDocsMetrics = Get-TranscriptMetrics $claudeDocsLog 'claude'
+        if ($claudeDocsMetrics.docsLocalReads -ne 1 -or $claudeDocsMetrics.docsWebFetches -ne 1) { throw 'Claude docs read and web-fetch events did not exclude release binary downloads.' }
         $missingLimits = Get-LimitEvaluation ([ordered]@{ toolCalls = 1; totalInputTokens = $null; minutes = $null }) 2 100 10
         if ($null -ne $missingLimits.withinLimits -or @($missingLimits.notMeasured) -notcontains 'totalInputTokens' -or @($missingLimits.notMeasured) -notcontains 'minutes') { throw 'An unmeasured requested limit must be listed and make withinLimits null.' }
         $codexLog = Join-Path $scratch 'codex.jsonl'
         [IO.File]::WriteAllText($codexLog, '{"type":"item.completed","item":{"type":"command_execution"}}' + "`n" + '{"type":"item.completed","item":{"type":"mcp_tool_call"}}' + "`n" + '{"type":"turn.completed","usage":{"input_tokens":12,"cached_input_tokens":4,"output_tokens":6}}' + "`n" + '{"type":"turn.completed","usage":{"input_tokens":8,"cached_input_tokens":2,"output_tokens":3}}' + "`n")
         $codexMetrics = Get-TranscriptMetrics $codexLog 'codex'
         if ($codexMetrics.toolCalls -ne 2 -or $codexMetrics.inputTokens -ne 20 -or $codexMetrics.cachedInputTokens -ne 6 -or $codexMetrics.totalInputTokens -ne 20 -or $codexMetrics.outputTokens -ne 9 -or $codexMetrics.turns -ne 2) { throw 'Codex transcript metrics are wrong.' }
+        $codexDocsLog = Join-Path $scratch 'codex-docs.jsonl'
+        [IO.File]::WriteAllText($codexDocsLog, '{"type":"item.completed","item":{"type":"command_execution","command":"Get-Content C:\\trial\\pointframe-docs\\README.md"}}' + "`n" + '{"type":"item.completed","item":{"type":"web_search","query":"https://github.com/dimitar-radenkov/Pointframe/blob/master/README.md"}}' + "`n" + '{"type":"item.completed","item":{"type":"web_search","query":"https://github.com/dimitar-radenkov/Pointframe/releases/download/v1/pointframe.zip","aggregated_output":"https://github.com/dimitar-radenkov/Pointframe/blob/master/README.md C:\\trial\\pointframe-docs\\README.md"}}' + "`n" + '{"type":"item.completed","item":{"type":"command_execution","command":"Get-ChildItem C:\\trial","aggregated_output":"C:\\trial\\pointframe-docs\\README.md https://github.com/dimitar-radenkov/Pointframe/blob/master/README.md"}}' + "`n")
+        $codexDocsMetrics = Get-TranscriptMetrics $codexDocsLog 'codex'
+        if ($codexDocsMetrics.docsLocalReads -ne 1 -or $codexDocsMetrics.docsWebFetches -ne 1) { throw 'Codex docs read and web-fetch events were not counted.' }
         $realSnippet = Join-Path $script:FixtureDirectory 'codex-tool-events.jsonl'
         $realMetrics = Get-TranscriptMetrics $realSnippet 'codex'
         if ($realMetrics.toolCalls -ne 3 -or $realMetrics.toolEventTypes.web_search -ne 2 -or $realMetrics.toolEventTypes.command_execution -ne 1) { throw 'Real Codex event fixture is not counted by completed tool item.' }
@@ -1672,10 +1822,22 @@ function New-TrialClone {
 }
 
 function Get-AgentPrompt {
-    param($AppEntry, [string]$PinnedVersion, [string]$TaskName = 'change', [string]$Prefix = '', [string]$Configuration = 'cold')
+    param($AppEntry, [string]$PinnedVersion, [string]$TaskName = 'change', [string]$Prefix = '', [string]$Configuration = 'cold', [string]$Entry = 'web', [string]$DocsPath = '')
     $versionLine = if ($PinnedVersion) { "`nUse Pointframe release v$PinnedVersion (CLI and MCP server)." } else { '' }
     $taskText = if ($TaskName -eq 'create-skill') { 'Create a verification skill for this Windows desktop app so any coding agent can prove its features work, and prove it once.' } else { $AppEntry.change }
     $pointframeStatus = if ($TaskName -eq 'create-skill' -and $Configuration -eq 'installed') { 'Pointframe is available as an installed skill/plugin and may be used. The public documentation is a fallback:' } else { 'Pointframe is not installed. Use only its public documentation:' }
+    if ($Entry -eq 'readme') {
+        $pointframeStatus = "Pointframe documentation is in the local folder '$DocsPath'. Start with its README.md and follow links inside that folder; map GitHub links with the repository's blob/master/<path> suffix to the matching local file. Do not browse the web for Pointframe documentation; downloading the release CLI/MCP binaries the docs name is allowed."
+        $prompt = @"
+You are working in this repository: a Windows desktop application. Task: $taskText
+
+Before you finish, the change must be verified on the RUNNING application with Pointframe (a Windows tool that
+lets coding agents verify desktop apps), set up so the verification is repeatable and binding for this project.
+$pointframeStatus
+Work autonomously; nobody will answer questions. When done, state whether the verification passed and where its verdict is.$versionLine
+"@
+    }
+    else {
     $prompt = @"
 You are working in this repository: a Windows desktop application. Task: $taskText
 
@@ -1685,6 +1847,7 @@ ${pointframeStatus} https://dimitar-radenkov.github.io/Pointframe/
 and https://github.com/dimitar-radenkov/Pointframe (README and docs/cli). Work autonomously; nobody will answer
 questions. When done, state whether the verification passed and where its verdict is.$versionLine
 "@
+    }
     if ($TaskName -eq 'create-skill' -and $Prefix) { return "$Prefix`n`n$prompt" }
     return $prompt
 }
@@ -1866,7 +2029,7 @@ function Invoke-DefectCheck {
 }
 
 function Invoke-Trial {
-    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory, [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string]$PromptPrefix = '', [string[]]$SkillList = @(), [string]$PluginDirectory = '', [string]$Configuration = 'cold', [switch]$FreshMachine, [switch]$AllowClaudeBypassPermissions)
+    param([string]$AppName, [string]$AgentName, [string]$PinnedVersion, [string]$OutputDirectory, [string]$RunModel, [string]$RunEffort, [string]$TaskName = 'change', [string]$PromptPrefix = '', [string[]]$SkillList = @(), [string]$PluginDirectory = '', [string]$Configuration = 'cold', [switch]$FreshMachine, [switch]$AllowClaudeBypassPermissions, [string]$Entry = 'web', [string]$DocsRef = '')
     $SkillList = @($SkillList | Where-Object { $_ })
     if ($null -eq $PluginDirectory) { $PluginDirectory = '' }
     $config = Get-Content -LiteralPath $script:AppsPath -Raw | ConvertFrom-Json
@@ -1884,8 +2047,11 @@ function Invoke-Trial {
         defectCheck = [ordered]@{ result = 'not-run' }; workaroundHits = @()
         cliVersion = $null; mcpVersion = $null; verifierVersion = $null
     }
+    $docsSnapshot = $null
+    $docsDirectory = [IO.Path]::GetFullPath((Join-Path $OutputDirectory 'pointframe-docs'))
     $record = [ordered]@{
         schemaVersion = 1; app = $AppName; agent = $AgentName; task = $TaskName; startedUtc = $started.ToString('o')
+        entry = $Entry; docsRef = $(if ($Entry -eq 'readme') { $DocsRef } else { $null }); docsCommit = $null; docsSnapshotSha256 = $null; docsWebFetchViolation = $false
         outDirectory = $OutputDirectory; trialDirectory = $trialDirectory; transcript = $transcriptPath
         isolation = [ordered]@{ freshMachine = ($FreshMachine -eq $true); restoreError = $null; pathRestoreError = $null; pathRestoreReason = $null; pathRestored = $false; restored = @(); agentInstallsMovedTo = @(); lockReleaseError = $null }; clone = $null; agentRun = $null; metrics = $null; pointframe = $null
         verify = $null; leftover = @(); notes = @()
@@ -1941,10 +2107,15 @@ function Invoke-Trial {
         if ($probe.ProbeExit -ne 0) { throw "The environment probe failed (exit $($probe.ProbeExit))." }
         if ($facts.envLeak.Count -gt 0 -or $facts.pathLeak) { throw 'The agent environment is not clean; the run is invalid.' }
 
+        if ($Entry -eq 'readme') {
+            $docsSnapshot = New-DocsSnapshot $DocsRef $docsDirectory
+            $record.docsCommit = $docsSnapshot.Commit
+            $record.docsSnapshotSha256 = $docsSnapshot.Sha256
+        }
         $clone = New-TrialClone $appEntry $trialDirectory
         $record.clone = $clone
         if (@(Get-Fact $appEntry 'tasks' @('change')) -notcontains $TaskName) { throw "App '$AppName' does not opt in to task '$TaskName'." }
-        $prompt = Get-AgentPrompt $appEntry $PinnedVersion $TaskName $PromptPrefix $Configuration
+        $prompt = Get-AgentPrompt $appEntry $PinnedVersion $TaskName $PromptPrefix $Configuration $Entry $docsDirectory
         $record.prompt = $prompt
         $record.promptSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($prompt))).ToLowerInvariant()
         $record.configuration = $Configuration
@@ -1976,6 +2147,12 @@ function Invoke-Trial {
         $facts.timedOut = $run.TimedOut
         $record.agentRun = [ordered]@{ exitCode = $run.ExitCode; timedOut = $run.TimedOut; minutes = [Math]::Round($run.Seconds / 60, 2); timeoutMinutes = $TimeoutMinutes; processesRecorded = @($run.Recorded).Count }
         $record.metrics = Get-TranscriptMetrics $transcriptPath $AgentName
+        $record.metrics.entry = $record.entry
+        $record.metrics.docsRef = $record.docsRef
+        $record.metrics.docsCommit = $record.docsCommit
+        $record.metrics.docsSnapshotSha256 = $record.docsSnapshotSha256
+        $record.docsWebFetchViolation = $Entry -eq 'readme' -and $record.metrics.docsWebFetches -gt 0
+        $record.metrics.docsWebFetchViolation = $record.docsWebFetchViolation
         $script:LastOtherSkillsActivated = @()
         $record.skillActivated = Test-SkillActivation $transcriptPath $AgentName $record.skillSetup $record.isolation
         $record.otherSkillsActivated = @(Get-OtherSkillsActivated)
@@ -2068,7 +2245,8 @@ function Invoke-Trial {
     $toolCalls = if ($null -ne $metrics) { $metrics.toolCalls } else { $null }
     $totalInputTokens = if ($null -ne $metrics) { $metrics.totalInputTokens } else { $null }
     $measured = if ($null -ne $toolCalls -or $null -ne $totalInputTokens) { " toolCalls=$toolCalls totalInputTokens=$totalInputTokens" } else { '' }
-    $line = "TRIAL $AppName $AgentName v$($facts.expectedVersion): $($scored.Outcome) turns=$turns min=$minutes$measured$cost$why -> $(Join-Path $OutputDirectory 'result.json')"
+    $docsViolation = if ($record.docsWebFetchViolation) { ' docsWebFetchViolation=true' } else { '' }
+    $line = "TRIAL $AppName $AgentName v$($facts.expectedVersion): $($scored.Outcome) turns=$turns min=$minutes$measured$cost$docsViolation$why -> $(Join-Path $OutputDirectory 'result.json')"
     Write-Host $line
     return $scored.Outcome
 }
@@ -2080,6 +2258,17 @@ function Get-ExitCodeForOutcome {
 
 # ---------------------------------------------------------------------------------------------------------------
 # Entry point
+
+if (-not $SelfTest -and $Entry -eq 'readme') {
+    if (-not $DocsRef) {
+        [Console]::Error.WriteLine('-DocsRef is required with -Entry readme.')
+        exit 2
+    }
+    if (-not (Test-DocsRef $DocsRef)) {
+        [Console]::Error.WriteLine("-DocsRef '$DocsRef' must resolve to a commit.")
+        exit 2
+    }
+}
 
 if (-not $SelfTest) {
     $startupLocalAppData = [Environment]::GetFolderPath('LocalApplicationData')
@@ -2108,6 +2297,9 @@ function Invoke-TrialRescore {
     if (-not [IO.Path]::IsPathRooted($transcript)) { $transcript = Join-Path $folder $transcript }
     if (-not (Test-Path -LiteralPath $transcript)) { throw "Transcript not found: $transcript" }
     $metrics = Get-TranscriptMetrics $transcript $agentName
+    foreach ($field in 'entry', 'docsRef', 'docsCommit', 'docsSnapshotSha256') {
+        $metrics[$field] = Get-Fact $result $field $null
+    }
     $oldCalls = Get-Fact (Get-Fact $result 'metrics' $null) 'toolCalls' $null
     $limits = Get-Fact $result 'limits' $null
     $minutes = Get-Fact (Get-Fact $result 'metrics' $null) 'minutes' $null
@@ -2116,7 +2308,8 @@ function Invoke-TrialRescore {
     $newLimits = Get-LimitEvaluation $metrics ([int](Get-Fact $limits 'toolCalls' 15)) ([long](Get-Fact $limits 'totalInputTokens' 786000)) ([int](Get-Fact $limits 'minutes' 10))
     $priorGate = Get-Fact (Get-Fact $result 'gate' $null) 'result' $null
     $newGate = if ($null -eq $newLimits.withinLimits) { 'unmeasured' } elseif ($newLimits.withinLimits -and (Get-Fact $result 'outcome' '') -eq 'pass-clean') { 'pass' } else { 'fail' }
-    $rescore = [ordered]@{ rescoredUtc = [DateTime]::UtcNow.ToString('o'); transcript = $transcript; oldToolCalls = $oldCalls; newToolCalls = $metrics.toolCalls; metrics = $metrics; limits = $newLimits; oldGate = $priorGate; gate = $newGate; toolEventTypes = $metrics.toolEventTypes }
+    $metrics.docsWebFetchViolation = $metrics.entry -eq 'readme' -and $metrics.docsWebFetches -gt 0
+    $rescore = [ordered]@{ rescoredUtc = [DateTime]::UtcNow.ToString('o'); transcript = $transcript; entry = $metrics.entry; docsRef = $metrics.docsRef; docsCommit = $metrics.docsCommit; docsSnapshotSha256 = $metrics.docsSnapshotSha256; docsLocalReads = $metrics.docsLocalReads; docsWebFetches = $metrics.docsWebFetches; docsWebFetchViolation = $metrics.docsWebFetchViolation; oldToolCalls = $oldCalls; newToolCalls = $metrics.toolCalls; metrics = $metrics; limits = $newLimits; oldGate = $priorGate; gate = $newGate; toolEventTypes = $metrics.toolEventTypes }
     $rescore | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $folder 'rescore.json') -Encoding utf8NoBOM
     return $rescore
 }
@@ -2187,7 +2380,7 @@ if ($Matrix) {
     foreach ($matrixApp in 'pkhex', 'dngrep', 'electron') {
         foreach ($matrixAgent in @('claude')) {
             $directory = if ($OutDirectory) { Join-Path $OutDirectory "$matrixApp-$matrixAgent" } else { Join-Path $root "$stamp-$matrixApp-$matrixAgent" }
-            $trialParameters = New-TrialInvocationParameters -AppName $matrixApp -AgentName $matrixAgent -PinnedVersion $Version -OutputDirectory $directory -RunModel $AgentModel -RunEffort $AgentEffort -TaskName 'change' -SkillList @() -PluginDirectory '' -FreshMachine:$FreshMachine
+            $trialParameters = New-TrialInvocationParameters -AppName $matrixApp -AgentName $matrixAgent -PinnedVersion $Version -OutputDirectory $directory -RunModel $AgentModel -RunEffort $AgentEffort -TaskName 'change' -SkillList @() -PluginDirectory '' -FreshMachine:$FreshMachine -Entry $Entry -DocsRef $DocsRef
             $outcome = Invoke-Trial @trialParameters
             $summary += "$matrixApp/$matrixAgent=$outcome"
             $worst = [Math]::Max($worst, (Get-ExitCodeForOutcome $outcome))
@@ -2215,7 +2408,7 @@ $summary = @()
 $worst = 0
 for ($index = 1; $index -le $Repeat; $index++) {
     $runDirectory = if ($Repeat -gt 1) { Join-Path $directory ("{0:D2}" -f $index) } else { $directory }
-    $trialParameters = New-TrialInvocationParameters -AppName $App -AgentName $Agent -PinnedVersion $Version -OutputDirectory $runDirectory -RunModel $AgentModel -RunEffort $AgentEffort -TaskName $Task -RunPromptPrefix $PromptPrefix -SkillList $Skills -PluginDirectory $ClaudePluginDir -Configuration $Configuration -FreshMachine:$FreshMachine
+    $trialParameters = New-TrialInvocationParameters -AppName $App -AgentName $Agent -PinnedVersion $Version -OutputDirectory $runDirectory -RunModel $AgentModel -RunEffort $AgentEffort -TaskName $Task -RunPromptPrefix $PromptPrefix -SkillList $Skills -PluginDirectory $ClaudePluginDir -Configuration $Configuration -FreshMachine:$FreshMachine -Entry $Entry -DocsRef $DocsRef
     $trialParameters.AllowClaudeBypassPermissions = $AllowClaudeBypassPermissions
     $outcome = Invoke-Trial @trialParameters
     $result = Read-JsonFile (Join-Path $runDirectory 'result.json')
