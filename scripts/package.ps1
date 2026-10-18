@@ -53,7 +53,7 @@ ship    resumable, one repository-wide ship lock (git common dir pointframe/ship
         record accept wrote covers the head), qualify (release-impact.ps1; when required, a recorded passing qualification is reused
         only for the same head and tree and unchanged candidate artifact hashes, otherwise desktop-required with the exact command,
         and only with -AllowDesktop, after an unlocked-input-desktop check and an announcement, check-released-desktop.ps1
-        -BuildCandidate), push (never twice), pr (an existing PR for pkg/<slug> is reused; the body is generated from state with a
+        -BuildCandidate), push (never twice), pr (an existing PR for pkg/<slug> is reused and its description regenerated for the shipped head via gh pr edit; the body is generated from state with a
         "What was not tested" section), merge (merge-pr.ps1 -Auto -NoPluginPin -WaitMerged, only for a head that the verify receipt, the
         qualification decision and the pull request all name; an auto-merge already enabled for that head is waited for, never
         enabled again; a head moved by the pin after the push is re-verified, pushed and gated again; -NoWait always stops at
@@ -3738,29 +3738,47 @@ function Step-ShipPush($Info)
     $true
 }
 
+function Write-ShipPrBody($Info, $State, [string]$Head)
+{
+    $review = Get-ShipReview $State
+    $body = New-ShipPrBody $State $review $Head (Get-GitTree ([string]$State.worktree)) (Get-ShipStep $State 'verify') (Get-ShipStep $State 'qualify')
+    $bodyPath = Join-Path (Get-ShipPaths $Info).Dir 'pr-body.md'
+    [IO.File]::WriteAllText($bodyPath, $body, [Text.UTF8Encoding]::new($false))
+    $bodyPath
+}
+
+function Sync-ShipPrBody($Info, $State, [string]$Number, [string]$Url, [string]$Head, [bool]$Created)
+{
+    # The description is generated from the state of the head that is shipped, so a pull request that exists already (reused, or created
+    # for a head the plugin pin has moved since) is edited to say what this head's receipt and qualification say.
+    $bodyPath = Write-ShipPrBody $Info $State $Head
+    $edited = Invoke-Gh @('pr', 'edit', $Number, '--body-file', $bodyPath) $Info.MainCheckout
+    if ($edited.Exit -ne 0) { return (Stop-Ship $Info 'ship-failed' 'pr' @{ status = 'failed'; number = $Number; url = $Url; head = $Head } "ERROR gh pr edit failed (exit $($edited.Exit)): $(($edited.Lines | Select-Object -Last 3) -join ' '). The description of #$Number still names an earlier head.") }
+    Set-ShipStep $Info 'pr' @{ status = 'done'; number = $Number; url = $Url; head = $Head; created = $Created; body = $bodyPath; bodySha256 = (Get-Sha256 $bodyPath); bodyHead = $Head }
+    $true
+}
+
 function Step-ShipPr($Info)
 {
     $state = Read-State $Info.StateRoot $Id
     $branch = [string]$state.branch
     $done = Get-ShipStep $state 'pr'
-    if ($done -and $done.status -eq 'done') { return $true }
     $head = Get-GitHead ([string]$state.worktree)
+    if ($done -and $done.status -eq 'done')
+    {
+        if ([string]$done.head -eq $head -and [string](Get-Field $done 'bodyHead') -eq $head) { return $true }
+        Write-Host "ship: the pull request #$($done.number) was opened for head $($done.head); its description is regenerated for $head"
+        return (Sync-ShipPrBody $Info $state ([string]$done.number) ([string]$done.url) $head ([bool](Get-Field $done 'created')))
+    }
     try { $existing = Find-ShipPr $Info $branch }
     catch { return (Stop-Ship $Info 'ship-failed' 'pr' @{ status = 'failed'; head = $head } "ERROR $($_.Exception.Message)") }
     if ($existing)
     {
-        Set-ShipStep $Info 'pr' @{ status = 'done'; number = $existing.Number; url = $existing.Url; head = $head; created = $false; prState = $existing.State }
-        Write-Host "ship: pull request #$($existing.Number) already exists for $branch ($($existing.Url)); no second one is created"
-        return $true
+        Write-Host "ship: pull request #$($existing.Number) already exists for $branch ($($existing.Url)); no second one is created, its description is regenerated for $head"
+        return (Sync-ShipPrBody $Info $state $existing.Number $existing.Url $head $false)
     }
-    $review = Get-ShipReview $state
-    $paths = Get-ShipPaths $Info
     $prTitle = Get-ShipTitle ([string]$state.brief.path) $Title
-    $verifyStep = Get-ShipStep $state 'verify'
-    $qualifyStep = Get-ShipStep $state 'qualify'
-    $body = New-ShipPrBody $state $review $head (Get-GitTree ([string]$state.worktree)) $verifyStep $qualifyStep
-    $bodyPath = Join-Path $paths.Dir 'pr-body.md'
-    [IO.File]::WriteAllText($bodyPath, $body, [Text.UTF8Encoding]::new($false))
+    $bodyPath = Write-ShipPrBody $Info $state $head
     $baseBranch = ([string]$state.baseRef).Substring(([string]$state.baseRef).IndexOf('/') + 1)
     $created = Invoke-Gh @('pr', 'create', '--base', $baseBranch, '--head', $branch, '--title', $prTitle, '--body-file', $bodyPath) $Info.MainCheckout
     if ($created.Exit -ne 0) { return (Stop-Ship $Info 'ship-failed' 'pr' @{ status = 'failed'; head = $head } "ERROR gh pr create failed (exit $($created.Exit)): $(($created.Lines | Select-Object -Last 3) -join ' ')") }
@@ -3774,7 +3792,7 @@ function Step-ShipPr($Info)
         if ($again) { $number = $again.Number; $url = $again.Url }
     }
     if (-not $number) { return (Stop-Ship $Info 'ship-failed' 'pr' @{ status = 'failed'; head = $head } 'ERROR gh pr create reported no pull request number') }
-    Set-ShipStep $Info 'pr' @{ status = 'done'; number = $number; url = $url; head = $head; created = $true; title = $prTitle; body = $bodyPath; bodySha256 = (Get-Sha256 $bodyPath) }
+    Set-ShipStep $Info 'pr' @{ status = 'done'; number = $number; url = $url; head = $head; created = $true; title = $prTitle; body = $bodyPath; bodySha256 = (Get-Sha256 $bodyPath); bodyHead = $head }
     Write-Host "ship: opened pull request #$number ($url)"
     $true
 }
@@ -3788,20 +3806,25 @@ function Step-ShipMerge($Info)
     $number = [string]$prStep.number
     $mergeStep = Get-ShipStep $state 'merge'
     $calls = if ($mergeStep) { [int](Get-Field $mergeStep 'calls') } else { 0 }
+    # A failure record keeps what the earlier record knew about the auto-merge (the head it was enabled for, that merge-pr.ps1 confirmed it,
+    # the call count): a failed read must never make a later run enable the same auto-merge again.
+    $keep = @{}
+    foreach ($key in @('enabledHead', 'confirmed', 'calls')) { $kept = Get-Field $mergeStep $key; if ($null -ne $kept) { $keep[$key] = $kept } }
+    $failRecord = { param([hashtable]$Extra) $merged = $keep.Clone(); foreach ($key in $Extra.Keys) { $merged[$key] = $Extra[$key] }; $merged }
     $view = Get-ShipPrState $Info $number
-    if (-not $view) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = $calls } "ERROR gh pr view $number failed; the state of the pull request is unknown") }
+    if (-not $view) { return (Stop-Ship $Info 'ship-failed' 'merge' (& $failRecord @{ status = 'failed'; number = $number }) "ERROR gh pr view $number failed; the state of the pull request is unknown") }
     if ($view.State -eq 'MERGED') { return (Complete-ShipMerged $Info $wt $number $view $calls $true) }
-    if ($view.State -eq 'CLOSED') { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = $calls } "ERROR pull request #$number is CLOSED without being merged") }
+    if ($view.State -eq 'CLOSED') { return (Stop-Ship $Info 'ship-failed' 'merge' (& $failRecord @{ status = 'failed'; number = $number }) "ERROR pull request #$number is CLOSED without being merged") }
 
     # Everything the merge is about to rest on has to be bound to the head that is on the pull request and in the worktree.
     $localHead = Get-GitHead $wt
     $evidence = @(Get-ShipEvidenceProblems $state $localHead $wt)
     if ($view.Head -ne $localHead) { $evidence += "the pull request head $($view.Head) is not the shipped head $localHead" }
-    if ($evidence.Count) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = $calls; head = $localHead } "ERROR the evidence does not cover the head to be merged: $($evidence -join '; ')") }
+    if ($evidence.Count) { return (Stop-Ship $Info 'ship-failed' 'merge' (& $failRecord @{ status = 'failed'; number = $number; head = $localHead }) "ERROR the evidence does not cover the head to be merged: $($evidence -join '; ')") }
 
     # An auto-merge that merge-pr.ps1 already enabled for this very head is waited for, not enabled again.
     $enabledHead = [string](Get-Field $mergeStep 'enabledHead')
-    if ($enabledHead -eq $localHead -and ($view.AutoMerge -or [string](Get-Field $mergeStep 'status') -eq 'auto-merge-enabled'))
+    if ($enabledHead -eq $localHead -and ($view.AutoMerge -or [bool](Get-Field $mergeStep 'confirmed')))
     {
         Write-Host "ship: auto-merge is already enabled for #$number at $localHead; merge-pr.ps1 is not called again"
         Update-State $Info.StateRoot $Id 'ship-auto-merge-pending' { param($s) $s.stage = 'auto-merge-enabled' } | Out-Null
@@ -3818,7 +3841,7 @@ function Step-ShipMerge($Info)
             $view = Get-ShipPrState $Info $number
         }
         if ($view -and $view.State -eq 'MERGED') { return (Complete-ShipMerged $Info $wt $number $view $calls $true) }
-        if ($view -and $view.State -eq 'CLOSED') { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = $calls } "ERROR pull request #$number was CLOSED without being merged") }
+        if ($view -and $view.State -eq 'CLOSED') { return (Stop-Ship $Info 'ship-failed' 'merge' (& $failRecord @{ status = 'failed'; number = $number }) "ERROR pull request #$number was CLOSED without being merged") }
         $script:ExitCode = 1
         Write-Host "ERROR #$number is not merged after $MergeTimeoutMinutes minute(s) (GitHub reports $(if ($view) { $view.State } else { 'unknown' })); the package stays at auto-merge-enabled. Run ship again to keep waiting."
         return $false
@@ -3838,13 +3861,13 @@ function Step-ShipMerge($Info)
     if ($NoWait)
     {
         # -NoWait always stops here, also when GitHub merged at once; the next ship records the merge.
-        Set-ShipStep $Info 'merge' @{ status = 'auto-merge-enabled'; number = $number; calls = ($calls + 1); exitCode = $code; observedState = $observed; enabledHead = $localHead; log = $log } 'auto-merge-enabled'
+        Set-ShipStep $Info 'merge' @{ status = 'auto-merge-enabled'; confirmed = $true; number = $number; calls = ($calls + 1); exitCode = $code; observedState = $observed; enabledHead = $localHead; log = $log } 'auto-merge-enabled'
         if ($observed -eq 'MERGED') { Write-Host "ship: auto-merge is enabled for #$number and GitHub already reports it MERGED. Run ship again to record the merge and report the channels." }
         else { Write-Host "ship: auto-merge is enabled for #$number; it is NOT merged yet (GitHub reports $observed). Run ship again to wait for the merge and report the channels." }
         return $false
     }
     if ($view -and $view.State -eq 'MERGED') { return (Complete-ShipMerged $Info $wt $number $view ($calls + 1) $false) }
-    Set-ShipStep $Info 'merge' @{ status = 'auto-merge-enabled'; number = $number; calls = ($calls + 1); exitCode = $code; observedState = $observed; enabledHead = $localHead; log = $log } 'auto-merge-enabled'
+    Set-ShipStep $Info 'merge' @{ status = 'auto-merge-enabled'; confirmed = $true; number = $number; calls = ($calls + 1); exitCode = $code; observedState = $observed; enabledHead = $localHead; log = $log } 'auto-merge-enabled'
     Write-Host "ERROR merge-pr.ps1 returned but GitHub reports $observed, not MERGED; the package is not merged. Run ship again to keep waiting."
     $script:ExitCode = 1
     $false
@@ -4026,6 +4049,12 @@ function Invoke-ShipLocked($Info)
     if (-not (Test-ShipStepOk (Step-ShipPush $Info))) { return }
     if (-not (Test-ShipStepOk (Step-ShipPr $Info))) { return }
     if (-not (Test-ShipStepOk (Step-ShipMerge $Info))) { return }
+    if ($NoWait)
+    {
+        # GitHub already reported MERGED, which is recorded; -NoWait still means no waiting on the release.
+        Write-Host "ship: the merge is recorded. With -NoWait the release channels are not waited for. Report them with: pwsh scripts/package.ps1 ship -Id $Id"
+        return
+    }
     Step-ShipChannels $Info | Out-Null
 }
 
@@ -4789,8 +4818,16 @@ if ($verb -eq 'pr create')
     Write-Output $pr.url
     exit 0
 }
+if ($verb -eq 'pr edit')
+{
+    if ($env:POINTFRAME_PKG_TEST_GH_FAIL -eq 'edit') { Write-Host 'gh: simulated edit failure'; exit 1 }
+    $n = [int]$a[2]
+    Copy-Item -LiteralPath (Arg '--body-file') -Destination (Join-Path $dir "body-$n.md") -Force
+    exit 0
+}
 if ($verb -eq 'pr view')
 {
+    if ($env:POINTFRAME_PKG_TEST_GH_FAIL -eq 'view') { exit 1 }
     $n = [int]$a[2]
     $pr = @($prs | Where-Object { $_.number -eq $n })[0]
     if (-not $pr) { exit 1 }
@@ -5130,6 +5167,17 @@ switch ($env:POINTFRAME_PKG_TEST_CHANNELMODE)
         & $expect ($r.Exit -eq 0 -and $state.stage -eq 'auto-merge-enabled' -and $r.Text -match 'merge-pr\.ps1 is not called again' -and (& $calls '^mergepr .*-Auto') -eq 1 -and (& $calls 'pr create') -eq 1 -and (& $calls '^push') -eq 1 -and $state.ship.steps.merge.calls -eq 1) "rerun $again at auto-merge-enabled called merge-pr.ps1 or pushed again: exit $($r.Exit) $($r.Text)"
     }
 
+    # A failed gh pr view stops the ship but keeps what is known about the auto-merge: the next run, which sees it OPEN with the auto-merge
+    # request, still does not call merge-pr.ps1 -Auto for the same head.
+    & $setEnv @{ GH_FAIL = 'view' }
+    $r = & $ship 'sa' @('-NoWait')
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'ship-failed' -and $r.Text -match 'gh pr view' -and $state.ship.steps.merge.enabledHead -eq $aHead -and $state.ship.steps.merge.confirmed -eq $true -and (& $calls '^mergepr .*-Auto') -eq 1) "a failed gh pr view dropped the auto-merge record or called merge-pr.ps1: exit $($r.Exit) $($state.ship.steps.merge | ConvertTo-Json -Compress) $($r.Text)"
+    & $setEnv @{}
+    $r = & $ship 'sa' @('-NoWait')
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'auto-merge-enabled' -and $r.Text -match 'merge-pr\.ps1 is not called again' -and (& $calls '^mergepr .*-Auto') -eq 1) "the rerun after a failed gh pr view enabled the auto-merge again: exit $($r.Exit) $($r.Text)"
+
     # The evidence is bound to the head to be merged: a receipt or qualification for another head or tree is refused, and the refusal ships nothing.
     $evidenceState = Read-State $packagesRoot 'sa'
     $evidenceClean = @(Get-ShipEvidenceProblems $evidenceState $aHead $aWt)
@@ -5153,10 +5201,22 @@ switch ($env:POINTFRAME_PKG_TEST_CHANNELMODE)
     $state = & $stateFile 'sa'
     $aHead2 = & $headOf 'sa'
     & $expect ($r.Exit -eq 0 -and $aHead2 -ne $aHead -and $state.stage -eq 'auto-merge-enabled' -and -not $state.acceptance.invalidated -and (& $calls '^push') -eq 2 -and (& $originRef 'sa') -eq $aHead2 -and (& $calls '^verify$') -eq $verifiesBefore + 1 -and $state.ship.steps.verify.head -eq $aHead2 -and $state.ship.steps.merge.enabledHead -eq $aHead2 -and (& $calls '^mergepr .*-Auto') -eq 2 -and (& $calls '^mergepr .*-Auto -NoPluginPin') -eq 2 -and (& $calls 'pr create') -eq 1) "a head moved by the pin after the push was not re-verified, pushed and re-gated: exit $($r.Exit) $($r.Text)"
+    # The pull request exists for the old head: its description is regenerated for the new one (head, tree, receipt), and edited, not recreated.
+    $editedBody = Get-Content -LiteralPath (Join-Path $ghDir 'body-101.md') -Raw
+    & $expect ((& $calls '^gh pr edit') -eq 2 -and $editedBody -match "head ``$aHead2``" -and $editedBody -notmatch $aHead -and $editedBody -match "tree ``$($state.ship.steps.verify.tree)``" -and $state.ship.steps.pr.bodyHead -eq $aHead2 -and $state.ship.steps.pr.head -eq $aHead2) "the pull request description still names the earlier head after the pin advance: $editedBody"
+    & $setEnv @{ GH_FAIL = 'edit' }
+    Update-State $packagesRoot 'sa' 'test-pr-head-moved' { param($s) $s.ship.steps.pr.bodyHead = ('c' * 40) } | Out-Null
+    $r = & $ship 'sa' @('-NoWait')
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'ship-failed' -and $state.ship.steps.pr.status -eq 'failed' -and $r.Text -match 'gh pr edit failed' -and (& $calls '^mergepr .*-Auto') -eq 2) "a failed description update did not stop the ship before the merge: exit $($r.Exit) $($r.Text)"
+    & $setEnv @{}
+    $r = & $ship 'sa' @('-NoWait')
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'auto-merge-enabled' -and $state.ship.steps.pr.status -eq 'done' -and $state.ship.steps.pr.bodyHead -eq $aHead2 -and (& $calls 'pr create') -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 2) "the rerun after a failed description update did not repair it without a second PR or merge call: exit $($r.Exit) $($r.Text)"
 
     # A crash inside the merge-pr.ps1 call: no auto-merge is visible on the pull request, so the call is repeated, waiting this time.
     # GitHub never merges in this case, and the package must not claim it did.
-    Update-State $packagesRoot 'sa' 'test-crash-in-merge-call' { param($s) $s.ship.steps.merge.status = 'running' } | Out-Null
+    Update-State $packagesRoot 'sa' 'test-crash-in-merge-call' { param($s) $s.ship.steps.merge.status = 'running'; $s.ship.steps.merge.confirmed = $false } | Out-Null
     $prsPath = Join-Path $ghDir 'prs.json'
     $stubPrs = @(Get-Content -LiteralPath $prsPath -Raw | ConvertFrom-Json)
     foreach ($stubPr in $stubPrs) { $stubPr.autoMerge = $false }
@@ -5197,8 +5257,12 @@ switch ($env:POINTFRAME_PKG_TEST_CHANNELMODE)
     $state = & $stateFile 'sc'
     & $expect ($r.Exit -eq 0 -and $state.stage -eq 'auto-merge-enabled' -and $state.ship.steps.base.noOp -eq $true -and -not $state.acceptance.invalidated -and $r.Text -match 'rebase changed nothing' -and (& $headOf 'sc') -eq $cHead -and (& $calls '^verify$') -eq 1) "a no-op rebase did not keep the acceptance: exit $($r.Exit) stage $($state.stage) $($r.Text)"
     & $expect ($state.stage -ne 'merged' -and $r.Text -match 'already reports it MERGED' -and (& $calls '^channels') -eq 0 -and (& $calls '^gh release') -eq 0 -and $null -eq (Get-Field $state.ship.steps 'channels')) "-NoWait recorded merged or went on to the channels although it asked for no waiting: stage $($state.stage) $($r.Text)"
-    # The next ship records MERGED (GitHub says so), cleans up and reports the channels.
+    # GitHub has merged it by the time -NoWait runs again: MERGED is recorded (it is true) and the worktree cleaned up, but the release is not waited for.
     & $setEnv @{}
+    $r = & $ship 'sc' @('-NoWait')
+    $state = & $stateFile 'sc'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.status -eq 'done' -and -not (Test-Path $cWt) -and $r.Text -match 'release channels are not waited for' -and $r.Text -match 'package\.ps1 ship -Id sc' -and (& $calls '^channels') -eq 0 -and (& $calls '^gh release') -eq 0 -and $null -eq (Get-Field $state.ship.steps 'channels') -and (& $calls '^mergepr .*-Auto') -eq 1) "-NoWait on a pull request GitHub had merged went on to the channels, or did not record the merge: exit $($r.Exit) stage $($state.stage) $($r.Text)"
+    # A plain ship reports the channels.
     $r = & $ship 'sc'
     $state = & $stateFile 'sc'
     & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.cleanupExit -eq 0 -and $state.ship.steps.merge.calls -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 1 -and (& $calls '^mergepr -Pr \d+ -Worktree \S+$') -eq 1 -and -not (Test-Path $cWt) -and $state.ship.steps.channels.status -eq 'done') "a pull request merged by GitHub was not recorded, cleaned up and reported: exit $($r.Exit) $($r.Text)"
