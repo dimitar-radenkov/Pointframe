@@ -157,6 +157,8 @@ The coordinator commits, opens PRs, and merges. Executors never commit or push. 
 4. Push and `gh pr create`.
 5. `pwsh scripts/merge-pr.ps1 -Pr <n> -Worktree <path> -Auto -WaitMerged` under a watcher. It needs the receipt and the review record to match the PR head and tree. "AUTO-MERGE ENABLED" is not merged.
 
+For a package run through `scripts/package.ps1`, `accept` covers step 3 and `ship -Id <slug>` runs steps 2, 4 and 5 bound to the accepted head.
+
 <!-- rule:W-29 roles=coordinator -->
 - **Checks.** Every required check (`unit-tests`, `package-checks`, `Analyze (csharp)`, CodeQL) must be present. Every check on the PR head, required or otherwise, must have completed without failure or cancellation; skipped checks are allowed. Never delete the branch or worktree until GitHub says MERGED.
 <!-- rule:W-30 roles=coordinator -->
