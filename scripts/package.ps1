@@ -3855,6 +3855,7 @@ function Step-ShipMerge($Info)
     Set-ShipStep $Info 'merge' @{ status = 'running'; number = $number; calls = ($calls + 1); noWait = [bool]$NoWait; enabledHead = $localHead }
     Write-Host "ship: merge-pr.ps1 -Pr $number -Auto -NoPluginPin$(if (-not $NoWait) { ' -WaitMerged' })"
     $code = Invoke-Logged 'pwsh' $mergeArgs $Info.MainCheckout $log -Live
+    Test-ShipCrash 'merge-before-record'
     if ($code -ne 0) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = ($calls + 1); exitCode = $code; enabledHead = $localHead; log = $log } "ERROR merge-pr.ps1 exited with $code (receipt, review or check refusal, conflict or timeout); see $log") }
     $view = Get-ShipPrState $Info $number
     $observed = if ($view) { $view.State } else { 'unknown (gh pr view failed)' }
@@ -3972,6 +3973,11 @@ function Complete-ShipAfterWorktreeLoss($Info, $State)
     if (-not $view -or $view.State -ne 'MERGED') { throw "the worktree $($State.worktree) is gone but pull request #$($prStep.number) is $(if ($view) { $view.State } else { 'unreadable' }), not MERGED; nothing can be shipped from here" }
     Set-ShipStep $Info 'merge' @{ status = 'done'; number = [string]$prStep.number; mergeCommit = $view.MergeCommit; headRefOid = $view.Head; recoveredAfterWorktreeLoss = $true } 'merged'
     Write-Host "ship: pull request #$($prStep.number) is MERGED ($($view.MergeCommit)); the worktree was already removed"
+    if ($NoWait)
+    {
+        Write-Host "ship: the merge is recorded. With -NoWait the release channels are not waited for. Report them with: pwsh scripts/package.ps1 ship -Id $Id"
+        return
+    }
     Step-ShipChannels $Info | Out-Null
 }
 
@@ -5280,9 +5286,20 @@ switch ($env:POINTFRAME_PKG_TEST_CHANNELMODE)
     $r = & $pkg @('accept', '-Id', 'sb', '-Reason', 'reviewed after the rebase')
     & $expect ($r.Exit -eq 0 -and (& $stateFile 'sb').stage -eq 'accepted') "accept after the ship rebase failed: $($r.Text)"
     $sbHead = & $headOf 'sb'
+    $sbWt = & $wtOf 'sb'
+    # The waiting merge helper merges and removes the worktree, then the process dies before the merge is recorded.
+    & $setEnv @{ SHIP_CRASH = 'merge-before-record' }
     $r = & $ship 'sb'
     $state = & $stateFile 'sb'
-    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $state.ship.steps.verify.head -eq $sbHead -and (& $originRef 'sb') -eq $sbHead -and (& $calls '^mergepr .*-Auto -NoPluginPin -WaitMerged') -eq 1 -and $state.ship.steps.channels.status -eq 'done') "ship after the new review did not run through the merge on the new head: exit $($r.Exit) $($r.Text)"
+    & $expect ($r.Exit -eq 99 -and $state.stage -eq 'shipping' -and -not (Test-Path $sbWt) -and $state.ship.steps.verify.head -eq $sbHead -and (& $originRef 'sb') -eq $sbHead -and (& $calls '^mergepr .*-Auto -NoPluginPin -WaitMerged') -eq 1 -and $state.ship.steps.merge.status -eq 'running') "the crash after the merge helper did not leave a merged pull request and no worktree: exit $($r.Exit) stage $($state.stage) $($r.Text)"
+    # Resumed with -NoWait: GitHub's MERGED is recorded, but the release is not waited for.
+    & $setEnv @{}
+    $r = & $ship 'sb' @('-NoWait')
+    $state = & $stateFile 'sb'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.status -eq 'done' -and $state.ship.steps.merge.recoveredAfterWorktreeLoss -eq $true -and $r.Text -match 'release channels are not waited for' -and $r.Text -match 'package\.ps1 ship -Id sb' -and (& $calls '^channels') -eq 0 -and (& $calls '^gh release') -eq 0 -and $null -eq (Get-Field $state.ship.steps 'channels') -and (& $calls '^mergepr .*-Auto') -eq 1) "-NoWait on the worktree-loss recovery went on to the channels or did not record the merge: exit $($r.Exit) stage $($state.stage) $($r.Text)"
+    $r = & $ship 'sb'
+    $state = & $stateFile 'sb'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and (& $calls '^mergepr .*-Auto') -eq 1 -and (& $calls '^channels') -eq 1 -and $state.ship.steps.channels.status -eq 'done') "a plain ship after the recovery did not report the channels once without another merge call: exit $($r.Exit) $($r.Text)"
 
     # ---- a failing rebase --abort ----
     & $resetLog
