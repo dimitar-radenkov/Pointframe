@@ -62,7 +62,7 @@ The owner sets direction and holds the decisions the charter reserves. The coord
 <!-- rule:W-37 roles=coordinator -->
 - **Models.** Cheapest model that can do the work: `gpt-6-luna` at `medium` effort by default, `high` effort for concurrency, lifecycle, and DPI work. Raise effort before raising the model. Only generation-6 models are used; the top tier needs owner approval. Brainstorm, retros, and heavy review use the strong tier (see Review). Set model and effort per run; never change persistent Codex configuration unless asked. Use only model names confirmed by Codex configuration or its model listing.
 <!-- rule:W-39 roles=coordinator -->
-- **Haiku 5.5 trial.** Haiku 5.5 (`claude-haiku-5-5`, Agent model `haiku`) is allowed only for this scope until the 2026-11-02 retro; no automatic renewal.
+- **Haiku 5.5 trial.** Haiku 5.5 (`claude-haiku-5-5`, Agent model `haiku`) is allowed only for this scope until the 2026-11-02 retro; no automatic renewal. Through `package.ps1` a Haiku model needs a `Haiku-scope: helper|mechanical` brief line; helpers get no Edit or Write.
   - **Mechanical executor:** only when all four small-fix conditions (W-08) hold, or for a generated or link fix with an explicit expected transformation and allowed paths. KB, index, and numbering edits stay with the coordinator (W-09): Haiku proposes the patch, the coordinator applies it.
   - **Never Haiku:** reviewer (light or heavy), KB prose rewriting or compression, lifecycle, DPI, privacy, release, and verify-truthfulness work.
   - **Review:** a Haiku executor's change gets an independent light review (Codex `gpt-6-luna`) and an ordinary review record; `-SmallFix` stays coordinator-only (W-20 unchanged).

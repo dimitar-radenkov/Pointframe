@@ -38,7 +38,7 @@ public static class PointframeProcessJob
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr attributes, string name);
     [DllImport("kernel32.dll")] static extern bool SetInformationJobObject(IntPtr job, int infoClass, IntPtr info, uint length);
     [DllImport("kernel32.dll")] static extern bool QueryInformationJobObject(IntPtr job, int infoClass, IntPtr info, uint length, IntPtr returned);
-    [DllImport("kernel32.dll")] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
     [DllImport("kernel32.dll")] static extern bool TerminateJobObject(IntPtr job, uint exitCode);
     [DllImport("kernel32.dll")] static extern bool TerminateProcess(IntPtr process, uint exitCode);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
