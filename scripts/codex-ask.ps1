@@ -11,12 +11,16 @@ param(
     [string]$EscalationReason,
     [string]$TestCodexScript,
     [string]$RunRecordPath,
+    [ValidateRange(0.01, 1440)]
+    [double]$MaxMinutes = 30,
+    [switch]$SimulateKillFailure,
     [switch]$SelfTest
 )
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'lib/codex.ps1')
+. (Join-Path $PSScriptRoot 'lib/process-tree.ps1')
 
 function Test-ConsultOutput([string]$Path, [DateTimeOffset]$Started)
 {
@@ -31,13 +35,52 @@ function Get-SessionId([string[]]$Lines)
 {
     foreach ($line in $Lines)
     {
+        if (-not $line) { continue }
         try { $event = $line | ConvertFrom-Json } catch { continue }
+        if ($null -eq $event) { continue }
         if ($event.PSObject.Properties['thread_id'] -and $event.thread_id) { return [string]$event.thread_id }
         if ($event.PSObject.Properties['session_id'] -and $event.session_id) { return [string]$event.session_id }
         if ($event.PSObject.Properties['type'] -and $event.type -eq 'session.started' -and
             $event.PSObject.Properties['sessionId'] -and $event.sessionId) { return [string]$event.sessionId }
     }
     ''
+}
+
+function Get-TokenFields([string[]]$Lines)
+{
+    # Sums the usage of every turn.completed event. A field no event reported stays null, never 0.
+    $sums = @{ inputTokens = $null; cachedInputTokens = $null; outputTokens = $null; reasoningOutputTokens = $null }
+    $map = @{ inputTokens = 'input_tokens'; cachedInputTokens = 'cached_input_tokens'; outputTokens = 'output_tokens'; reasoningOutputTokens = 'reasoning_output_tokens' }
+    foreach ($line in $Lines)
+    {
+        if (-not $line) { continue }
+        try { $item = $line | ConvertFrom-Json } catch { continue }
+        if (-not $item.PSObject.Properties['type'] -or $item.type -ne 'turn.completed') { continue }
+        if (-not $item.PSObject.Properties['usage'] -or -not $item.usage) { continue }
+        foreach ($key in $map.Keys)
+        {
+            $source = $map[$key]
+            if ($item.usage.PSObject.Properties[$source] -and $null -ne $item.usage.$source)
+            {
+                $sums[$key] = [long]$sums[$key] + [long]$item.usage.$source
+            }
+        }
+    }
+    $sums
+}
+
+function Test-SelfTestStub([string]$Path)
+{
+    # Fault injection is only ever accepted together with a Codex substitute the self-test wrote and marked.
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    ((Get-Content -LiteralPath $Path -TotalCount 1) -eq '# pointframe-selftest-stub')
+}
+
+function Write-ResultFile([string]$Path, [hashtable]$Result)
+{
+    $temp = "$Path.$([guid]::NewGuid().ToString('N')).tmp"
+    [IO.File]::WriteAllText($temp, ($Result | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+    [IO.File]::Move($temp, $Path, $true)
 }
 
 function Invoke-SelfTest
@@ -101,6 +144,69 @@ if ($oi -lt 0) { exit 8 }
             if (-not (Test-Path $runRecordPath)) { $failures.Add('self-test run record was not written under the temp root') }
         }
         finally { if ($null -eq $oldFake) { Remove-Item Env:POINTFRAME_CODEX_TEST_SCRIPT -ErrorAction SilentlyContinue } else { $env:POINTFRAME_CODEX_TEST_SCRIPT = $oldFake } }
+
+        # No usage events: the result file carries the session and null (not 0) token fields.
+        $resultPath = "$destination.result.json"
+        if (-not (Test-Path $resultPath)) { $failures.Add('result file was not written') }
+        else
+        {
+            $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+            if ($result.sessionId -ne 'fake-e2e-session' -or $result.model -ne 'gpt-6-luna' -or $result.effort -ne 'medium' -or $result.exitCode -ne 0) { $failures.Add('result file identity fields mismatch') }
+            if ($null -ne $result.tokens.inputTokens -or $null -ne $result.tokens.outputTokens) { $failures.Add('absent token fields were not null') }
+            if ($null -eq $result.elapsedSeconds) { $failures.Add('result file has no elapsed time') }
+        }
+
+        # Usage events: the token fields are the sums over turn.completed events.
+        $usageScript = Join-Path $temp 'fake-usage.ps1'
+        [IO.File]::WriteAllText($usageScript, @'
+$all = @($args)
+$oi = [Array]::IndexOf($all, '-o')
+[IO.File]::WriteAllText($all[$oi + 1], 'usage answer')
+'{"type":"thread.started","thread_id":"usage-session"}'
+'{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":4,"output_tokens":3}}'
+'{"type":"turn.completed","usage":{"input_tokens":5,"cached_input_tokens":1,"output_tokens":2}}'
+'@, [Text.UTF8Encoding]::new($false))
+        $usageOut = Join-Path $temp 'usage-output.md'
+        & pwsh -NoProfile -File $PSCommandPath -PromptFile $prompt -OutFile $usageOut -Model gpt-6-luna -Effort medium -Sandbox read-only -Worktree $repo -TestCodexScript $usageScript -RunRecordPath (Join-Path $temp 'usage-runs.jsonl') | Out-Null
+        $usageResult = if (Test-Path "$usageOut.result.json") { Get-Content -LiteralPath "$usageOut.result.json" -Raw | ConvertFrom-Json } else { $null }
+        if ($LASTEXITCODE -ne 0 -or -not $usageResult -or $usageResult.tokens.inputTokens -ne 15 -or $usageResult.tokens.cachedInputTokens -ne 5 -or $usageResult.tokens.outputTokens -ne 5 -or $null -ne $usageResult.tokens.reasoningOutputTokens)
+        { $failures.Add('token fields were not summed from the event stream') }
+
+        # A Codex process that never finishes is killed at -MaxMinutes and reported.
+        $sleepScript = Join-Path $temp 'fake-sleep.ps1'
+        [IO.File]::WriteAllText($sleepScript, "# pointframe-selftest-stub`r`nStart-Sleep -Seconds 120`r`n", [Text.UTF8Encoding]::new($false))
+        $sleepOut = Join-Path $temp 'sleep-output.md'
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        $sleepText = (& pwsh -NoProfile -File $PSCommandPath -PromptFile $prompt -OutFile $sleepOut -Model gpt-6-luna -Effort medium -Sandbox read-only -Worktree $repo -TestCodexScript $sleepScript -RunRecordPath (Join-Path $temp 'sleep-runs.jsonl') -MaxMinutes 0.03) -join "`n"
+        $sleepExit = $LASTEXITCODE
+        if ($sleepExit -ne 1 -or $sleepText -notmatch 'did not finish.*and was stopped' -or $timer.Elapsed.TotalSeconds -gt 60) { $failures.Add("timeout was not enforced with the existing failure code (exit $sleepExit, $([int]$timer.Elapsed.TotalSeconds)s): $sleepText") }
+        $sleepResult = if (Test-Path "$sleepOut.result.json") { Get-Content -LiteralPath "$sleepOut.result.json" -Raw | ConvertFrom-Json } else { $null }
+        if (-not $sleepResult -or -not $sleepResult.timedOut -or $sleepResult.outcome -ne 'timeout' -or $null -ne $sleepResult.exitCode -or $sleepResult.terminated -ne $true) { $failures.Add('timeout was not recorded in the result file') }
+        $jsonl = Get-Content -LiteralPath (Join-Path $temp 'usage-runs.jsonl') -Raw | ConvertFrom-Json
+        if ($jsonl.tokens.input -ne 15 -or $jsonl.tokens.output -ne 5) { $failures.Add('agent-runs record did not carry the real token sums') }
+        $nullJsonl = (Get-Content -LiteralPath (Join-Path $temp 'sleep-runs.jsonl') -Raw | ConvertFrom-Json)
+        if ($null -ne $nullJsonl.tokens.input -or $null -ne $nullJsonl.tokens.output) { $failures.Add('agent-runs record used a zero placeholder for absent tokens') }
+
+        # A grandchild of Codex does not survive the timeout.
+        $treeScript = Join-Path $temp 'fake-tree.ps1'
+        $pidFile = Join-Path $temp 'grandchild.pid'
+        [IO.File]::WriteAllText($treeScript, "`$c = Start-Process pwsh -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru -NoNewWindow; Set-Content -LiteralPath '$pidFile' `$c.Id; Start-Sleep -Seconds 120`r`n", [Text.UTF8Encoding]::new($false))
+        & pwsh -NoProfile -File $PSCommandPath -PromptFile $prompt -OutFile (Join-Path $temp 'tree-output.md') -Model gpt-6-luna -Effort medium -Sandbox read-only -Worktree $repo -TestCodexScript $treeScript -RunRecordPath (Join-Path $temp 'tree-runs.jsonl') -MaxMinutes 0.15 | Out-Null
+        $grandchild = if (Test-Path $pidFile) { [int](Get-Content $pidFile -Raw).Trim() } else { 0 }
+        Start-Sleep -Milliseconds 500
+        if ($grandchild -le 0 -or (Get-Process -Id $grandchild -ErrorAction SilentlyContinue)) { $failures.Add("a grandchild survived the timeout (pid $grandchild)") }
+        if ($grandchild -gt 0) { Stop-Process -Id $grandchild -Force -ErrorAction SilentlyContinue }
+
+        # When the kill cannot be verified the message and the result file do not claim it.
+        $stuckOut = Join-Path $temp 'stuck-output.md'
+        $stuckText = (& pwsh -NoProfile -File $PSCommandPath -PromptFile $prompt -OutFile $stuckOut -Model gpt-6-luna -Effort medium -Sandbox read-only -Worktree $repo -TestCodexScript $sleepScript -RunRecordPath (Join-Path $temp 'stuck-runs.jsonl') -MaxMinutes 0.03 -SimulateKillFailure) -join "`n"
+        $stuckExit = $LASTEXITCODE
+        $stuckResult = if (Test-Path "$stuckOut.result.json") { Get-Content -LiteralPath "$stuckOut.result.json" -Raw | ConvertFrom-Json } else { $null }
+        if ($stuckExit -ne 1 -or $stuckText -notmatch 'COULD NOT be stopped' -or $stuckText -match 'and was stopped' -or -not $stuckResult -or $stuckResult.terminated -ne $false) { $failures.Add("an unverified kill was reported as stopped: $stuckText") }
+
+        # Fault injection is refused for anything but a marked self-test stub, so real launches cannot be affected.
+        & pwsh -NoProfile -File $PSCommandPath -PromptFile $prompt -OutFile (Join-Path $temp 'refused-output.md') -Model gpt-6-luna -Effort medium -Sandbox read-only -Worktree $repo -TestCodexScript $fakeScript -RunRecordPath (Join-Path $temp 'refused-runs.jsonl') -SimulateKillFailure | Out-Null
+        if ($LASTEXITCODE -ne 2) { $failures.Add('-SimulateKillFailure was accepted with an unmarked executor') }
     }
     finally { Remove-Item -LiteralPath $temp -Recurse -Force }
     if ($failures.Count) { $failures | ForEach-Object { Write-Host "ERROR self-test: $_" }; exit 1 }
@@ -158,23 +264,70 @@ $stderr = Join-Path ([IO.Path]::GetTempPath()) "codex-ask-$([guid]::NewGuid().To
 try
 {
     [IO.File]::WriteAllText($stdin, $prompt, [Text.UTF8Encoding]::new($false))
-    $startOptions = @{ FilePath = $codex.File; ArgumentList = $arguments; PassThru = $true; NoNewWindow = $true; RedirectStandardInput = $stdin; RedirectStandardOutput = $stdout; RedirectStandardError = $stderr }
-    if ($SessionId) { $startOptions.WorkingDirectory = $repo }
-    $process = Start-Process @startOptions
-    $process.WaitForExit()
-    $events = if (Test-Path $stdout) { [IO.File]::ReadAllText($stdout, [Text.Encoding]::UTF8) } else { '' }
-    $errors = if (Test-Path $stderr) { [IO.File]::ReadAllText($stderr, [Text.Encoding]::UTF8) } else { '' }
+    if ($SimulateKillFailure -and -not (Test-SelfTestStub $TestCodexScript)) { Write-Host 'ERROR -SimulateKillFailure is only accepted together with a marked self-test stub executor'; exit 2 }
+    Initialize-ProcessJob
+    $job = [PointframeProcessJob]::Create()
+    if ($job -eq [IntPtr]::Zero) { Write-Host 'ERROR cannot create a job object; an uncontained Codex process is never started'; exit 1 }
+    # Created suspended, assigned to the kill-on-close job, then resumed: Codex cannot spawn a child outside the job.
+    # Accepted limitation: a crash of this script between creation and assignment leaves one suspended process that never ran.
+    $process = Start-ProcessInJob $job $codex.File $arguments $(if ($SessionId) { $repo } else { (Get-Location).Path }) $stdin $stdout $stderr
+    $timedOut = -not (Wait-ProcessExit $process ([long][Math]::Ceiling($MaxMinutes * 60000)))
+    $terminated = $null
+    if ($timedOut)
+    {
+        # "Stopped" is only claimed when it is verified: the whole job (children and grandchildren) is empty.
+        $terminated = if ($SimulateKillFailure) { $false } else { Stop-ProcessJob $job 10 }
+        $containment = [pscustomobject]@{ Verified = $terminated; Alive = (-not $terminated); Leftover = 0; Reason = $(if ($terminated) { $null } else { 'the process tree could not be verified gone' }) }
+        if ($terminated) { Wait-ProcessExit $process 5000 | Out-Null }
+    }
+    else
+    {
+        $containment = Test-JobContainment $job
+    }
+    $readShared = { param($path) $s = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite'); try { [IO.StreamReader]::new($s, [Text.Encoding]::UTF8).ReadToEnd() } finally { $s.Dispose() } }
+    $events = if (Test-Path $stdout) { & $readShared $stdout } else { '' }
+    $errors = if (Test-Path $stderr) { & $readShared $stderr } else { '' }
     [IO.File]::WriteAllText($logPath, $events + $errors, [Text.UTF8Encoding]::new($false))
-    $session = Get-SessionId @($events -split "`r?`n")
-    $outcome = 'completed'; $exit = $process.ExitCode
-    if ($exit -ne 0) { $outcome = 'failed' }
+    $eventLines = @($events -split "`r?`n")
+    $session = Get-SessionId $eventLines
+    $outcome = 'completed'; $exit = if ($timedOut) { $null } else { Get-ProcessExitCode $process }
+    [PointframeProcessJob]::CloseProcess($process.Handle)
+    $tokenFields = Get-TokenFields $eventLines
+    if ($timedOut) { $outcome = 'timeout' }
+    elseif ($exit -ne 0) { $outcome = 'failed' }
+    elseif (-not $containment.Verified) { $outcome = 'failed' }
     $outputCheck = Test-ConsultOutput $outPath $started
     if ($exit -eq 0 -and -not $outputCheck.Ok) { $outcome = 'failed'; Write-Host "ERROR $($outputCheck.Reason)" }
-    $record = [ordered]@{ utcStart = $started.ToString('o'); utcEnd = [DateTimeOffset]::UtcNow.ToString('o'); task = $null; briefPath = $promptPath; briefSha256 = (Get-FileHash $promptPath -Algorithm SHA256).Hash; model = $Model; effort = $Effort; escalationReason = $EscalationReason; sandbox = $Sandbox; worktree = $repo; minutes = [Math]::Round(([DateTimeOffset]::UtcNow - $started).TotalMinutes, 2); tokens = @{ input = 0; cached = 0; output = 0 }; exitCode = $exit; outcome = $outcome; logDirectory = Split-Path $logPath -Parent; kind = 'consult'; sessionId = $session }
+    $elapsed = [DateTimeOffset]::UtcNow - $started
+    Write-ResultFile "$outPath.result.json" @{
+        sessionId = if ($session) { $session } else { $null }
+        model = $Model
+        effort = $Effort
+        sandbox = $Sandbox
+        exitCode = $exit
+        outcome = $outcome
+        timedOut = $timedOut
+        terminated = $terminated
+        containmentVerified = [bool]$containment.Verified
+        containmentReason = $containment.Reason
+        leftoverProcesses = $containment.Leftover
+        maxMinutes = $MaxMinutes
+        elapsedSeconds = [Math]::Round($elapsed.TotalSeconds, 1)
+        tokens = $tokenFields
+    }
+    [PointframeProcessJob]::Close($job)
+    $record = [ordered]@{ utcStart = $started.ToString('o'); utcEnd = [DateTimeOffset]::UtcNow.ToString('o'); task = $null; briefPath = $promptPath; briefSha256 = (Get-FileHash $promptPath -Algorithm SHA256).Hash; model = $Model; effort = $Effort; escalationReason = $EscalationReason; sandbox = $Sandbox; worktree = $repo; minutes = [Math]::Round(([DateTimeOffset]::UtcNow - $started).TotalMinutes, 2); tokens = @{ input = $tokenFields.inputTokens; cached = $tokenFields.cachedInputTokens; output = $tokenFields.outputTokens }; exitCode = $exit; outcome = $outcome; logDirectory = Split-Path $logPath -Parent; kind = 'consult'; sessionId = $session }
     $recordPath = if ($RunRecordPath) { [IO.Path]::GetFullPath($RunRecordPath) } else { Join-Path (Split-Path $PSScriptRoot -Parent) 'plan/agent-runs.jsonl' }
     if (Test-Path -LiteralPath (Split-Path $recordPath -Parent) -PathType Container)
     { [IO.File]::AppendAllText($recordPath, (($record | ConvertTo-Json -Compress -Depth 8) + "`r`n"), [Text.UTF8Encoding]::new($false)) }
+    if ($timedOut)
+    {
+        $stopNote = if ($terminated) { 'and was stopped' } else { "and COULD NOT be stopped (pid $($process.Id)); stop it by hand" }
+        Write-Host "ERROR Codex did not finish within $MaxMinutes minute(s) $stopNote. See $logPath"
+        exit 1
+    }
     if ($exit -ne 0) { Write-Host "ERROR Codex exited with code $exit. See $logPath"; exit 1 }
+    if (-not $containment.Verified) { Write-Host "ERROR containment unverified: $($containment.Reason). The answer is not trusted. See $logPath"; exit 1 }
     if (-not $outputCheck.Ok) { exit 1 }
     Write-Host "Codex session: $(if ($session) { $session } else { '(not reported)' }); model=$Model effort=$Effort"
     Get-Content -LiteralPath $outPath -Raw -Encoding UTF8

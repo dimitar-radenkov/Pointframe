@@ -104,7 +104,7 @@ One brief serves either executor. Required headings, checked by `scripts/agent-r
 <!-- rule:W-14 roles=coordinator -->
 - **Reassessment triggers.** At 100 tool calls, 20M tokens, or 3 unsuccessful repair cycles the coordinator reassesses: continue, hand over with notes, or stop. A trigger is not an automatic replacement.
 <!-- rule:W-15 roles=coordinator,executor -->
-- **One validation owner.** The executor runs focused tests while iterating and `pwsh scripts/verify.ps1` once on its final tree (pre-commit validation). It does not re-run build, format, KB, or workflow gates on an unchanged tree. The coordinator then commits and pins the plugin, and must run `verify.ps1` on the committed tree: `merge-pr.ps1 -Auto` requires a receipt for the committed head and tree, and a receipt from before the commit is refused.
+- **One validation owner.** The executor runs the focused checks its environment allows, and `verify.ps1` once on its final tree when it can. A check its sandbox cannot run it reports as `ENV-BLOCKED: <command>: <error>`; the runner, `scripts/package.ps1 check`, owns build, focused tests, format and CRLF, and a result is fresh only for the tree it ran on. The coordinator commits, pins, and runs `verify.ps1` on the committed tree; `merge-pr.ps1 -Auto` refuses an older receipt.
 <!-- rule:W-16 roles=coordinator -->
 - **Limits.** Report both providers' remaining limits with progress reports and after each run (Codex 5-hour and weekly use; Claude status and reset time). Never read OAuth tokens or other credentials to call a usage endpoint.
 

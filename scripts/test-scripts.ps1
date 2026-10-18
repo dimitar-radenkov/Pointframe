@@ -22,6 +22,7 @@ $SelfTestScripts = @(
     'codex-ask.ps1',
     'status.ps1',
     'agent-run.ps1',
+    'package.ps1',
     'release-impact.ps1',
     'check-release-channels.ps1',
     'check-released-desktop.ps1',
