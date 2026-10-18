@@ -1744,3 +1744,21 @@ A topmost, non-activating dark backdrop covered the monitor, and only the demo w
 ### Takeaway
 
 Treat any screen recording on a real desktop as private until every frame has been looked at: isolate the demo windows on a backdrop, suppress sign-in prompts and notifications, keep raw takes out of git, and re-record rather than crop or blur a frame that shows something personal.
+
+## A background command that reads stdin can hang an agent for hours
+
+### Problem
+
+On 2026-10-17 two Sonnet executors each waited more than an hour on a background `python -` that read its script from stdin and never got it; the coordinator found them by listing processes. On 2026-10-18 the coordinator itself left an empty `python -I -` in a command, Python fell into its interactive console, failed on every redraw and wrote 155 MB of tracebacks in two minutes before it was stopped.
+
+### Root cause
+
+`python -` (and any interpreter given `-` or no script) reads code from stdin. In a background or tool shell stdin is either never closed or is not a console, so the process waits forever or loops in the REPL instead of failing.
+
+### What fixed it
+
+Executor briefs and the `package.ps1` executor rules forbid stdin-reading commands in the background, the runner closes the executor's stdin after the prompt, and every hung process was found and stopped by process id.
+
+### Takeaway
+
+Never run an interpreter on stdin from an agent shell: write the script to a file and pass its path, close stdin for every child the agent starts, and when a run looks idle, list its processes before waiting longer.

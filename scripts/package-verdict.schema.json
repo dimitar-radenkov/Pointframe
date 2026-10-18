@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pointframe work package review verdict",
+  "description": "The reviewer's final message. package.ps1 review validates it and then checks it against what the host observed; the schema alone proves neither inspection nor correctness.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "reviewedCommit", "reviewedTree", "verdict", "criteria", "findings", "omissions"],
+  "properties": {
+    "$schema": { "const": "https://json-schema.org/draft/2020-12/schema" },
+    "schemaVersion": { "const": 1 },
+    "reviewedCommit": { "type": "string", "pattern": "^[0-9a-fA-F]{40,64}$", "description": "The full commit id that was reviewed. Must equal the head the host observed." },
+    "reviewedTree": { "type": "string", "pattern": "^[0-9a-fA-F]{40,64}$", "description": "The git tree id of that commit. Must equal the tree the host observed." },
+    "verdict": { "enum": ["PASS", "FAIL"], "description": "PASS only when every criterion is pass and no finding is blocking." },
+    "criteria": {
+      "type": "array",
+      "description": "One entry per criterion of the brief (C1, C2, ...), each exactly once.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "result", "evidence"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "result": { "enum": ["pass", "fail", "not-checked"] },
+          "evidence": { "type": "string", "minLength": 1, "description": "What was inspected or run, with file:line or the command." }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "file", "line", "summary", "scenario"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["blocking", "non-blocking"] },
+          "file": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer", "minimum": 0 },
+          "summary": { "type": "string", "minLength": 1 },
+          "scenario": { "type": "string", "minLength": 1, "description": "A concrete input or sequence that shows the problem." }
+        }
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What the reviewer did not inspect or could not run."
+    }
+  }
+}

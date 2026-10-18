@@ -95,6 +95,7 @@ One brief serves either executor. Required headings, checked by `scripts/agent-r
 | Exact checks | Sandbox-safe: `dotnet format Pointframe/Pointframe.csproj --no-restore`, and every `dotnet test --filter` adds `&Category!=Integration` |
 
 - Lesson: An executor's relative path or default working directory can write into the main checkout
+- Lesson: A background command that reads stdin can hang an agent for hours
 
 <!-- rule-section roles=coordinator,executor -->
 ## Execution budgets
