@@ -1,0 +1,499 @@
+{
+  "defaults": {
+    "app": "wpf-sample",
+    "task": "change",
+    "entry": "readme",
+    "model": "claude-sonnet-5-5"
+  },
+  "scenarios": [
+    {
+      "name": "classes",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-workaround",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "fail",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "timeout",
+          "toolCalls": 10,
+          "totalInputTokens": 10000,
+          "minutes": 30,
+          "timedOut": true
+        },
+        {
+          "outcome": "invalid",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "weird",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "timedOut": true
+        },
+        {
+          "noResult": true
+        }
+      ]
+    },
+    {
+      "name": "all-clean",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "one-fail",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "fail",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "one-timeout",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "timeout",
+          "toolCalls": 10,
+          "totalInputTokens": 10000,
+          "minutes": 30,
+          "timedOut": true
+        }
+      ]
+    },
+    {
+      "name": "one-workaround",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-workaround",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "two-fail-one-invalid",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "fail",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "invalid",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "one-invalid",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "invalid",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "all-invalid",
+      "runs": [
+        {
+          "outcome": "invalid",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "invalid",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "invalid",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "plus-35",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 135,
+          "totalInputTokens": 1350000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 135,
+          "totalInputTokens": 1350000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 135,
+          "totalInputTokens": 1350000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "plus-31",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 131,
+          "totalInputTokens": 1310000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 131,
+          "totalInputTokens": 1310000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 131,
+          "totalInputTokens": 1310000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "plus-30",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 130,
+          "totalInputTokens": 1300000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 130,
+          "totalInputTokens": 1300000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 130,
+          "totalInputTokens": 1300000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "plus-20",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 120,
+          "totalInputTokens": 1200000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 120,
+          "totalInputTokens": 1200000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 120,
+          "totalInputTokens": 1200000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "tokens-only-plus-40",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1400000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1400000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1400000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "cheaper",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 80,
+          "totalInputTokens": 800000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 80,
+          "totalInputTokens": 800000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 80,
+          "totalInputTokens": 800000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "warning-with-failure",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 140,
+          "totalInputTokens": 1400000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 140,
+          "totalInputTokens": 1400000,
+          "minutes": 3
+        },
+        {
+          "outcome": "fail",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "other-model",
+      "model": "claude-other-model",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "four-two-clean-fail-invalid",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "fail",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "invalid",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "partial",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "other-model-fail",
+      "model": "claude-other-model",
+      "runs": [
+        {
+          "outcome": "fail",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "fail",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "fail",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "name": "violation",
+      "runs": [
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3,
+          "docsWebFetchViolation": true
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        },
+        {
+          "outcome": "pass-clean",
+          "toolCalls": 100,
+          "totalInputTokens": 1000000,
+          "minutes": 3
+        }
+      ]
+    }
+  ]
+}

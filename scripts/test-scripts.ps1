@@ -29,7 +29,8 @@ $SelfTestScripts = @(
     'update-download-badges.ps1',
     'measure-mcp-payloads.ps1',
     'test-agent-onboarding.ps1',
-    'trial.ps1'
+    'trial.ps1',
+    'weekly-trial.ps1'
 )
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
