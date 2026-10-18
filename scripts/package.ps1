@@ -54,8 +54,10 @@ ship    resumable, one repository-wide ship lock (git common dir pointframe/ship
         only for the same head and tree and unchanged candidate artifact hashes, otherwise desktop-required with the exact command,
         and only with -AllowDesktop, after an unlocked-input-desktop check and an announcement, check-released-desktop.ps1
         -BuildCandidate), push (never twice), pr (an existing PR for pkg/<slug> is reused; the body is generated from state with a
-        "What was not tested" section), merge (merge-pr.ps1 -Auto -WaitMerged; -NoWait stops at auto-merge-enabled; merged only when
-        GitHub reports MERGED), channels (check-release-channels.ps1 for the release cut for the merge commit, a bounded wait;
+        "What was not tested" section), merge (merge-pr.ps1 -Auto -NoPluginPin -WaitMerged, only for a head that the verify receipt, the
+        qualification decision and the pull request all name; an auto-merge already enabled for that head is waited for, never
+        enabled again; a head moved by the pin after the push is re-verified, pushed and gated again; -NoWait always stops at
+        auto-merge-enabled; merged only when GitHub reports MERGED), channels (check-release-channels.ps1 for the release cut for the merge commit, a bounded wait;
         failed channels and a stale plugin pin are reported, no pin PR is ever opened). merge-pr.ps1 removes the worktree on merge,
         so no step after it uses it.
 
@@ -3391,12 +3393,13 @@ function Get-ShipReview($State)
 
 function Get-ShipPrState($Info, [string]$Number)
 {
-    $result = Invoke-Gh @('pr', 'view', $Number, '--json', 'state,mergeCommit,headRefOid') $Info.MainCheckout -StdoutOnly
+    $result = Invoke-Gh @('pr', 'view', $Number, '--json', 'state,mergeCommit,headRefOid,autoMergeRequest') $Info.MainCheckout -StdoutOnly
     if ($result.Exit -ne 0) { return $null }
     try { $prJson = $result.Text | ConvertFrom-Json } catch { return $null }
     $mergeCommit = $null
     if ($prJson.PSObject.Properties['mergeCommit'] -and $prJson.mergeCommit -and $prJson.mergeCommit.PSObject.Properties['oid']) { $mergeCommit = [string]$prJson.mergeCommit.oid }
-    @{ State = [string]$prJson.state; MergeCommit = $mergeCommit; Head = [string]$prJson.headRefOid }
+    $autoMerge = [bool]($prJson.PSObject.Properties['autoMergeRequest'] -and $prJson.autoMergeRequest)
+    @{ State = [string]$prJson.state; MergeCommit = $mergeCommit; Head = [string]$prJson.headRefOid; AutoMerge = $autoMerge }
 }
 
 function Find-ShipPr($Info, [string]$Branch)
@@ -3697,9 +3700,12 @@ function Step-ShipPush($Info)
         if ([string]$done.head -eq $head) { return $true }
         $pushedReview = Get-ShipReview $state
         $binding = if ($pushedReview) { Get-ReviewBinding $state $pushedReview } else { @{ Current = $false; Reason = 'the acceptance is no longer valid' } }
-        if ($binding.Current) { Write-Host "ship: the branch was pushed at $($done.head); the head moved since by the plugin pin only"; return $true }
-        Move-ShipToReview $Info "the branch changed after it was pushed: $($binding.Reason)" | Out-Null
-        return $false
+        if (-not $binding.Current)
+        {
+            Move-ShipToReview $Info "the branch changed after it was pushed: $($binding.Reason)" | Out-Null
+            return $false
+        }
+        Write-Host "ship: the branch was pushed at $($done.head); the head moved since by the plugin pin only, so the new head is pushed"
     }
     try { Assert-ShipRemote $wt $remote | Out-Null }
     catch { return (Stop-Ship $Info 'ship-failed' 'push' @{ status = 'failed'; head = $head } "ERROR $($_.Exception.Message)") }
@@ -3708,6 +3714,8 @@ function Step-ShipPush($Info)
     $remoteTip = if ($listing.Count) { ($listing[0] -split '\s+')[0] } else { $null }
     if ($remoteTip -eq $head)
     {
+        $knownHead = $head
+        Update-State $Info.StateRoot $Id 'ship-push-adopted' { param($s) if (@(Get-List $s.pushes | Where-Object { [string]$_.sha -eq $knownHead }).Count -eq 0) { $s.pushes = @(Get-List $s.pushes) + @(@{ sha = $knownHead; utc = (Get-Now); remote = $remote; adopted = $true }) } } | Out-Null
         Set-ShipStep $Info 'push' @{ status = 'done'; head = $head; remote = $remote; alreadyOnRemote = $true }
         Write-Host "ship: $branch is already on $remote at $head; nothing is pushed again"
         return $true
@@ -3781,39 +3789,96 @@ function Step-ShipMerge($Info)
     $mergeStep = Get-ShipStep $state 'merge'
     $calls = if ($mergeStep) { [int](Get-Field $mergeStep 'calls') } else { 0 }
     $view = Get-ShipPrState $Info $number
-    if ($view -and $view.State -eq 'MERGED')
+    if (-not $view) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = $calls } "ERROR gh pr view $number failed; the state of the pull request is unknown") }
+    if ($view.State -eq 'MERGED') { return (Complete-ShipMerged $Info $wt $number $view $calls $true) }
+    if ($view.State -eq 'CLOSED') { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = $calls } "ERROR pull request #$number is CLOSED without being merged") }
+
+    # Everything the merge is about to rest on has to be bound to the head that is on the pull request and in the worktree.
+    $localHead = Get-GitHead $wt
+    $evidence = @(Get-ShipEvidenceProblems $state $localHead $wt)
+    if ($view.Head -ne $localHead) { $evidence += "the pull request head $($view.Head) is not the shipped head $localHead" }
+    if ($evidence.Count) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = $calls; head = $localHead } "ERROR the evidence does not cover the head to be merged: $($evidence -join '; ')") }
+
+    # An auto-merge that merge-pr.ps1 already enabled for this very head is waited for, not enabled again.
+    $enabledHead = [string](Get-Field $mergeStep 'enabledHead')
+    if ($enabledHead -eq $localHead -and ($view.AutoMerge -or [string](Get-Field $mergeStep 'status') -eq 'auto-merge-enabled'))
     {
-        $cleanup = $null
-        if (Test-Path -LiteralPath $wt -PathType Container)
+        Write-Host "ship: auto-merge is already enabled for #$number at $localHead; merge-pr.ps1 is not called again"
+        Update-State $Info.StateRoot $Id 'ship-auto-merge-pending' { param($s) $s.stage = 'auto-merge-enabled' } | Out-Null
+        if ($NoWait)
         {
-            $mergePr = Resolve-ShipScript 'merge-pr' $MergePrScript (Join-Path $Info.MainCheckout 'scripts/merge-pr.ps1')
-            $log = Join-Path (Get-ShipPaths $Info).Dir "cleanup-$([guid]::NewGuid().ToString('N')).log"
-            $cleanup = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $mergePr, '-Pr', $number, '-Worktree', $wt) $Info.MainCheckout $log -Live
+            Write-Host "ship: #$number is $($view.State), not merged yet. Run ship again without -NoWait to wait for the merge and report the channels."
+            return $false
         }
-        Set-ShipStep $Info 'merge' @{ status = 'done'; number = $number; mergeCommit = $view.MergeCommit; headRefOid = $view.Head; calls = $calls; alreadyMerged = $true; cleanupExit = $cleanup } 'merged'
-        Write-Host "ship: pull request #$number is MERGED ($($view.MergeCommit))"
-        return $true
+        $deadline = (Get-Date).AddMinutes($MergeTimeoutMinutes)
+        while ($view -and $view.State -eq 'OPEN' -and (Get-Date) -lt $deadline)
+        {
+            Write-Host "ship: waiting for GitHub to merge #$number"
+            Start-Sleep -Seconds $ReleasePollSeconds
+            $view = Get-ShipPrState $Info $number
+        }
+        if ($view -and $view.State -eq 'MERGED') { return (Complete-ShipMerged $Info $wt $number $view $calls $true) }
+        if ($view -and $view.State -eq 'CLOSED') { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = $calls } "ERROR pull request #$number was CLOSED without being merged") }
+        $script:ExitCode = 1
+        Write-Host "ERROR #$number is not merged after $MergeTimeoutMinutes minute(s) (GitHub reports $(if ($view) { $view.State } else { 'unknown' })); the package stays at auto-merge-enabled. Run ship again to keep waiting."
+        return $false
     }
+
     $mergePr = Resolve-ShipScript 'merge-pr' $MergePrScript (Join-Path $Info.MainCheckout 'scripts/merge-pr.ps1')
     $log = Join-Path (Get-ShipPaths $Info).Dir "merge-$([guid]::NewGuid().ToString('N')).log"
-    $mergeArgs = @('-NoProfile', '-File', $mergePr, '-Pr', $number, '-Worktree', $wt, '-Auto')
+    # -NoPluginPin: merge-pr.ps1 must not commit and push a pin on its own, or the merged head would no longer be the verified one.
+    $mergeArgs = @('-NoProfile', '-File', $mergePr, '-Pr', $number, '-Worktree', $wt, '-Auto', '-NoPluginPin')
     if (-not $NoWait) { $mergeArgs += @('-WaitMerged', '-TimeoutMinutes', [string]$MergeTimeoutMinutes) }
-    Set-ShipStep $Info 'merge' @{ status = 'running'; number = $number; calls = ($calls + 1); noWait = [bool]$NoWait }
-    Write-Host "ship: merge-pr.ps1 -Pr $number -Auto$(if (-not $NoWait) { ' -WaitMerged' })"
+    Set-ShipStep $Info 'merge' @{ status = 'running'; number = $number; calls = ($calls + 1); noWait = [bool]$NoWait; enabledHead = $localHead }
+    Write-Host "ship: merge-pr.ps1 -Pr $number -Auto -NoPluginPin$(if (-not $NoWait) { ' -WaitMerged' })"
     $code = Invoke-Logged 'pwsh' $mergeArgs $Info.MainCheckout $log -Live
-    if ($code -ne 0) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = ($calls + 1); exitCode = $code; log = $log } "ERROR merge-pr.ps1 exited with $code (receipt, review or check refusal, conflict or timeout); see $log") }
+    if ($code -ne 0) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = ($calls + 1); exitCode = $code; enabledHead = $localHead; log = $log } "ERROR merge-pr.ps1 exited with $code (receipt, review or check refusal, conflict or timeout); see $log") }
     $view = Get-ShipPrState $Info $number
-    if ($view -and $view.State -eq 'MERGED')
-    {
-        Set-ShipStep $Info 'merge' @{ status = 'done'; number = $number; mergeCommit = $view.MergeCommit; headRefOid = $view.Head; calls = ($calls + 1); exitCode = $code; log = $log } 'merged'
-        Write-Host "ship: GitHub reports pull request #$number MERGED ($($view.MergeCommit))"
-        return $true
-    }
     $observed = if ($view) { $view.State } else { 'unknown (gh pr view failed)' }
-    Set-ShipStep $Info 'merge' @{ status = 'auto-merge-enabled'; number = $number; calls = ($calls + 1); exitCode = $code; observedState = $observed; log = $log } 'auto-merge-enabled'
-    if ($NoWait) { Write-Host "ship: auto-merge is enabled for #$number; it is NOT merged yet (GitHub reports $observed). Run ship again to wait for the merge and report the channels." }
-    else { Write-Host "ERROR merge-pr.ps1 returned but GitHub reports $observed, not MERGED; the package is not merged. Run ship again to keep waiting."; $script:ExitCode = 1 }
+    if ($NoWait)
+    {
+        # -NoWait always stops here, also when GitHub merged at once; the next ship records the merge.
+        Set-ShipStep $Info 'merge' @{ status = 'auto-merge-enabled'; number = $number; calls = ($calls + 1); exitCode = $code; observedState = $observed; enabledHead = $localHead; log = $log } 'auto-merge-enabled'
+        if ($observed -eq 'MERGED') { Write-Host "ship: auto-merge is enabled for #$number and GitHub already reports it MERGED. Run ship again to record the merge and report the channels." }
+        else { Write-Host "ship: auto-merge is enabled for #$number; it is NOT merged yet (GitHub reports $observed). Run ship again to wait for the merge and report the channels." }
+        return $false
+    }
+    if ($view -and $view.State -eq 'MERGED') { return (Complete-ShipMerged $Info $wt $number $view ($calls + 1) $false) }
+    Set-ShipStep $Info 'merge' @{ status = 'auto-merge-enabled'; number = $number; calls = ($calls + 1); exitCode = $code; observedState = $observed; enabledHead = $localHead; log = $log } 'auto-merge-enabled'
+    Write-Host "ERROR merge-pr.ps1 returned but GitHub reports $observed, not MERGED; the package is not merged. Run ship again to keep waiting."
+    $script:ExitCode = 1
     $false
+}
+
+function Complete-ShipMerged($Info, [string]$Wt, [string]$Number, $View, [int]$Calls, [bool]$Cleanup)
+{
+    # GitHub reports MERGED. merge-pr.ps1 -WaitMerged has already removed the worktree; in every other case it is removed here.
+    $cleanupExit = $null
+    if ($Cleanup -and (Test-Path -LiteralPath $Wt -PathType Container))
+    {
+        $mergePr = Resolve-ShipScript 'merge-pr' $MergePrScript (Join-Path $Info.MainCheckout 'scripts/merge-pr.ps1')
+        $log = Join-Path (Get-ShipPaths $Info).Dir "cleanup-$([guid]::NewGuid().ToString('N')).log"
+        $cleanupExit = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $mergePr, '-Pr', $Number, '-Worktree', $Wt) $Info.MainCheckout $log -Live
+    }
+    Set-ShipStep $Info 'merge' @{ status = 'done'; number = $Number; mergeCommit = $View.MergeCommit; headRefOid = $View.Head; calls = $Calls; cleanupExit = $cleanupExit } 'merged'
+    Write-Host "ship: GitHub reports pull request #$Number MERGED ($($View.MergeCommit))"
+    $true
+}
+
+function Get-ShipEvidenceProblems($State, [string]$Head, [string]$Wt)
+{
+    # The verify receipt and the desktop-qualification decision of this ship must be about exactly this head and tree.
+    $problems = @()
+    if (-not (Test-WorktreeClean $Wt)) { $problems += 'the worktree is not clean' }
+    $contentTree = Get-WorkingTreeHash $Wt
+    $gitTree = Get-GitTree $Wt
+    $verify = Get-ShipStep $State 'verify'
+    if (-not $verify -or $verify.status -ne 'done') { $problems += 'verify.ps1 has no passing record' }
+    elseif ([string]$verify.head -ne $Head -or [string]$verify.tree -ne $contentTree) { $problems += "the verify.ps1 receipt is bound to head $($verify.head) tree $($verify.tree), not to head $Head tree $contentTree" }
+    $qualify = Get-ShipStep $State 'qualify'
+    if (-not $qualify -or $qualify.status -ne 'done') { $problems += 'the desktop-qualification decision has no passing record' }
+    elseif ([string]$qualify.head -ne $Head -or [string]$qualify.tree -ne $gitTree) { $problems += "the desktop-qualification decision is bound to head $($qualify.head) tree $($qualify.tree), not to head $Head tree $gitTree" }
+    @($problems)
 }
 
 function Step-ShipChannels($Info)
@@ -3830,7 +3895,8 @@ function Step-ShipChannels($Info)
     }
     if (-not $mergeCommit) { Set-ShipStep $Info 'channels' @{ status = 'pending'; reason = 'the merge commit is unknown' }; Write-Host 'NOTE the merge commit is unknown, so the release cannot be found yet. Run ship again.'; return $false }
     $channelsScript = Resolve-ShipScript 'channels' $ChannelsScript (Join-Path $Info.MainCheckout 'scripts/check-release-channels.ps1')
-    $deadline = (Get-Date).AddMinutes($ChannelMinutes)
+    $waitMinutes = if ($NoWait) { 0 } else { $ChannelMinutes }
+    $deadline = (Get-Date).AddMinutes($waitMinutes)
     $version = $null
     while ($true)
     {
@@ -3853,13 +3919,14 @@ function Step-ShipChannels($Info)
     if (-not $version)
     {
         Set-ShipStep $Info 'channels' @{ status = 'pending'; mergeCommit = $mergeCommit; reason = "no release for the merge commit appeared within $ChannelMinutes minute(s)" }
-        Write-Host "NOTE CHANNELS: not reported. No release for $mergeCommit appeared within $ChannelMinutes minute(s). Run ship again later, or pwsh scripts/check-release-channels.ps1 -Version <x> -Watch."
+        Write-Host "NOTE CHANNELS: not reported. No release for $mergeCommit appeared within $waitMinutes minute(s). Run ship again later, or pwsh scripts/check-release-channels.ps1 -Version <x> -Watch."
         return $false
     }
     $outDirectory = Join-Path (Get-ShipPaths $Info).Dir "channels-$version"
     $log = Join-Path (Get-ShipPaths $Info).Dir "channels-$version.log"
-    $remaining = [Math]::Max(1, [int][Math]::Ceiling(($deadline - (Get-Date)).TotalMinutes))
-    $code = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $channelsScript, '-Version', $version, '-Watch', '-TimeoutMinutes', [string]$remaining, '-PollSeconds', '60', '-OutDirectory', $outDirectory) $Info.MainCheckout $log -Live
+    $channelArgs = @('-NoProfile', '-File', $channelsScript, '-Version', $version, '-OutDirectory', $outDirectory)
+    if ($waitMinutes -gt 0) { $channelArgs += @('-Watch', '-TimeoutMinutes', [string][Math]::Max(1, [int][Math]::Ceiling(($deadline - (Get-Date)).TotalMinutes)), '-PollSeconds', '60') }
+    $code = Invoke-Logged 'pwsh' $channelArgs $Info.MainCheckout $log -Live
     $channels = @()
     foreach ($line in @(Get-Content -LiteralPath $log)) { if ($line -match '^CHANNEL (\S+): (\w+) - (.*)$') { $channels += @(@{ name = $Matches[1]; state = $Matches[2]; detail = $Matches[3] }) } }
     $final = if ($code -eq 0) { 'ok' } elseif ($code -eq 1) { 'failed' } elseif ($code -eq 3) { 'pending' } else { "unknown (exit $code)" }
@@ -3895,6 +3962,13 @@ function Invoke-ShipLocked($Info)
         try { Sync-Invalidation $Info $Id } finally { $guard.Dispose() }
         $state = Read-State $Info.StateRoot $Id
         $stage = [string]$state.stage
+    }
+    if ($stage -eq 'invalidated' -and $state.acceptance -and (Test-Path -LiteralPath ([string]$state.worktree) -PathType Container))
+    {
+        # The accepted head is gone (a later commit, or an invalidation recorded by an earlier command): back to review, never shipped.
+        $earlier = Get-Field $state.acceptance.invalidated 'reason'
+        Move-ShipToReview $Info $(if ($earlier) { [string]$earlier } else { 'the branch no longer matches the reviewed head' }) | Out-Null
+        return
     }
     if ($stage -notin $script:ShipStageList)
     {
@@ -3939,8 +4013,9 @@ function Invoke-ShipLocked($Info)
         $s.stage = 'shipping'
     } | Out-Null
     Write-Host "ship ${Id}: head $(Get-GitHead $wt), $(if ($fresh) { 'new ship' } else { "resuming from stage $stage" })"
+    # Once the head is pushed the earlier steps are not repeated; a head that moved since (the pin) runs them all again for the new head.
     $pushStep = Get-ShipStep (Read-State $Info.StateRoot $Id) 'push'
-    if (-not ($pushStep -and $pushStep.status -eq 'done'))
+    if (-not ($pushStep -and $pushStep.status -eq 'done' -and [string]$pushStep.head -eq (Get-GitHead $wt)))
     {
         if (-not (Test-ShipStepOk (Step-ShipBase $Info))) { return }
         if (-not (Test-ShipStepOk (Step-ShipPin $Info))) { return }
@@ -4709,7 +4784,7 @@ if ($verb -eq 'pr create')
     $oid = ([string](& git rev-parse "refs/heads/$head")).Trim()
     Copy-Item -LiteralPath (Arg '--body-file') -Destination (Join-Path $dir "body-$n.md") -Force
     Set-Content -LiteralPath (Join-Path $dir "title-$n.txt") -Value (Arg '--title') -NoNewline
-    $pr = [ordered]@{ number = $n; url = "https://github.example.invalid/o/r/pull/$n"; state = 'OPEN'; headRefName = $head; headRefOid = $oid; mergeCommit = $null }
+    $pr = [ordered]@{ number = $n; url = "https://github.example.invalid/o/r/pull/$n"; state = 'OPEN'; headRefName = $head; headRefOid = $oid; mergeCommit = $null; autoMerge = $false }
     ConvertTo-Json -InputObject @($prs + $pr) -Depth 6 | Set-Content -LiteralPath $prsPath
     Write-Output $pr.url
     exit 0
@@ -4719,8 +4794,25 @@ if ($verb -eq 'pr view')
     $n = [int]$a[2]
     $pr = @($prs | Where-Object { $_.number -eq $n })[0]
     if (-not $pr) { exit 1 }
+    # GitHub merges a pull request with auto-merge on once its checks pass: after N views, when the test says so.
+    if ($env:POINTFRAME_PKG_TEST_MERGE_AFTER -and $pr.state -eq 'OPEN' -and $pr.autoMerge)
+    {
+        $counter = Join-Path $dir 'views.txt'
+        $before = if (Test-Path $counter) { [int](Get-Content $counter -Raw) } else { 0 }
+        $seen = $before + 1
+        Set-Content -LiteralPath $counter -Value $seen
+        if ($seen -gt [int]$env:POINTFRAME_PKG_TEST_MERGE_AFTER)
+        {
+            $sha = ([string](& git rev-parse origin/master)).Trim()
+            $pr.state = 'MERGED'; $pr.mergeCommit = $sha
+            ConvertTo-Json -InputObject @($prs) -Depth 6 | Set-Content -LiteralPath $prsPath
+            ConvertTo-Json -InputObject @($releases + [ordered]@{ tagName = "v9.9.$($releases.Count + 1)"; targetCommitish = $sha }) -Depth 4 | Set-Content -LiteralPath $relPath
+        }
+    }
+    $oid = ([string](& git rev-parse "refs/heads/$($pr.headRefName)")).Trim()
     $merge = if ($pr.mergeCommit) { [ordered]@{ oid = [string]$pr.mergeCommit } } else { $null }
-    ConvertTo-Json -InputObject ([ordered]@{ state = $pr.state; headRefOid = $pr.headRefOid; mergeCommit = $merge }) -Depth 6
+    $auto = if ($pr.autoMerge) { [ordered]@{ enabledAt = '2026-01-01T00:00:00Z' } } else { $null }
+    ConvertTo-Json -InputObject ([ordered]@{ state = $pr.state; headRefOid = $oid; mergeCommit = $merge; autoMergeRequest = $auto }) -Depth 6
     exit 0
 }
 if ($verb -eq 'release list')
@@ -4773,17 +4865,20 @@ if (-not ($a -contains '-Auto'))
 }
 if ($env:POINTFRAME_PKG_TEST_MERGEMODE -eq 'fail') { Write-Host 'RECEIPT REFUSED: simulated refusal'; exit 1 }
 Write-Host 'AUTO-MERGE ENABLED (not merged yet)'
-if (($a -contains '-WaitMerged') -and $env:POINTFRAME_PKG_TEST_MERGEMODE -eq 'merged')
+foreach ($pr in $prs) { if ($pr.number -eq $n) { $pr.autoMerge = $true } }
+$mode = $env:POINTFRAME_PKG_TEST_MERGEMODE
+# merged: -WaitMerged waits and cleans up after the merge. instant: GitHub merges at once, whatever the flags, and nothing is cleaned up.
+if ((($a -contains '-WaitMerged') -and $mode -eq 'merged') -or $mode -eq 'instant')
 {
     $sha = ([string](& git rev-parse origin/master)).Trim()
     foreach ($pr in $prs) { if ($pr.number -eq $n) { $pr.state = 'MERGED'; $pr.mergeCommit = $sha } }
-    ConvertTo-Json -InputObject @($prs) -Depth 6 | Set-Content -LiteralPath $prsPath
     $relPath = Join-Path $dir 'releases.json'
     $releases = if (Test-Path $relPath) { @(Get-Content $relPath -Raw | ConvertFrom-Json) } else { @() }
     ConvertTo-Json -InputObject @($releases + [ordered]@{ tagName = "v9.9.$($releases.Count + 1)"; targetCommitish = $sha }) -Depth 4 | Set-Content -LiteralPath $relPath
-    if ($wt -and (Test-Path $wt)) { & git worktree remove --force $wt }
+    if ($mode -eq 'merged' -and $wt -and (Test-Path $wt)) { & git worktree remove --force $wt }
     Write-Host "MERGED $sha"
 }
+ConvertTo-Json -InputObject @($prs) -Depth 6 | Set-Content -LiteralPath $prsPath
 exit 0
 '@
     $stubBodies['verify'] = @'
@@ -4849,7 +4944,7 @@ switch ($env:POINTFRAME_PKG_TEST_CHANNELMODE)
         [IO.File]::WriteAllText($stubPath[$name], "# pointframe-selftest-stub`r`n" + $stubBodies[$name] + "`r`n")
     }
     $shipCommon = @('-GhScript', $stubPath['gh'], '-MergePrScript', $stubPath['mergepr'], '-VerifyScript', $stubPath['verify'], '-ReleaseImpactScript', $stubPath['impact'], '-DesktopScript', $stubPath['desktop'], '-ChannelsScript', $stubPath['channels'], '-ChannelMinutes', '0', '-ReleasePollSeconds', '1')
-    $defaults = @{ VERMODE = 'pass'; IMPACT = 'not-required'; DESKTOPMODE = 'pass'; DESKTOP = 'unlocked'; PINMODE = 'none'; MERGEMODE = 'merged'; CHANNELMODE = 'ok'; GH_FAIL = ''; SHIP_CRASH = '' }
+    $defaults = @{ VERMODE = 'pass'; IMPACT = 'not-required'; DESKTOPMODE = 'pass'; DESKTOP = 'unlocked'; PINMODE = 'none'; MERGEMODE = 'merged'; CHANNELMODE = 'ok'; GH_FAIL = ''; SHIP_CRASH = ''; MERGE_AFTER = '' }
     $setEnv = {
         param([hashtable]$Set = @{})
         $all = $defaults.Clone()
@@ -4916,7 +5011,9 @@ switch ($env:POINTFRAME_PKG_TEST_CHANNELMODE)
     & $git $aWt @('add', '-A'); & $git $aWt @('commit', '-qm', 'a later non-pin commit')
     $r = & $ship 'sa'
     $state = & $stateFile 'sa'
-    & $expect ($r.Exit -ne 0 -and $r.Text -match "ship is not allowed in stage 'invalidated'" -and $state.stage -eq 'invalidated' -and $state.acceptance.invalidated.reason -match 'later\.txt' -and (& $calls '.') -eq 0) "ship went ahead after a later non-pin commit: $($r.Text)"
+    & $expect ($r.Exit -eq 3 -and $state.stage -eq 'needs-review' -and $state.acceptance.invalidated.reason -match 'later\.txt' -and $state.commit.sha -eq (& $headOf 'sa') -and $state.checks[-1].ok -and $r.Text -match 'review -Id sa' -and (& $calls '.') -eq 0) "a later non-pin commit did not return the package to needs-review (or ship went ahead): exit $($r.Exit) stage $($state.stage) $($r.Text)"
+    $r = & $ship 'sa'
+    & $expect ($r.Exit -ne 0 -and $r.Text -match "stage 'needs-review'" -and (& $calls '.') -eq 0) "ship was allowed in needs-review after a later commit: $($r.Text)"
     & $restoreA
 
     # ---- the ship lock ----
@@ -5023,14 +5120,58 @@ switch ($env:POINTFRAME_PKG_TEST_CHANNELMODE)
     $briefWithPrefix = Join-Path $root 'brief-prefix.md'
     [IO.File]::WriteAllText($briefWithPrefix, "# Brief: PR9 - Something useful`r`n`r`n## Objective`r`n`r`nDo the thing`r`nover two lines.`r`n`r`nSecond paragraph.`r`n")
     & $expect ((Get-ShipTitle $briefWithPrefix '') -eq 'PR9 - Something useful' -and (Get-ShipObjective $briefWithPrefix) -eq 'Do the thing over two lines.') 'the title or the objective is not taken from the brief'
+    & $expect ((& $calls '^mergepr .*-Auto -NoPluginPin') -eq 1) 'merge-pr.ps1 -Auto was called without -NoPluginPin, so it could commit and push a pin after verify'
+
+    # A second ship while auto-merge is enabled for the same head waits on it; it does not call merge-pr.ps1 again, however often it runs.
+    foreach ($again in 1..2)
+    {
+        $r = & $ship 'sa' @('-NoWait')
+        $state = & $stateFile 'sa'
+        & $expect ($r.Exit -eq 0 -and $state.stage -eq 'auto-merge-enabled' -and $r.Text -match 'merge-pr\.ps1 is not called again' -and (& $calls '^mergepr .*-Auto') -eq 1 -and (& $calls 'pr create') -eq 1 -and (& $calls '^push') -eq 1 -and $state.ship.steps.merge.calls -eq 1) "rerun $again at auto-merge-enabled called merge-pr.ps1 or pushed again: exit $($r.Exit) $($r.Text)"
+    }
+
+    # The evidence is bound to the head to be merged: a receipt or qualification for another head or tree is refused, and the refusal ships nothing.
+    $evidenceState = Read-State $packagesRoot 'sa'
+    $evidenceClean = @(Get-ShipEvidenceProblems $evidenceState $aHead $aWt)
+    & $expect ($evidenceClean.Count -eq 0) "the evidence of the shipped head was refused: $($evidenceClean -join '; ')"
+    $evidenceState.ship.steps.verify.head = ('f' * 40)
+    & $expect ((@(Get-ShipEvidenceProblems $evidenceState $aHead $aWt) -join ' ') -match 'verify\.ps1 receipt is bound to head f{40}') 'a verify receipt for another head was accepted as evidence'
+    $evidenceState.ship.steps.verify.head = $aHead
+    $evidenceState.ship.steps.qualify.tree = ('e' * 40)
+    & $expect ((@(Get-ShipEvidenceProblems $evidenceState $aHead $aWt) -join ' ') -match 'desktop-qualification decision is bound to head') 'a qualification decision for another tree was accepted as evidence'
+    Update-State $packagesRoot 'sa' 'test-tamper-verify' { param($s) $s.ship.steps.verify.tree = ('d' * 40) } | Out-Null
+    $r = & $ship 'sa' @('-NoWait')
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'ship-failed' -and $r.Text -match 'evidence does not cover the head' -and (& $calls '^mergepr .*-Auto') -eq 1) "a merge went ahead on a verify receipt bound to another tree: exit $($r.Exit) $($r.Text)"
+    Update-State $packagesRoot 'sa' 'test-untamper-verify' { param($s) $s.ship.steps.verify.tree = (Get-WorkingTreeHash $aWt) } | Out-Null
+
+    # The head moves by the plugin pin after the push: the steps run again for the new head, the new head is pushed, verified and gated,
+    # and merge-pr.ps1 is called again (with -NoPluginPin) because its gates ran for the old head only.
+    $verifiesBefore = & $calls '^verify$'
+    & $writePins $aWt '1.0.0'; & $git $aWt @('add', '-A'); & $git $aWt @('commit', '-qm', 'pin both files')
+    $r = & $ship 'sa' @('-NoWait')
+    $state = & $stateFile 'sa'
+    $aHead2 = & $headOf 'sa'
+    & $expect ($r.Exit -eq 0 -and $aHead2 -ne $aHead -and $state.stage -eq 'auto-merge-enabled' -and -not $state.acceptance.invalidated -and (& $calls '^push') -eq 2 -and (& $originRef 'sa') -eq $aHead2 -and (& $calls '^verify$') -eq $verifiesBefore + 1 -and $state.ship.steps.verify.head -eq $aHead2 -and $state.ship.steps.merge.enabledHead -eq $aHead2 -and (& $calls '^mergepr .*-Auto') -eq 2 -and (& $calls '^mergepr .*-Auto -NoPluginPin') -eq 2 -and (& $calls 'pr create') -eq 1) "a head moved by the pin after the push was not re-verified, pushed and re-gated: exit $($r.Exit) $($r.Text)"
+
+    # A crash inside the merge-pr.ps1 call: no auto-merge is visible on the pull request, so the call is repeated, waiting this time.
+    # GitHub never merges in this case, and the package must not claim it did.
+    Update-State $packagesRoot 'sa' 'test-crash-in-merge-call' { param($s) $s.ship.steps.merge.status = 'running' } | Out-Null
+    $prsPath = Join-Path $ghDir 'prs.json'
+    $stubPrs = @(Get-Content -LiteralPath $prsPath -Raw | ConvertFrom-Json)
+    foreach ($stubPr in $stubPrs) { $stubPr.autoMerge = $false }
+    ConvertTo-Json -InputObject @($stubPrs) -Depth 6 | Set-Content -LiteralPath $prsPath
     & $setEnv @{ MERGEMODE = 'liar' }
     $r = & $ship 'sa'
     $state = & $stateFile 'sa'
-    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'auto-merge-enabled' -and $state.stage -ne 'merged' -and $r.Text -match 'not MERGED' -and (& $calls '^mergepr .*-WaitMerged') -eq 1 -and (& $calls 'pr create') -eq 1) "merged was set without GitHub reporting MERGED: $($r.Text)"
-    & $setEnv @{ MERGEMODE = 'merged'; CHANNELMODE = 'failed' }
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'auto-merge-enabled' -and $state.stage -ne 'merged' -and $r.Text -match 'not MERGED' -and (& $calls '^mergepr .*-WaitMerged') -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 3 -and (& $calls 'pr create') -eq 1) "merged was set without GitHub reporting MERGED: $($r.Text)"
+
+    # A plain ship while GitHub's auto-merge is pending waits for the merge without another call, records MERGED, removes the worktree and reports the channels.
+    Remove-Item -LiteralPath (Join-Path $ghDir 'views.txt') -Force -ErrorAction SilentlyContinue
+    & $setEnv @{ MERGEMODE = 'merged'; CHANNELMODE = 'failed'; MERGE_AFTER = '1' }
     $r = & $ship 'sa'
     $state = & $stateFile 'sa'
-    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.status -eq 'done' -and $state.ship.steps.merge.mergeCommit -match '^[0-9a-f]{40}$' -and -not (Test-Path $aWt) -and $state.ship.steps.channels.final -eq 'failed' -and $r.Text -match 'channel winget:DimitarRadenkov\.Pointframe failed' -and (& $calls 'pr create') -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 3 -and (& $calls '^channels .*-Version 9\.9\.1') -eq 1) "the merge or the channel failure was not recorded (worktree removed, merge commit, failed channel, no new PR): exit $($r.Exit) $($r.Text)"
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.status -eq 'done' -and $state.ship.steps.merge.mergeCommit -match '^[0-9a-f]{40}$' -and -not (Test-Path $aWt) -and $r.Text -match 'waiting for GitHub to merge' -and $state.ship.steps.channels.final -eq 'failed' -and $r.Text -match 'channel winget:DimitarRadenkov\.Pointframe failed' -and (& $calls 'pr create') -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 3 -and (& $calls '^mergepr -Pr \d+ -Worktree \S+$') -eq 1 -and (& $calls '^channels .*-Version 9\.9\.1') -eq 1) "the merge or the channel failure was not recorded (waited without a call, worktree removed, merge commit, failed channel, no new PR): exit $($r.Exit) $($r.Text)"
     $r = & $pkg @('show', '-Id', 'sa')
     & $expect ($r.Exit -eq 0 -and $r.Text -match 'stage=merged' -and $r.Text -notmatch 'INCONSISTENT' -and $r.Text -match 'channels\s+reported') "show failed on a merged package whose worktree is gone: $($r.Text)"
     & $setEnv @{ CHANNELMODE = 'stalepin' }
@@ -5050,17 +5191,17 @@ switch ($env:POINTFRAME_PKG_TEST_CHANNELMODE)
     $cWt = & $wtOf 'sc'
     $cHead = & $headOf 'sc'
     & $git $cWt @('push', 'origin', "${cHead}:refs/heads/master")
+    # GitHub merges at once, while -NoWait is on: the package still stops at auto-merge-enabled and does not poll for the release.
+    & $setEnv @{ MERGEMODE = 'instant' }
     $r = & $ship 'sc' @('-NoWait')
     $state = & $stateFile 'sc'
     & $expect ($r.Exit -eq 0 -and $state.stage -eq 'auto-merge-enabled' -and $state.ship.steps.base.noOp -eq $true -and -not $state.acceptance.invalidated -and $r.Text -match 'rebase changed nothing' -and (& $headOf 'sc') -eq $cHead -and (& $calls '^verify$') -eq 1) "a no-op rebase did not keep the acceptance: exit $($r.Exit) stage $($state.stage) $($r.Text)"
-    # GitHub merges while auto-merge is waiting: the next ship cleans up, records MERGED and reports the channels.
-    $prs = @(Get-Content -LiteralPath (Join-Path $ghDir 'prs.json') -Raw | ConvertFrom-Json)
-    foreach ($pr in $prs) { $pr.state = 'MERGED'; $pr.mergeCommit = $cHead }
-    ConvertTo-Json -InputObject @($prs) -Depth 6 | Set-Content -LiteralPath (Join-Path $ghDir 'prs.json')
-    ConvertTo-Json -InputObject @([ordered]@{ tagName = 'v9.9.9'; targetCommitish = $cHead }) | Set-Content -LiteralPath (Join-Path $ghDir 'releases.json')
+    & $expect ($state.stage -ne 'merged' -and $r.Text -match 'already reports it MERGED' -and (& $calls '^channels') -eq 0 -and (& $calls '^gh release') -eq 0 -and $null -eq (Get-Field $state.ship.steps 'channels')) "-NoWait recorded merged or went on to the channels although it asked for no waiting: stage $($state.stage) $($r.Text)"
+    # The next ship records MERGED (GitHub says so), cleans up and reports the channels.
+    & $setEnv @{}
     $r = & $ship 'sc'
     $state = & $stateFile 'sc'
-    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.alreadyMerged -and (& $calls '^mergepr -Pr \d+ -Worktree \S+$') -eq 1 -and -not (Test-Path $cWt) -and $state.ship.steps.channels.status -eq 'done') "a pull request merged by GitHub was not recorded, cleaned up and reported: exit $($r.Exit) $($r.Text)"
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.cleanupExit -eq 0 -and $state.ship.steps.merge.calls -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 1 -and (& $calls '^mergepr -Pr \d+ -Worktree \S+$') -eq 1 -and -not (Test-Path $cWt) -and $state.ship.steps.channels.status -eq 'done') "a pull request merged by GitHub was not recorded, cleaned up and reported: exit $($r.Exit) $($r.Text)"
 
     # ---- base moved, real rebase: back to review, then review, accept and ship again ----
     & $resetLog
@@ -5074,9 +5215,10 @@ switch ($env:POINTFRAME_PKG_TEST_CHANNELMODE)
     & $expect ($r.Exit -eq 0 -and (& $stateFile 'sb').stage -eq 'review-passed') "the review after the ship rebase failed: $($r.Text)"
     $r = & $pkg @('accept', '-Id', 'sb', '-Reason', 'reviewed after the rebase')
     & $expect ($r.Exit -eq 0 -and (& $stateFile 'sb').stage -eq 'accepted') "accept after the ship rebase failed: $($r.Text)"
-    $r = & $ship 'sb' @('-NoWait')
+    $sbHead = & $headOf 'sb'
+    $r = & $ship 'sb'
     $state = & $stateFile 'sb'
-    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'auto-merge-enabled' -and $state.ship.steps.verify.head -eq (& $headOf 'sb') -and (& $originRef 'sb') -eq (& $headOf 'sb')) "ship after the new review did not run to auto-merge-enabled on the new head: exit $($r.Exit) $($r.Text)"
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $state.ship.steps.verify.head -eq $sbHead -and (& $originRef 'sb') -eq $sbHead -and (& $calls '^mergepr .*-Auto -NoPluginPin -WaitMerged') -eq 1 -and $state.ship.steps.channels.status -eq 'done') "ship after the new review did not run through the merge on the new head: exit $($r.Exit) $($r.Text)"
 
     # ---- a failing rebase --abort ----
     & $resetLog
