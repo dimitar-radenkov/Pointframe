@@ -1,8 +1,9 @@
 #Requires -Version 7.0
 <#
 Mechanics of one work package for a Codex or Claude executor, with durable state, the runner's commit and a reviewed,
-host-checked acceptance. No push, PR or merge (merge-pr.ps1 keeps the gate).
+host-checked acceptance, and `ship`, which takes an accepted head to a merged pull request. merge-pr.ps1 keeps the merge gate.
 
+  pwsh scripts/package.ps1 ship -Id <slug> [-Title <text>] [-AllowDesktop] [-NoWait]
   pwsh scripts/package.ps1 commit -Id <slug> [-Message <text>]
   pwsh scripts/package.ps1 review -Id <slug> -Level light|heavy [-Reviewer codex-sol|codex-luna|claude-opus|claude-sonnet] [-ResetBudget -Reason <text>]
   pwsh scripts/package.ps1 disposition -Id <slug> -Finding <id> -Accept|-Reject -Reason <text>
@@ -42,6 +43,21 @@ fix     builds a fix request from the accepted findings, resumes the same execut
         previous report appended), then runs check, commit and review again.
 accept  the coordinator's recorded acceptance: only for a valid PASS bound to the current head and tree; writes the review record
         through record-review.ps1 from values in the state. A later change to the head invalidates it (the plugin pin files excepted).
+ship    resumable, one repository-wide ship lock (git common dir pointframe/ship.lock; a dead ship's leftover ship.json is reported
+        and only the same package may resume it). Needs stage accepted with the acceptance bound to the current head, tree and a
+        clean worktree. Steps, each recorded in state before the next starts (stages shipping, ship-failed, desktop-required,
+        auto-merge-enabled, merged, needs-review): base (fetch, rebase onto the base ref; a proven no-op keeps the acceptance, any
+        other change invalidates the PASS and the acceptance, re-checks and stops at needs-review: never restamped), pin
+        (merge-pr.ps1 -PinOnly; a commit touching only the two pin files keeps the acceptance, anything else returns to review),
+        verify (verify.ps1 on the committed head; the receipt's head and tree are recorded; a failure is ship-failed), record (the
+        record accept wrote covers the head), qualify (release-impact.ps1; when required, a recorded passing qualification is reused
+        only for the same head and tree and unchanged candidate artifact hashes, otherwise desktop-required with the exact command,
+        and only with -AllowDesktop, after an unlocked-input-desktop check and an announcement, check-released-desktop.ps1
+        -BuildCandidate), push (never twice), pr (an existing PR for pkg/<slug> is reused; the body is generated from state with a
+        "What was not tested" section), merge (merge-pr.ps1 -Auto -WaitMerged; -NoWait stops at auto-merge-enabled; merged only when
+        GitHub reports MERGED), channels (check-release-channels.ps1 for the release cut for the merge commit, a bounded wait;
+        failed channels and a stale plugin pin are reported, no pin PR is ever opened). merge-pr.ps1 removes the worktree on merge,
+        so no step after it uses it.
 
 The check manifest is JSON: { "build": ["App/App.csproj"], "tests": [{ "project": "App.Tests/App.Tests.csproj", "filter":
 "FullyQualifiedName~Foo" }], "format": ["App/App.csproj"], "extra": [{ "name": "x", "exe": "pwsh", "args": ["-File", "x.ps1"],
@@ -53,7 +69,7 @@ State lives in <git common dir>/pointframe/packages/<slug>.json. Exit codes: 0 o
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('new', 'run', 'check', 'show', 'commit', 'review', 'fix', 'disposition', 'accept')]
+    [ValidateSet('new', 'run', 'check', 'show', 'commit', 'review', 'fix', 'disposition', 'accept', 'ship')]
     [string]$Command,
     [string]$Id,
     [string]$Brief,
@@ -83,6 +99,21 @@ param(
     [string]$CodexTestScript,
     [string]$RecordReviewScript = (Join-Path $PSScriptRoot 'record-review.ps1'),
     [string]$DiscoveryScript,
+    [string]$Title,
+    [switch]$AllowDesktop,
+    [switch]$NoWait,
+    [string]$MergePrScript,
+    [string]$VerifyScript,
+    [string]$ReleaseImpactScript,
+    [string]$DesktopScript,
+    [string]$ChannelsScript,
+    [string]$GhScript,
+    [ValidateRange(0, 240)]
+    [int]$ChannelMinutes = 20,
+    [ValidateRange(1, 600)]
+    [int]$ReleasePollSeconds = 30,
+    [ValidateRange(1, 600)]
+    [int]$MergeTimeoutMinutes = 40,
     [switch]$Resume,
     [string]$PromptFile,
     [string]$ClaudePath,
@@ -112,6 +143,8 @@ $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'lib/process-tree.ps1')
 . (Join-Path $PSScriptRoot 'lib/codex.ps1')
+. (Join-Path $PSScriptRoot 'lib/tree-hash.ps1')
+. (Join-Path $PSScriptRoot 'lib/review-record.ps1')
 
 $SchemaVersion = 1
 $script:RepairLimit = 3
@@ -186,7 +219,8 @@ function Read-State([string]$Root, [string]$Slug)
     # Packages created before commit, review and accept existed get the new fields empty; the schema version is unchanged.
     if (-not $state.ContainsKey('repair') -or $null -eq $state['repair']) { $state['repair'] = @{ limit = $script:RepairLimit; roundsUsed = 0; resets = @() } }
     foreach ($key in @('reviews', 'commits')) { if (-not $state.ContainsKey($key) -or $null -eq $state[$key]) { $state[$key] = @() } }
-    foreach ($key in @('commit', 'acceptance', 'pendingFix')) { if (-not $state.ContainsKey($key)) { $state[$key] = $null } }
+    foreach ($key in @('commit', 'acceptance', 'pendingFix', 'ship')) { if (-not $state.ContainsKey($key)) { $state[$key] = $null } }
+    foreach ($key in @('qualifications', 'pushes')) { if (-not $state.ContainsKey($key) -or $null -eq $state[$key]) { $state[$key] = @() } }
     $state
 }
 
@@ -365,7 +399,7 @@ function Test-SnapshotsIntact($State)
 
 # ---- Process helpers --------------------------------------------------------------------------------------------
 
-function Invoke-Logged([string]$Exe, [string[]]$ArgList, [string]$Dir, [string]$Log)
+function Invoke-Logged([string]$Exe, [string[]]$ArgList, [string]$Dir, [string]$Log, [switch]$Live)
 {
     $previous = $env:MSBUILDDISABLENODEREUSE
     $env:MSBUILDDISABLENODEREUSE = '1'
@@ -374,7 +408,7 @@ function Invoke-Logged([string]$Exe, [string[]]$ArgList, [string]$Dir, [string]$
     {
         New-Item -ItemType Directory -Path (Split-Path $Log -Parent) -Force | Out-Null
         [IO.File]::WriteAllText($Log, '')
-        & $Exe @ArgList *>&1 | ForEach-Object { "$_" } | Set-Content -LiteralPath $Log -Encoding utf8
+        & $Exe @ArgList *>&1 | ForEach-Object { $text = "$_"; if ($Live) { Write-Host $text }; $text } | Set-Content -LiteralPath $Log -Encoding utf8
         return $LASTEXITCODE
     }
     catch
@@ -1178,8 +1212,14 @@ function Get-NextTransitions($State, [bool]$SnapshotsOk = $true)
         'review-failed' { @('disposition -Finding <id> -Accept|-Reject -Reason <text>', 'fix', 'review -Level light|heavy') }
         'review-invalid' { @('review -Level light|heavy') }
         'needs-coordinator' { @('review -ResetBudget -Reason <text>', 'fix -ResetBudget -Reason <text>') }
-        'accepted' { @() }
+        'accepted' { @('ship [-Title <text>] [-AllowDesktop] [-NoWait]') }
         'invalidated' { @('check') }
+        'shipping' { @('ship (recovers the abandoned ship first)') }
+        'needs-review' { @('review -Level light|heavy') }
+        'ship-failed' { @('ship (resumes at the failed step)') }
+        'desktop-required' { @('ship -AllowDesktop') }
+        'auto-merge-enabled' { @('ship (waits for the merge, then reports the channels)') }
+        'merged' { if ($State.ship -and (Get-Field (Get-Field $State.ship 'steps') 'channels') -and (Get-Field (Get-Field (Get-Field $State.ship 'steps') 'channels') 'status') -eq 'done') { @() } else { @('ship (reports the release channels)') } }
         default { @('run', 'check') }
     }
 }
@@ -1413,6 +1453,7 @@ function Invoke-Run
     $problems = @(Test-SnapshotsIntact $state)
     if ($problems.Count) { throw ($problems -join '; ') }
     if ($state.stage -eq 'blocked-main-mutated') { throw 'the main checkout was mutated by an earlier run; resolve it by hand, this package stays stopped' }
+    if ($state.stage -in @('shipping', 'desktop-required', 'ship-failed', 'auto-merge-enabled', 'merged')) { throw "run is not allowed in stage '$($state.stage)': the package is being shipped" }
     if ($state.stage -in @('running', 'executor-kill-failed'))
     {
         Resolve-PriorRun $info $Id
@@ -1655,7 +1696,7 @@ function Invoke-CheckCore($info)
         Sync-Invalidation $info $Id
         $state = Read-State $info.StateRoot $Id
         Assert-StateConsistent $state $info
-        if ([string]$state.stage -in @('creating', 'creation-failed', 'preflight-failed', 'running', 'executor-kill-failed', 'blocked-main-mutated', 'reviewing')) { throw "check is not allowed in stage '$($state.stage)'" }
+        if ([string]$state.stage -in @('creating', 'creation-failed', 'preflight-failed', 'running', 'executor-kill-failed', 'blocked-main-mutated', 'reviewing', 'shipping', 'auto-merge-enabled', 'merged')) { throw "check is not allowed in stage '$($state.stage)'" }
         $problems = @(Test-SnapshotsIntact $state)
         if ($problems.Count) { throw ($problems -join '; ') }
         $wt = [string]$state.worktree
@@ -1716,8 +1757,11 @@ function Invoke-Show
     $state = Read-State $info.StateRoot $Id
     $integrity = @(Get-StateProblems $state $info)
     $wt = [string]$state.worktree
+    # merge-pr.ps1 removes the worktree after the merge: a merged package has none, and that is not an inconsistency.
+    $worktreeGone = ([string]$state.stage -eq 'merged' -and -not (Test-Path -LiteralPath $wt -PathType Container))
+    if ($worktreeGone) { $integrity = @() }
     $currentTree = $null
-    if ($integrity.Count -eq 0)
+    if ($integrity.Count -eq 0 -and -not $worktreeGone)
     {
         # An unreadable file makes the tree unknown, and an unknown tree cannot make any check fresh.
         try { $currentTree = Get-TreeHash $wt } catch { $integrity += @($_.Exception.Message) }
@@ -1740,7 +1784,7 @@ function Invoke-Show
         })
     $latestReview = Get-LatestReview $state
     $binding = $null
-    if ($integrity.Count -eq 0 -and $latestReview -and $latestReview.status -eq 'valid' -and $latestReview.verdict -eq 'PASS') { $binding = Get-ReviewBinding $state $latestReview }
+    if ($integrity.Count -eq 0 -and -not $worktreeGone -and $latestReview -and $latestReview.status -eq 'valid' -and $latestReview.verdict -eq 'PASS') { $binding = Get-ReviewBinding $state $latestReview }
     $reviews = @(Get-List $state.reviews | ForEach-Object {
             [ordered]@{ reviewId = $_.reviewId; round = $_.round; level = $_.level; reviewer = $_.reviewer.kind; model = $_.reviewer.model; sessionId = $_.reviewer.sessionId; resumedFrom = $_.reviewer.resumedFrom; status = $_.status; verdict = $_.verdict
                 commit = $_.commit; tree = $_.tree; blockingFindings = $_.blockingFindings; invalidReasons = @($_.invalidReasons); verdictFile = $_.verdictFile.path; termination = $_.termination
@@ -1755,6 +1799,7 @@ function Invoke-Show
     $view = [ordered]@{
         slug = $state.slug; packageId = $state.packageId; stage = $state.stage; worktree = $wt; branch = $state.branch; baseSha = $state.baseSha
         commit = $state.commit; repair = [ordered]@{ roundsUsed = $state.repair.roundsUsed; limit = $script:RepairLimit; resets = @(Get-List $state.repair.resets) }; reviews = $reviews; acceptance = $acceptance
+        ship = (Get-ShipView $state)
         integrityProblems = $integrity; snapshotProblems = $snapshotProblems; runs = $runs; checks = $checks
         mainCheckoutGuard = [ordered]@{ mutated = [bool]$state.guard.mainCheckoutMutated; lastRunId = $state.guard.lastRunId }
         currentTreeHash = $currentTree; nextTransitions = @(Get-NextTransitions $state ($snapshotProblems.Count -eq 0 -and $integrity.Count -eq 0))
@@ -1780,6 +1825,11 @@ function Invoke-Show
         foreach ($f in $review.findings) { Write-Host "      $($f.id) [$($f.severity)] $($f.file):$($f.line) $($f.summary)$(if ($f.disposition) { " => $($f.disposition)" })" }
     }
     if ($acceptance) { Write-Host "  acceptance: $($acceptance.status) ($($acceptance.reason))" }
+    if ($view.ship)
+    {
+        Write-Host "  ship: attempt $($view.ship.attempts)$(if ($view.ship.outcome) { ", outcome $($view.ship.outcome)" })"
+        foreach ($step in $view.ship.steps) { Write-Host ("    {0,-9} {1,-19} {2}" -f $step.step, $step.status, $step.detail) }
+    }
     Write-Host "  main checkout guard: $(if ($view.mainCheckoutGuard.mutated) { 'MUTATED' } else { 'clean' })"
     Write-Host "  next: $(if ($view.nextTransitions.Count) { $view.nextTransitions -join ', ' } else { '(none)' })"
 }
@@ -1981,6 +2031,23 @@ function Reset-RepairBudget($Info, [string]$Slug, [string]$Why)
 
 # ---- commit -----------------------------------------------------------------------------------------------------
 
+function Invoke-BaseRebase($Info, [string]$Slug, [string]$Wt, [string]$BaseRef, [string]$FailEvent)
+{
+    # The caller fetched and holds the package lock. A failed rebase is aborted and reported truthfully, including an abort that fails too.
+    $preTree = Get-GitTree $Wt
+    $baseNow = Invoke-Git $Wt @('rev-parse', '--verify', "$BaseRef^{commit}")
+    $rebaseOutput = @(& git -C $Wt rebase $BaseRef 2>&1 | ForEach-Object { "$_" })
+    if ($LASTEXITCODE -ne 0)
+    {
+        $abortOutput = @(& git -C $Wt rebase --abort 2>&1 | ForEach-Object { "$_" })
+        $abortExit = $LASTEXITCODE
+        $abortNote = if ($abortExit -eq 0) { 'the rebase was aborted; the commit stays on the branch and nothing else changed' } else { "rebase --abort FAILED (exit ${abortExit}: $(($abortOutput | Select-Object -Last 2) -join ' ')); the worktree may still be in the middle of a rebase and needs the coordinator" }
+        Update-State $Info.StateRoot $Slug $FailEvent { param($s) $s.lastError = "rebase onto $BaseRef failed; abort exit $abortExit" } -Locked | Out-Null
+        throw "rebase onto $BaseRef failed ($abortNote): $(($rebaseOutput | Select-Object -Last 3) -join ' ')"
+    }
+    @{ preTree = $preTree; baseNow = $baseNow }
+}
+
 function Invoke-Commit
 {
     $info = Get-RepoInfo $Repo
@@ -2023,17 +2090,9 @@ function Invoke-Commit
         }
         $remote = if ([string]$state.baseRef -like '*/*') { ([string]$state.baseRef).Split('/')[0] } else { $null }
         if ($remote) { Invoke-Git $wt @('fetch', $remote) | Out-Null }
-        $preTree = Get-GitTree $wt
-        $baseNow = Invoke-Git $wt @('rev-parse', '--verify', "$($state.baseRef)^{commit}")
-        $rebaseOutput = @(& git -C $wt rebase ([string]$state.baseRef) 2>&1 | ForEach-Object { "$_" })
-        if ($LASTEXITCODE -ne 0)
-        {
-            $abortOutput = @(& git -C $wt rebase --abort 2>&1 | ForEach-Object { "$_" })
-            $abortExit = $LASTEXITCODE
-            $abortNote = if ($abortExit -eq 0) { 'the rebase was aborted; the commit stays on the branch and nothing else changed' } else { "rebase --abort FAILED (exit ${abortExit}: $(($abortOutput | Select-Object -Last 2) -join ' ')); the worktree may still be in the middle of a rebase and needs the coordinator" }
-            Update-State $info.StateRoot $Id 'commit-rebase-failed' { param($s) $s.lastError = "rebase onto $($state.baseRef) failed; abort exit $abortExit" } -Locked | Out-Null
-            throw "rebase onto $($state.baseRef) failed ($abortNote): $(($rebaseOutput | Select-Object -Last 3) -join ' ')"
-        }
+        $rebased = Invoke-BaseRebase $info $Id $wt ([string]$state.baseRef) 'commit-rebase-failed'
+        $preTree = $rebased.preTree
+        $baseNow = $rebased.baseNow
         $sha = Get-GitHead $wt
         $tree = Get-GitTree $wt
         $treeChanged = $tree -ne $preTree
@@ -2558,7 +2617,7 @@ function Start-Review($Info)
     if ($problems.Count) { throw ($problems -join '; ') }
     $stage = [string]$state.stage
     if ($stage -eq 'invalidated') { throw 'the package is invalidated (the branch head changed after the review): run check, commit, then review' }
-    if ($stage -notin @('committed', 'review-failed', 'review-invalid', 'review-passed', 'needs-coordinator')) { throw "review is not allowed in stage '$stage'$(if ($stage -eq 'checks-passed') { ": run commit first" })" }
+    if ($stage -notin @('committed', 'review-failed', 'review-invalid', 'review-passed', 'needs-coordinator', 'needs-review')) { throw "review is not allowed in stage '$stage'$(if ($stage -eq 'checks-passed') { ": run commit first" })" }
     if (-not $Level) { throw '-Level light|heavy is required' }
     if ([bool]$state.guard.mainCheckoutMutated) { throw 'the main-checkout guard is not clean; no review is started' }
     $wt = [string]$state.worktree
@@ -2982,6 +3041,928 @@ function Invoke-Accept
         Write-Host "accepted: review $($review.reviewId) (PASS) is bound to $($review.commit)$(if ($binding.PinOnly) { " and the plugin-pin-only head $($binding.Head)" }); review record $recordPath"
     }
     finally { $stateLock.Dispose() }
+}
+
+# ---- ship: from an accepted head to a merged pull request ---------------------------------------------------------
+
+$script:ShipStageList = @('accepted', 'shipping', 'ship-failed', 'desktop-required', 'auto-merge-enabled', 'merged')
+
+function Add-ShipTrace([string]$Text)
+{
+    if ($env:POINTFRAME_PKG_SELFTEST -and $env:POINTFRAME_PKG_TEST_SHIPLOG) { Add-Content -LiteralPath $env:POINTFRAME_PKG_TEST_SHIPLOG -Value $Text }
+}
+
+function Test-ShipCrash([string]$Point)
+{
+    # Fault injection exists only inside the self-test: the process dies without running any finally block.
+    if ($env:POINTFRAME_PKG_SELFTEST -and $env:POINTFRAME_PKG_TEST_SHIP_CRASH -eq $Point) { [Environment]::Exit(99) }
+}
+
+function Test-ShipStepOk($Result)
+{
+    $items = @($Result)
+    $items.Count -gt 0 -and $items[-1] -eq $true
+}
+
+function Resolve-ShipScript([string]$Name, [string]$Given, [string]$Default)
+{
+    # In the self-test only a marked stub is ever accepted, so a test can never fall through to the real script.
+    if ($env:POINTFRAME_PKG_SELFTEST)
+    {
+        if (-not $Given -or -not (Test-SelfTestStub $Given)) { throw "self-test guard: the $Name script has to be a marked stub" }
+        return $Given
+    }
+    $path = if ($Given) { $Given } else { $Default }
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "the $Name script does not exist: $path" }
+    $path
+}
+
+function Invoke-Gh([string[]]$GhArgs, [string]$Dir, [switch]$StdoutOnly)
+{
+    if ($env:POINTFRAME_PKG_SELFTEST -and -not (Test-SelfTestStub $GhScript)) { throw 'self-test guard: gh has to be a marked stub (-GhScript)' }
+    if (-not $GhScript -and -not (Get-Command gh -ErrorAction SilentlyContinue)) { throw 'the gh CLI was not found; install it and run gh auth login' }
+    Push-Location -LiteralPath $Dir
+    try
+    {
+        $raw = if ($GhScript) { if ($StdoutOnly) { @(& pwsh -NoProfile -File $GhScript @GhArgs 2>$null) } else { @(& pwsh -NoProfile -File $GhScript @GhArgs 2>&1) } }
+        else { if ($StdoutOnly) { @(& gh @GhArgs 2>$null) } else { @(& gh @GhArgs 2>&1) } }
+        $exit = $LASTEXITCODE
+    }
+    finally { Pop-Location }
+    $lines = @($raw | ForEach-Object { "$_" })
+    [pscustomobject]@{ Exit = $exit; Lines = $lines; Text = ($lines -join "`n") }
+}
+
+function Assert-ShipRemote([string]$Wt, [string]$Remote)
+{
+    $url = (Invoke-Git $Wt @('remote', 'get-url', $Remote))
+    if ($env:POINTFRAME_PKG_SELFTEST)
+    {
+        $allowed = [IO.Path]::GetFullPath($env:POINTFRAME_PKG_SELFTEST_ROOT)
+        $resolved = try { [IO.Path]::GetFullPath($url) } catch { $url }
+        if (-not $resolved.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) { throw "self-test guard: remote '$Remote' is $url, not a repository under the self-test root" }
+    }
+    $url
+}
+
+function Get-ShipStep($State, [string]$Name)
+{
+    $ship = $State.ship
+    if (-not $ship) { return $null }
+    $steps = $ship.steps
+    if ($steps -and $steps.ContainsKey($Name)) { $steps[$Name] } else { $null }
+}
+
+function Get-ShipView($State)
+{
+    # The ship steps in order with their recorded state, for show.
+    if (-not $State.ship) { return $null }
+    $steps = @()
+    foreach ($name in @('base', 'pin', 'verify', 'record', 'qualify', 'push', 'pr', 'merge', 'channels'))
+    {
+        $record = Get-ShipStep $State $name
+        $detail = ''
+        if ($record)
+        {
+            $detail = switch ($name)
+            {
+                'base' { "head $(Get-Field $record 'head'), rebased $(Get-Field $record 'rebased')" }
+                'pin' { "head $(Get-Field $record 'head'), pin changed $(Get-Field $record 'changed')" }
+                'verify' { "head $(Get-Field $record 'head'), tree $(Get-Field $record 'tree'), receipt $(Get-Field (Get-Field $record 'receipt') 'path')" }
+                'record' { "record of $(Get-Field $record 'recordCommit')" }
+                'qualify' { "desktop required $(Get-Field $record 'required')$(if (Get-Field $record 'qualificationId') { ", qualification $(Get-Field $record 'qualificationId') ($(Get-Field $record 'result'))" })" }
+                'push' { "head $(Get-Field $record 'head')" }
+                'pr' { "#$(Get-Field $record 'number') $(Get-Field $record 'url')" }
+                'merge' { "#$(Get-Field $record 'number'), merge-pr calls $(Get-Field $record 'calls'), merge commit $(Get-Field $record 'mergeCommit')" }
+                'channels' { "release $(Get-Field $record 'version'): $(Get-Field $record 'final')" }
+            }
+            $why = Get-Field $record 'reason'
+            if ($why) { $detail += " - $why" }
+        }
+        $steps += [ordered]@{ step = $name; status = $(if ($record) { [string]$record.status } else { 'not started' }); utc = $(Get-Field $record 'utc'); detail = [string]$detail }
+    }
+    [ordered]@{ attempts = [int](Get-Field $State.ship 'attempts'); outcome = (Get-Field $State.ship 'outcome'); steps = $steps; qualifications = @(Get-List $State.qualifications).Count }
+}
+
+function Set-ShipStep($Info, [string]$StepName, [hashtable]$StepRecord, [string]$StageName = '')
+{
+    $recorded = $StepRecord
+    $recorded.utc = (Get-Now)
+    Update-State $Info.StateRoot $Id "ship-$StepName" {
+        param($s)
+        if (-not $s.ship) { $s.ship = @{ startedUtc = (Get-Now); attempts = 1; steps = @{} } }
+        $s.ship.steps[$StepName] = $recorded
+        if ($StageName) { $s.stage = $StageName }
+    } | Out-Null
+}
+
+function Stop-Ship($Info, [string]$StageName, [string]$StepName, [hashtable]$StepRecord, [string]$Text, [int]$Code = 1)
+{
+    $StepRecord.reason = $Text
+    Set-ShipStep $Info $StepName $StepRecord $StageName
+    Write-Host $Text
+    $script:ExitCode = $Code
+    $false
+}
+
+# ---- ship: the repository-wide lock -----------------------------------------------------------------------------
+
+function Read-ShipLockInfo([string]$Path)
+{
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    try { return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable @script:JsonDate) }
+    catch { return @{ slug = '?'; pid = 0; startUtc = ''; utc = ''; unreadable = $true } }
+}
+
+function Enter-ShipLock($Info, [string]$Slug)
+{
+    # One ship in flight per repository (W-30). The lock itself is an exclusive open that the OS releases when the holder dies; ship.json
+    # says who held it. A leftover ship.json with a free lock is a ship that died: it is reported, and only the same package may take
+    # it over (resume). Another package's dead ship may have left a pull request or an auto-merge in flight, so that one is refused.
+    $directory = Join-Path $Info.CommonDir 'pointframe'
+    $lockPath = Join-Path $directory 'ship.lock'
+    $metaPath = Join-Path $directory 'ship.json'
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    try { $stream = [IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None') }
+    catch [IO.IOException]
+    {
+        $holder = Read-ShipLockInfo $metaPath
+        $who = if ($holder) { "package '$($holder.slug)' (pid $($holder.pid), since $($holder.utc))" } else { 'another process' }
+        throw "another ship is in flight: $who. Only one ship runs at a time (one release in flight); wait for it, or resume it with its own ship command."
+    }
+    $previous = Read-ShipLockInfo $metaPath
+    if ($previous)
+    {
+        $alive = (-not $previous.ContainsKey('unreadable')) -and (Test-ProcessIdentityAlive ([int]$previous.pid) ([string]$previous.startUtc))
+        if ($alive) { $stream.Dispose(); throw "the ship lock file names the live process $($previous.pid) (package '$($previous.slug)') although the lock is free; not taking it over ($metaPath)" }
+        if ([string]$previous.slug -ne $Slug)
+        {
+            $stream.Dispose()
+            throw "stale ship lock: the ship of package '$($previous.slug)' (pid $($previous.pid), started $($previous.utc)) died without finishing and may have left a pull request or an auto-merge in flight. Resume it with: pwsh scripts/package.ps1 ship -Id $($previous.slug) (or, after checking by hand that nothing is in flight, delete $metaPath)."
+        }
+        Write-Host "NOTE stale ship lock: an earlier ship of this package (pid $($previous.pid), started $($previous.utc)) died without finishing; its lock was free, so this ship resumes it."
+    }
+    $meta = @{ pid = $PID; startUtc = (Get-ProcessStartIdentity $PID); slug = $Slug; utc = (Get-Now) }
+    [IO.File]::WriteAllText($metaPath, ($meta | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+    $stream
+}
+
+function Exit-ShipLock($Stream, $Info)
+{
+    $directory = Join-Path $Info.CommonDir 'pointframe'
+    Remove-Item -LiteralPath (Join-Path $directory 'ship.json') -Force -ErrorAction SilentlyContinue
+    if ($Stream) { $Stream.Dispose() }
+    Remove-Item -LiteralPath (Join-Path $directory 'ship.lock') -Force -ErrorAction SilentlyContinue
+}
+
+# ---- ship: pure helpers ------------------------------------------------------------------------------------------
+
+function Get-ShipTitle([string]$BriefPath, [string]$Explicit)
+{
+    if (-not [string]::IsNullOrWhiteSpace($Explicit)) { return $Explicit.Trim() }
+    foreach ($line in (Get-Content -LiteralPath $BriefPath))
+    {
+        if ($line -match '^#\s+(.*\S)\s*$')
+        {
+            $heading = ($Matches[1] -replace '(?i)^Brief:\s*', '').Trim()
+            if ($heading) { return $(if ($heading.Length -gt 240) { $heading.Substring(0, 240) } else { $heading }) }
+        }
+    }
+    throw 'the brief has no H1 heading to use as the pull request title: pass -Title'
+}
+
+function Get-ShipObjective([string]$BriefPath)
+{
+    $lines = @(Get-Content -LiteralPath $BriefPath)
+    $start = 0
+    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^\s{0,3}#{1,6}\s+Objective\b') { $start = $i + 1; break } }
+    $paragraph = @()
+    for ($i = $start; $i -lt $lines.Count; $i++)
+    {
+        $line = $lines[$i]
+        if ($line -match '^\s{0,3}#{1,6}\s' -or $line.Trim() -eq '') { if ($paragraph.Count) { break } else { continue } }
+        $paragraph += $line.Trim()
+    }
+    if ($paragraph.Count) { $paragraph -join ' ' } else { '(the brief has no objective paragraph)' }
+}
+
+function Get-ShortText([string]$Text, [int]$Max = 300)
+{
+    $flat = (($Text -replace '\s+', ' ').Trim())
+    if ($flat.Length -gt $Max) { $flat.Substring(0, $Max) + '...' } else { $flat }
+}
+
+function Get-ShipNotTested($Review, $Qualify)
+{
+    # Everything the record itself says was not covered: criteria that are not a pass, the reviewer's omissions, a skipped desktop run.
+    $items = @()
+    foreach ($result in (Get-List $Review.criteriaResults))
+    {
+        if ($result.result -ne 'pass')
+        {
+            $text = (@(Get-List $Review.criteria | Where-Object { $_.id -eq $result.id })[0]).text
+            $items += "Criterion $($result.id) ($text): $($result.result) - $(Get-ShortText ([string]$result.evidence))"
+        }
+    }
+    foreach ($omission in (Get-List $Review.omissions)) { $items += "Reviewer omission: $(Get-ShortText ([string]$omission))" }
+    if (@(Get-List $Review.denials).Count) { $items += "The reviewer was denied $(@(Get-List $Review.denials).Count) tool call(s), so it may not have inspected everything." }
+    if ($Qualify)
+    {
+        if (-not [bool](Get-Field $Qualify 'required')) { $items += 'No desktop run: release-impact.ps1 reported desktop-qualification not-required for this diff, so the packaged CLI and MCP server were not exercised on the desktop.' }
+        else
+        {
+            foreach ($skipped in (Get-List (Get-Field $Qualify 'skippedSteps'))) { $items += "Desktop qualification skipped: $(Get-ShortText ([string]$skipped))" }
+        }
+    }
+    else { $items += 'Desktop qualification: no record (it was not evaluated).' }
+    @($items)
+}
+
+function New-ShipPrBody($State, $Review, [string]$Head, [string]$Tree, $VerifyStep, $QualifyStep)
+{
+    $brief = [string]$State.brief.path
+    $lines = [Collections.Generic.List[string]]::new()
+    $lines.Add('## Summary')
+    $lines.Add('')
+    $lines.Add((Get-ShipObjective $brief))
+    $lines.Add('')
+    $lines.Add('## Package')
+    $lines.Add('')
+    $lines.Add("- package ``$($State.slug)``, branch ``$($State.branch)``, base ``$($State.baseSha)``")
+    $lines.Add("- head ``$Head``, tree ``$Tree``")
+    $executors = @(Get-List $Review.executors | ForEach-Object { "$($_.provider):$($_.model) ($($_.executorKind))" } | Select-Object -Unique)
+    $lines.Add("- executor: $(if ($executors.Count) { $executors -join ', ' } else { "$($Review.executor.provider):$($Review.executor.model)" })")
+    $lines.Add("- review: $($Review.level), round $($Review.round), reviewer $($Review.reviewer.kind) ($($Review.reviewer.provider):$($Review.reviewer.model)), $($Review.blockingFindings) blocking finding(s); verdict file ``$($Review.verdictFile.path)``")
+    $lines.Add("- accepted by the coordinator: $($State.acceptance.reason)")
+    $lines.Add('')
+    $lines.Add('## Acceptance criteria')
+    $lines.Add('')
+    foreach ($criterion in (Get-List $Review.criteria))
+    {
+        $result = @(Get-List $Review.criteriaResults | Where-Object { $_.id -eq $criterion.id })[0]
+        $lines.Add("- **$($criterion.id)** $($criterion.text)")
+        $lines.Add("  - reviewer result: $(if ($result) { $result.result } else { 'no result' }) - $(if ($result) { Get-ShortText ([string]$result.evidence) } else { '' })")
+    }
+    $lines.Add('')
+    $lines.Add('## Checks run')
+    $lines.Add('')
+    $check = @(Get-List $State.checks | Where-Object { $_.checkId -eq $Review.checkId })[0]
+    if ($check)
+    {
+        foreach ($command in (Get-List $check.commands))
+        {
+            $outcome = if ($command.skipped) { "skipped ($($command.skipped))" } elseif ($command.exitCode -eq 0) { 'passed' } else { "exit $($command.exitCode)" }
+            $lines.Add("- check ``$($command.name)``: $outcome")
+        }
+    }
+    else { $lines.Add('- no covering check is recorded') }
+    $lines.Add("- verify.ps1: $($VerifyStep.receipt.status), complete $($VerifyStep.receipt.complete), head ``$($VerifyStep.receipt.head)``, tree ``$($VerifyStep.receipt.treeHash)``")
+    if ($QualifyStep -and [bool](Get-Field $QualifyStep 'required'))
+    {
+        $lines.Add("- desktop qualification (check-released-desktop.ps1 -BuildCandidate): $($QualifyStep.result)$(if (Get-Field $QualifyStep 'reused') { ' (reused: bound to this head and tree)' }); packages $(@(Get-List $QualifyStep.packages | ForEach-Object { "$($_.name) sha256 $($_.sha256)" }) -join '; ')")
+    }
+    else { $lines.Add('- desktop qualification: not required (release-impact.ps1 matched no shipping path)') }
+    $lines.Add('')
+    $lines.Add('## What was not tested')
+    $lines.Add('')
+    foreach ($item in (Get-ShipNotTested $Review $QualifyStep)) { $lines.Add("- $item") }
+    $lines.Add('- Only the checks listed above were run; anything not listed was not exercised by this record.')
+    $lines -join "`n"
+}
+
+function Test-ShipInputDesktop
+{
+    if ($env:POINTFRAME_PKG_SELFTEST -and $env:POINTFRAME_PKG_TEST_DESKTOP) { return ($env:POINTFRAME_PKG_TEST_DESKTOP -eq 'unlocked') }
+    if (-not ('PointframePackageInputDesktop' -as [type]))
+    {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class PointframePackageInputDesktop {
+    [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+    [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr desktop);
+}
+'@
+    }
+    $desktop = [PointframePackageInputDesktop]::OpenInputDesktop(0, $false, 0x0100)
+    if ($desktop -eq [IntPtr]::Zero) { return $false }
+    [void][PointframePackageInputDesktop]::CloseDesktop($desktop)
+    $true
+}
+
+function Find-ReusableQualification($State, [string]$Head, [string]$Tree)
+{
+    # A recorded passing qualification is evidence only for the head and tree it ran on, and only while the candidate artifacts it
+    # hashed are still the ones on disk. Returns the record, or the reasons why none can be reused.
+    $problems = @()
+    foreach ($candidate in @(Get-List $State.qualifications | Sort-Object { [string]$_.utc } -Descending))
+    {
+        $why = @()
+        if ($candidate.result -notin @('passed', 'passed_with_skips')) { continue }
+        if ([string]$candidate.head -ne $Head) { $why += "bound to head $($candidate.head), not $Head" }
+        elseif ([string]$candidate.tree -ne $Tree) { $why += "bound to tree $($candidate.tree), not $Tree" }
+        else
+        {
+            $packages = @(Get-List $candidate.packages)
+            if ($packages.Count -eq 0) { $why += 'it recorded no candidate artifact hash' }
+            $resultFile = [string]$candidate.resultJson.path
+            if (-not $resultFile -or -not (Test-Path -LiteralPath $resultFile -PathType Leaf) -or (Get-Sha256 $resultFile) -ne [string]$candidate.resultJson.sha256) { $why += 'its result.json is missing or changed' }
+            foreach ($package in $packages)
+            {
+                $file = Join-Path ([string]$candidate.workDirectory) "candidate/$($package.name)"
+                if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { $why += "the candidate artifact $($package.name) is no longer on disk" }
+                elseif ((Get-Sha256 $file) -ne [string]$package.sha256) { $why += "the candidate artifact $($package.name) differs from the recorded hash" }
+            }
+        }
+        if ($why.Count -eq 0) { return @{ Record = $candidate; Problems = @() } }
+        $problems += "qualification $($candidate.id): $($why -join '; ')"
+    }
+    @{ Record = $null; Problems = $problems }
+}
+
+function Get-ShipReview($State)
+{
+    $review = Get-LatestReview $State
+    if (-not $review -or $review.status -ne 'valid' -or $review.verdict -ne 'PASS' -or [int]$review.blockingFindings -ne 0) { return $null }
+    $acceptance = $State.acceptance
+    if (-not $acceptance -or $acceptance.invalidated -or [string]$acceptance.reviewId -ne [string]$review.reviewId -or [string]$acceptance.commit -ne [string]$review.commit) { return $null }
+    $review
+}
+
+function Get-ShipPrState($Info, [string]$Number)
+{
+    $result = Invoke-Gh @('pr', 'view', $Number, '--json', 'state,mergeCommit,headRefOid') $Info.MainCheckout -StdoutOnly
+    if ($result.Exit -ne 0) { return $null }
+    try { $prJson = $result.Text | ConvertFrom-Json } catch { return $null }
+    $mergeCommit = $null
+    if ($prJson.PSObject.Properties['mergeCommit'] -and $prJson.mergeCommit -and $prJson.mergeCommit.PSObject.Properties['oid']) { $mergeCommit = [string]$prJson.mergeCommit.oid }
+    @{ State = [string]$prJson.state; MergeCommit = $mergeCommit; Head = [string]$prJson.headRefOid }
+}
+
+function Find-ShipPr($Info, [string]$Branch)
+{
+    $result = Invoke-Gh @('pr', 'list', '--head', $Branch, '--state', 'all', '--limit', '20', '--json', 'number,url,state,headRefOid') $Info.MainCheckout -StdoutOnly
+    if ($result.Exit -ne 0) { throw "gh pr list failed (exit $($result.Exit))" }
+    if (-not $result.Text.Trim()) { return $null }
+    $found = @($result.Text | ConvertFrom-Json)
+    $open = @($found | Where-Object { $_.state -eq 'OPEN' })
+    if ($open.Count -gt 1) { throw "several open pull requests exist for $Branch ($(($open | ForEach-Object { '#' + $_.number }) -join ', ')); close the extra ones by hand" }
+    if ($open.Count -eq 1) { return @{ Number = [string]$open[0].number; Url = [string]$open[0].url; State = 'OPEN'; Head = [string]$open[0].headRefOid } }
+    $merged = @($found | Where-Object { $_.state -eq 'MERGED' })
+    if ($merged.Count) { return @{ Number = [string]$merged[0].number; Url = [string]$merged[0].url; State = 'MERGED'; Head = [string]$merged[0].headRefOid } }
+    $null
+}
+
+# ---- ship: return to review ---------------------------------------------------------------------------------------
+
+function Move-ShipToReview($Info, [string]$Why)
+{
+    # The reviewed head is gone (the rebase rewrote it, or the pin step changed more than the pin). The PASS and the acceptance are
+    # invalidated and never restamped; the new head is checked, recorded as the commit under review, and the package waits for a review.
+    $stateLock = Enter-StateLock $Info.StateRoot $Id
+    try
+    {
+        $invalidatedReason = $Why
+        Update-State $Info.StateRoot $Id 'ship-invalidated' {
+            param($s)
+            if ($s.acceptance) { $s.acceptance.invalidated = @{ utc = (Get-Now); reason = $invalidatedReason } }
+            $s.stage = 'invalidated'
+        } -Locked | Out-Null
+        Write-Host "NOTE the earlier PASS and the acceptance no longer apply: $Why"
+        $state = Read-State $Info.StateRoot $Id
+        $wt = [string]$state.worktree
+        $checked = Invoke-CheckCore $Info
+        if (-not $checked)
+        {
+            Write-Host 'ship stopped: the check on the new head failed (stage checks-failed). Fix it, then check, commit and review.'
+            return $false
+        }
+        $script:ExitCode = 3
+        if (-not (Test-WorktreeClean $wt))
+        {
+            Write-Host 'ship stopped: the check changed files (stage checks-passed). Run commit, then review.'
+            return $false
+        }
+        $state = Read-State $Info.StateRoot $Id
+        $previous = $state.commit
+        $baseRefName = [string]$state.baseRef
+        $mergeBase = ([string](& git -C $wt merge-base HEAD $baseRefName 2>$null)).Trim()
+        if (-not $mergeBase) { $mergeBase = [string]$state.baseSha }
+        $entry = @{ sha = (Get-GitHead $wt); tree = (Get-GitTree $wt); contentTree = (Get-TreeHash $wt); utc = (Get-Now); message = [string](Get-Field $previous 'message'); runIds = @(Get-List (Get-Field $previous 'runIds')); executors = @(Get-List (Get-Field $previous 'executors'))
+            baseSha = $mergeBase; rebaseChangedTree = $true; checkedAfterRebase = $true; author = [string](Get-Field $previous 'author'); refreshedByShip = $Why }
+        Update-State $Info.StateRoot $Id 'ship-needs-review' {
+            param($s)
+            $s.commit = $entry
+            $s.commits = @(Get-List $s.commits) + @($entry)
+            $s.baseSha = $entry.baseSha
+            $s.stage = 'needs-review'
+            if ($s.ship) { $s.ship.outcome = 'needs-review'; $s.ship.endedUtc = (Get-Now) }
+        } -Locked | Out-Null
+        Write-Host "ship stopped: the head is no longer the reviewed one. Next: pwsh scripts/package.ps1 review -Id $Id -Level light|heavy"
+        return $false
+    }
+    finally { $stateLock.Dispose() }
+}
+
+# ---- ship: the steps ---------------------------------------------------------------------------------------------
+
+function Step-ShipBase($Info)
+{
+    $state = Read-State $Info.StateRoot $Id
+    $wt = [string]$state.worktree
+    $baseRefName = [string]$state.baseRef
+    $remote = if ($baseRefName -like '*/*') { $baseRefName.Split('/')[0] } else { $null }
+    if (-not $remote) { return (Stop-Ship $Info 'ship-failed' 'base' @{ status = 'failed' } "ERROR ship needs a remote base ref such as origin/master, not '$baseRefName'") }
+    try { Assert-ShipRemote $wt $remote | Out-Null; Invoke-Git $wt @('fetch', $remote) | Out-Null }
+    catch { return (Stop-Ship $Info 'ship-failed' 'base' @{ status = 'failed' } "ERROR cannot fetch ${remote}: $($_.Exception.Message)") }
+    # The rebase always runs: git leaves a branch that already contains the base alone, and that is the proven no-op. Anything else that
+    # moves the head, the tree, the content or the review inputs returns the package to review.
+    $head = Get-GitHead $wt
+    $review = Get-ShipReview $state
+    $preHead = $head
+    $preTree = Get-GitTree $wt
+    $preContent = Get-TreeHash $wt
+    $rebaseProblem = $null
+    $stateLock = Enter-StateLock $Info.StateRoot $Id
+    try { Invoke-BaseRebase $Info $Id $wt $baseRefName 'ship-rebase-failed' | Out-Null }
+    catch { $rebaseProblem = $_.Exception.Message }
+    finally { $stateLock.Dispose() }
+    if ($rebaseProblem) { return (Stop-Ship $Info 'ship-failed' 'base' @{ status = 'failed'; head = $preHead } "ERROR $rebaseProblem") }
+    $postHead = Get-GitHead $wt
+    $postTree = Get-GitTree $wt
+    $postContent = Get-TreeHash $wt
+    $unchanged = ($postHead -eq $preHead -and $postTree -eq $preTree -and $postContent -eq $preContent)
+    $inputProblems = @(if ($unchanged) { Test-ReviewInputsAtAccept $state $review })
+    if ($unchanged -and $inputProblems.Count -eq 0)
+    {
+        Set-ShipStep $Info 'base' @{ status = 'done'; head = $postHead; tree = $postTree; rebased = $true; noOp = $true; baseSha = (Invoke-Git $wt @('rev-parse', '--verify', "$baseRefName^{commit}")) }
+        Write-Host "ship: the branch is on the current $baseRefName; the rebase changed nothing (same head, tree, content and review inputs), so the acceptance stands"
+        return $true
+    }
+    $why = if ($unchanged) { "the review inputs changed after the rebase: $($inputProblems -join '; ')" } else { "the rebase onto $baseRefName rewrote the branch ($preHead -> $postHead, tree $preTree -> $postTree)" }
+    Move-ShipToReview $Info $why | Out-Null
+    $false
+}
+
+function Step-ShipPin($Info)
+{
+    $state = Read-State $Info.StateRoot $Id
+    $wt = [string]$state.worktree
+    $head = Get-GitHead $wt
+    $done = Get-ShipStep $state 'pin'
+    if ($done -and $done.status -eq 'done' -and [string]$done.head -eq $head -and (Test-WorktreeClean $wt)) { return $true }
+    $mergePr = Resolve-ShipScript 'merge-pr' $MergePrScript (Join-Path $Info.MainCheckout 'scripts/merge-pr.ps1')
+    $paths = Get-ShipPaths $Info
+    $log = Join-Path $paths.Dir "pin-$([guid]::NewGuid().ToString('N')).log"
+    Write-Host 'ship: merge-pr.ps1 -PinOnly (the plugin pin is moved before verify)'
+    $code = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $mergePr, '-PinOnly', '-Worktree', $wt) $Info.MainCheckout $log -Live
+    if ($code -ne 0) { return (Stop-Ship $Info 'ship-failed' 'pin' @{ status = 'failed'; head = $head; exitCode = $code; log = $log } "ERROR merge-pr.ps1 -PinOnly failed (exit $code); see $log") }
+    $after = Get-GitHead $wt
+    $review = Get-ShipReview $state
+    $binding = Get-ReviewBinding $state $review
+    if (-not $binding.Current)
+    {
+        Move-ShipToReview $Info "the plugin pin step changed more than the pin files, or left the worktree dirty: $($binding.Reason)" | Out-Null
+        return $false
+    }
+    Set-ShipStep $Info 'pin' @{ status = 'done'; head = $after; changed = ($after -ne $head); pinOnly = [bool]$binding.PinOnly; log = $log }
+    if ($after -ne $head) { Write-Host "ship: the plugin pin moved the head to $after (only the two pin files changed; the acceptance stands)" }
+    $true
+}
+
+function Get-ShipPaths($Info)
+{
+    $dir = Join-Path (Get-PackagePaths $Info.StateRoot $Id).Dir 'ship'
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    [pscustomobject]@{ Dir = $dir }
+}
+
+function Step-ShipVerify($Info)
+{
+    $state = Read-State $Info.StateRoot $Id
+    $wt = [string]$state.worktree
+    if (-not (Test-WorktreeClean $wt)) { return (Stop-Ship $Info 'ship-failed' 'verify' @{ status = 'failed' } 'ERROR the worktree is not clean; verify needs the committed head') }
+    $head = Get-GitHead $wt
+    $tree = Get-WorkingTreeHash $wt
+    $receiptPath = Join-Path $wt 'artifacts/verify/verdict.json'
+    $done = Get-ShipStep $state 'verify'
+    if ($done -and $done.status -eq 'done' -and [string]$done.head -eq $head -and [string]$done.tree -eq $tree -and (Test-Path -LiteralPath $receiptPath -PathType Leaf) -and (Get-Sha256 $receiptPath) -eq [string]$done.receipt.sha256 -and (Test-VerifyReceiptObject (Read-VerifyReceipt $receiptPath) $head $tree).Ok)
+    {
+        Write-Host "ship: verify.ps1 already passed for head $head (tree $tree); the receipt is reused"
+        return $true
+    }
+    $script = Resolve-ShipScript 'verify' $VerifyScript (Join-Path $wt 'scripts/verify.ps1')
+    $paths = Get-ShipPaths $Info
+    $log = Join-Path $paths.Dir "verify-$([guid]::NewGuid().ToString('N')).log"
+    Write-Host "ship: verify.ps1 on head $head (log $log)"
+    $code = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $script) $wt $log -Live
+    $headAfter = Get-GitHead $wt
+    $cleanAfter = Test-WorktreeClean $wt
+    $treeAfter = Get-WorkingTreeHash $wt
+    $receipt = Read-VerifyReceipt $receiptPath
+    $decision = Test-VerifyReceiptObject $receipt $headAfter $treeAfter
+    $problems = @()
+    if ($code -ne 0) { $problems += "verify.ps1 exited with $code" }
+    if (-not $decision.Ok) { $problems += "the receipt is not a pass for the head and tree: $($decision.Reason)" }
+    if ($headAfter -ne $head -or $treeAfter -ne $tree -or -not $cleanAfter) { $problems += 'verify changed the head or the worktree' }
+    $summary = @{ path = $receiptPath; sha256 = (Get-OptionalSha256 $receiptPath); status = $(if ($receipt) { [string]$receipt.status } else { $null }); complete = $(if ($receipt) { [bool]$receipt.complete } else { $false }); head = $(if ($receipt) { [string]$receipt.head } else { $null }); treeHash = $(if ($receipt) { [string]$receipt.treeHash } else { $null }) }
+    if ($problems.Count)
+    {
+        return (Stop-Ship $Info 'ship-failed' 'verify' @{ status = 'failed'; head = $head; tree = $tree; exitCode = $code; receipt = $summary; log = $log } "ERROR verify failed: $($problems -join '; '). Receipt: $receiptPath. Log: $log")
+    }
+    Set-ShipStep $Info 'verify' @{ status = 'done'; head = $head; tree = $tree; exitCode = $code; receipt = $summary; log = $log }
+    Write-Host "ship: verify passed (receipt $receiptPath, head $head, tree $tree)"
+    $true
+}
+
+function Step-ShipRecord($Info)
+{
+    # The record that accept wrote has to cover the head that is shipped: the head itself, or an ancestor within the three first-parent
+    # steps merge-pr.ps1 looks back, with only the plugin pin changed since (the binding proves that).
+    $state = Read-State $Info.StateRoot $Id
+    $wt = [string]$state.worktree
+    $acceptance = $state.acceptance
+    $head = Get-GitHead $wt
+    $problems = @()
+    $recordPath = [string]$acceptance.recordPath
+    $expectedPath = Join-Path $Info.CommonDir "pointframe/reviews/$($acceptance.commit).json"
+    if ([IO.Path]::GetFullPath($recordPath) -ne [IO.Path]::GetFullPath($expectedPath)) { $problems += "the record path $recordPath is not $expectedPath" }
+    if (-not (Test-Path -LiteralPath $recordPath -PathType Leaf)) { $problems += "the review record $recordPath is missing" }
+    elseif ((Get-Sha256 $recordPath) -ne [string]$acceptance.recordSha256) { $problems += 'the review record changed since accept' }
+    else
+    {
+        $recordDecision = Test-ReviewRecordObject (Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json) ([string]$acceptance.commit) ([string]$acceptance.tree)
+        if (-not $recordDecision.Ok) { $problems += "the review record does not validate: $($recordDecision.Reason)" }
+    }
+    $depth = 0
+    $walk = $head
+    while ($walk -ne [string]$acceptance.commit -and $depth -lt 3)
+    {
+        $walk = ([string](& git -C $wt rev-parse "$walk^1" 2>$null)).Trim()
+        $depth++
+        if (-not $walk) { break }
+    }
+    if ($walk -ne [string]$acceptance.commit) { $problems += "the accepted commit $($acceptance.commit) is not within three first-parent steps of the head $head, where merge-pr.ps1 looks for the record" }
+    if ($problems.Count) { return (Stop-Ship $Info 'ship-failed' 'record' @{ status = 'failed'; head = $head } "ERROR the review record does not cover the head: $($problems -join '; ')") }
+    Set-ShipStep $Info 'record' @{ status = 'done'; head = $head; recordPath = $recordPath; recordCommit = [string]$acceptance.commit; depth = $depth }
+    $true
+}
+
+function Step-ShipQualify($Info)
+{
+    $state = Read-State $Info.StateRoot $Id
+    $wt = [string]$state.worktree
+    $head = Get-GitHead $wt
+    $tree = Get-GitTree $wt
+    $impactScript = Resolve-ShipScript 'release-impact' $ReleaseImpactScript (Join-Path $Info.MainCheckout 'scripts/release-impact.ps1')
+    $paths = Get-ShipPaths $Info
+    $log = Join-Path $paths.Dir "impact-$([guid]::NewGuid().ToString('N')).log"
+    $code = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $impactScript, '-Base', [string]$state.baseRef, '-Head', $head) $wt $log
+    $output = @(Get-Content -LiteralPath $log)
+    $verdictLine = @($output | Where-Object { $_ -match '^desktop-qualification:\s*(required|not-required)\s*$' })
+    if ($code -ne 0 -or $verdictLine.Count -ne 1) { return (Stop-Ship $Info 'ship-failed' 'qualify' @{ status = 'failed'; head = $head; exitCode = $code; log = $log } "ERROR release-impact.ps1 gave no decision (exit $code); see $log") }
+    $required = $verdictLine[0] -match 'required\s*$' -and $verdictLine[0] -notmatch 'not-required'
+    $matched = @($output | Where-Object { $_ -match '\[rule: ' })
+    if (-not $required)
+    {
+        Set-ShipStep $Info 'qualify' @{ status = 'done'; required = $false; head = $head; tree = $tree; log = $log }
+        Write-Host 'ship: desktop-qualification not-required'
+        return $true
+    }
+    Write-Host "ship: desktop-qualification REQUIRED ($($matched.Count) path(s) matched)"
+    $reuse = Find-ReusableQualification $state $head $tree
+    if ($reuse.Record)
+    {
+        $q = $reuse.Record
+        Set-ShipStep $Info 'qualify' @{ status = 'done'; required = $true; reused = $true; qualificationId = [string]$q.id; result = [string]$q.result; head = $head; tree = $tree; packages = @(Get-List $q.packages); skippedSteps = @(Get-List $q.skippedSteps); log = $log }
+        Write-Host "ship: reusing qualification $($q.id) (same head, same tree, candidate artifacts unchanged)"
+        return $true
+    }
+    $titleArgument = if ($Title) { ' -Title "' + $Title + '"' } else { '' }
+    $waitArgument = if ($NoWait) { ' -NoWait' } else { '' }
+    $command = "pwsh scripts/package.ps1 ship -Id $Id -AllowDesktop$titleArgument$waitArgument"
+    $stopRecord = @{ status = 'stopped'; required = $true; head = $head; tree = $tree; matched = $matched; notReusable = @($reuse.Problems); log = $log }
+    if (-not $AllowDesktop)
+    {
+        $reasons = if ($reuse.Problems.Count) { " Recorded qualifications cannot be reused: $($reuse.Problems -join ' | ')." } else { '' }
+        return (Stop-Ship $Info 'desktop-required' 'qualify' $stopRecord "STOP desktop qualification is required for head $head and none is recorded for it.$reasons The desktop is taken over only with the switch. Run: $command" 3)
+    }
+    if (-not (Test-ShipInputDesktop))
+    {
+        return (Stop-Ship $Info 'desktop-required' 'qualify' $stopRecord "STOP the Windows session is locked or has no interactive desktop, so the desktop run was not started. Sign in, then run: $command" 3)
+    }
+    $desktopScript = Resolve-ShipScript 'desktop' $DesktopScript (Join-Path $wt 'scripts/check-released-desktop.ps1')
+    $qualificationId = [guid]::NewGuid().ToString('N')
+    $workDirectory = Join-Path $paths.Dir "desktop-$qualificationId"
+    $desktopLog = Join-Path $paths.Dir "desktop-$qualificationId.log"
+    Write-Host "ANNOUNCE taking over the desktop for check-released-desktop.ps1 -BuildCandidate (about 10-15 minutes; do not use the keyboard or mouse until it ends). Head $head."
+    $startedUtc = Get-Now
+    $code = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $desktopScript, '-BuildCandidate', '-WorkDirectory', $workDirectory, '-KeepWorkDirectory') $wt $desktopLog -Live
+    $resultFile = Join-Path $workDirectory 'result.json'
+    $result = if (Test-Path -LiteralPath $resultFile -PathType Leaf) { try { Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json } catch { $null } } else { $null }
+    $packages = @()
+    if ($result -and $result.PSObject.Properties['packages']) { $packages = @($result.packages | ForEach-Object { @{ name = [string]$_.name; sha256 = [string]$_.sha256 } }) }
+    $skipped = @()
+    if ($result -and $result.PSObject.Properties['steps']) { $skipped = @($result.steps | Where-Object { $_.status -eq 'skipped' } | ForEach-Object { "$($_.name): $($_.detail)" }) }
+    $resultStatus = if ($result -and $result.PSObject.Properties['status']) { [string]$result.status } else { 'missing' }
+    $headAfter = Get-GitHead $wt
+    $treeAfter = Get-GitTree $wt
+    $problems = @()
+    if ($code -ne 0) { $problems += "check-released-desktop.ps1 exited with $code" }
+    if ($resultStatus -notin @('passed', 'passed_with_skips')) { $problems += "result.json status is '$resultStatus'" }
+    if ($packages.Count -eq 0 -or @($packages | Where-Object { $_.sha256 -notmatch '^[0-9a-f]{64}$' }).Count) { $problems += 'result.json names no candidate artifact hash' }
+    if ($headAfter -ne $head -or $treeAfter -ne $tree -or -not (Test-WorktreeClean $wt)) { $problems += 'the desktop run changed the head or the worktree' }
+    $qualification = @{ id = $qualificationId; utc = (Get-Now); startedUtc = $startedUtc; head = $head; tree = $tree; result = $resultStatus; exitCode = $code; workDirectory = $workDirectory; log = $desktopLog; packages = $packages; skippedSteps = $skipped
+        resultJson = @{ path = $resultFile; sha256 = (Get-OptionalSha256 $resultFile) } }
+    Update-State $Info.StateRoot $Id 'ship-qualification' { param($s) $s.qualifications = @(Get-List $s.qualifications) + @($qualification) } | Out-Null
+    if ($problems.Count)
+    {
+        return (Stop-Ship $Info 'ship-failed' 'qualify' @{ status = 'failed'; required = $true; head = $head; tree = $tree; qualificationId = $qualificationId; log = $desktopLog } "ERROR desktop qualification failed: $($problems -join '; '). Log: $desktopLog")
+    }
+    Set-ShipStep $Info 'qualify' @{ status = 'done'; required = $true; reused = $false; qualificationId = $qualificationId; result = $resultStatus; head = $head; tree = $tree; packages = $packages; skippedSteps = $skipped; log = $desktopLog }
+    Write-Host "ship: desktop qualification $resultStatus (candidate: $(($packages | ForEach-Object { "$($_.name) $($_.sha256)" }) -join '; '))"
+    $true
+}
+
+function Step-ShipPush($Info)
+{
+    $state = Read-State $Info.StateRoot $Id
+    $wt = [string]$state.worktree
+    $branch = [string]$state.branch
+    $remote = ([string]$state.baseRef).Split('/')[0]
+    $head = Get-GitHead $wt
+    $done = Get-ShipStep $state 'push'
+    if ($done -and $done.status -eq 'done')
+    {
+        if ([string]$done.head -eq $head) { return $true }
+        $pushedReview = Get-ShipReview $state
+        $binding = if ($pushedReview) { Get-ReviewBinding $state $pushedReview } else { @{ Current = $false; Reason = 'the acceptance is no longer valid' } }
+        if ($binding.Current) { Write-Host "ship: the branch was pushed at $($done.head); the head moved since by the plugin pin only"; return $true }
+        Move-ShipToReview $Info "the branch changed after it was pushed: $($binding.Reason)" | Out-Null
+        return $false
+    }
+    try { Assert-ShipRemote $wt $remote | Out-Null }
+    catch { return (Stop-Ship $Info 'ship-failed' 'push' @{ status = 'failed'; head = $head } "ERROR $($_.Exception.Message)") }
+    $listing = @(& git -C $wt ls-remote --heads $remote "refs/heads/$branch" 2>$null | ForEach-Object { "$_" })
+    if ($LASTEXITCODE -ne 0) { return (Stop-Ship $Info 'ship-failed' 'push' @{ status = 'failed'; head = $head } "ERROR git ls-remote $remote failed") }
+    $remoteTip = if ($listing.Count) { ($listing[0] -split '\s+')[0] } else { $null }
+    if ($remoteTip -eq $head)
+    {
+        Set-ShipStep $Info 'push' @{ status = 'done'; head = $head; remote = $remote; alreadyOnRemote = $true }
+        Write-Host "ship: $branch is already on $remote at $head; nothing is pushed again"
+        return $true
+    }
+    $pushArgs = @('push', '-u', $remote, "refs/heads/${branch}:refs/heads/${branch}")
+    if ($remoteTip)
+    {
+        $ours = @(Get-List $state.pushes | ForEach-Object { [string]$_.sha })
+        if ($remoteTip -notin $ours) { return (Stop-Ship $Info 'ship-failed' 'push' @{ status = 'failed'; head = $head; remoteTip = $remoteTip } "ERROR $remote/$branch is at $remoteTip, which this runner never pushed; not overwriting it. Look at it by hand.") }
+        $pushArgs += "--force-with-lease=refs/heads/${branch}:$remoteTip"
+    }
+    Add-ShipTrace "push $head"
+    $pushOutput = @(& git -C $wt @pushArgs 2>&1 | ForEach-Object { "$_" })
+    if ($LASTEXITCODE -ne 0) { return (Stop-Ship $Info 'ship-failed' 'push' @{ status = 'failed'; head = $head } "ERROR git push failed: $(($pushOutput | Select-Object -Last 3) -join ' ')") }
+    Test-ShipCrash 'push-before-record'
+    $pushedHead = $head
+    Update-State $Info.StateRoot $Id 'ship-push' { param($s) $s.pushes = @(Get-List $s.pushes) + @(@{ sha = $pushedHead; utc = (Get-Now); remote = $remote }) } | Out-Null
+    Set-ShipStep $Info 'push' @{ status = 'done'; head = $head; remote = $remote; alreadyOnRemote = $false }
+    Write-Host "ship: pushed $branch to $remote at $head"
+    $true
+}
+
+function Step-ShipPr($Info)
+{
+    $state = Read-State $Info.StateRoot $Id
+    $branch = [string]$state.branch
+    $done = Get-ShipStep $state 'pr'
+    if ($done -and $done.status -eq 'done') { return $true }
+    $head = Get-GitHead ([string]$state.worktree)
+    try { $existing = Find-ShipPr $Info $branch }
+    catch { return (Stop-Ship $Info 'ship-failed' 'pr' @{ status = 'failed'; head = $head } "ERROR $($_.Exception.Message)") }
+    if ($existing)
+    {
+        Set-ShipStep $Info 'pr' @{ status = 'done'; number = $existing.Number; url = $existing.Url; head = $head; created = $false; prState = $existing.State }
+        Write-Host "ship: pull request #$($existing.Number) already exists for $branch ($($existing.Url)); no second one is created"
+        return $true
+    }
+    $review = Get-ShipReview $state
+    $paths = Get-ShipPaths $Info
+    $prTitle = Get-ShipTitle ([string]$state.brief.path) $Title
+    $verifyStep = Get-ShipStep $state 'verify'
+    $qualifyStep = Get-ShipStep $state 'qualify'
+    $body = New-ShipPrBody $state $review $head (Get-GitTree ([string]$state.worktree)) $verifyStep $qualifyStep
+    $bodyPath = Join-Path $paths.Dir 'pr-body.md'
+    [IO.File]::WriteAllText($bodyPath, $body, [Text.UTF8Encoding]::new($false))
+    $baseBranch = ([string]$state.baseRef).Substring(([string]$state.baseRef).IndexOf('/') + 1)
+    $created = Invoke-Gh @('pr', 'create', '--base', $baseBranch, '--head', $branch, '--title', $prTitle, '--body-file', $bodyPath) $Info.MainCheckout
+    if ($created.Exit -ne 0) { return (Stop-Ship $Info 'ship-failed' 'pr' @{ status = 'failed'; head = $head } "ERROR gh pr create failed (exit $($created.Exit)): $(($created.Lines | Select-Object -Last 3) -join ' ')") }
+    Test-ShipCrash 'pr-before-record'
+    $number = $null
+    $url = $null
+    foreach ($line in $created.Lines) { if ($line -match '(https?://\S+/pull/(\d+))') { $url = $Matches[1]; $number = $Matches[2] } }
+    if (-not $number)
+    {
+        try { $again = Find-ShipPr $Info $branch } catch { $again = $null }
+        if ($again) { $number = $again.Number; $url = $again.Url }
+    }
+    if (-not $number) { return (Stop-Ship $Info 'ship-failed' 'pr' @{ status = 'failed'; head = $head } 'ERROR gh pr create reported no pull request number') }
+    Set-ShipStep $Info 'pr' @{ status = 'done'; number = $number; url = $url; head = $head; created = $true; title = $prTitle; body = $bodyPath; bodySha256 = (Get-Sha256 $bodyPath) }
+    Write-Host "ship: opened pull request #$number ($url)"
+    $true
+}
+
+function Step-ShipMerge($Info)
+{
+    # Returns $true only when GitHub reports MERGED. merge-pr.ps1 removes the worktree after a merge, so nothing later may need it.
+    $state = Read-State $Info.StateRoot $Id
+    $wt = [string]$state.worktree
+    $prStep = Get-ShipStep $state 'pr'
+    $number = [string]$prStep.number
+    $mergeStep = Get-ShipStep $state 'merge'
+    $calls = if ($mergeStep) { [int](Get-Field $mergeStep 'calls') } else { 0 }
+    $view = Get-ShipPrState $Info $number
+    if ($view -and $view.State -eq 'MERGED')
+    {
+        $cleanup = $null
+        if (Test-Path -LiteralPath $wt -PathType Container)
+        {
+            $mergePr = Resolve-ShipScript 'merge-pr' $MergePrScript (Join-Path $Info.MainCheckout 'scripts/merge-pr.ps1')
+            $log = Join-Path (Get-ShipPaths $Info).Dir "cleanup-$([guid]::NewGuid().ToString('N')).log"
+            $cleanup = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $mergePr, '-Pr', $number, '-Worktree', $wt) $Info.MainCheckout $log -Live
+        }
+        Set-ShipStep $Info 'merge' @{ status = 'done'; number = $number; mergeCommit = $view.MergeCommit; headRefOid = $view.Head; calls = $calls; alreadyMerged = $true; cleanupExit = $cleanup } 'merged'
+        Write-Host "ship: pull request #$number is MERGED ($($view.MergeCommit))"
+        return $true
+    }
+    $mergePr = Resolve-ShipScript 'merge-pr' $MergePrScript (Join-Path $Info.MainCheckout 'scripts/merge-pr.ps1')
+    $log = Join-Path (Get-ShipPaths $Info).Dir "merge-$([guid]::NewGuid().ToString('N')).log"
+    $mergeArgs = @('-NoProfile', '-File', $mergePr, '-Pr', $number, '-Worktree', $wt, '-Auto')
+    if (-not $NoWait) { $mergeArgs += @('-WaitMerged', '-TimeoutMinutes', [string]$MergeTimeoutMinutes) }
+    Set-ShipStep $Info 'merge' @{ status = 'running'; number = $number; calls = ($calls + 1); noWait = [bool]$NoWait }
+    Write-Host "ship: merge-pr.ps1 -Pr $number -Auto$(if (-not $NoWait) { ' -WaitMerged' })"
+    $code = Invoke-Logged 'pwsh' $mergeArgs $Info.MainCheckout $log -Live
+    if ($code -ne 0) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; number = $number; calls = ($calls + 1); exitCode = $code; log = $log } "ERROR merge-pr.ps1 exited with $code (receipt, review or check refusal, conflict or timeout); see $log") }
+    $view = Get-ShipPrState $Info $number
+    if ($view -and $view.State -eq 'MERGED')
+    {
+        Set-ShipStep $Info 'merge' @{ status = 'done'; number = $number; mergeCommit = $view.MergeCommit; headRefOid = $view.Head; calls = ($calls + 1); exitCode = $code; log = $log } 'merged'
+        Write-Host "ship: GitHub reports pull request #$number MERGED ($($view.MergeCommit))"
+        return $true
+    }
+    $observed = if ($view) { $view.State } else { 'unknown (gh pr view failed)' }
+    Set-ShipStep $Info 'merge' @{ status = 'auto-merge-enabled'; number = $number; calls = ($calls + 1); exitCode = $code; observedState = $observed; log = $log } 'auto-merge-enabled'
+    if ($NoWait) { Write-Host "ship: auto-merge is enabled for #$number; it is NOT merged yet (GitHub reports $observed). Run ship again to wait for the merge and report the channels." }
+    else { Write-Host "ERROR merge-pr.ps1 returned but GitHub reports $observed, not MERGED; the package is not merged. Run ship again to keep waiting."; $script:ExitCode = 1 }
+    $false
+}
+
+function Step-ShipChannels($Info)
+{
+    # After the merge: find the release CD cut for the merge commit (a bounded wait), run check-release-channels.ps1 for it, and report.
+    # A failed channel or a stale plugin pin is reported; no pull request is ever opened from here.
+    $state = Read-State $Info.StateRoot $Id
+    $mergeStep = Get-ShipStep $state 'merge'
+    $mergeCommit = [string](Get-Field $mergeStep 'mergeCommit')
+    if (-not $mergeCommit)
+    {
+        $view = Get-ShipPrState $Info ([string](Get-ShipStep $state 'pr').number)
+        if ($view) { $mergeCommit = $view.MergeCommit }
+    }
+    if (-not $mergeCommit) { Set-ShipStep $Info 'channels' @{ status = 'pending'; reason = 'the merge commit is unknown' }; Write-Host 'NOTE the merge commit is unknown, so the release cannot be found yet. Run ship again.'; return $false }
+    $channelsScript = Resolve-ShipScript 'channels' $ChannelsScript (Join-Path $Info.MainCheckout 'scripts/check-release-channels.ps1')
+    $deadline = (Get-Date).AddMinutes($ChannelMinutes)
+    $version = $null
+    while ($true)
+    {
+        $list = Invoke-Gh @('release', 'list', '--limit', '10', '--json', 'tagName,isDraft') $Info.MainCheckout -StdoutOnly
+        if ($list.Exit -eq 0)
+        {
+            foreach ($release in @($list.Text | ConvertFrom-Json))
+            {
+                $tag = [string]$release.tagName
+                $tagVersion = if ($tag -match '^v(\d+\.\d+\.\d+)$') { $Matches[1] } else { $null }
+                if ($release.isDraft -or -not $tagVersion) { continue }
+                $detail = Invoke-Gh @('release', 'view', $tag, '--json', 'targetCommitish') $Info.MainCheckout -StdoutOnly
+                if ($detail.Exit -eq 0 -and [string](($detail.Text | ConvertFrom-Json).targetCommitish) -eq $mergeCommit) { $version = $tagVersion; break }
+            }
+        }
+        if ($version -or (Get-Date) -ge $deadline) { break }
+        Write-Host "ship: waiting for CD to cut the release for $mergeCommit"
+        Start-Sleep -Seconds $ReleasePollSeconds
+    }
+    if (-not $version)
+    {
+        Set-ShipStep $Info 'channels' @{ status = 'pending'; mergeCommit = $mergeCommit; reason = "no release for the merge commit appeared within $ChannelMinutes minute(s)" }
+        Write-Host "NOTE CHANNELS: not reported. No release for $mergeCommit appeared within $ChannelMinutes minute(s). Run ship again later, or pwsh scripts/check-release-channels.ps1 -Version <x> -Watch."
+        return $false
+    }
+    $outDirectory = Join-Path (Get-ShipPaths $Info).Dir "channels-$version"
+    $log = Join-Path (Get-ShipPaths $Info).Dir "channels-$version.log"
+    $remaining = [Math]::Max(1, [int][Math]::Ceiling(($deadline - (Get-Date)).TotalMinutes))
+    $code = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $channelsScript, '-Version', $version, '-Watch', '-TimeoutMinutes', [string]$remaining, '-PollSeconds', '60', '-OutDirectory', $outDirectory) $Info.MainCheckout $log -Live
+    $channels = @()
+    foreach ($line in @(Get-Content -LiteralPath $log)) { if ($line -match '^CHANNEL (\S+): (\w+) - (.*)$') { $channels += @(@{ name = $Matches[1]; state = $Matches[2]; detail = $Matches[3] }) } }
+    $final = if ($code -eq 0) { 'ok' } elseif ($code -eq 1) { 'failed' } elseif ($code -eq 3) { 'pending' } else { "unknown (exit $code)" }
+    $failed = @($channels | Where-Object { $_.state -eq 'failed' })
+    $pin = @($channels | Where-Object { $_.name -eq 'plugin-pin' } | Select-Object -First 1)
+    Set-ShipStep $Info 'channels' @{ status = $(if ($final -eq 'ok') { 'done' } else { 'reported' }); version = $version; mergeCommit = $mergeCommit; final = $final; exitCode = $code; channels = $channels; log = $log }
+    Write-Host "ship: release v$version channels: $final"
+    foreach ($channel in $channels) { Write-Host ("  {0}: {1} - {2}" -f $channel.name, $channel.state, $channel.detail) }
+    foreach ($channel in $failed) { Write-Host "ERROR channel $($channel.name) failed: $($channel.detail)" }
+    if ($pin.Count -and $pin[0].state -ne 'accepted') { Write-Host "NOTE the plugin pin is $($pin[0].state): $($pin[0].detail). The next merged PR moves it (merge-pr.ps1 -Auto); no pin PR is opened from here." }
+    if ($failed.Count -or $code -eq 1) { $script:ExitCode = 1 }
+    $final -eq 'ok'
+}
+
+function Complete-ShipAfterWorktreeLoss($Info, $State)
+{
+    # merge-pr.ps1 removed the worktree and the process died before the merge was recorded: GitHub decides.
+    $prStep = Get-ShipStep $State 'pr'
+    $view = Get-ShipPrState $Info ([string]$prStep.number)
+    if (-not $view -or $view.State -ne 'MERGED') { throw "the worktree $($State.worktree) is gone but pull request #$($prStep.number) is $(if ($view) { $view.State } else { 'unreadable' }), not MERGED; nothing can be shipped from here" }
+    Set-ShipStep $Info 'merge' @{ status = 'done'; number = [string]$prStep.number; mergeCommit = $view.MergeCommit; headRefOid = $view.Head; recoveredAfterWorktreeLoss = $true } 'merged'
+    Write-Host "ship: pull request #$($prStep.number) is MERGED ($($view.MergeCommit)); the worktree was already removed"
+    Step-ShipChannels $Info | Out-Null
+}
+
+function Invoke-ShipLocked($Info)
+{
+    $state = Read-State $Info.StateRoot $Id
+    $stage = [string]$state.stage
+    if ($stage -in @('review-passed', 'accepted'))
+    {
+        $guard = Enter-StateLock $Info.StateRoot $Id
+        try { Sync-Invalidation $Info $Id } finally { $guard.Dispose() }
+        $state = Read-State $Info.StateRoot $Id
+        $stage = [string]$state.stage
+    }
+    if ($stage -notin $script:ShipStageList)
+    {
+        $hint = switch ($stage)
+        {
+            'invalidated' { 'the PASS and the acceptance no longer apply to the branch: run check, commit, review and accept again' }
+            'needs-review' { 'the reviewed head changed: run review -Level light|heavy, then accept' }
+            'review-passed' { 'run accept -Reason <text> first' }
+            default { 'ship needs a valid acceptance (stage accepted)' }
+        }
+        throw "ship is not allowed in stage '$stage': $hint"
+    }
+    if ($stage -eq 'merged') { Step-ShipChannels $Info | Out-Null; return }
+    $wt = [string]$state.worktree
+    if (-not (Test-Path -LiteralPath $wt -PathType Container))
+    {
+        $prStep = Get-ShipStep $state 'pr'
+        if ($prStep -and $prStep.status -eq 'done') { Complete-ShipAfterWorktreeLoss $Info $state; return }
+        throw "the worktree $wt is missing"
+    }
+    Assert-StateConsistent $state $Info
+    $problems = @(Test-SnapshotsIntact $state)
+    if ($problems.Count) { throw ($problems -join '; ') }
+    if ([bool]$state.guard.mainCheckoutMutated) { throw 'the main-checkout guard is not clean; nothing is shipped' }
+    $null = Get-ShipTitle ([string]$state.brief.path) $Title
+    $review = Get-ShipReview $state
+    if (-not $review) { throw 'there is no valid PASS review with a recorded, valid acceptance for this package' }
+    $binding = Get-ReviewBinding $state $review
+    if (-not $binding.Current)
+    {
+        Move-ShipToReview $Info "the acceptance does not cover the branch as it is now: $($binding.Reason)" | Out-Null
+        return
+    }
+    $fresh = ($stage -eq 'accepted')
+    Update-State $Info.StateRoot $Id 'ship-started' {
+        param($s)
+        if ($fresh -or -not $s.ship) { $s.ship = @{ startedUtc = (Get-Now); attempts = 0; steps = @{} } }
+        $s.ship.attempts = [int]$s.ship.attempts + 1
+        $s.ship.runner = @{ pid = $PID; startUtc = (Get-ProcessStartIdentity $PID) }
+        $s.ship.noWait = [bool]$NoWait
+        $s.ship.allowDesktop = [bool]$AllowDesktop
+        $s.stage = 'shipping'
+    } | Out-Null
+    Write-Host "ship ${Id}: head $(Get-GitHead $wt), $(if ($fresh) { 'new ship' } else { "resuming from stage $stage" })"
+    $pushStep = Get-ShipStep (Read-State $Info.StateRoot $Id) 'push'
+    if (-not ($pushStep -and $pushStep.status -eq 'done'))
+    {
+        if (-not (Test-ShipStepOk (Step-ShipBase $Info))) { return }
+        if (-not (Test-ShipStepOk (Step-ShipPin $Info))) { return }
+        if (-not (Test-ShipStepOk (Step-ShipVerify $Info))) { return }
+        if (-not (Test-ShipStepOk (Step-ShipRecord $Info))) { return }
+        if (-not (Test-ShipStepOk (Step-ShipQualify $Info))) { return }
+    }
+    if (-not (Test-ShipStepOk (Step-ShipPush $Info))) { return }
+    if (-not (Test-ShipStepOk (Step-ShipPr $Info))) { return }
+    if (-not (Test-ShipStepOk (Step-ShipMerge $Info))) { return }
+    Step-ShipChannels $Info | Out-Null
+}
+
+function Invoke-Ship
+{
+    $info = Get-RepoInfo $Repo
+    if ($env:POINTFRAME_PKG_SELFTEST -and -not (Test-SelfTestStub $GhScript)) { throw 'self-test guard: ship needs a marked -GhScript stub' }
+    # The process must not stand inside the worktree that merge-pr.ps1 removes after the merge.
+    Set-Location -LiteralPath $info.MainCheckout
+    $shipLock = Enter-ShipLock $info $Id
+    try { Invoke-ShipLocked $info }
+    finally { Exit-ShipLock $shipLock $info }
 }
 
 # ---- self-test--------------------------------------------------------------------------------------------------
@@ -3643,8 +4624,10 @@ exit 0
     # ---- package nl: raw bytes, no line-ending tolerance; the ordinary CRLF path still matches ----
     & $newPackage 'nl'
     $nlWt = & $wtOf 'nl'
-    [IO.File]::WriteAllText((Join-Path $nlWt '.gitattributes'), "raw.dat -text`r`n")
+    [IO.File]::WriteAllText((Join-Path $nlWt '.gitattributes'), "raw.dat -text`r`nraw2.sh -text`r`n")
     [IO.File]::WriteAllBytes((Join-Path $nlWt 'raw.dat'), [byte[]](1, 0, 10, 2))
+    # A NUL-free -text file whose only later difference is its line endings (a .sh file is never normalized): the raw-bytes rule has to catch it without the NUL byte of raw.dat.
+    [IO.File]::WriteAllBytes((Join-Path $nlWt 'raw2.sh'), [byte[]](97, 10, 98, 10))
     [IO.File]::WriteAllBytes((Join-Path $nlWt 'lf.txt'), [byte[]](111, 110, 101, 10, 116, 119, 111, 10))
     $r = & $pkg @('check', '-Id', 'nl'); $r = & $pkg @('commit', '-Id', 'nl')
     & $expect ($r.Exit -eq 0 -and [IO.File]::ReadAllText((Join-Path $nlWt 'lf.txt')) -eq "one`r`ntwo`r`n") "check did not normalize an LF text file: $($r.Text)"
@@ -3653,7 +4636,9 @@ exit 0
     $nlRev = Get-LatestReview (& $stateFile 'nl')
     & $expect ($r.Exit -eq 0 -and $nlRev.status -eq 'valid' -and $nlRev.snapshot.startObservation.contentTree -eq $nlRev.contentTree) "the ordinary path (check normalization, commit, snapshot checkout) did not give identical raw bytes: $($r.Text) $($nlRev.invalidReasons -join '; ')"
     & $git $nlWt @('update-index', '--assume-unchanged', 'raw.dat')
+    & $git $nlWt @('update-index', '--assume-unchanged', 'raw2.sh')
     [IO.File]::WriteAllBytes((Join-Path $nlWt 'raw.dat'), [byte[]](1, 0, 13, 10, 2))
+    [IO.File]::WriteAllBytes((Join-Path $nlWt 'raw2.sh'), [byte[]](97, 13, 10, 98, 13, 10))
     [IO.File]::WriteAllText((Join-Path $nlWt 'other.txt'), "other`r`n")
     $r = & $pkg @('check', '-Id', 'nl')
     & $expect ($r.Exit -eq 0) "check of nl after the hidden edit failed: $($r.Text)"
@@ -3662,7 +4647,7 @@ exit 0
     & $resetR
     $r = & $pkg @('review', '-Id', 'nl', '-Level', 'light', '-ClaudePath', $rvClaude)
     $nlRev = Get-LatestReview (& $stateFile 'nl')
-    & $expect ($r.Exit -eq 1 -and $nlRev.status -eq 'invalid' -and ($nlRev.invalidReasons -join ' ') -match 'checks did not run on the committed content \(raw bytes differ: raw\.dat\)' -and @(& $rcalls).Count -eq 0) "a newline-only hidden edit of a -text file was tolerated: $($r.Text) $($nlRev.invalidReasons -join '; ')"
+    & $expect ($r.Exit -eq 1 -and $nlRev.status -eq 'invalid' -and ($nlRev.invalidReasons -join ' ') -match 'checks did not run on the committed content \(raw bytes differ: [^)]*raw\.dat' -and ($nlRev.invalidReasons -join ' ') -match 'raw bytes differ: [^)]*raw2\.sh' -and @(& $rcalls).Count -eq 0) "a newline-only hidden edit of a -text file (with or without a NUL byte) was tolerated: $($r.Text) $($nlRev.invalidReasons -join '; ')"
     & $expect ($null -eq (Get-Command Get-NormalizedContentHash -ErrorAction SilentlyContinue)) 'the normalized fallback still exists'
 
     # ---- package cf: a rebase conflict is aborted truthfully ----
@@ -3678,6 +4663,433 @@ exit 0
     if (-not [IO.Path]::IsPathRooted($rebaseDir)) { $rebaseDir = Join-Path $cfWt $rebaseDir }
     & $expect ($r.Exit -ne 0 -and $r.Text -match 'rebase onto origin/master failed \(the rebase was aborted' -and $cfState.stage -eq 'checks-passed' -and (Test-WorktreeClean $cfWt) -and -not (Test-Path $rebaseDir) -and @($cfState.history | Where-Object { $_.event -eq 'commit-rebase-failed' }).Count -eq 1 -and $cfState.lastError -match 'abort exit 0') "a rebase conflict was not aborted and reported truthfully: $($r.Text)"
     Write-Host 'review self-test: commit, review, fix, accept cases finished.'
+    Invoke-ShipSelfTest
+    Write-Host 'ship self-test: cases finished.'
+}
+
+function Invoke-ShipSelfTest
+{
+    # Runs inside Invoke-ReviewSelfTest (dynamic scope): its helpers ($pkg, $stateFile, $wtOf, $write, $newPackage, $rvClaude, $rvManifest,
+    # $resetR, $expect, $failures, $main, $origin, $root, $stubDir, $packagesRoot, $deadWrapper) are the caller's. Every external tool is a
+    # marked stub: gh, merge-pr, verify, release-impact, check-released-desktop and check-release-channels. The only remote is a bare
+    # repository under the self-test root.
+    $shipRoot = Join-Path $root 'ship'
+    $ghDir = Join-Path $shipRoot 'gh'
+    $shipLog = Join-Path $shipRoot 'calls.log'
+    New-Item -ItemType Directory -Path $shipRoot -Force | Out-Null
+    $env:POINTFRAME_PKG_TEST_SHIPLOG = $shipLog
+    $env:POINTFRAME_PKG_TEST_GH_DIR = $ghDir
+    $env:POINTFRAME_PKG_TEST_LIBDIR = Join-Path $PSScriptRoot 'lib'
+    Add-Content -LiteralPath (Join-Path $main '.git/info/exclude') -Value 'artifacts/'
+
+    $stubBodies = [ordered]@{}
+    $stubBodies['gh'] = @'
+$a = @($args)
+$dir = $env:POINTFRAME_PKG_TEST_GH_DIR
+Add-Content -LiteralPath $env:POINTFRAME_PKG_TEST_SHIPLOG -Value ('gh ' + ($a -join ' '))
+New-Item -ItemType Directory -Path $dir -Force | Out-Null
+$prsPath = Join-Path $dir 'prs.json'
+$relPath = Join-Path $dir 'releases.json'
+$prs = if (Test-Path $prsPath) { @(Get-Content $prsPath -Raw | ConvertFrom-Json) } else { @() }
+$releases = if (Test-Path $relPath) { @(Get-Content $relPath -Raw | ConvertFrom-Json) } else { @() }
+function Arg([string]$Name) { $i = [Array]::IndexOf($a, $Name); if ($i -ge 0) { $a[$i + 1] } }
+$verb = "$($a[0]) $($a[1])"
+if ($verb -eq 'pr list')
+{
+    if ($env:POINTFRAME_PKG_TEST_GH_FAIL -eq 'list') { exit 1 }
+    $head = Arg '--head'
+    ConvertTo-Json -InputObject @($prs | Where-Object { $_.headRefName -eq $head }) -Depth 6
+    exit 0
+}
+if ($verb -eq 'pr create')
+{
+    if ($env:POINTFRAME_PKG_TEST_GH_FAIL -eq 'create') { Write-Host 'gh: simulated failure'; exit 1 }
+    $n = $prs.Count + 101
+    $head = Arg '--head'
+    $oid = ([string](& git rev-parse "refs/heads/$head")).Trim()
+    Copy-Item -LiteralPath (Arg '--body-file') -Destination (Join-Path $dir "body-$n.md") -Force
+    Set-Content -LiteralPath (Join-Path $dir "title-$n.txt") -Value (Arg '--title') -NoNewline
+    $pr = [ordered]@{ number = $n; url = "https://github.example.invalid/o/r/pull/$n"; state = 'OPEN'; headRefName = $head; headRefOid = $oid; mergeCommit = $null }
+    ConvertTo-Json -InputObject @($prs + $pr) -Depth 6 | Set-Content -LiteralPath $prsPath
+    Write-Output $pr.url
+    exit 0
+}
+if ($verb -eq 'pr view')
+{
+    $n = [int]$a[2]
+    $pr = @($prs | Where-Object { $_.number -eq $n })[0]
+    if (-not $pr) { exit 1 }
+    $merge = if ($pr.mergeCommit) { [ordered]@{ oid = [string]$pr.mergeCommit } } else { $null }
+    ConvertTo-Json -InputObject ([ordered]@{ state = $pr.state; headRefOid = $pr.headRefOid; mergeCommit = $merge }) -Depth 6
+    exit 0
+}
+if ($verb -eq 'release list')
+{
+    ConvertTo-Json -InputObject @($releases | ForEach-Object { [ordered]@{ tagName = $_.tagName; isDraft = $false } }) -Depth 4
+    exit 0
+}
+if ($verb -eq 'release view')
+{
+    $rel = @($releases | Where-Object { $_.tagName -eq $a[2] })[0]
+    if (-not $rel) { exit 1 }
+    ConvertTo-Json -InputObject ([ordered]@{ targetCommitish = $rel.targetCommitish })
+    exit 0
+}
+Write-Host "unexpected gh call: $($a -join ' ')"
+exit 2
+'@
+    $stubBodies['mergepr'] = @'
+$a = @($args)
+Add-Content -LiteralPath $env:POINTFRAME_PKG_TEST_SHIPLOG -Value ('mergepr ' + ($a -join ' '))
+function Arg([string]$Name) { $i = [Array]::IndexOf($a, $Name); if ($i -ge 0) { $a[$i + 1] } }
+$dir = $env:POINTFRAME_PKG_TEST_GH_DIR
+$wt = Arg '-Worktree'
+$identity = @('-c', 'user.name=SelfTest', '-c', 'user.email=selftest@example.invalid')
+if ($a -contains '-PinOnly')
+{
+    $mode = $env:POINTFRAME_PKG_TEST_PINMODE
+    if ($mode -in @('pin', 'pin-extra', 'pin-dirty'))
+    {
+        New-Item -ItemType Directory -Path (Join-Path $wt 'plugin/pointframe/.claude-plugin') -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $wt 'plugin/pointframe/server.lock.json'), ((@{ schemaVersion = 1; version = '1.0.0'; asset = 'x.mcpb'; url = 'https://example.invalid/x'; sha256 = ('a' * 64) } | ConvertTo-Json) + "`r`n"))
+        [IO.File]::WriteAllText((Join-Path $wt 'plugin/pointframe/.claude-plugin/plugin.json'), ((@{ name = 'pointframe'; version = '1.0.0' } | ConvertTo-Json) + "`r`n"))
+        if ($mode -eq 'pin-extra') { [IO.File]::WriteAllText((Join-Path $wt 'smuggled.txt'), "smuggled`r`n") }
+        & git -C $wt add -A
+        & git -C $wt @identity commit -qm 'Pin the Claude plugin to v1.0.0'
+        if ($mode -eq 'pin-dirty') { [IO.File]::WriteAllText((Join-Path $wt 'dirty-by-pin.txt'), "dirty`r`n") }
+        Write-Host 'Plugin pin: v0.0.1 -> v1.0.0.'
+    }
+    else { Write-Host 'Plugin pin: already current' }
+    exit 0
+}
+$n = [int](Arg '-Pr')
+$prsPath = Join-Path $dir 'prs.json'
+$prs = @(Get-Content $prsPath -Raw | ConvertFrom-Json)
+if (-not ($a -contains '-Auto'))
+{
+    if ($wt -and (Test-Path $wt)) { & git worktree remove --force $wt }
+    Write-Host 'cleaned up after a pull request that GitHub merged'
+    exit 0
+}
+if ($env:POINTFRAME_PKG_TEST_MERGEMODE -eq 'fail') { Write-Host 'RECEIPT REFUSED: simulated refusal'; exit 1 }
+Write-Host 'AUTO-MERGE ENABLED (not merged yet)'
+if (($a -contains '-WaitMerged') -and $env:POINTFRAME_PKG_TEST_MERGEMODE -eq 'merged')
+{
+    $sha = ([string](& git rev-parse origin/master)).Trim()
+    foreach ($pr in $prs) { if ($pr.number -eq $n) { $pr.state = 'MERGED'; $pr.mergeCommit = $sha } }
+    ConvertTo-Json -InputObject @($prs) -Depth 6 | Set-Content -LiteralPath $prsPath
+    $relPath = Join-Path $dir 'releases.json'
+    $releases = if (Test-Path $relPath) { @(Get-Content $relPath -Raw | ConvertFrom-Json) } else { @() }
+    ConvertTo-Json -InputObject @($releases + [ordered]@{ tagName = "v9.9.$($releases.Count + 1)"; targetCommitish = $sha }) -Depth 4 | Set-Content -LiteralPath $relPath
+    if ($wt -and (Test-Path $wt)) { & git worktree remove --force $wt }
+    Write-Host "MERGED $sha"
+}
+exit 0
+'@
+    $stubBodies['verify'] = @'
+Add-Content -LiteralPath $env:POINTFRAME_PKG_TEST_SHIPLOG -Value 'verify'
+. (Join-Path $env:POINTFRAME_PKG_TEST_LIBDIR 'tree-hash.ps1')
+$top = ([string](& git rev-parse --show-toplevel)).Trim()
+$head = ([string](& git rev-parse HEAD)).Trim()
+$tree = Get-WorkingTreeHash $top
+$status = switch ($env:POINTFRAME_PKG_TEST_VERMODE) { 'fail' { 'fail' } 'partial' { 'partial' } default { 'pass' } }
+$out = Join-Path $top 'artifacts/verify'
+New-Item -ItemType Directory -Path $out -Force | Out-Null
+[ordered]@{ status = $status; complete = ($status -eq 'pass'); startedAt = [DateTime]::UtcNow.ToString('o'); head = $head; treeHash = $tree; filter = $null; gates = @() } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $out 'verdict.json')
+if ($status -eq 'pass') { Write-Host 'VERIFY PASSED: every gate passed.'; exit 0 }
+Write-Host "VERIFY FAILED (stub $status)"
+exit 1
+'@
+    $stubBodies['impact'] = @'
+Add-Content -LiteralPath $env:POINTFRAME_PKG_TEST_SHIPLOG -Value 'impact'
+switch ($env:POINTFRAME_PKG_TEST_IMPACT)
+{
+    'required' { Write-Host 'CHANGED Pointframe.Cli/Program.cs'; Write-Host 'desktop-qualification: required'; Write-Host '  Pointframe.Cli/Program.cs [rule: shipping project]'; exit 0 }
+    'none' { exit 2 }
+    default { Write-Host 'CHANGED feature.txt'; Write-Host 'desktop-qualification: not-required'; Write-Host '  no changed path matched a qualification rule'; exit 0 }
+}
+'@
+    $stubBodies['desktop'] = @'
+$a = @($args)
+Add-Content -LiteralPath $env:POINTFRAME_PKG_TEST_SHIPLOG -Value ('desktop ' + ($a -join ' '))
+$wd = $a[[Array]::IndexOf($a, '-WorkDirectory') + 1]
+New-Item -ItemType Directory -Path (Join-Path $wd 'candidate') -Force | Out-Null
+$names = @('Pointframe.Cli-0.0.0-candidate-win-x64.zip', 'Pointframe.Mcp-0.0.0-candidate-win-x64.mcpb')
+$packages = @()
+foreach ($name in $names)
+{
+    $file = Join-Path $wd "candidate/$name"
+    [IO.File]::WriteAllText($file, "candidate $name $([guid]::NewGuid())")
+    $packages += [ordered]@{ name = $name; sha256 = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() }
+}
+$mode = $env:POINTFRAME_PKG_TEST_DESKTOPMODE
+$steps = @([ordered]@{ name = 'released MCP stdio desktop smoke'; status = 'passed'; durationSeconds = 1; detail = 'ok' })
+if ($mode -eq 'skips') { $steps += [ordered]@{ name = 'released MCP record-export-add round trip'; status = 'skipped'; durationSeconds = 0; detail = 'skipped (not in this release): desktop_export_scenario is absent' } }
+$status = switch ($mode) { 'fail' { 'failed' } 'skips' { 'passed_with_skips' } default { 'passed' } }
+[ordered]@{ version = 1; label = 'candidate'; packages = $packages; steps = $steps; status = $status } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $wd 'result.json')
+if ($status -eq 'failed') { Write-Host 'FAILED: candidate desktop check'; exit 1 }
+Write-Host 'PASSED: candidate desktop check'
+exit 0
+'@
+    $stubBodies['channels'] = @'
+$a = @($args)
+Add-Content -LiteralPath $env:POINTFRAME_PKG_TEST_SHIPLOG -Value ('channels ' + ($a -join ' '))
+Write-Host 'CHANNEL github-release: accepted - release is published'
+switch ($env:POINTFRAME_PKG_TEST_CHANNELMODE)
+{
+    'failed' { Write-Host 'CHANNEL winget:DimitarRadenkov.Pointframe: failed - Winget Release job failure: boom'; Write-Host 'CHANNEL plugin-pin: accepted - pinned'; Write-Host 'CHANNELS: failed'; exit 1 }
+    'stalepin' { Write-Host 'CHANNEL plugin-pin: pending - server.lock.json is the previous release'; Write-Host 'CHANNELS: pending'; exit 3 }
+    default { Write-Host 'CHANNEL plugin-pin: accepted - pinned'; Write-Host 'CHANNELS: ok'; exit 0 }
+}
+'@
+    $stubPath = @{}
+    foreach ($name in $stubBodies.Keys)
+    {
+        $stubPath[$name] = Join-Path $stubDir "ship-$name.ps1"
+        [IO.File]::WriteAllText($stubPath[$name], "# pointframe-selftest-stub`r`n" + $stubBodies[$name] + "`r`n")
+    }
+    $shipCommon = @('-GhScript', $stubPath['gh'], '-MergePrScript', $stubPath['mergepr'], '-VerifyScript', $stubPath['verify'], '-ReleaseImpactScript', $stubPath['impact'], '-DesktopScript', $stubPath['desktop'], '-ChannelsScript', $stubPath['channels'], '-ChannelMinutes', '0', '-ReleasePollSeconds', '1')
+    $defaults = @{ VERMODE = 'pass'; IMPACT = 'not-required'; DESKTOPMODE = 'pass'; DESKTOP = 'unlocked'; PINMODE = 'none'; MERGEMODE = 'merged'; CHANNELMODE = 'ok'; GH_FAIL = ''; SHIP_CRASH = '' }
+    $setEnv = {
+        param([hashtable]$Set = @{})
+        $all = $defaults.Clone()
+        foreach ($key in $Set.Keys) { $all[$key] = $Set[$key] }
+        foreach ($key in $all.Keys) { [Environment]::SetEnvironmentVariable("POINTFRAME_PKG_TEST_$key", $(if ($all[$key] -ne '') { $all[$key] } else { $null })) }
+    }
+    $ship = { param([string]$Slug, [string[]]$More = @()) & $pkg (@('ship', '-Id', $Slug) + $shipCommon + @($More)) }
+    $calls = { param([string]$Pattern) $lines = if (Test-Path $shipLog) { @(Get-Content -LiteralPath $shipLog) } else { @() }; @($lines | Where-Object { $_ -match $Pattern }).Count }
+    $resetLog = { Remove-Item -LiteralPath $shipLog -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $ghDir -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path $ghDir -Force | Out-Null }
+    $originRef = { param($slug) ([string](& git -C $origin rev-parse --verify --quiet "refs/heads/pkg/$slug" 2>$null)).Trim() }
+    $dropRemote = { param($slug) & git -C $origin update-ref -d "refs/heads/pkg/$slug" 2>$null | Out-Null }
+    $dropLockFile = { Remove-Item -LiteralPath (Join-Path $main '.git/pointframe/ship.json') -Force -ErrorAction SilentlyContinue }
+    $softReset = {
+        param($slug)
+        Update-State $packagesRoot $slug 'test-soft-reset' { param($s) $s.ship = $null; $s.stage = 'accepted' } | Out-Null
+        & $dropRemote $slug
+        & $dropLockFile
+        & $resetLog
+    }
+    $newAccepted = {
+        param($slug)
+        & $newPackage $slug $rvManifest
+        & $write $slug "feature-$slug.txt" "v2 $slug`r`n"
+        $r = & $pkg @('check', '-Id', $slug)
+        & $expect ($r.Exit -eq 0) "ship test package $slug : check failed: $($r.Text)"
+        $r = & $pkg @('commit', '-Id', $slug, '-Message', "Ship test $slug")
+        & $expect ($r.Exit -eq 0) "ship test package $slug : commit failed: $($r.Text)"
+        & $resetR
+        $env:POINTFRAME_PKG_TEST_VMODE = 'pass'
+        $r = & $pkg @('review', '-Id', $slug, '-Level', 'light', '-ClaudePath', $rvClaude)
+        & $expect ($r.Exit -eq 0) "ship test package $slug : review failed: $($r.Text)"
+        $r = & $pkg @('accept', '-Id', $slug, '-Reason', 'ship test')
+        & $expect ($r.Exit -eq 0 -and (& $stateFile $slug).stage -eq 'accepted') "ship test package $slug : accept failed: $($r.Text)"
+    }
+
+    # ---- the packages: all accepted on the same base before anything moves it ----
+    foreach ($slug in @('sa', 'sc', 'sb', 'sd')) { & $newAccepted $slug }
+    $aWt = & $wtOf 'sa'
+    $aHead = & $headOf 'sa'
+    $aState = Join-Path $root 'sa-accepted-state.json'
+    Copy-Item -LiteralPath (& $statePath 'sa') -Destination $aState -Force
+    $restoreA = {
+        $aTree = [string](Get-Content -LiteralPath $aState -Raw | ConvertFrom-Json).worktree
+        & git -C $main worktree prune
+        if (-not (Test-Path $aTree)) { & git -C $main worktree add $aTree 'pkg/sa' 2>&1 | Out-Null }
+        & git -C $aTree reset --hard $aHead 2>&1 | Out-Null
+        & git -C $aTree clean -fdxq
+        Copy-Item -LiteralPath $aState -Destination (& $statePath 'sa') -Force
+        & $dropRemote 'sa'
+        & $dropLockFile
+        & $resetLog
+        & $setEnv @{}
+    }
+    $info = Get-RepoInfo $main
+
+    # ---- guards, refusals: no acceptance, no stubs, a later non-pin commit ----
+    & $setEnv @{}
+    & $resetLog
+    $r = & $pkg @('ship', '-Id', 'sa')
+    & $expect ($r.Exit -ne 0 -and $r.Text -match 'self-test guard' -and (& $calls '.') -eq 0) "ship ran in the self-test without marked stubs: $($r.Text)"
+    $r = & $ship 'ac'
+    & $expect ($r.Exit -ne 0 -and $r.Text -match "ship is not allowed in stage '(committed|review-invalid)'" -and (& $calls '.') -eq 0 -and (& $stateFile 'ac').stage -notin @('shipping', 'accepted', 'merged')) "ship was allowed without an acceptance: $($r.Text)"
+    [IO.File]::WriteAllText((Join-Path $aWt 'later.txt'), "after the acceptance`r`n")
+    & $git $aWt @('add', '-A'); & $git $aWt @('commit', '-qm', 'a later non-pin commit')
+    $r = & $ship 'sa'
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -ne 0 -and $r.Text -match "ship is not allowed in stage 'invalidated'" -and $state.stage -eq 'invalidated' -and $state.acceptance.invalidated.reason -match 'later\.txt' -and (& $calls '.') -eq 0) "ship went ahead after a later non-pin commit: $($r.Text)"
+    & $restoreA
+
+    # ---- the ship lock ----
+    $held = Enter-ShipLock $info 'other-package'
+    try
+    {
+        $r = & $ship 'ac'
+        & $expect ($r.Exit -ne 0 -and $r.Text -match 'another ship is in flight' -and $r.Text -match 'other-package') "a second ship ran while the lock was held: $($r.Text)"
+    }
+    finally { Exit-ShipLock $held $info }
+    & $expect (-not (Test-Path (Join-Path $main '.git/pointframe/ship.json'))) 'releasing the ship lock left its info file behind'
+    $deadStart = '2000-01-01T00:00:00.0000000+00:00'
+    [IO.File]::WriteAllText((Join-Path $main '.git/pointframe/ship.json'), (@{ pid = $deadWrapper.Id; startUtc = $deadStart; slug = 'ghost'; utc = '2026-01-01T00:00:00Z' } | ConvertTo-Json))
+    $r = & $ship 'ac'
+    & $expect ($r.Exit -ne 0 -and $r.Text -match 'stale ship lock' -and $r.Text -match "ship -Id ghost" -and (Test-Path (Join-Path $main '.git/pointframe/ship.json'))) "a stale lock of another package was not reported and kept: $($r.Text)"
+    & $dropLockFile
+
+    # ---- the plugin pin step ----
+    & $setEnv @{ PINMODE = 'pin'; VERMODE = 'fail' }
+    $r = & $ship 'sa'
+    $state = & $stateFile 'sa'
+    if (-not $state.ship -or -not $state.ship.steps.ContainsKey('pin')) { throw "ship recorded no pin step (exit $($r.Exit), stage $($state.stage)): $($r.Text)" }
+    $pinStep = $state.ship.steps.pin
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'ship-failed' -and $pinStep.status -eq 'done' -and $pinStep.pinOnly -and $pinStep.changed -and -not $state.acceptance.invalidated -and (& $headOf 'sa') -ne $aHead -and $state.ship.steps.verify.status -eq 'failed') "a pin-only commit did not keep the acceptance: $($r.Text)"
+    & $expect ($r.Text -match 'verify failed' -and $r.Text -match 'verdict\.json' -and $state.ship.steps.verify.receipt.status -eq 'fail' -and (& $calls '^verify$') -eq 1 -and (& $calls '^gh ') -eq 0 -and (& $calls 'push') -eq 0) "a verify failure was not reported with its receipt, or something ran after it: $($r.Text)"
+    $view = (& $pkg @('show', '-Id', 'sa', '-Json')).Text | ConvertFrom-Json
+    & $expect ($view.acceptance.status -match '^valid' -and @($view.ship.steps).Count -eq 9 -and (@($view.ship.steps | Where-Object { $_.step -eq 'verify' })[0].status -eq 'failed') -and @($view.nextTransitions) -contains 'ship (resumes at the failed step)') "show does not list the ship steps and the next command: $($view | ConvertTo-Json -Depth 4 -Compress)"
+    & $restoreA
+    & $setEnv @{ PINMODE = 'pin-extra' }
+    $r = & $ship 'sa'
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 3 -and $state.stage -eq 'needs-review' -and $state.acceptance.invalidated.reason -match 'plugin pin step changed more than the pin' -and $state.commit.sha -eq (& $headOf 'sa') -and $r.Text -match 'review -Id sa' -and (& $calls '^verify$') -eq 0 -and (& $calls '^gh ') -eq 0) "a pin step that changed other files kept the acceptance or did not return to review: $($r.Text)"
+    $r = & $ship 'sa'
+    & $expect ($r.Exit -ne 0 -and $r.Text -match "stage 'needs-review'") "ship was allowed in needs-review: $($r.Text)"
+    & $restoreA
+    & $setEnv @{ PINMODE = 'pin-dirty' }
+    $r = & $ship 'sa'
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -ne 0 -and $state.stage -eq 'checks-passed' -and $state.acceptance.invalidated -and (& $calls '^verify$') -eq 0) "a pin step that left the worktree dirty kept the acceptance: $($r.Text)"
+    & $restoreA
+
+    # ---- verify failure, resume, desktop qualification ----
+    & $setEnv @{ VERMODE = 'fail' }
+    $r = & $ship 'sa'
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'ship-failed' -and $state.ship.steps.verify.status -eq 'failed' -and $state.ship.steps.verify.head -eq $aHead -and $state.ship.steps.verify.receipt.path -match 'verdict\.json' -and (& $calls 'push') -eq 0) "a verify failure did not stop at ship-failed with the receipt: $($r.Text)"
+    & $setEnv @{ IMPACT = 'required' }
+    $r = & $ship 'sa'
+    $state = & $stateFile 'sa'
+    $verifyHead = $state.ship.steps.verify.head
+    & $expect ($r.Exit -eq 3 -and $state.stage -eq 'desktop-required' -and $r.Text -match 'pwsh scripts/package\.ps1 ship -Id sa -AllowDesktop' -and (& $calls '^desktop') -eq 0 -and (& $calls 'push') -eq 0 -and $verifyHead -eq $aHead -and $state.ship.steps.verify.receipt.treeHash -eq $state.ship.steps.verify.tree) "desktop qualification was not required without the switch, or the command was not printed: $($r.Text)"
+    $shown = (& $pkg @('show', '-Id', 'sa')).Text
+    & $expect ($shown -match 'next: ship -AllowDesktop' -and $shown -match 'qualify\s+stopped') "show does not name the next command after desktop-required: $shown"
+    & $setEnv @{ IMPACT = 'required'; DESKTOP = 'locked' }
+    $r = & $ship 'sa' @('-AllowDesktop')
+    & $expect ($r.Exit -eq 3 -and (& $stateFile 'sa').stage -eq 'desktop-required' -and $r.Text -match 'locked' -and (& $calls '^desktop') -eq 0) "the desktop was used although the session is locked: $($r.Text)"
+    & $setEnv @{ IMPACT = 'required'; DESKTOPMODE = 'fail' }
+    $r = & $ship 'sa' @('-AllowDesktop')
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'ship-failed' -and $r.Text -match 'ANNOUNCE' -and (& $calls '^desktop') -eq 1 -and @($state.qualifications).Count -eq 1 -and $state.qualifications[0].result -eq 'failed' -and (& $calls 'push') -eq 0) "a failed desktop run was not ship-failed: $($r.Text)"
+    & $setEnv @{ IMPACT = 'required'; GH_FAIL = 'create' }
+    $r = & $ship 'sa' @('-AllowDesktop')
+    $state = & $stateFile 'sa'
+    $qualification = $state.qualifications[-1]
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'ship-failed' -and $state.ship.steps.qualify.status -eq 'done' -and $state.ship.steps.qualify.qualificationId -eq $qualification.id -and $qualification.result -eq 'passed' -and $qualification.head -eq $aHead -and $qualification.tree -eq (& git -C $aWt rev-parse 'HEAD^{tree}').Trim() -and @($qualification.packages).Count -eq 2 -and $qualification.packages[0].sha256 -match '^[0-9a-f]{64}$' -and (& $calls '^desktop') -eq 2 -and (& $calls '^push') -eq 1 -and $state.ship.steps.push.status -eq 'done' -and $state.ship.steps.pr.status -eq 'failed') "a passing desktop run was not recorded bound to the head, tree and artifacts, or the PR failure was not reported: $($r.Text)"
+    & $expect ($state.ship.steps.verify.status -eq 'done' -and (& $calls '^verify$') -eq 2) 'verify ran more than twice (the failure and the passing rerun): a valid receipt for the same head and tree was not reused'
+    # The qualification is reused for the same head and tree: no desktop, no switch.
+    & $softReset 'sa'
+    $r = & $ship 'sa'
+    $state = & $stateFile 'sa'
+    & $expect ($r.Text -match 'reusing qualification' -and $state.ship.steps.qualify.reused -and (& $calls '^desktop') -eq 0 -and $state.stage -eq 'ship-failed') "a recorded qualification for the same head and tree was not reused: $($r.Text)"
+    # Bound to another head: refused.
+    $originalHead = $qualification.head
+    Update-State $packagesRoot 'sa' 'test-tamper' { param($s) $s.qualifications[-1].head = ('f' * 40) } | Out-Null
+    & $softReset 'sa'
+    $r = & $ship 'sa'
+    & $expect ($r.Exit -eq 3 -and (& $stateFile 'sa').stage -eq 'desktop-required' -and $r.Text -match 'bound to head f{40}' -and (& $calls '^desktop') -eq 0) "a qualification bound to another head was reused: $($r.Text)"
+    Update-State $packagesRoot 'sa' 'test-untamper' { param($s) $s.qualifications[-1].head = $originalHead } | Out-Null
+    # The candidate artifact changed on disk: refused.
+    $artifact = Join-Path $qualification.workDirectory "candidate/$($qualification.packages[0].name)"
+    Add-Content -LiteralPath $artifact -Value 'tampered'
+    & $softReset 'sa'
+    $r = & $ship 'sa'
+    & $expect ($r.Exit -eq 3 -and (& $stateFile 'sa').stage -eq 'desktop-required' -and $r.Text -match 'differs from the recorded hash' -and (& $calls '^desktop') -eq 0) "a qualification whose candidate artifact changed was reused: $($r.Text)"
+    & $restoreA
+
+    # ---- crash after the push, crash after the PR, resume, -NoWait, MERGED only, the PR body, the channels ----
+    & $setEnv @{ SHIP_CRASH = 'push-before-record' }
+    $r = & $ship 'sa' @('-Title', 'Explicit PR title')
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 99 -and $state.stage -eq 'shipping' -and (& $originRef 'sa') -eq $aHead -and (& $calls '^push') -eq 1 -and (& $calls 'pr create') -eq 0 -and (Test-Path (Join-Path $main '.git/pointframe/ship.json'))) "the crash after the push did not leave the expected state: exit $($r.Exit) stage $($state.stage) $($r.Text)"
+    & $setEnv @{ SHIP_CRASH = 'pr-before-record' }
+    $r = & $ship 'sa' @('-Title', 'Explicit PR title')
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 99 -and $r.Text -match 'stale ship lock' -and $r.Text -match 'already on origin' -and (& $calls '^push') -eq 1 -and (& $calls 'pr create') -eq 1 -and $state.stage -eq 'shipping' -and $state.ship.steps.push.status -eq 'done') "the resume after the push pushed again, did not report the stale lock, or did not reach the PR: exit $($r.Exit) $($r.Text)"
+    & $setEnv @{ MERGEMODE = 'merged' }
+    $r = & $ship 'sa' @('-NoWait')
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'auto-merge-enabled' -and $r.Text -match 'already exists' -and (& $calls 'pr create') -eq 1 -and (& $calls '^push') -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 1 -and (& $calls '^mergepr .*-WaitMerged') -eq 0 -and $r.Text -match 'NOT merged yet' -and $state.stage -ne 'merged') "-NoWait did not stop at auto-merge-enabled without a second PR or push: exit $($r.Exit) stage $($state.stage) $($r.Text)"
+    $body = Get-Content -LiteralPath (Join-Path $ghDir 'body-101.md') -Raw
+    & $expect ($body -match '## Summary' -and $body -match 'Use the checked executor launcher\.' -and $body -match '## Acceptance criteria' -and $body -match '\*\*C1\*\* The feature file exists\.' -and $body -match 'reviewer result: pass' -and $body -match '## Checks run' -and $body -match 'verify\.ps1: pass, complete True' -and $body -match "head ``$aHead``" -and $body -match 'codex:gpt-6-luna' -and $body -match 'claude-sonnet' -and $body -match 'light, round' -and $body -match '## What was not tested' -and $body -match 'integration tests were not run' -and $body -match 'No desktop run' -and $body -match 'desktop qualification: not required') "the PR body lacks the criteria, checks, identities or the not-tested section: $body"
+    & $expect ($body -notmatch '(?i)generated with|co-authored-by|claude code' -and (Get-Content -LiteralPath (Join-Path $ghDir 'title-101.txt') -Raw) -eq 'Explicit PR title') 'the PR body has an attribution line, or -Title was ignored'
+    & $expect ((Get-ShipTitle (Join-Path $PSScriptRoot 'tests/agent-run/complete.md') '') -eq 'Objective / Why') 'the title is not the first H1 of the brief'
+    $briefWithPrefix = Join-Path $root 'brief-prefix.md'
+    [IO.File]::WriteAllText($briefWithPrefix, "# Brief: PR9 - Something useful`r`n`r`n## Objective`r`n`r`nDo the thing`r`nover two lines.`r`n`r`nSecond paragraph.`r`n")
+    & $expect ((Get-ShipTitle $briefWithPrefix '') -eq 'PR9 - Something useful' -and (Get-ShipObjective $briefWithPrefix) -eq 'Do the thing over two lines.') 'the title or the objective is not taken from the brief'
+    & $setEnv @{ MERGEMODE = 'liar' }
+    $r = & $ship 'sa'
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'auto-merge-enabled' -and $state.stage -ne 'merged' -and $r.Text -match 'not MERGED' -and (& $calls '^mergepr .*-WaitMerged') -eq 1 -and (& $calls 'pr create') -eq 1) "merged was set without GitHub reporting MERGED: $($r.Text)"
+    & $setEnv @{ MERGEMODE = 'merged'; CHANNELMODE = 'failed' }
+    $r = & $ship 'sa'
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.status -eq 'done' -and $state.ship.steps.merge.mergeCommit -match '^[0-9a-f]{40}$' -and -not (Test-Path $aWt) -and $state.ship.steps.channels.final -eq 'failed' -and $r.Text -match 'channel winget:DimitarRadenkov\.Pointframe failed' -and (& $calls 'pr create') -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 3 -and (& $calls '^channels .*-Version 9\.9\.1') -eq 1) "the merge or the channel failure was not recorded (worktree removed, merge commit, failed channel, no new PR): exit $($r.Exit) $($r.Text)"
+    $r = & $pkg @('show', '-Id', 'sa')
+    & $expect ($r.Exit -eq 0 -and $r.Text -match 'stage=merged' -and $r.Text -notmatch 'INCONSISTENT' -and $r.Text -match 'channels\s+reported') "show failed on a merged package whose worktree is gone: $($r.Text)"
+    & $setEnv @{ CHANNELMODE = 'stalepin' }
+    $r = & $ship 'sa'
+    & $expect ($r.Exit -eq 0 -and $r.Text -match 'plugin pin is pending' -and $r.Text -match 'no pin PR is opened' -and (& $calls 'pr create') -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 3) "a stale plugin pin was not reported, or a PR was opened: $($r.Text)"
+    & $setEnv @{ CHANNELMODE = 'ok' }
+    $r = & $ship 'sa'
+    $state = & $stateFile 'sa'
+    & $expect ($r.Exit -eq 0 -and $state.ship.steps.channels.status -eq 'done' -and (& $calls '^mergepr .*-Auto') -eq 3 -and (& $calls 'pr create') -eq 1 -and @(((& $pkg @('show', '-Id', 'sa', '-Json')).Text | ConvertFrom-Json).nextTransitions).Count -eq 0) "a rerun after the merge repeated a merge call, or the channels were not reported ok: $($r.Text)"
+    Remove-Item -LiteralPath (Join-Path $ghDir 'releases.json') -Force
+    $r = & $ship 'sa'
+    & $expect ($r.Exit -eq 0 -and $r.Text -match 'CHANNELS: not reported' -and (& $stateFile 'sa').ship.steps.channels.status -eq 'pending') "a missing release was not reported as not yet reported: $($r.Text)"
+
+    # ---- base moved, no-op rebase: the base is a commit of the branch itself ----
+    & $setEnv @{}
+    & $resetLog
+    $cWt = & $wtOf 'sc'
+    $cHead = & $headOf 'sc'
+    & $git $cWt @('push', 'origin', "${cHead}:refs/heads/master")
+    $r = & $ship 'sc' @('-NoWait')
+    $state = & $stateFile 'sc'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'auto-merge-enabled' -and $state.ship.steps.base.noOp -eq $true -and -not $state.acceptance.invalidated -and $r.Text -match 'rebase changed nothing' -and (& $headOf 'sc') -eq $cHead -and (& $calls '^verify$') -eq 1) "a no-op rebase did not keep the acceptance: exit $($r.Exit) stage $($state.stage) $($r.Text)"
+    # GitHub merges while auto-merge is waiting: the next ship cleans up, records MERGED and reports the channels.
+    $prs = @(Get-Content -LiteralPath (Join-Path $ghDir 'prs.json') -Raw | ConvertFrom-Json)
+    foreach ($pr in $prs) { $pr.state = 'MERGED'; $pr.mergeCommit = $cHead }
+    ConvertTo-Json -InputObject @($prs) -Depth 6 | Set-Content -LiteralPath (Join-Path $ghDir 'prs.json')
+    ConvertTo-Json -InputObject @([ordered]@{ tagName = 'v9.9.9'; targetCommitish = $cHead }) | Set-Content -LiteralPath (Join-Path $ghDir 'releases.json')
+    $r = & $ship 'sc'
+    $state = & $stateFile 'sc'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.alreadyMerged -and (& $calls '^mergepr -Pr \d+ -Worktree \S+$') -eq 1 -and -not (Test-Path $cWt) -and $state.ship.steps.channels.status -eq 'done') "a pull request merged by GitHub was not recorded, cleaned up and reported: exit $($r.Exit) $($r.Text)"
+
+    # ---- base moved, real rebase: back to review, then review, accept and ship again ----
+    & $resetLog
+    $bHeadBefore = & $headOf 'sb'
+    $r = & $ship 'sb' @('-NoWait')
+    $state = & $stateFile 'sb'
+    & $expect ($r.Exit -eq 3 -and $state.stage -eq 'needs-review' -and $state.acceptance.invalidated.reason -match 'rewrote the branch' -and (& $headOf 'sb') -ne $bHeadBefore -and $state.commit.sha -eq (& $headOf 'sb') -and $r.Text -match 'review -Id sb' -and (& $calls '.') -eq 0 -and $state.checks[-1].ok) "a real rebase did not invalidate the acceptance and return to review: exit $($r.Exit) $($r.Text)"
+    & $resetR
+    $env:POINTFRAME_PKG_TEST_VMODE = 'pass'
+    $r = & $pkg @('review', '-Id', 'sb', '-Level', 'light', '-ClaudePath', $rvClaude)
+    & $expect ($r.Exit -eq 0 -and (& $stateFile 'sb').stage -eq 'review-passed') "the review after the ship rebase failed: $($r.Text)"
+    $r = & $pkg @('accept', '-Id', 'sb', '-Reason', 'reviewed after the rebase')
+    & $expect ($r.Exit -eq 0 -and (& $stateFile 'sb').stage -eq 'accepted') "accept after the ship rebase failed: $($r.Text)"
+    $r = & $ship 'sb' @('-NoWait')
+    $state = & $stateFile 'sb'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'auto-merge-enabled' -and $state.ship.steps.verify.head -eq (& $headOf 'sb') -and (& $originRef 'sb') -eq (& $headOf 'sb')) "ship after the new review did not run to auto-merge-enabled on the new head: exit $($r.Exit) $($r.Text)"
+
+    # ---- a failing rebase --abort ----
+    & $resetLog
+    $dWt = & $wtOf 'sd'
+    $dHead = & $headOf 'sd'
+    $indexLock = ([string](& git -C $dWt rev-parse --git-path index.lock)).Trim()
+    if (-not [IO.Path]::IsPathRooted($indexLock)) { $indexLock = Join-Path $dWt $indexLock }
+    [IO.File]::WriteAllText($indexLock, '')
+    $r = & $ship 'sd'
+    $state = & $stateFile 'sd'
+    Remove-Item -LiteralPath $indexLock -Force -ErrorAction SilentlyContinue
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'ship-failed' -and $r.Text -match 'rebase --abort FAILED' -and $state.lastError -match 'abort exit [1-9]' -and (& $headOf 'sd') -eq $dHead -and -not $state.acceptance.invalidated -and (& $calls '.') -eq 0) "a rebase whose --abort fails was not reported truthfully: exit $($r.Exit) stage $($state.stage) $($r.Text)"
+    & $setEnv @{}
 }
 
 function Invoke-SelfTest
@@ -4562,7 +5974,7 @@ if (process.env.POINTFRAME_PKG_TEST_JS_TREE) {
 }
 
 if ($SelfTest) { Invoke-SelfTest }
-if (-not $Command) { Write-Host 'ERROR a command is required: new, run, check, show, commit, review, fix, disposition or accept'; exit 2 }
+if (-not $Command) { Write-Host 'ERROR a command is required: new, run, check, show, commit, review, fix, disposition, accept or ship'; exit 2 }
 if (-not $Id) { Write-Host 'ERROR -Id is required'; exit 2 }
 try
 {
@@ -4577,6 +5989,7 @@ try
         'fix' { Invoke-Fix }
         'disposition' { Invoke-Disposition }
         'accept' { Invoke-Accept }
+        'ship' { Invoke-Ship }
     }
 }
 catch
