@@ -39,6 +39,7 @@ internal sealed class DesktopScenarioRunner
     private readonly TimeSpan _elementTimeout;
     private readonly TimeSpan _pollInterval;
     private readonly TimeSpan _restartWait;
+    private readonly TimeProvider _timeProvider;
     private bool _stepInfrastructure;
 
     internal DesktopScenarioRunner(
@@ -47,7 +48,8 @@ internal sealed class DesktopScenarioRunner
         IReadOnlyList<CaptureRectangle> captureBounds,
         TimeSpan? elementTimeout = null,
         TimeSpan? pollInterval = null,
-        TimeSpan? restartWait = null)
+        TimeSpan? restartWait = null,
+        TimeProvider? timeProvider = null)
     {
         _client = client;
         _profileId = profileId;
@@ -55,6 +57,7 @@ internal sealed class DesktopScenarioRunner
         _elementTimeout = elementTimeout ?? TimeSpan.FromSeconds(15);
         _pollInterval = pollInterval ?? TimeSpan.FromMilliseconds(250);
         _restartWait = restartWait ?? TimeSpan.FromSeconds(10);
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     internal async Task<(IReadOnlyList<string> AutomationIds, string? Role, string? Name)> ObserveTargetsAsync(string cancellationActionId, CancellationToken cancellationToken)
@@ -363,20 +366,20 @@ internal sealed class DesktopScenarioRunner
                 {
                     // Invoking the app's own Close returns before its process has exited, and the server refuses a
                     // restart while the target still runs. Wait for the exit instead of failing on the race.
-                    var deadline = DateTimeOffset.UtcNow + _restartWait;
+                    var deadline = _timeProvider.GetUtcNow() + _restartWait;
                     while (true)
                     {
                         // An attempt started before the deadline is marked as a possible poll: the server then leaves a TargetStillRunning
                         // refusal of it uncounted. An attempt started at or after the deadline is known to be final and is counted.
-                        var isPoll = DateTimeOffset.UtcNow < deadline;
+                        var isPoll = _timeProvider.GetUtcNow() < deadline;
                         var restart = ActionResult(index, step, description, await _client.CallToolAsync(
                             "desktop_restart_app",
                             new { sessionId, actionId = NewActionId(), _meta = isPoll ? new Dictionary<string, bool> { [TelemetryHints.RestartPollMetaKey] = true } : null },
                             LaunchTimeout,
                             cancellationToken).ConfigureAwait(false));
-                        if (restart.Code == "TargetStillRunning" && DateTimeOffset.UtcNow < deadline)
+                        if (restart.Code == "TargetStillRunning" && _timeProvider.GetUtcNow() < deadline)
                         {
-                            await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+                            await Task.Delay(_pollInterval, _timeProvider, cancellationToken).ConfigureAwait(false);
                             continue;
                         }
 
