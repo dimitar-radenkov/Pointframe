@@ -84,7 +84,7 @@ let AppEvents = customEvents
 '@
 
 $InstallsKql = @'
-let startupEvents = dynamic(["app_started", "startup_completed", "app_heartbeat", "app_closed", "update_available"]);
+let startupEvents = dynamic(["app_started", "startup_completed", "app_heartbeat", "app_closed", "update_available", "update_applied", "onboarding_shown", "hotkey_status"]);
 let activationEvents = dynamic(["capture_completed", "recording_completed"]);
 let Installs = AppEvents
 | summarize firstSeen = min(timestamp), lastSeen = max(timestamp),
