@@ -1,4 +1,3 @@
-using System.Drawing;
 using Pointframe.Engine;
 using Pointframe.Engine.Automation.Models;
 using Pointframe.Mcp.Automation;
@@ -9,24 +8,12 @@ namespace Pointframe.Tests.Mcp;
 public sealed class DesktopOcrObservationTests
 {
     [Fact]
-    public async Task MissingImageReturnsUnavailableWithoutCallingOcr()
+    public async Task MissingImageReturnsUnavailableWithoutOcrResult()
     {
-        var ocr = new DesktopOcrObservationProvider(new FakeCapture(), new FakeOcr());
-        var process = new DesktopProcessIdentity("process", 1, DateTimeOffset.UtcNow, "target.exe", "hash");
-        var observation = new DesktopObservationResult(
-            new DesktopObservation(
-                1,
-                "observation",
-                process,
-                DesktopTargetState.Running,
-                DesktopObservationStatus.Available,
-                [],
-                DesktopUiAutomationStatus.Unavailable,
-                DateTimeOffset.UtcNow),
-            null,
-            1);
+        var mapper = new DesktopOcrObservationProvider();
+        var observation = CreateObservation([], null);
 
-        var result = await ocr.RecognizeAsync(observation, "missing");
+        var result = await mapper.RecognizeAsync(observation, "missing");
 
         Assert.Equal("unavailable", result.Status);
         Assert.Equal("ImageNotFound", result.ErrorCode);
@@ -35,65 +22,63 @@ public sealed class DesktopOcrObservationTests
     [Fact]
     public async Task EmptyOcrResultIsNotActionable()
     {
-        var ocr = new DesktopOcrObservationProvider(new FakeCapture(), new FakeOcr());
         var now = DateTimeOffset.UtcNow;
-        var process = new DesktopProcessIdentity("process", 1, now, "target.exe", "hash");
-        var observation = new DesktopObservationResult(
-            new DesktopObservation(
-                1,
-                "observation",
-                process,
-                DesktopTargetState.Running,
-                DesktopObservationStatus.Available,
-                [new DesktopImageReference("image", 2, 2, new PixelBounds(1, 2, 2, 2), now)],
-                DesktopUiAutomationStatus.Unavailable,
-                now),
-            null,
-            1);
+        var bounds = new PixelBounds(1, 2, 2, 2);
+        var observation = CreateObservation(
+            [new DesktopImageReference("image", 2, 2, bounds, now)],
+            new DesktopObservationOcrResult("image", null));
 
-        var result = await ocr.RecognizeAsync(observation, "image");
+        var result = await new DesktopOcrObservationProvider().RecognizeAsync(observation, "image");
 
         Assert.Equal("empty", result.Status);
         Assert.Null(result.Text);
-        Assert.Equal(new PixelBounds(1, 2, 2, 2), result.SourceBoundsPixels);
+        Assert.Equal(bounds, result.SourceBoundsPixels);
+    }
+
+    [Fact]
+    public async Task MissingOcrEngineReturnsUnavailableWithReason()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var bounds = new PixelBounds(1, 2, 2, 2);
+        var observation = CreateObservation(
+            [new DesktopImageReference("image", 2, 2, bounds, now)],
+            new DesktopObservationOcrResult("image", null, IsAvailable: false));
+
+        var result = await new DesktopOcrObservationProvider().RecognizeAsync(observation, "image");
+
+        Assert.Equal("unavailable", result.Status);
+        Assert.Equal("OcrEngineUnavailable", result.ErrorCode);
+        Assert.Equal(bounds, result.SourceBoundsPixels);
     }
 
     [Fact]
     public async Task RecognizedTextReturnsAvailableObservationWithSourceBounds()
     {
-        var ocr = new DesktopOcrObservationProvider(new FakeCapture(), new FakeOcr("Settings"));
         var now = DateTimeOffset.UtcNow;
-        var process = new DesktopProcessIdentity("process", 1, now, "target.exe", "hash");
-        var observation = new DesktopObservationResult(
-            new DesktopObservation(
-                1,
-                "observation",
-                process,
-                DesktopTargetState.Running,
-                DesktopObservationStatus.Available,
-                [new DesktopImageReference("image", 2, 2, new PixelBounds(1, 2, 2, 2), now)],
-                DesktopUiAutomationStatus.Unavailable,
-                now),
-            null,
-            1);
+        var bounds = new PixelBounds(1, 2, 2, 2);
+        var observation = CreateObservation(
+            [new DesktopImageReference("image", 2, 2, bounds, now)],
+            new DesktopObservationOcrResult("image", "Settings"));
 
-        var result = await ocr.RecognizeAsync(observation, "image");
+        var result = await new DesktopOcrObservationProvider().RecognizeAsync(observation, "image");
 
         Assert.Equal("available", result.Status);
         Assert.Equal("Settings", result.Text);
-        Assert.Equal(new PixelBounds(1, 2, 2, 2), result.SourceBoundsPixels);
+        Assert.Equal(bounds, result.SourceBoundsPixels);
         Assert.Null(result.ErrorCode);
     }
 
-    private sealed class FakeCapture : IDisplayCaptureEngine
+    private static DesktopObservationResult CreateObservation(
+        IReadOnlyList<DesktopImageReference> images,
+        DesktopObservationOcrResult? ocr)
     {
-        public IReadOnlyList<DisplayDescriptor> GetDisplays() => [];
-        public Bitmap Capture(PixelBounds bounds) => new(bounds.Width, bounds.Height);
-        public CapturedMonitor CaptureMonitor(string monitorName) => throw new NotSupportedException();
-    }
-
-    private sealed class FakeOcr(string? text = null) : IOcrEngineService
-    {
-        public Task<string?> RecognizeAsync(Bitmap bitmap, CancellationToken cancellationToken = default) => Task.FromResult(text);
+        var now = DateTimeOffset.UtcNow;
+        var process = new DesktopProcessIdentity("process", 1, now, "target.exe", "hash");
+        return new DesktopObservationResult(
+            new DesktopObservation(1, "observation", process, DesktopTargetState.Running,
+                DesktopObservationStatus.Available, images, DesktopUiAutomationStatus.Unavailable, now),
+            null,
+            1,
+            ocr);
     }
 }

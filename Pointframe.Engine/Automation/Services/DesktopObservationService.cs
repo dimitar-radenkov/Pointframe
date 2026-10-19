@@ -28,6 +28,7 @@ public sealed class DesktopObservationService : IDesktopObservationService
     private readonly IDisplayCaptureEngine _captureEngine;
     private readonly IDesktopObservationStore _store;
     private readonly IDesktopUiObservationProvider? _uiProvider;
+    private readonly IOcrEngineService? _ocrEngine;
     private readonly TimeProvider _timeProvider;
     private int _topologyGeneration;
 
@@ -35,15 +36,17 @@ public sealed class DesktopObservationService : IDesktopObservationService
         IDisplayCaptureEngine captureEngine,
         IDesktopObservationStore store,
         IDesktopUiObservationProvider? uiProvider = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IOcrEngineService? ocrEngine = null)
     {
         _captureEngine = captureEngine ?? throw new ArgumentNullException(nameof(captureEngine));
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _uiProvider = uiProvider;
+        _ocrEngine = ocrEngine;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
-    public Task<DesktopObservationResult> ObserveAsync(DesktopObservationRequest request, CancellationToken cancellationToken = default)
+    public async Task<DesktopObservationResult> ObserveAsync(DesktopObservationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.CaptureBoundsPixels.Count == 0 || request.CaptureBoundsPixels.Count > DesktopTestingLimits.MaxObservationCount)
@@ -55,6 +58,7 @@ public sealed class DesktopObservationService : IDesktopObservationService
         using var trace = DesktopTrace.Scope("DesktopObservationService.ObserveAsync");
         var capturedUtc = _timeProvider.GetUtcNow();
         var images = new List<DesktopImageReference>();
+        DesktopObservationOcrResult? ocrResult = null;
         var imageEdgeCap = Math.Clamp(
             request.MaxImageLongestEdge ?? DesktopTestingLimits.MaxImageLongestEdge,
             DesktopTestingLimits.MinImageLongestEdge,
@@ -79,6 +83,18 @@ public sealed class DesktopObservationService : IDesktopObservationService
                 bitmap,
                 imageEdgeCap);
             images.Add(new DesktopImageReference(imageRef, previewWidth, previewHeight, bounds, capturedUtc, png));
+            if (request.OcrImageIndex == images.Count - 1)
+            {
+                if (_ocrEngine is null)
+                {
+                    ocrResult = new DesktopObservationOcrResult(imageRef, null, IsAvailable: false);
+                }
+                else
+                {
+                    var text = await _ocrEngine.RecognizeAsync(bitmap, cancellationToken).ConfigureAwait(false);
+                    ocrResult = new DesktopObservationOcrResult(imageRef, text);
+                }
+            }
         }
 
         var topologyGeneration = request.TopologyGeneration ?? Interlocked.Increment(ref _topologyGeneration);
@@ -101,9 +117,9 @@ public sealed class DesktopObservationService : IDesktopObservationService
             capturedUtc,
             ui?.CapturedUtc,
             ui?.IsTruncated ?? false);
-        var result = new DesktopObservationResult(observation, ui, topologyGeneration);
+        var result = new DesktopObservationResult(observation, ui, topologyGeneration, ocrResult);
         _store.Save(result);
-        return Task.FromResult(result);
+        return result;
     }
 
     public DesktopObservationResult Resolve(string observationRef)
