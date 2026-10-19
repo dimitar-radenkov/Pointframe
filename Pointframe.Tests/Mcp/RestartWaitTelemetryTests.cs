@@ -38,20 +38,38 @@ public sealed class RestartWaitTelemetryTests : IDisposable
     }
 
     [Fact]
+    public async Task Runner_RestartThatSucceedsWithinDeadline_EmitsNoError()
+    {
+        var clock = new AdvancingTimeProvider();
+        await using var server = await RestartServer.StartAsync(refusals: 2);
+        var client = await ClientAsync(server);
+        var runner = Runner(client, clock, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(2));
+
+        var result = await runner.RunAsync(RestartScenario(), CancellationToken.None);
+
+        Assert.Equal(VerificationStatus.Pass, result.Steps[1].Status);
+        Assert.Equal(3, server.Script.Calls);
+        var tracked = Assert.Single(server.Telemetry.Tracked);
+        Assert.Equal(("desktop_restart_app", TelemetryOutcome.Success), (tracked.Name, tracked.Outcome));
+        Assert.DoesNotContain(server.Telemetry.Tracked, item => item.Outcome == TelemetryOutcome.Error);
+    }
+
+    [Fact]
     public async Task Runner_RestartThatTimesOut_EmitsOneErrorForTheWholeWait()
     {
+        var clock = new AdvancingTimeProvider();
         await using var server = await RestartServer.StartAsync(refusals: int.MaxValue);
         var client = await ClientAsync(server);
-        // A 2 s wait with 100 ms polls leaves room for several attempts even when each stdio call is slow on CI.
-        var runner = new DesktopScenarioRunner(
-            client.Mock.Object, "fixture", [new CaptureRectangle(0, 0, 1920, 1080)], TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(2));
+        var timeout = TimeSpan.FromSeconds(2);
+        var pollInterval = TimeSpan.FromMilliseconds(100);
+        var runner = Runner(client, clock, pollInterval, timeout);
 
         var result = await runner.RunAsync(RestartScenario(), CancellationToken.None);
 
         var restart = result.Steps.Single(step => step.Kind == "restart");
         Assert.Equal(VerificationStatus.Fail, restart.Status);
         Assert.Equal("TargetStillRunning", restart.Code);
-        Assert.True(server.Script.Calls > 2);
+        Assert.Equal((int)(timeout.Ticks / pollInterval.Ticks) + 1, server.Script.Calls);
         var tracked = Assert.Single(server.Telemetry.Tracked);
         Assert.Equal(("desktop_restart_app", TelemetryOutcome.Error), (tracked.Name, tracked.Outcome));
         Assert.Single(server.Telemetry.Tracked);
@@ -60,10 +78,11 @@ public sealed class RestartWaitTelemetryTests : IDisposable
     [Fact]
     public async Task Runner_RestartWhoseLastPollEndsAfterTheDeadline_MakesOneFinalCountedAttempt()
     {
-        await using var server = await RestartServer.StartAsync(refusals: int.MaxValue, callDelay: TimeSpan.FromMilliseconds(700));
+        var clock = new AdvancingTimeProvider();
+        await using var server = await RestartServer.StartAsync(refusals: int.MaxValue, timeProvider: clock, callTimeAdvance: TimeSpan.FromMilliseconds(700));
         var client = await ClientAsync(server);
         var runner = new DesktopScenarioRunner(
-            client.Mock.Object, "fixture", [new CaptureRectangle(0, 0, 1920, 1080)], TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(500));
+            client.Mock.Object, "fixture", [new CaptureRectangle(0, 0, 1920, 1080)], TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(500), clock);
 
         var result = await runner.RunAsync(RestartScenario(), CancellationToken.None);
 
@@ -221,11 +240,58 @@ public sealed class RestartWaitTelemetryTests : IDisposable
     private static DesktopScenarioRunner Runner(FakeMcp client) =>
         new(client.Mock.Object, "fixture", [new CaptureRectangle(0, 0, 1920, 1080)], TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(10));
 
+    private static DesktopScenarioRunner Runner(FakeMcp client, TimeProvider timeProvider, TimeSpan pollInterval, TimeSpan restartWait) =>
+        new(client.Mock.Object, "fixture", [new CaptureRectangle(0, 0, 1920, 1080)], TimeSpan.FromMilliseconds(200), pollInterval, restartWait, timeProvider);
+
     private static VerificationScenario RestartScenario() => VerificationSpecLoader.ParseScenario(
         """{ "id": "r", "steps": [ { "invoke": { "automationId": "saveButton" } }, { "restart": {} }, { "check": { "kind": "exists", "automationId": "textBox" } } ] }""",
         "r");
 
-    public sealed class RestartScript(int refusals, TimeSpan callDelay = default)
+    private sealed class AdvancingTimeProvider : TimeProvider
+    {
+        private readonly object _gate = new();
+        private DateTimeOffset _now = new(2026, 10, 19, 12, 0, 0, TimeSpan.Zero);
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            lock (_gate)
+            {
+                return _now;
+            }
+        }
+
+        public void Advance(TimeSpan amount)
+        {
+            lock (_gate)
+            {
+                _now += amount;
+            }
+        }
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            if (dueTime > TimeSpan.Zero && dueTime != Timeout.InfiniteTimeSpan)
+            {
+                Advance(dueTime);
+                ThreadPool.QueueUserWorkItem(_ => callback(state));
+            }
+
+            return new AdvancingTimer();
+        }
+    }
+
+    private sealed class AdvancingTimer : ITimer
+    {
+        public bool Change(TimeSpan dueTime, TimeSpan period) => false;
+
+        public void Dispose()
+        {
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    public sealed class RestartScript(int refusals, Action<TimeSpan>? advanceTime = null, TimeSpan callTimeAdvance = default)
     {
         private int _calls;
 
@@ -234,9 +300,9 @@ public sealed class RestartWaitTelemetryTests : IDisposable
         public CallToolResult Next()
         {
             var calls = Interlocked.Increment(ref _calls);
-            if (callDelay > TimeSpan.Zero)
+            if (callTimeAdvance > TimeSpan.Zero)
             {
-                Thread.Sleep(callDelay);
+                advanceTime!(callTimeAdvance);
             }
 
             var json = calls <= refusals
@@ -304,9 +370,9 @@ public sealed class RestartWaitTelemetryTests : IDisposable
 
         internal RecordingTelemetry Telemetry { get; }
 
-        internal static async Task<RestartServer> StartAsync(int refusals, TimeSpan callDelay = default)
+        internal static async Task<RestartServer> StartAsync(int refusals, AdvancingTimeProvider? timeProvider = null, TimeSpan callTimeAdvance = default)
         {
-            var script = new RestartScript(refusals, callDelay);
+            var script = new RestartScript(refusals, timeProvider is null ? null : timeProvider.Advance, callTimeAdvance);
             var telemetry = new RecordingTelemetry();
             var clientToServer = new Pipe();
             var serverToClient = new Pipe();
