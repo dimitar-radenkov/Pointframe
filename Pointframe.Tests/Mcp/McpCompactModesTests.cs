@@ -242,6 +242,35 @@ public sealed class McpCompactModesTests : IDisposable
     }
 
     [Fact]
+    public async Task ObserveAppAsync_WithoutOcrDoesNotReturnOcrOrRequestOcr()
+    {
+        var (tools, observations) = CreateObservingTools();
+
+        var result = await tools.ObserveAppAsync("session-1", [new McpPixelBounds(0, 0, 100, 100)], includeImages: false);
+
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent!.Value.GetProperty("ocr").ValueKind);
+        observations.Verify(
+            service => service.ObserveAsync(It.Is<DesktopObservationRequest>(request => request.OcrImageIndex == null), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ObserveAppAsync_OutOfRangeOcrImageIndexReturnsUnavailableReason()
+    {
+        var (tools, observations) = CreateObservingTools();
+
+        var result = await tools.ObserveAppAsync(
+            "session-1", [new McpPixelBounds(0, 0, 100, 100)], includeImages: false, includeOcr: true, ocrImageIndex: 1);
+
+        var ocr = result.StructuredContent!.Value.GetProperty("ocr");
+        Assert.Equal("unavailable", ocr.GetProperty("status").GetString());
+        Assert.Equal("ImageIndexOutOfRange", ocr.GetProperty("error").GetProperty("code").GetString());
+        observations.Verify(
+            service => service.ObserveAsync(It.Is<DesktopObservationRequest>(request => request.OcrImageIndex == 1), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task ObserveAppAsync_Compact_ReturnsCompactElementsAndPassesTheEdgeCap()
     {
         var (tools, observations) = CreateObservingTools();

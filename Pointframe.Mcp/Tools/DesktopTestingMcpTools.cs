@@ -227,7 +227,8 @@ internal sealed class DesktopTestingMcpTools(
                 session.Target.Process,
                 captureBounds,
                 includeUiAutomation,
-                MaxImageLongestEdge: maxImageEdge),
+                MaxImageLongestEdge: maxImageEdge,
+                OcrImageIndex: includeOcr ? ocrImageIndex : null),
             cancellationToken).ConfigureAwait(false);
         var response = DesktopTestingResponseMapper.MapObservation(result);
         if (!string.IsNullOrWhiteSpace(automationId) || !string.IsNullOrWhiteSpace(role) || !string.IsNullOrWhiteSpace(name))

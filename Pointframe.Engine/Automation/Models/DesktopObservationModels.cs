@@ -56,12 +56,16 @@ public sealed record DesktopObservationRequest(
     string? WindowRef = null,
     DesktopSurfaceIdentity? Surface = null,
     int? TopologyGeneration = null,
-    int? MaxImageLongestEdge = null);
+    int? MaxImageLongestEdge = null,
+    int? OcrImageIndex = null);
 
 public sealed record DesktopObservationResult(
     DesktopObservation Observation,
     DesktopUiSnapshot? UiAutomation,
-    int TopologyGeneration);
+    int TopologyGeneration,
+    DesktopObservationOcrResult? Ocr = null);
+
+public sealed record DesktopObservationOcrResult(string ImageRef, string? Text, bool IsAvailable = true);
 
 public sealed record DesktopObservedElement(
     string ObservationRef,
