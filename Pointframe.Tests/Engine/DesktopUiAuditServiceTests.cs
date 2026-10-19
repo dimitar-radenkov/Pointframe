@@ -190,6 +190,40 @@ public sealed class DesktopUiAuditServiceTests
     }
 
     [Fact]
+    public void PlaceholderText_EditableTokenDoesNotSuppressUnrelatedOcrText()
+    {
+        var result = Audit(
+            new DesktopObservationOcrResult("image-1", "TODO fix header"),
+            Element("e1", "Edit", null, text: "TODO buy milk"));
+
+        var finding = Assert.Single(result.Findings);
+        Assert.Equal(DesktopUiAuditSource.Ocr, finding.Source);
+        Assert.Equal("TODO fix header", finding.OcrLine);
+        Assert.Equal(0, result.Coverage.OcrLinesSuppressedAsUserContent);
+    }
+
+    [Fact]
+    public void PlaceholderText_EditableMatchingOcrLineIsSuppressedAndCounted()
+    {
+        var result = Audit(
+            new DesktopObservationOcrResult("image-1", "TODO buy milk"),
+            Element("e1", "Edit", null, text: "TODO buy milk"));
+
+        Assert.Empty(result.Findings);
+        Assert.Equal(1, result.Coverage.OcrLinesSuppressedAsUserContent);
+    }
+
+    [Fact]
+    public void PlaceholderText_LongOcrEvidenceKeepsTheMatchedToken()
+    {
+        var longLine = new string('A', 201) + " TODO";
+        var finding = Assert.Single(Audit(new DesktopObservationOcrResult("image-1", longLine)).Findings);
+
+        Assert.Contains("TODO", finding.OcrLine);
+        Assert.StartsWith("...", finding.OcrLine);
+    }
+
+    [Fact]
     public void PlaceholderText_OcrNullAndUndefined_OnlyCountAsWholeLines()
     {
         var ocr = new DesktopObservationOcrResult("image-1", "value is null here\nundefined\nnull pointer");

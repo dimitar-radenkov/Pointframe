@@ -37,9 +37,11 @@ public sealed class DesktopUiAuditService : IDesktopUiAuditService
         var findings = new List<DesktopUiAuditFinding>();
         var inspected = 0;
         var skipped = new Dictionary<string, int>(StringComparer.Ordinal);
+        var ocrLinesSuppressed = 0;
         foreach (var rule in _rules)
         {
             var output = rule.Evaluate(observation);
+            ocrLinesSuppressed += output.OcrLinesSuppressedAsUserContent;
             findings.AddRange(output.Findings);
             // Rules look at overlapping elements, so the coverage of the whole audit is the widest any one rule had.
             inspected = Math.Max(inspected, output.ElementsInspected);
@@ -58,7 +60,8 @@ public sealed class DesktopUiAuditService : IDesktopUiAuditService
             skipped,
             ocrState,
             observation.UiAutomation?.IsTruncated ?? false,
-            observation.UiAutomation?.Status.ToString() ?? "NotRequested");
+            observation.UiAutomation?.Status.ToString() ?? "NotRequested",
+            ocrLinesSuppressed);
         return new DesktopUiAuditResult(observation.Observation.ObservationRef, findings, coverage);
     }
 }

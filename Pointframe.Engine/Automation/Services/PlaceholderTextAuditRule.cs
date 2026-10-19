@@ -36,7 +36,8 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
         ArgumentNullException.ThrowIfNull(observation);
         var findings = new List<DesktopUiAuditFinding>();
         var skipped = new Dictionary<string, int>(StringComparer.Ordinal);
-        var uiaTokens = new HashSet<string>(StringComparer.Ordinal);
+        var uiTokens = new HashSet<string>(StringComparer.Ordinal);
+        var skippedUserText = new List<string>();
         var inspected = 0;
 
         foreach (var element in observation.UiAutomation?.Elements ?? [])
@@ -50,12 +51,12 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
             if (EditableRoles.Contains(element.Role, StringComparer.OrdinalIgnoreCase))
             {
                 Skip(skipped, DesktopUiAuditSkipReason.EditableRole);
-                // User content that shows up in OCR must not be reported as an OCR-only finding.
                 foreach (var text in new[] { element.Name, element.Text })
                 {
-                    foreach (var (token, _) in FindTokens(text))
+                    var normalized = Normalize(text);
+                    if (normalized.Length > 0)
                     {
-                        uiaTokens.Add(token);
+                        skippedUserText.Add(normalized);
                     }
                 }
 
@@ -84,7 +85,7 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
             foreach (var token in order)
             {
                 var (field, text, whole) = best[token];
-                uiaTokens.Add(token);
+                uiTokens.Add(token);
                 var shown = Truncate(Normalize(text));
                 findings.Add(new DesktopUiAuditFinding(
                     RuleId,
@@ -105,15 +106,27 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
             }
         }
 
+        var suppressedOcrLines = 0;
         if (observation.Ocr is { IsAvailable: true, Text.Length: > 0 } ocr)
         {
             var seen = new HashSet<(string Token, string Line)>();
             foreach (var rawLine in ocr.Text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
             {
-                var line = Truncate(Normalize(rawLine));
-                foreach (var (token, _) in FindTokens(rawLine))
+                var normalizedLine = Normalize(rawLine);
+                if (normalizedLine.Length == 0)
                 {
-                    if (uiaTokens.Contains(token) || !seen.Add((token, line.ToUpperInvariant())))
+                    continue;
+                }
+
+                if (skippedUserText.Any(text => text.Contains(normalizedLine, StringComparison.OrdinalIgnoreCase)))
+                {
+                    suppressedOcrLines++;
+                    continue;
+                }
+
+                foreach (var (token, _) in FindTokens(normalizedLine))
+                {
+                    if (uiTokens.Contains(token) || !seen.Add((token, normalizedLine.ToUpperInvariant())))
                     {
                         continue;
                     }
@@ -125,14 +138,14 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
                         DesktopUiAuditConfidence.Low,
                         DesktopUiAuditSource.Ocr,
                         token,
-                        $"OCR text contains the placeholder \"{token}\" with no matching UI Automation text: \"{line}\".",
+                        $"OCR text contains the placeholder \"{token}\" with no matching UI Automation text: \"{OcrEvidence(normalizedLine, token)}\".",
                         ImageRef: ocr.ImageRef,
-                        OcrLine: line));
+                        OcrLine: OcrEvidence(normalizedLine, token)));
                 }
             }
         }
 
-        return new DesktopUiAuditRuleOutput(findings, inspected, skipped);
+        return new DesktopUiAuditRuleOutput(findings, inspected, skipped, suppressedOcrLines);
     }
 
     private static IEnumerable<(string Token, bool Whole)> FindTokens(string? text)
@@ -157,6 +170,25 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
 
     private static string Truncate(string text) =>
         text.Length <= MaxEvidenceLength ? text : text[..MaxEvidenceLength] + "...";
+
+    private static string OcrEvidence(string line, string token)
+    {
+        if (line.Length <= MaxEvidenceLength)
+        {
+            return line;
+        }
+
+        var index = line.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+        {
+            return Truncate(line);
+        }
+
+        var start = Math.Max(0, index - (MaxEvidenceLength - token.Length) / 2);
+        var end = Math.Min(line.Length, start + MaxEvidenceLength);
+        start = Math.Max(0, end - MaxEvidenceLength);
+        return (start > 0 ? "..." : string.Empty) + line[start..end] + (end < line.Length ? "..." : string.Empty);
+    }
 
     private static void Skip(Dictionary<string, int> skipped, string reason) =>
         skipped[reason] = skipped.GetValueOrDefault(reason) + 1;

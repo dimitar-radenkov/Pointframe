@@ -56,7 +56,8 @@ public sealed record DesktopUiAuditRuleInfo(string Id, int Version);
 public sealed record DesktopUiAuditRuleOutput(
     IReadOnlyList<DesktopUiAuditFinding> Findings,
     int ElementsInspected,
-    IReadOnlyDictionary<string, int> ElementsSkipped);
+    IReadOnlyDictionary<string, int> ElementsSkipped,
+    int OcrLinesSuppressedAsUserContent = 0);
 
 public sealed record DesktopUiAuditCoverage(
     IReadOnlyList<DesktopUiAuditRuleInfo> RulesRun,
@@ -64,7 +65,8 @@ public sealed record DesktopUiAuditCoverage(
     IReadOnlyDictionary<string, int> ElementsSkipped,
     string OcrAvailable,
     bool UiaTruncated,
-    string UiaStatus);
+    string UiaStatus,
+    int OcrLinesSuppressedAsUserContent = 0);
 
 public sealed record DesktopUiAuditResult(
     string ObservationRef,

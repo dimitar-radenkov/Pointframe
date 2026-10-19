@@ -167,8 +167,10 @@ as advice. It has one rule, `placeholder-text` (version 1), and nothing else:
   in what coverage says was inspected", not as "the UI is clean".
 
 It does not find missing translations, truncated or overlapping text, wrong
-data, contrast or layout problems, accessibility defects (Axe.Windows is not
-included), or placeholder text drawn as an image. It only reads the stored
+data, contrast or layout problems, or accessibility defects (Axe.Windows is not
+included). Placeholder text drawn as an image is found only when the observation
+was made with `includeOcr`, as a low-confidence OCR-only finding; without OCR it
+is not found. It only reads the stored
 observation: it never captures, inspects the UI again, or writes to the report,
 so the response says `advisory: true` and no finding changes a check, a
 criterion, a verdict, or the signed report. An unknown, expired (30 seconds), or
