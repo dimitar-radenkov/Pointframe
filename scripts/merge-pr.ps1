@@ -9,6 +9,8 @@ Waits for a pull request's checks, squash-merges the exact head that was checked
   pwsh scripts/merge-pr.ps1 -Pr 190 -Worktree <path> -Auto   # enable auto-merge after receipt and review gates
   pwsh scripts/merge-pr.ps1 -Pr 190 -Auto -WaitMerged        # enable, wait, and clean up after merge
   pwsh scripts/merge-pr.ps1 -Pr 190 -Required unit-tests,CodeQL -TimeoutMinutes 20 -PollSeconds 15
+  pwsh scripts/merge-pr.ps1 -SyncMain                        # fast-forward the main checkout to origin/<base> when nothing is running
+  pwsh scripts/merge-pr.ps1 -SyncMain -DryRun                # print that decision; change nothing
   pwsh scripts/merge-pr.ps1 -SelfTest                        # offline: decision logic on scripts/tests/merge-pr fixtures
 
 Rules, each from a past incident:
@@ -19,8 +21,13 @@ Rules, each from a past incident:
     checks cannot be merged unchecked.
   - The remote branch, local branch and worktree are removed only after `gh pr view` reports state MERGED.
   - Any failed or cancelled check (required or not) stops with exit 1; skipped checks are fine.
-  - Blank git refs are not repaired. If `git pull --ff-only` fails after the merge the script prints the recovery
-    steps and exits 4.
+  - After the merge the main checkout's HEAD and files are NOT touched (package.ps1 fingerprints the main checkout, and any
+    change aborts every package whose executor or review is running). Cleanup only runs `git fetch origin --prune` there and
+    prints where the main checkout and origin/<base> are. A failed fetch is a warning with recovery commands, not an error.
+  - -SyncMain brings the main checkout up to date (`git pull --ff-only origin <base>`), and only when the main checkout is on
+    the base branch with no uncommitted changes, no package state file is in a stage where an executor or reviewer may be
+    active (running, executor-kill-failed, reviewing), and no ship holds <git common dir>/pointframe/ship.lock. Otherwise it
+    changes nothing, names every blocker and exits 3; a failed fast-forward exits 4. Blank git refs are not repaired.
 
   - -Auto does not wait and does not clean up. It refuses a CONFLICTING, closed or failing pull request, otherwise runs
     gh pr merge --auto --squash --delete-branch and exits 0; GitHub merges once the repository's required checks pass.
@@ -31,7 +38,7 @@ Rules, each from a past incident:
     pushes the pin itself, so no second verify.ps1 is needed. Merging always requires -Worktree and a review record.
 
 Exit codes: 0 merged and cleaned up (or -DryRun finished, or -Auto enabled auto-merge / found the PR merged), 1 check failed, timeout, closed PR, or merge did not
-complete, 2 gh missing or not authenticated or bad arguments, 3 merge conflict, 4 pull after merge failed.
+complete, 2 gh missing or not authenticated or bad arguments, 3 merge conflict (-SyncMain: refused, blockers named), 4 -SyncMain's fast-forward failed.
 #>
 [CmdletBinding()]
 param(
@@ -45,6 +52,7 @@ param(
     [switch]$NoPluginPin,
     [switch]$PinOnly,
     [switch]$WaitMerged,
+    [switch]$SyncMain,
     [string]$StatusId,
     [switch]$SelfTest
 )
@@ -210,6 +218,368 @@ function Test-MergeReview([string]$WorktreePath, [string]$PrHead)
     Test-ReviewRecordObject $null $PrHead $tree
 }
 
+# --------------------------------------------------------- main checkout: cleanup and sync
+
+# Stages in which package.ps1 may have an executor or reviewer running while it holds a main-checkout fingerprint:
+# 'running' (run-started: set before the executor launches), 'executor-kill-failed' (a killed executor survived;
+# Resolve-PriorRun reaps it) and 'reviewing' (review-started). The runs of `fix` pass through 'running'.
+$script:SyncMainActiveStages = @('running', 'executor-kill-failed', 'reviewing')
+
+function Get-MainTree
+{
+    ((& git worktree list --porcelain | Select-Object -First 1) -replace '^worktree ', '')
+}
+
+function Get-BaseBranch([string]$MainTree)
+{
+    $symbolic = [string](& git -C $MainTree symbolic-ref -q --short refs/remotes/origin/HEAD 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $symbolic -match '^origin/(.+)$')
+    {
+        return $Matches[1]
+    }
+    foreach ($candidate in 'master', 'main')
+    {
+        & git -C $MainTree show-ref --verify -q "refs/remotes/origin/$candidate" 2>$null
+        if ($LASTEXITCODE -eq 0)
+        {
+            return $candidate
+        }
+    }
+    'master'
+}
+
+function Invoke-MergedCleanup([string]$Branch, [string]$MainTree = (Get-MainTree), [string]$WorktreePath = $Worktree)
+{
+    # Only after GitHub reported MERGED: remove the worktree and both branches, then fetch. HEAD, the index and the files
+    # of the main checkout stay as they are (package.ps1 fingerprints them); -SyncMain moves them when nothing is running.
+    if ($WorktreePath -and (Test-Path -LiteralPath $WorktreePath))
+    {
+        $removed = & git -C $MainTree worktree remove $WorktreePath 2>&1
+        if ($LASTEXITCODE -ne 0)
+        {
+            Write-Host "WARNING worktree not removed (uncommitted changes? still in use?): $removed"
+        }
+    }
+    $remoteBranch = & git -C $MainTree ls-remote --exit-code --heads origin $Branch 2>&1
+    if ($LASTEXITCODE -eq 0)
+    {
+        & git -C $MainTree push origin --delete $Branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
+    }
+    else
+    {
+        Write-Host "Remote branch $Branch already deleted."
+    }
+    & git -C $MainTree branch -D $Branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
+
+    $fetch = & git -C $MainTree fetch origin --prune 2>&1
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Host "WARNING git fetch origin --prune failed in ${MainTree}: $fetch"
+        Write-Host 'The merge and the branch cleanup are done. Recover by hand:'
+        Write-Host "  git -C `"$MainTree`" fetch origin --prune"
+        Write-Host '  pwsh scripts/merge-pr.ps1 -SyncMain'
+        Write-Host '  If fetch reports a bad or empty ref, delete that empty file under .git/refs/remotes/origin and fetch again.'
+        return
+    }
+    $base = Get-BaseBranch $MainTree
+    $head = [string](& git -C $MainTree rev-parse --short=10 HEAD 2>$null)
+    $remote = [string](& git -C $MainTree rev-parse --short=10 "refs/remotes/origin/$base" 2>$null)
+    Write-Host "Main checkout left at $($head.Trim()); origin/$base is at $($remote.Trim()). When no package is running, bring it up to date with: pwsh scripts/merge-pr.ps1 -SyncMain"
+}
+
+function Get-SyncMainBlockers([string]$MainTree, [string]$Base)
+{
+    $blockers = [Collections.Generic.List[string]]::new()
+
+    $branch = [string](& git -C $MainTree symbolic-ref -q --short HEAD 2>$null)
+    if (-not $branch)
+    {
+        $blockers.Add("the main checkout is on a detached HEAD, not the base branch '$Base'")
+    }
+    elseif ($branch -ne $Base)
+    {
+        $blockers.Add("the main checkout is on branch '$branch', not the base branch '$Base'")
+    }
+    $status = @(& git -C $MainTree status --porcelain --untracked-files=all 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ })
+    if ($LASTEXITCODE -ne 0)
+    {
+        $blockers.Add("git status failed in ${MainTree}: $($status -join ' ')")
+    }
+    elseif ($status.Count -gt 0)
+    {
+        $blockers.Add("the main checkout has $($status.Count) uncommitted tracked or untracked change(s), first: $($status[0])")
+    }
+
+    $common = [string](& git -C $MainTree rev-parse --path-format=absolute --git-common-dir 2>$null)
+    $packageDir = Join-Path $common 'pointframe/packages'
+    if (Test-Path -LiteralPath $packageDir -PathType Container)
+    {
+        foreach ($file in @(Get-ChildItem -LiteralPath $packageDir -Filter '*.json' -File | Sort-Object Name))
+        {
+            try
+            {
+                $package = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+                $stage = if ($package.PSObject.Properties['stage']) { [string]$package.stage } else { '' }
+            }
+            catch
+            {
+                $blockers.Add("package state $($file.Name) is unreadable, so it cannot be shown idle: $($_.Exception.Message)")
+                continue
+            }
+            if ($stage -in $script:SyncMainActiveStages)
+            {
+                $blockers.Add("package '$($file.BaseName)' is in stage '$stage', so an executor or reviewer may be running (finish it with package.ps1 run or review first)")
+            }
+        }
+    }
+
+    # package.ps1 Enter-ShipLock keeps this file open with no sharing while a ship runs; a file nobody holds is a dead ship's leftover.
+    $shipLock = Join-Path $common 'pointframe/ship.lock'
+    if (Test-Path -LiteralPath $shipLock -PathType Leaf)
+    {
+        try
+        {
+            $stream = [IO.File]::Open($shipLock, 'Open', 'Read', 'ReadWrite')
+            $stream.Dispose()
+        }
+        catch [IO.IOException]
+        {
+            $blockers.Add("a ship is in flight (the ship lock $shipLock is held)")
+        }
+    }
+    $blockers.ToArray()
+}
+
+function Enter-MainSyncExclusiveLock([string]$MainTree)
+{
+    # -SyncMain uses <git common dir>/pointframe/main-sync.lock with FileShare.None; package.ps1 run/review/fix opens it shared with FileShare.ReadWrite.
+    $common = [string](& git -C $MainTree rev-parse --path-format=absolute --git-common-dir 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $common) { throw "cannot resolve the git common directory for -SyncMain in $MainTree" }
+    $directory = Join-Path $common 'pointframe'
+    $lockPath = Join-Path $directory 'main-sync.lock'
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    try { [IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None') }
+    catch [IO.IOException]
+    {
+        throw "a package run or review is active (the main-sync lock $lockPath is held); -SyncMain was refused"
+    }
+}
+
+function Invoke-SyncMainCore([string]$MainTree, [switch]$Preview)
+{
+    $base = Get-BaseBranch $MainTree
+    $prefix = if ($Preview) { 'DRY RUN: ' } else { '' }
+    $blockers = @(Get-SyncMainBlockers $MainTree $base)
+    if ($blockers.Count -gt 0)
+    {
+        Write-Host "${prefix}SYNC REFUSED: the main checkout $MainTree was not changed; $($blockers.Count) blocker(s):"
+        $blockers | ForEach-Object { Write-Host "  - $_" }
+        return 3
+    }
+    $head = [string](& git -C $MainTree rev-parse HEAD)
+    $target = [string](& git -C $MainTree rev-parse --verify -q "refs/remotes/origin/$base" 2>$null)
+    if ($Preview)
+    {
+        & git -C $MainTree merge-base --is-ancestor $head $target 2>$null
+        if (-not $target) { Write-Host "DRY RUN: origin/$base is not known locally; the real run would fetch it and fast-forward only if possible." }
+        elseif ($head -eq $target) { Write-Host "DRY RUN: nothing blocks the sync, and the main checkout is already at origin/$base ($($head.Substring(0, 10)))." }
+        elseif ($LASTEXITCODE -eq 0) { Write-Host "DRY RUN: nothing blocks the sync; it would fast-forward $($head.Substring(0, 10)) -> $($target.Substring(0, 10)) (origin/$base as last fetched; the real run fetches first)." }
+        else { Write-Host "DRY RUN: nothing blocks the sync, but HEAD $($head.Substring(0, 10)) is not behind origin/$base $($target.Substring(0, 10)) as last fetched; the fast-forward may fail." }
+        return 0
+    }
+    $pull = & git -C $MainTree pull -q --ff-only origin $base 2>&1
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Host "ERROR git pull --ff-only origin $base failed in ${MainTree}: $pull"
+        Write-Host 'Recover by hand:'
+        Write-Host "  git -C `"$MainTree`" fetch origin --prune"
+        Write-Host "  git -C `"$MainTree`" pull --ff-only origin $base"
+        Write-Host '  If fetch reports a bad or empty ref, delete that empty file under .git/refs/remotes/origin and fetch again.'
+        return 4
+    }
+    $now = [string](& git -C $MainTree rev-parse HEAD)
+    Write-Host "Main checkout is at origin/$base ($($now.Substring(0, 10)))."
+    & git -C $MainTree log --oneline -1 | Out-Host
+    0
+}
+
+function Invoke-SyncMain([string]$MainTree, [switch]$Preview)
+{
+    try { $lock = Enter-MainSyncExclusiveLock $MainTree }
+    catch
+    {
+        Write-Host "SYNC REFUSED: $($_.Exception.Message)"
+        return 3
+    }
+    try { return (Invoke-SyncMainCore $MainTree -Preview:$Preview) }
+    finally { $lock.Dispose() }
+}
+
+function Test-MainCheckoutBehavior([Collections.Generic.List[string]]$Failures)
+{
+    # Temporary repositories only: a bare "origin", the "main" checkout, and a second clone that plays GitHub's merge.
+    $count = 0
+    $root = Join-Path ([IO.Path]::GetTempPath()) "merge-main-$([guid]::NewGuid().ToString('N'))"
+    $identity = @('-c', 'user.name=SelfTest', '-c', 'user.email=selftest@example.invalid')
+    $git = {
+        param([string]$Dir, [string[]]$GitArgs)
+        $out = & git @identity -C $Dir @GitArgs 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') failed in ${Dir}: $out" }
+        (($out | ForEach-Object { "$_" }) -join "`n").Trim()
+    }
+    $expect = { param([bool]$Condition, [string]$Message) $script:mainCheckoutCount++; if (-not $Condition) { $Failures.Add("main checkout: $Message") } }
+    $script:mainCheckoutCount = 0
+    $heldLock = $null
+    try
+    {
+        New-Item -ItemType Directory -Path $root | Out-Null
+        $origin = Join-Path $root 'origin.git'
+        $main = Join-Path $root 'main'
+        $other = Join-Path $root 'other'
+        & $git $root @('init', '-q', '--bare', '-b', 'master', $origin) | Out-Null
+        & $git $root @('clone', '-q', $origin, $main) | Out-Null
+        & $git $main @('config', 'core.autocrlf', 'false') | Out-Null
+        & $git $main @('symbolic-ref', 'HEAD', 'refs/heads/master') | Out-Null
+        [IO.File]::WriteAllText((Join-Path $main 'tracked.txt'), "v1`n")
+        & $git $main @('add', '.') | Out-Null
+        & $git $main @('commit', '-q', '-m', 'v1') | Out-Null
+        & $git $main @('push', '-q', 'origin', 'master') | Out-Null
+        & $git $main @('remote', 'set-head', 'origin', 'master') | Out-Null
+        & $git $root @('clone', '-q', $origin, $other) | Out-Null
+        & $git $other @('config', 'core.autocrlf', 'false') | Out-Null
+
+        # A package worktree on branch feature, pushed, then "merged" by another clone moving origin/master.
+        $worktree = Join-Path $root 'pkg-wt'
+        & $git $main @('worktree', 'add', '-q', '-b', 'feature', $worktree) | Out-Null
+        & $git $worktree @('config', 'core.autocrlf', 'false') | Out-Null
+        [IO.File]::WriteAllText((Join-Path $worktree 'feature.txt'), "f`n")
+        & $git $worktree @('add', '.') | Out-Null
+        & $git $worktree @('commit', '-q', '-m', 'feature') | Out-Null
+        & $git $worktree @('push', '-q', 'origin', 'feature') | Out-Null
+        $v1 = & $git $main @('rev-parse', 'HEAD')
+        [IO.File]::WriteAllText((Join-Path $other 'tracked.txt'), "v2`n")
+        & $git $other @('commit', '-q', '-am', 'v2 (the squash merge)') | Out-Null
+        & $git $other @('push', '-q', 'origin', 'master') | Out-Null
+        $v2 = & $git $other @('rev-parse', 'HEAD')
+
+        $output = (Invoke-MergedCleanup 'feature' $main $worktree 6>&1 | Out-String)
+        & $expect ((& $git $main @('rev-parse', 'HEAD')) -eq $v1) 'cleanup moved the main checkout HEAD'
+        & $expect (([IO.File]::ReadAllText((Join-Path $main 'tracked.txt'))) -eq "v1`n") 'cleanup changed a tracked file of the main checkout'
+        & $expect ((& $git $main @('rev-parse', 'refs/remotes/origin/master')) -eq $v2) 'cleanup did not fetch: origin/master did not move'
+        & $expect ((& $git $main @('status', '--porcelain')) -eq '') 'cleanup left the main checkout dirty'
+        & $expect (-not (Test-Path -LiteralPath $worktree)) 'cleanup did not remove the worktree'
+        & $expect (-not (& $git $main @('branch', '--list', 'feature'))) 'cleanup did not delete the local branch'
+        & $expect (-not (& $git $main @('ls-remote', '--heads', 'origin', 'feature'))) 'cleanup did not delete the remote branch'
+        & $expect ($output -match "Main checkout left at $($v1.Substring(0, 10)); origin/master is at $($v2.Substring(0, 10))" -and $output -match '-SyncMain' -and $output -notmatch 'pull --ff-only') "cleanup did not print where the checkout was left and the sync command: $output"
+
+        # A failed fetch is a warning with recovery commands; the function returns instead of exiting 4.
+        & $git $main @('remote', 'set-url', 'origin', (Join-Path $root 'missing.git')) | Out-Null
+        $output = (Invoke-MergedCleanup 'gone' $main '' 6>&1 | Out-String)
+        & $expect ($output -match 'WARNING git fetch origin --prune failed' -and $output -match '-SyncMain') "a failed fetch was not a warning with recovery commands: $output"
+        & $git $main @('remote', 'set-url', 'origin', $origin) | Out-Null
+
+        # -SyncMain, run as a child process from inside the main checkout (the way the coordinator runs it).
+        $selfPath = $PSCommandPath
+        $sync = {
+            param([switch]$Preview)
+            Push-Location $main
+            try
+            {
+                $syncArgs = @('-NoProfile', '-File', $selfPath, '-SyncMain') + $(if ($Preview) { '-DryRun' })
+                $text = (& pwsh @syncArgs 2>&1 | Out-String)
+                [pscustomobject]@{ Exit = $LASTEXITCODE; Text = $text }
+            }
+            finally { Pop-Location }
+        }
+        $unchanged = { param([string]$Why) & $expect ((& $git $main @('rev-parse', 'HEAD')) -eq $v1 -and ([IO.File]::ReadAllText((Join-Path $main 'tracked.txt'))) -eq "v1`n" -and (& $git $main @('rev-parse', 'refs/remotes/origin/master')) -eq $v2) "$Why changed HEAD, a tracked file or origin/master" }
+        $pointframeDir = Join-Path $main '.git/pointframe'
+        $packageDir = Join-Path $pointframeDir 'packages'
+        New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+
+        # Blocker 1: uncommitted changes (tracked, then untracked).
+        [IO.File]::WriteAllText((Join-Path $main 'tracked.txt'), "edited`n")
+        $r = & $sync
+        & $expect ($r.Exit -eq 3 -and $r.Text -match 'SYNC REFUSED' -and $r.Text -match 'uncommitted') "a dirty tracked file did not refuse with exit 3: exit $($r.Exit) $($r.Text)"
+        & $expect (([IO.File]::ReadAllText((Join-Path $main 'tracked.txt'))) -eq "edited`n" -and (& $git $main @('rev-parse', 'HEAD')) -eq $v1) 'a refused sync touched the dirty checkout'
+        [IO.File]::WriteAllText((Join-Path $main 'tracked.txt'), "v1`n")
+        [IO.File]::WriteAllText((Join-Path $main 'untracked.txt'), "u`n")
+        $r = & $sync
+        & $expect ($r.Exit -eq 3 -and $r.Text -match 'uncommitted' -and $r.Text -match 'untracked\.txt') "an untracked file did not refuse with exit 3: exit $($r.Exit) $($r.Text)"
+        Remove-Item -LiteralPath (Join-Path $main 'untracked.txt') -Force
+
+        # Blocker 2: a package in a stage where an executor or reviewer may be active; idle stages do not block.
+        foreach ($stage in $script:SyncMainActiveStages)
+        {
+            $statePath = Join-Path $packageDir 'busy-pkg.json'
+            [IO.File]::WriteAllText($statePath, "{`"stage`":`"$stage`"}")
+            $r = & $sync
+            & $expect ($r.Exit -eq 3 -and $r.Text -match "busy-pkg" -and $r.Text -match "stage '$stage'") "a package in stage '$stage' did not refuse with exit 3: exit $($r.Exit) $($r.Text)"
+            Remove-Item -LiteralPath $statePath -Force
+        }
+
+        # Blocker 3: a live ship lock (held open with no sharing, as Enter-ShipLock does).
+        $lockPath = Join-Path $pointframeDir 'ship.lock'
+        $heldLock = [IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None')
+        $r = & $sync
+        & $expect ($r.Exit -eq 3 -and $r.Text -match 'ship is in flight') "a held ship lock did not refuse with exit 3: exit $($r.Exit) $($r.Text)"
+        $heldLock.Dispose(); $heldLock = $null
+        & $unchanged 'the refused syncs'
+
+        # Several blockers are all named.
+        [IO.File]::WriteAllText((Join-Path $main 'untracked.txt'), "u`n")
+        [IO.File]::WriteAllText((Join-Path $packageDir 'busy-pkg.json'), '{"stage":"reviewing"}')
+        $r = & $sync
+        & $expect ($r.Exit -eq 3 -and $r.Text -match 'uncommitted' -and $r.Text -match "stage 'reviewing'") "two blockers were not both named: $($r.Text)"
+        Remove-Item -LiteralPath (Join-Path $main 'untracked.txt'), (Join-Path $packageDir 'busy-pkg.json') -Force
+
+        # No blocker (an idle package state and a dead ship's leftover lock file do not count): -DryRun changes nothing, the real run fast-forwards.
+        [IO.File]::WriteAllText((Join-Path $packageDir 'idle-pkg.json'), '{"stage":"review-passed"}')
+        [IO.File]::WriteAllText($lockPath, '')
+        $r = & $sync -Preview
+        & $expect ($r.Exit -eq 0 -and $r.Text -match 'DRY RUN' -and $r.Text -match 'fast-forward') "-SyncMain -DryRun did not report the fast-forward: exit $($r.Exit) $($r.Text)"
+        & $unchanged '-SyncMain -DryRun'
+        $r = & $sync
+        $after = & $git $main @('rev-parse', 'HEAD')
+        & $expect ($r.Exit -eq 0 -and $after -eq $v2 -and $after -eq (& $git $main @('rev-parse', 'refs/remotes/origin/master')) -and ([IO.File]::ReadAllText((Join-Path $main 'tracked.txt'))) -eq "v2`n") "-SyncMain did not fast-forward HEAD to origin/master: exit $($r.Exit) $($r.Text)"
+        $r = & $sync
+        & $expect ($r.Exit -eq 0 -and (& $git $main @('rev-parse', 'HEAD')) -eq $v2) "a second -SyncMain at origin/master failed: exit $($r.Exit) $($r.Text)"
+
+        # The exclusive sync lock refuses a live shared package holder and succeeds once that child releases it.
+        $commonDir = (& $git $main @('rev-parse', '--path-format=absolute', '--git-common-dir'))
+        $syncLock = Join-Path $commonDir 'pointframe/main-sync.lock'
+        $holderScript = Join-Path $root 'main-sync-lock-holder.ps1'
+        $readyPath = Join-Path $root 'main-sync-lock-holder.ready'
+        [IO.File]::WriteAllText($holderScript, @'
+param([string]$LockPath, [string]$ReadyPath)
+$stream = [IO.File]::Open($LockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+[IO.File]::WriteAllText($ReadyPath, 'ready')
+Start-Sleep -Seconds 60
+'@)
+        # origin/master moves ahead (v3), so the sync after the holder exits has real work to do.
+        [IO.File]::WriteAllText((Join-Path $other 'tracked.txt'), "v3`n")
+        & $git $other @('commit', '-q', '-am', 'v3') | Out-Null
+        & $git $other @('push', '-q', 'origin', 'master') | Out-Null
+        $v3 = & $git $other @('rev-parse', 'HEAD')
+        $holder = Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -ArgumentList @('-NoProfile', '-File', "`"$holderScript`"", "`"$syncLock`"", "`"$readyPath`"") -PassThru -NoNewWindow
+        try
+        {
+            $waitUntil = [DateTime]::UtcNow.AddSeconds(10)
+            while (-not (Test-Path -LiteralPath $readyPath) -and [DateTime]::UtcNow -lt $waitUntil) { Start-Sleep -Milliseconds 50 }
+            $r = & $sync
+            & $expect ($r.Exit -eq 3 -and $r.Text -match 'main-sync\.lock' -and $r.Text -match 'package run or review is active' -and (& $git $main @('rev-parse', 'HEAD')) -eq $v2) "-SyncMain did not refuse a child holding the shared lock with exit 3 and the lock named, or moved HEAD: exit $($r.Exit) $($r.Text)"
+        }
+        finally { Stop-Process -Id $holder.Id -Force -ErrorAction SilentlyContinue }
+        $r = & $sync
+        & $expect ($r.Exit -eq 0 -and $r.Text -match 'Main checkout is at origin/master' -and (& $git $main @('rev-parse', 'HEAD')) -eq $v3 -and (& $git $main @('rev-parse', 'HEAD')) -eq (& $git $main @('rev-parse', 'refs/remotes/origin/master'))) "-SyncMain did not fast-forward to origin/master after the shared child exited: exit $($r.Exit) $($r.Text)"
+    }
+    catch { $Failures.Add("main checkout self-test failed: $($_.Exception.Message)") }
+    finally
+    {
+        if ($heldLock) { $heldLock.Dispose() }
+        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $script:mainCheckoutCount
+}
 
 # ------------------------------------------------------------------------- self-test
 
@@ -352,6 +722,7 @@ function Invoke-SelfTest
     }
     catch { $failures.Add("end-to-end merge review repository test failed: $($_.Exception.Message)") }
     finally { Remove-Item -LiteralPath $tempRepo -Recurse -Force -ErrorAction SilentlyContinue }
+    $count += Test-MainCheckoutBehavior $failures
     $count++
     if ((Get-PostMergeDecision 'OPEN') -ne 'Stop' -or (Get-PostMergeDecision 'CLOSED') -ne 'Stop' -or (Get-PostMergeDecision 'MERGED') -ne 'Cleanup')
     {
@@ -369,6 +740,17 @@ function Invoke-SelfTest
 if ($SelfTest)
 {
     Invoke-SelfTest
+}
+
+if ($SyncMain)
+{
+    $mainTree = Get-MainTree
+    if (-not $mainTree)
+    {
+        Write-Host 'ERROR -SyncMain must run inside a git repository.'
+        exit 2
+    }
+    exit (Invoke-SyncMain $mainTree -Preview:$DryRun)
 }
 
 if (-not $DryRun -and -not $PinOnly -and -not $Worktree)
@@ -452,43 +834,6 @@ function Test-PluginPinBehind([string]$WorktreePath)
     $latest = $latest.Trim() -replace '^v', ''
     $pinned = [string](Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json).version
     return ([version]$pinned -lt [version]$latest)
-}
-
-function Invoke-MergedCleanup([string]$Branch)
-{
-    # Only after GitHub reported MERGED: remove the worktree and both branches, then fast-forward the main tree.
-    $mainTree = ((& git worktree list --porcelain | Select-Object -First 1) -replace '^worktree ', '')
-    if ($Worktree -and (Test-Path -LiteralPath $Worktree))
-    {
-        $removed = & git -C $mainTree worktree remove $Worktree 2>&1
-        if ($LASTEXITCODE -ne 0)
-        {
-            Write-Host "WARNING worktree not removed (uncommitted changes? still in use?): $removed"
-        }
-    }
-    $remoteBranch = & git -C $mainTree ls-remote --exit-code --heads origin $Branch 2>&1
-    if ($LASTEXITCODE -eq 0)
-    {
-        & git -C $mainTree push origin --delete $Branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
-    }
-    else
-    {
-        Write-Host "Remote branch $Branch already deleted."
-    }
-    & git -C $mainTree branch -D $Branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
-
-    $pull = & git -C $mainTree pull -q --ff-only 2>&1
-    if ($LASTEXITCODE -ne 0)
-    {
-        Write-Host "ERROR git pull --ff-only failed in ${mainTree}: $pull"
-        Write-Host 'The merge and the branch cleanup are done. Recover by hand:'
-        Write-Host "  git -C `"$mainTree`" fetch origin --prune"
-        Write-Host "  git -C `"$mainTree`" pull --ff-only"
-        Write-Host '  If fetch reports a bad or empty ref, delete that empty file under .git/refs/remotes/origin and fetch again.'
-        exit 4
-    }
-    & git -C $mainTree log --oneline -1
-    exit 0
 }
 
 function Test-MergeReceipt([string]$WorktreePath, [string]$PrHead)
@@ -657,7 +1002,7 @@ if ($Auto)
     Update-Status "auto-merge enabled #$($prInfo.number)" ([string]$decision.Head) ''
     if ($Worktree)
     {
-        Write-Host "Worktree '$Worktree' was NOT removed; clean it up after the merge (git worktree remove, git branch -D, git pull --ff-only)."
+        Write-Host "Worktree '$Worktree' was NOT removed; clean it up after the merge (git worktree remove, git branch -D). Then bring the main checkout up to date with: pwsh scripts/merge-pr.ps1 -SyncMain"
     }
     if ($WaitMerged)
     {
@@ -673,6 +1018,7 @@ if ($Auto)
                 Write-Host "MERGED $mergeSha"
                 Update-Status "merged #$($waitPr.number)" $mergeSha ''
                 Invoke-MergedCleanup ([string]$waitPr.headRefName)
+                exit 0
             }
             if ($waitPr.state -eq 'CLOSED') { Write-Host 'WAIT STOPPED: PR is CLOSED.'; Update-Status "wait stopped #$($waitPr.number)" '' 'PR is CLOSED'; exit 1 }
             $waitChecks = Get-ChecksJson
@@ -798,3 +1144,4 @@ $mergeSha = [string](& gh pr view $prInfo.number --json mergeCommit -q .mergeCom
 Update-Status "merged #$($prInfo.number)" $mergeSha ''
 
 Invoke-MergedCleanup ([string]$prInfo.headRefName)
+exit 0

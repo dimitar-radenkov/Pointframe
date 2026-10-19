@@ -292,6 +292,32 @@ function Get-Fingerprint([string]$Dir)
     @{ head = $head; treeHash = $tree; unknown = ($unreadable.Count -gt 0); unreadable = @($unreadable | Select-Object -First 10); files = $names.Count; seconds = [Math]::Round($timer.Elapsed.TotalSeconds, 2) }
 }
 
+function Enter-MainSyncSharedLock([string]$CommonDir)
+{
+    # Shared readers use <git common dir>/pointframe/main-sync.lock with FileShare.ReadWrite; merge-pr.ps1 -SyncMain opens it with FileShare.None.
+    $directory = Join-Path $CommonDir 'pointframe'
+    $lockPath = Join-Path $directory 'main-sync.lock'
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    $waitSeconds = 120
+    if ($env:POINTFRAME_PKG_SELFTEST -and $env:POINTFRAME_PKG_SELFTEST_LOCK_WAIT_SECONDS -match '^\d+$')
+    {
+        $waitSeconds = [Math]::Min(120, [int]$env:POINTFRAME_PKG_SELFTEST_LOCK_WAIT_SECONDS)
+    }
+    $deadline = [DateTime]::UtcNow.AddSeconds($waitSeconds)
+    while ($true)
+    {
+        try { return [IO.File]::Open($lockPath, 'OpenOrCreate', 'Read', 'ReadWrite') }
+        catch [IO.IOException]
+        {
+            if ([DateTime]::UtcNow -ge $deadline)
+            {
+                throw "could not acquire the shared main-checkout lock $lockPath within $waitSeconds seconds; -SyncMain may be holding it, wait for the sync to finish and retry"
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+}
+
 function Test-FingerprintsEqual($A, $B)
 {
     # Unknown (unreadable files) never equals anything, including itself.
@@ -1463,7 +1489,7 @@ function Stop-ExecutorTree([IntPtr]$Job, [bool]$SimulateFailure)
     Stop-ProcessJob $Job 10
 }
 
-function Invoke-Run
+function Invoke-RunCore
 {
     if ($Effort -eq 'high' -and [string]::IsNullOrWhiteSpace($EscalationReason)) { throw '-Effort high requires -EscalationReason' }
     if ($Executor -eq 'same') { throw "-Executor same is only meaningful for 'fix'; run needs codex, claude-sonnet or claude-haiku" }
@@ -1700,6 +1726,14 @@ function Invoke-Run
         return
     }
     if ($classification.outcome -ne 'completed' -or $termination -ne 'exit') { $script:ExitCode = 1 }
+}
+
+function Invoke-Run
+{
+    $info = Get-RepoInfo $Repo
+    $lock = Enter-MainSyncSharedLock $info.CommonDir
+    try { Invoke-RunCore }
+    finally { $lock.Dispose() }
 }
 
 # ---- check ------------------------------------------------------------------------------------------------------
@@ -2824,7 +2858,7 @@ function Complete-Review($Info, $Context, $Proc)
     finally { $stateLock.Dispose() }
 }
 
-function Invoke-Review
+function Invoke-ReviewCore
 {
     $info = Get-RepoInfo $Repo
     Resolve-AbandonedReview $info $Id
@@ -2867,6 +2901,14 @@ function Invoke-Review
         if ($snapshotCreated -and (Test-Path -LiteralPath ([string]$record.snapshot.path))) { $context.SnapshotEnd = Close-ReviewSnapshot $context.Worktree ([string]$record.snapshot.path) }
     }
     Complete-Review $info $context $process
+}
+
+function Invoke-Review
+{
+    $info = Get-RepoInfo $Repo
+    $lock = Enter-MainSyncSharedLock $info.CommonDir
+    try { Invoke-ReviewCore }
+    finally { $lock.Dispose() }
 }
 # ---- disposition, fix, accept ---------------------------------------------------------------------------------------
 
@@ -2911,7 +2953,7 @@ function Invoke-Disposition
     finally { $stateLock.Dispose() }
 }
 
-function Invoke-Fix
+function Invoke-FixCore
 {
     if ($script:ExecutorBound -and $Executor -ne 'same') { throw "fix resumes the same executor; -Executor $Executor is not supported" }
     $info = Get-RepoInfo $Repo
@@ -2994,6 +3036,14 @@ function Invoke-Fix
     $script:Reviewer = $fixReviewerKind
     $script:ResetBudget = $false
     Invoke-Review
+}
+
+function Invoke-Fix
+{
+    $info = Get-RepoInfo $Repo
+    $lock = Enter-MainSyncSharedLock $info.CommonDir
+    try { Invoke-FixCore }
+    finally { $lock.Dispose() }
 }
 
 function Invoke-Accept
@@ -5634,6 +5684,50 @@ Set-Content -LiteralPath (Join-Path $log 'events.jsonl') @('{"type":"thread.star
             & $expect ($r.Exit -eq 1 -and $r.Text -match 'locked' -and -not (Test-Path (& $statePath 'lk'))) "new ignored a held lock: $($r.Text)"
         }
         finally { $holder.Dispose() }
+        # Main sync lock: an exclusive child blocks run before state changes or executor launch; shared holders coexist.
+        $lockHolder = Join-Path $root 'main-sync-lock-holder.ps1'
+        [IO.File]::WriteAllText($lockHolder, @'
+param([string]$LockPath, [string]$Mode, [string]$ReadyPath)
+$share = if ($Mode -eq 'shared') { [IO.FileShare]::ReadWrite } else { [IO.FileShare]::None }
+$stream = [IO.File]::Open($LockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Read, $share)
+[IO.File]::WriteAllText($ReadyPath, 'ready')
+Start-Sleep -Seconds 60
+'@)
+        $commonDir = ([string](& git -C $main rev-parse --path-format=absolute --git-common-dir)).Trim()
+        $mainSyncLock = Join-Path $commonDir 'pointframe/main-sync.lock'
+        New-Item -ItemType Directory -Path (Split-Path $mainSyncLock) -Force | Out-Null
+        $executorMarker = Join-Path $root 'locked-run-executor-started.txt'
+        $lockedRunStub = Join-Path $stubDir 'locked-run.ps1'
+        [IO.File]::WriteAllText($lockedRunStub, "# pointframe-selftest-stub`r`nSet-Content -LiteralPath '$executorMarker' 'started'`r`n" + $prelude + $stubs.ok + "`r`n")
+        $r = & $pkg @('new', '-Id', 'msl', '-Brief', $briefFile)
+        & $expect ($r.Exit -eq 0) "main-lock refusal package could not be created: $($r.Text)"
+        $beforeLockStage = [string](& $stateFile 'msl').stage
+        $ready = Join-Path $root 'main-sync-exclusive.ready'
+        $holder = Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -ArgumentList @('-NoProfile', '-File', "`"$lockHolder`"", "`"$mainSyncLock`"", 'exclusive', "`"$ready`"") -PassThru -NoNewWindow
+        try
+        {
+            $waitUntil = [DateTime]::UtcNow.AddSeconds(10)
+            while (-not (Test-Path -LiteralPath $ready) -and [DateTime]::UtcNow -lt $waitUntil) { Start-Sleep -Milliseconds 50 }
+            $env:POINTFRAME_PKG_SELFTEST_LOCK_WAIT_SECONDS = '1'
+            $r = & $pkg @('run', '-Id', 'msl', '-AgentRunScript', $lockedRunStub)
+            $afterLockStage = [string](& $stateFile 'msl').stage
+            & $expect ($r.Exit -eq 1 -and $r.Text -match 'main-sync\.lock' -and $r.Text -match '-SyncMain' -and $afterLockStage -eq $beforeLockStage -and -not (Test-Path -LiteralPath $executorMarker)) "run did not refuse an exclusive main-sync lock before state or executor changes: $($r.Text); stage $beforeLockStage -> $afterLockStage"
+        }
+        finally { Stop-Process -Id $holder.Id -Force -ErrorAction SilentlyContinue; Remove-Item Env:POINTFRAME_PKG_SELFTEST_LOCK_WAIT_SECONDS -ErrorAction SilentlyContinue }
+
+        $r = & $pkg @('new', '-Id', 'msls', '-Brief', $briefFile)
+        & $expect ($r.Exit -eq 0) "shared-lock coexistence package could not be created: $($r.Text)"
+        $ready = Join-Path $root 'main-sync-shared.ready'
+        $holder = Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -ArgumentList @('-NoProfile', '-File', "`"$lockHolder`"", "`"$mainSyncLock`"", 'shared', "`"$ready`"") -PassThru -NoNewWindow
+        try
+        {
+            $waitUntil = [DateTime]::UtcNow.AddSeconds(10)
+            while (-not (Test-Path -LiteralPath $ready) -and [DateTime]::UtcNow -lt $waitUntil) { Start-Sleep -Milliseconds 50 }
+            $r = & $pkg @('run', '-Id', 'msls', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+            & $expect ($r.Exit -eq 0 -and (& $stateFile 'msls').stage -eq 'executor-completed') "a run could not coexist with another shared main-sync holder: $($r.Text)"
+        }
+        finally { Stop-Process -Id $holder.Id -Force -ErrorAction SilentlyContinue }
+
         $raceOutputs = @()
         $raceProcesses = foreach ($n in 1..2)
         {
