@@ -29,7 +29,7 @@
         <div class="container hero-panel">
             <p class="hero-eyebrow">Privacy</p>
             <h1 class="hero-title article-title">Pointframe Privacy Policy</h1>
-            <p class="hero-copy">This policy covers the Pointframe desktop app, the Pointframe CLI, and the Pointframe MCP server. Pointframe is free and open source, needs no account, and keeps your screenshots, recordings, and text on your machine.</p>
+            <p class="hero-copy">This policy covers the Pointframe desktop app, the Pointframe CLI, the Pointframe MCP server, and this website. Pointframe is free and open source, needs no account, and keeps your screenshots, recordings, and text on your machine.</p>
         </div>
     </main>
 
@@ -60,11 +60,23 @@
                     <h2>Desktop app telemetry</h2>
                     <p>Official installer builds of the desktop app send the usage telemetry described in the <a href="https://github.com/dimitar-radenkov/Pointframe/blob/master/PRIVACY.md#privacy--telemetry" target="_blank" rel="noopener noreferrer">PRIVACY.md</a>, including a random install ID that is not tied to an account. The desktop app has no in-app telemetry switch, and the opt-out above applies to the CLI and the MCP server only.</p>
 
-                    <h2>Third-party sharing</h2>
+                    <h2>This website</h2>
+                    <p>The pages of this website at dimitar-radenkov.github.io/Pointframe, except the Screen Explainer pages, load a small script that measures how the site is used. It sends these data to Azure Application Insights:</p>
+                    <ul>
+                        <li>Page views are recorded with the Application Insights JavaScript SDK's standard page-view and page-load timing data; see <a href="https://learn.microsoft.com/azure/azure-monitor/app/javascript-sdk">Microsoft's documentation</a>. Because the site turns off the library's cookies and storage, the random identifiers the library attaches to each page view are created anew on every page load and cannot link one visit to the next.</li>
+                        <li>The event <code>website_session_started</code>, sent once per browser tab session, with the referring page and the browser's user agent.</li>
+                        <li>The event <code>website_cta_clicked</code>, sent when you click a tracked button or link such as Download, with the button's type and location on the page and the address it links to.</li>
+                        <li>The events <code>winget_command_copied</code> and <code>winget_command_copy_failed</code>, sent when you use the copy button for the install command, with the package manager and the command shown.</li>
+                        <li>The page path and address, a timestamp, and the UTM campaign parameters (<code>utm_source</code>, <code>utm_medium</code>, <code>utm_campaign</code>, <code>utm_content</code>, <code>utm_term</code>) when the address you arrived on carries them.</li>
+                    </ul>
+                    <p>The site configures the analytics library not to set cookies and not to use browser storage, and the site's own code sets no cookies and writes nothing to local storage. The only thing the site's own code keeps in the browser is, in the tab's session storage, a random session ID created by your browser, a marker that this tab's visit was already counted, and, when the address you arrived on carries UTM parameters, the attribution of the visit (those UTM parameters, the landing page path, the time it was first seen, and the referring page); the browser deletes them when the tab closes. The session ID is not tied to your name or account and lets the project count how many visits it sees. An earlier version of the site kept an event log and campaign parameters in local storage; the site now deletes those two entries when you visit.</p>
+                    <p>These data go to the same Application Insights resource as the telemetry above, under the <a href="#third-party-sharing">Third-party sharing</a> and <a href="#retention">Retention</a> terms below. The Screen Explainer pages load no scripts. To avoid website measurement, block scripts for this site or use a tracker blocker; the site works without them.</p>
+
+                    <h2 id="third-party-sharing">Third-party sharing</h2>
                     <p>Telemetry goes to Microsoft Azure Application Insights, which acts as a processor on the project's behalf. Application Insights receives the IP address of the connection, derives a coarse country and city from it, and stores the address masked (IP masking is on). The exporter attaches no host name, user name, or other machine details. Nothing is sold or shared with anyone else.</p>
 
-                    <h2>Retention</h2>
-                    <p>Telemetry is kept in the project's Application Insights resource under its default retention of 90 days, unless the maintainer changes that setting, and is used only to see which tools and commands are used and whether they fail. Files on your machine stay until you delete them.</p>
+                    <h2 id="retention">Retention</h2>
+                    <p>Telemetry is kept in the project's Application Insights resource under its default retention of 90 days, unless the maintainer changes that setting, and is used only to see which tools and commands are used and whether they fail, and how visitors use this website. Files on your machine stay until you delete them.</p>
 
                     <h2>Contact</h2>
                     <p>Questions, deletion requests, and privacy concerns: open an issue at <a href="https://github.com/dimitar-radenkov/Pointframe/issues" target="_blank" rel="noopener noreferrer">github.com/dimitar-radenkov/Pointframe/issues</a>. The same policy is in the <a href="https://github.com/dimitar-radenkov/Pointframe/blob/master/PRIVACY.md#privacy-policy" target="_blank" rel="noopener noreferrer">PRIVACY.md</a>.</p>
