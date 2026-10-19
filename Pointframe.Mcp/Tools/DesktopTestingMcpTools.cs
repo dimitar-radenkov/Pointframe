@@ -26,8 +26,13 @@ internal sealed class DesktopTestingMcpTools(
     DesktopTestingHostOptions options,
     IDesktopUiObservationProvider? uiObservation = null,
     IDesktopWindowBoundsProvider? windowBounds = null,
-    IWindowsUiAutomationHitTestProvider? hitTest = null)
+    IWindowsUiAutomationHitTestProvider? hitTest = null,
+    IDesktopUiAuditService? uiAudit = null)
 {
+    private const string AuditAdvisoryNote = "Advisory only: these findings do not affect desktop_check_ui checks, criteria, verdicts, or the signed session report.";
+
+    private readonly IDesktopUiAuditService _uiAudit = uiAudit ?? new DesktopUiAuditService();
+
     // The click-or-pattern method of an invoke by actionId, so a replayed actionId still reports how it was done.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> InvokeMethods = new(StringComparer.Ordinal);
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> InvokeMethodOrder = new();
@@ -256,7 +261,84 @@ internal sealed class DesktopTestingMcpTools(
             : DesktopObservationResultBuilder.Build(response, result.Observation, includeImages);
     }
 
-    [McpServerTool(Name = "desktop_focus_window", Title = "Focus desktop window", ReadOnly = false, Destructive = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_audit_ui", Title = "Audit observed desktop UI", ReadOnly = true, Destructive = false, UseStructuredContent = true)]
+    [Description("Audits a stored observation from desktop_observe_app for visible placeholder or debug text (TODO, FIXME, lorem ipsum, a literal {0}, or a field that is just null, undefined or NaN) and returns advisory findings with evidence: the element and its bounds, or for text only OCR saw, the image and the OCR line. It reads the stored observation only: it never captures, inspects the UI again, or writes to the session report, and its findings never change a check, criterion, or verdict. Editable and document elements (Edit, Document) and sensitive elements are skipped, and coverage says how many and what was inspected. OCR is audited only when the observation was made with includeOcr. It is not an accessibility audit and does not judge layout or visual quality. To confirm a fix, observe again and use desktop_check_ui.")]
+    public async Task<DesktopUiAuditResponse> AuditUiAsync(
+        [Description("Session id from desktop_start_test_session.")] string sessionId,
+        [Description("observation_ref of the desktop_observe_app result to audit. It must belong to this session and still be fresh (refs expire 30 seconds after capture); an unknown, expired, or other-session ref is rejected and nothing is re-observed. Observe with includeUiAutomation true, and includeOcr true to also audit text only OCR can see.")] string observationRef,
+        CancellationToken cancellationToken = default)
+    {
+        var session = await sessions.GetAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        if (session?.Target is null)
+        {
+            return AuditError(observationRef, "SessionNotFound", "The desktop test session was not found.", null);
+        }
+
+        DesktopObservationResult observation;
+        try
+        {
+            observation = observations.Resolve(observationRef);
+        }
+        catch (DesktopOperationException exception)
+        {
+            return AuditError(observationRef, exception.Code, exception.Message, sessionId);
+        }
+
+        if (!string.Equals(observation.Observation.Process.ProcessRef, session.Target.Process.ProcessRef, StringComparison.Ordinal))
+        {
+            return AuditError(observationRef, "ObservationNotInSession", "The observation belongs to another session's target. Observe this session's application with desktop_observe_app.", sessionId);
+        }
+
+        var result = _uiAudit.Audit(observation);
+        var findings = result.Findings
+            .Select((finding, index) => new DesktopUiAuditFindingResponse(
+                $"F{index + 1}",
+                finding.RuleId,
+                finding.RuleVersion,
+                finding.Severity,
+                finding.Confidence,
+                finding.Source,
+                finding.Message,
+                finding.MatchedToken,
+                finding.ElementRef,
+                finding.WindowRef,
+                finding.Role,
+                finding.Name,
+                finding.AutomationId,
+                finding.BoundsPixels is { } bounds ? new McpPixelBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height) : null,
+                finding.Field,
+                finding.Text,
+                finding.ImageRef,
+                finding.OcrLine))
+            .ToArray();
+        var coverage = result.Coverage;
+        return new DesktopUiAuditResponse(
+            DesktopTestingLimits.SchemaVersion,
+            result.ObservationRef,
+            Advisory: true,
+            AuditAdvisoryNote,
+            findings,
+            new DesktopUiAuditCoverageResponse(
+                coverage.RulesRun.Select(rule => new DesktopUiAuditRuleResponse(rule.Id, rule.Version)).ToArray(),
+                coverage.ElementsInspected,
+                coverage.ElementsSkipped,
+                coverage.OcrAvailable,
+                coverage.UiaTruncated,
+                coverage.UiaStatus));
+    }
+
+    private static DesktopUiAuditResponse AuditError(string observationRef, string code, string message, string? sessionId) =>
+        new(
+            DesktopTestingLimits.SchemaVersion,
+            observationRef,
+            Advisory: true,
+            AuditAdvisoryNote,
+            [],
+            Coverage: null,
+            new McpCaptureError(code, message),
+            DesktopTestingResponseMapper.RecoveryFor(code, sessionId));
+
+    [McpServerTool(Name = "desktop_focus_window",Title = "Focus desktop window", ReadOnly = false, Destructive = false, UseStructuredContent = true)]
     [Description("Brings one window of the application under test to the foreground and gives it keyboard focus. Call this before desktop_press_keys when the target window may not already be focused, since key input goes to whatever currently has focus.")]
     public async Task<DesktopTestingActionResponse> FocusWindowAsync(
         [Description("Session id from desktop_start_test_session.")] string sessionId,

@@ -181,7 +181,7 @@ if (-not $SkipEnabledDiscovery)
 {
     $enabledExpectedTools = $expectedTools + @(
         "desktop_list_apps", "desktop_start_test_session", "desktop_restart_app",
-        "desktop_observe_app", "desktop_focus_window", "desktop_click", "desktop_press_keys",
+        "desktop_observe_app", "desktop_audit_ui", "desktop_focus_window", "desktop_click", "desktop_press_keys",
         "desktop_drag", "desktop_enter_text", "desktop_invoke", "desktop_check_ui",
         "desktop_scroll", "desktop_get_action_result", "desktop_get_test_report", "desktop_replay_checks",
         "desktop_end_test_session", "desktop_export_scenario"
