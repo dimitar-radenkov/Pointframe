@@ -56,6 +56,7 @@ if (hostOptions.Enabled)
 {
     builder.Services.AddSingleton<IDesktopObservationStore, DesktopObservationStore>();
     builder.Services.AddSingleton<IDesktopObservationService, DesktopObservationService>();
+    builder.Services.AddSingleton<IDesktopUiAuditService>(_ => new DesktopUiAuditService());
     // Checks read the session target's live element tree through the worker. This used to be wired to
     // a stub that reported every check inconclusive, which left every action tool's success
     // unverifiable.

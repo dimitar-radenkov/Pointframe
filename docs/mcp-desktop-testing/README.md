@@ -117,6 +117,7 @@ the caller with two indistinguishable `click` tools.
 | `desktop_start_test_session` | Launch one approved executable |
 | `desktop_restart_app` | Restart only after the previous target exited normally |
 | `desktop_observe_app` | Capture bounded images and optional UIA data |
+| `desktop_audit_ui` | Advisory audit of a stored observation for visible placeholder or debug text; read-only, never affects checks or the report |
 | `desktop_focus_window` | Focus a verified target window |
 | `desktop_click` | Send a bounded physical click from an observation point |
 | `desktop_press_keys` | Send bounded physical keys to an observed foreground window (`windowRef` and/or `observationRef`, consumed) or an approved global hotkey |
@@ -138,6 +139,49 @@ and return a signed proof. The server ships the steps as the MCP resource
 `pointframe://guides/verify-desktop-work` (source:
 `Pointframe.Mcp/Guides/verify-desktop-work.md`), and its connect-time
 instructions tell every client to read it before calling a `desktop_` tool.
+
+### Auditing an observation for placeholder text
+
+`desktop_audit_ui(sessionId, observationRef)` looks at an observation you just
+made with `desktop_observe_app` and reports visible placeholder or debug text
+as advice. It has one rule, `placeholder-text` (version 1), and nothing else:
+
+- It finds `TODO` and `FIXME` as whole words, the phrase `lorem ipsum`, a
+  literal .NET format placeholder `{0}` through `{9}`, and elements whose entire
+  text is `null`, `undefined`, or `NaN`. Matching ignores case and collapses
+  whitespace, so a label that reads `Todo` is also reported; a finding is a
+  lead to inspect, not a defect verdict.
+- It reads the UI Automation `name` and `text` of each element. A whole-text
+  match is `medium` severity with `high` confidence; a token inside longer text
+  is `medium` with `medium` confidence. Each carries `elementRef`, `windowRef`,
+  `role`, `name`, `automationId`, and `boundsPixels`.
+- If the observation was made with `includeOcr`, text that only OCR saw is
+  reported as `low` severity, `low` confidence, with the `imageRef` and the OCR
+  line, and no element ref. A token found by both is reported once, as a UI
+  Automation finding.
+- `Edit` and `Document` elements are skipped because they hold user content,
+  and so are elements marked sensitive. `coverage` states what was looked at:
+  `rulesRun`, `elementsInspected`, `elementsSkipped` by reason (`editable-role`,
+  `sensitive`), `ocrAvailable` (`"true"`, `"false"`, or `"not-requested"`),
+  `uiaStatus`, and `uiaTruncated`. Treat an empty `findings` list as "none found
+  in what coverage says was inspected", not as "the UI is clean".
+
+It does not find missing translations, truncated or overlapping text, wrong
+data, contrast or layout problems, or accessibility defects (Axe.Windows is not
+included). Placeholder text drawn as an image is found only when the observation
+was made with `includeOcr`, as a low-confidence OCR-only finding; without OCR it
+is not found. It only reads the stored
+observation: it never captures, inspects the UI again, or writes to the report,
+so the response says `advisory: true` and no finding changes a check, a
+criterion, a verdict, or the signed report. An unknown, expired (30 seconds), or
+other-session `observationRef` is rejected (`StaleObservation`,
+`ObservationNotInSession`); observe again rather than retrying.
+
+Typical loop: observe the app (add `includeOcr` for more coverage), audit the
+observation, inspect a finding's element with another `desktop_observe_app`
+using its `automationId`, change the app, restart it, and confirm the fix with a
+`desktop_check_ui` check (for example `textEquals` on that element). Only that
+check is evidence for the report.
 
 ### Session report verdict
 

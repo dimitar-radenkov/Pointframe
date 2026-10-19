@@ -51,6 +51,47 @@ public sealed record DesktopTestingCheckResponse(
     string? ActualValue = null,
     DesktopNextStep? NextStep = null);
 
+public sealed record DesktopUiAuditFindingResponse(
+    string Id,
+    string RuleId,
+    int RuleVersion,
+    string Severity,
+    string Confidence,
+    string Source,
+    string Message,
+    string MatchedToken,
+    string? ElementRef = null,
+    string? WindowRef = null,
+    string? Role = null,
+    string? Name = null,
+    string? AutomationId = null,
+    McpPixelBounds? BoundsPixels = null,
+    string? Field = null,
+    string? Text = null,
+    string? ImageRef = null,
+    string? OcrLine = null);
+
+public sealed record DesktopUiAuditRuleResponse(string Id, int Version);
+
+public sealed record DesktopUiAuditCoverageResponse(
+    IReadOnlyList<DesktopUiAuditRuleResponse> RulesRun,
+    int ElementsInspected,
+    IReadOnlyDictionary<string, int> ElementsSkipped,
+    string OcrAvailable,
+    bool UiaTruncated,
+    string UiaStatus,
+    int OcrLinesSuppressedAsUserContent);
+
+public sealed record DesktopUiAuditResponse(
+    int SchemaVersion,
+    string ObservationRef,
+    bool Advisory,
+    string AdvisoryNote,
+    IReadOnlyList<DesktopUiAuditFindingResponse> Findings,
+    DesktopUiAuditCoverageResponse? Coverage,
+    McpCaptureError? Error = null,
+    DesktopNextStep? NextStep = null);
+
 public sealed record DesktopNextStep(
     string Kind,
     string Tool,

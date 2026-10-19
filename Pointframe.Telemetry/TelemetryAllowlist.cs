@@ -35,6 +35,7 @@ public static class TelemetryAllowlist
         "desktop_start_test_session",
         "desktop_restart_app",
         "desktop_observe_app",
+        "desktop_audit_ui",
         "desktop_focus_window",
         "desktop_click",
         "desktop_press_keys",

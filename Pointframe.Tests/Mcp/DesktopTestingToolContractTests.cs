@@ -8,10 +8,10 @@ namespace Pointframe.Tests.Mcp;
 public sealed class DesktopTestingToolContractTests
 {
     [Fact]
-    public void CatalogContainsExactlySeventeenDesktopTools()
+    public void CatalogContainsExactlyEighteenDesktopTools()
     {
-        Assert.Equal(17, PointframeCommandCatalog.DesktopTestingTools.Count);
-        Assert.Equal(17, PointframeCommandCatalog.DesktopTestingTools.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(18, PointframeCommandCatalog.DesktopTestingTools.Count);
+        Assert.Equal(18, PointframeCommandCatalog.DesktopTestingTools.Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public sealed class DesktopTestingToolContractTests
         var expected = new HashSet<string>(StringComparer.Ordinal)
         {
             "desktop_list_apps", "desktop_start_test_session", "desktop_restart_app",
-            "desktop_observe_app", "desktop_focus_window", "desktop_click", "desktop_press_keys",
+            "desktop_observe_app", "desktop_audit_ui", "desktop_focus_window", "desktop_click", "desktop_press_keys",
             "desktop_drag", "desktop_enter_text", "desktop_invoke", "desktop_check_ui",
             "desktop_scroll", "desktop_get_action_result", "desktop_get_test_report", "desktop_replay_checks",
             "desktop_end_test_session",
@@ -62,7 +62,7 @@ public sealed class DesktopTestingToolContractTests
             .Where(method => method.GetCustomAttribute<McpServerToolAttribute>() is not null)
             .ToArray();
 
-        Assert.Equal(17, methods.Length);
+        Assert.Equal(18, methods.Length);
     }
 
     [Fact]
