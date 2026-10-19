@@ -61,6 +61,8 @@ function Get-ScriptsChange
 
     $diff = @(& git -C $repoRoot diff --name-only $mergeBase -- scripts 2>$null | Where-Object { $_ })
     if ($LASTEXITCODE -ne 0) { return $null }
+    $committed = @(& git -C $repoRoot diff --name-only $mergeBase HEAD -- scripts 2>$null | Where-Object { $_ })
+    if ($LASTEXITCODE -ne 0) { return $null }
     $staged = @(& git -C $repoRoot diff --cached --name-only $mergeBase -- scripts 2>$null | Where-Object { $_ })
     if ($LASTEXITCODE -ne 0) { return $null }
     $untracked = @(& git -C $repoRoot ls-files --others --exclude-standard -- scripts 2>$null | Where-Object { $_ })
@@ -69,7 +71,7 @@ function Get-ScriptsChange
     $shortOut = @(& git -C $repoRoot rev-parse --short $mergeBase 2>$null)
     $short = if ($LASTEXITCODE -eq 0) { "$(@($shortOut | Where-Object { "$_".Trim() })[0])".Trim() } else { '' }
     if (-not $short) { $short = $mergeBase }
-    return @{ Changed = (($diff.Count + $staged.Count + $untracked.Count) -gt 0); Base = $short }
+    return @{ Changed = (($committed.Count + $diff.Count + $staged.Count + $untracked.Count) -gt 0); Base = $short }
 }
 
 $scriptsChange = $null
