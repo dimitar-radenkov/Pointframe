@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy | Screen Explainer</title>
+    <meta name="description" content="What Screen Explainer reads from your windows, what passes through Anna's service, what is sent to the AI model, and what the developer collects (nothing).">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://dimitar-radenkov.github.io/Pointframe/screen-explainer/privacy.html">
+    <link rel="icon" href="./logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="./logo.png">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Privacy Policy | Screen Explainer">
+    <meta property="og:description" content="What Screen Explainer reads from your windows, what passes through Anna's service, and what is sent to the AI model.">
+    <meta property="og:url" content="https://dimitar-radenkov.github.io/Pointframe/screen-explainer/privacy.html">
+    <meta property="og:site_name" content="Screen Explainer">
+    <meta property="og:image" content="https://dimitar-radenkov.github.io/Pointframe/screen-explainer/cover.png">
+    <meta property="og:image:width" content="1280">
+    <meta property="og:image:height" content="640">
+    <meta property="og:image:alt" content="Screen Explainer: a window on the left, an arrow, and the text it shows on the right. Read a window on your PC, get it explained. Windows only.">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://dimitar-radenkov.github.io/Pointframe/screen-explainer/cover.png">
+    <link rel="stylesheet" href="../styles.css">
+    <!-- No scripts or analytics on purpose: website/privacy.html does not disclose site analytics (issue #272). -->
+</head>
+<body>
+    <nav class="site-nav">
+        <div class="container nav-inner">
+            <a class="brand" href="./index.html" aria-label="Go to the Screen Explainer page">
+                <img src="./logo.png" alt="" class="brand-logo" width="32" height="32">
+                <span>Screen Explainer</span>
+            </a>
+            <div class="nav-links">
+                <a href="./index.html" class="nav-link">About</a>
+                <a href="../index.html" class="nav-link">Pointframe</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="hero article-hero">
+        <div class="container hero-panel">
+            <p class="hero-eyebrow">Privacy</p>
+            <h1 class="hero-title article-title">Screen Explainer Privacy Policy</h1>
+            <p class="hero-copy">Effective date: 2026-10-19. This policy covers Screen Explainer, a Windows app that runs through Anna. It does not cover the Pointframe desktop app, CLI, or MCP server; that is a separate policy, on the <a href="../privacy.html">Pointframe privacy policy</a> page.</p>
+        </div>
+    </main>
+
+    <section class="section">
+        <div class="container">
+            <div class="content-shell">
+                <article class="content-card">
+                    <h2>How the app runs</h2>
+                    <p>Screen Explainer is for Windows only. It runs through <a href="https://anna.partners" target="_blank" rel="noopener noreferrer">Anna</a>: its app window opens in the Anna web dashboard in your browser, and a small helper program runs on your PC through Anna's local agent.</p>
+
+                    <h2>What leaves your PC, and where it goes</h2>
+                    <p>Everything below is sent through Anna's service, not to a server run by Pointframe.</p>
+                    <ul>
+                        <li><strong>The window list.</strong> The titles (cut to 100 characters), process names, and sizes of up to 30 visible windows are sent through Anna's service to the app window in your browser, so you can pick one.</li>
+                        <li><strong>A preview and the recognized text.</strong> A small preview of the window you chose (about 900 pixels wide, JPEG) and the text recognized in it are sent through Anna's service to the app window, so you can see and edit them.</li>
+                        <li><strong>Your request to the AI model.</strong> When you press Explain, Summarize, Translate, or Action items, the text in the text box and the instruction are sent through Anna to the AI model that Anna provides. The screenshot is not sent to the model.</li>
+                    </ul>
+
+                    <h2>What stays on your PC</h2>
+                    <p>The window you choose is captured in memory on your PC, and its text is read with Windows OCR on your PC. The full-size image is not saved and not uploaded.</p>
+                    <p>Very large results are briefly written to a temporary file on your PC, as Anna's protocol requires. Anna's agent reads and deletes that file.</p>
+
+                    <h2>What Pointframe collects</h2>
+                    <p>Pointframe, the developer of Screen Explainer, runs no server for this app, collects no telemetry or analytics from it, and stores nothing.</p>
+
+                    <h2>Anna and the AI model</h2>
+                    <p>How Anna processes and retains data, including what passes through its service and the AI model it provides, is governed by Anna's own terms and privacy policy. See <a href="https://anna.partners" target="_blank" rel="noopener noreferrer">anna.partners</a>.</p>
+
+                    <h2>Be careful what you pick</h2>
+                    <p>Do not pick windows that show passwords, payment details, or other secrets.</p>
+
+                    <h2>This is not the Pointframe privacy policy</h2>
+                    <p>The <a href="../privacy.html">Pointframe privacy policy</a> covers the Pointframe desktop app, CLI, and MCP server, not this app.</p>
+
+                    <h2>Contact and support</h2>
+                    <p>Questions, requests, and privacy concerns: open an issue at <a href="https://github.com/dimitar-radenkov/Pointframe/issues" target="_blank" rel="noopener noreferrer">github.com/dimitar-radenkov/Pointframe/issues</a>.</p>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container footer-inner">
+            <div class="brand">
+                <img src="./logo.png" alt="" class="brand-logo" width="32" height="32">
+                <span>Screen Explainer</span>
+            </div>
+            <div class="footer-links">
+                <a href="./index.html">About</a>
+                <a href="../index.html">Pointframe</a>
+                <a href="https://github.com/dimitar-radenkov/Pointframe">GitHub</a>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
