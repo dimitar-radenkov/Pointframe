@@ -727,15 +727,34 @@ function Get-ClaudeCliVersion($Launcher)
     if ($job -eq [IntPtr]::Zero) { return $null }
     $base = Join-Path ([IO.Path]::GetTempPath()) "claude-version-$([guid]::NewGuid().ToString('N'))"
     $process = $null
+    $script:ClaudeVersionProbeProblem = $null
     try
     {
         $process = Start-ProcessInJob $job $Launcher.File (@($Launcher.Prefix) + @('--version')) ([IO.Path]::GetTempPath()) $null "$base.out" "$base.err"
-        if (-not (Wait-ProcessExit $process ([long]($ProbeSeconds * 1000)))) { return $null }
-        if ((Get-ProcessExitCode $process) -ne 0) { return $null }
-        $line = Get-Content -LiteralPath "$base.out" -TotalCount 1 -ErrorAction SilentlyContinue
-        if ($line) { return ([string]$line).Trim() }
+        if (-not (Wait-ProcessExit $process ([long]($ProbeSeconds * 1000)))) { $script:ClaudeVersionProbeProblem = "the version probe did not exit within $ProbeSeconds s"; return $null }
+        $probeExit = Get-ProcessExitCode $process
+        if ($probeExit -ne 0) { $script:ClaudeVersionProbeProblem = "the version probe exited with code '$probeExit'"; return $null }
+        # Most likely cause of the intermittent CI failure (#271; not reproduced locally, every other checked field is
+        # deterministic): this read used Get-Content with -ErrorAction SilentlyContinue, so a transient sharing violation on
+        # the freshly written temp file (a scanner or indexer holding it for a moment) was swallowed and the version was
+        # recorded as null. The probe's exit does not guarantee the file is readable at that instant, so the read now waits,
+        # bounded, until it is readable and keeps the reason when it never is (run.claudeCliVersionProblem).
+        $readDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ($true)
+        {
+            try
+            {
+                $stream = [IO.File]::Open("$base.out", [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+                try { $line = ([IO.StreamReader]::new($stream)).ReadLine() } finally { $stream.Dispose() }
+                if ($line) { return ([string]$line).Trim() }
+                $script:ClaudeVersionProbeProblem = 'the version probe printed no version'
+            }
+            catch [IO.IOException] { $script:ClaudeVersionProbeProblem = "the version probe output could not be read: $($_.Exception.Message)" }
+            if ([DateTime]::UtcNow -ge $readDeadline) { return $null }
+            Start-Sleep -Milliseconds 100
+        }
     }
-    catch { }
+    catch { $script:ClaudeVersionProbeProblem = "the version probe failed: $($_.Exception.Message)" }
     finally
     {
         Stop-ProcessJob $job 5 | Out-Null
@@ -1180,10 +1199,12 @@ function Initialize-ClaudeRun($State, [string]$RunId, [string]$RunDir)
     Assert-NoBypass $arguments
     $recorded = @($arguments | ForEach-Object { if ($_ -eq $rules) { "<fixed executor rules, sha256 $((Get-StringSha256 $rules).Substring(0, 12))>" } else { $_ } })
 
+    $cliVersion = Get-ClaudeCliVersion $launcher
+    $cliVersionProblem = $script:ClaudeVersionProbeProblem
     @{
         Launcher = $launcher; Model = $model; Arguments = $arguments; RecordedArguments = $recorded; Stdin = $promptPath
         Settings = @{ path = $settingsPath; sha256 = (Get-Sha256 $settingsPath) }; Prompt = @{ path = $promptPath; sha256 = (Get-Sha256 $promptPath) }
-        AuthMode = (Get-ClaudeAuthMode); Version = (Get-ClaudeCliVersion $launcher); ChainId = $chainId
+        AuthMode = (Get-ClaudeAuthMode); Version = $cliVersion; VersionProblem = $(if ($cliVersion) { $null } else { $cliVersionProblem }); ChainId = $chainId
         ResumedFrom = $(if ($prior) { @{ runId = [string]$prior.runId; sessionId = [string]$prior.sessionId } } else { $null })
         Budget = @{ maxSeconds = ($MaxMinutes * 60); maxInputTokens = $MaxInputTokens; priorSeconds = [Math]::Round($priorSeconds, 1); priorInputTokens = $priorTokens; remainingSeconds = $remainingSeconds; remainingInputTokens = $remainingTokens; maxBudgetUsd = $(if ($MaxBudgetUsd -gt 0) { $MaxBudgetUsd } else { $null }) }
         Scope = $scope; Allowed = $allowed; ReadOnly = $readOnly; Tools = (Get-ClaudeToolList $readOnly)
@@ -1491,6 +1512,7 @@ function Invoke-Run
     if ($isClaude)
     {
         $runRecord.claudeCliVersion = $claude.Version
+        $runRecord.claudeCliVersionProblem = $claude.VersionProblem
         $runRecord.authMode = $claude.AuthMode
         $runRecord.claudeArguments = $claude.RecordedArguments
         $runRecord.claudeExecutable = $claude.Launcher.Display
@@ -6095,7 +6117,14 @@ if (process.env.POINTFRAME_PKG_TEST_JS_TREE) {
             $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', $fakeShim)
             $state = & $stateFile 'cl'
             $run = $state.runs[-1]
-            & $expect ($r.Exit -eq 0 -and $run.outcome -eq 'completed' -and $run.sessionId -eq 'npm-stub-session' -and $run.claudeCliVersion -eq '9.9.9-npm-stub' -and $run.claudeExecutable -match 'cli\.js' -and $run.executor.pid -gt 0 -and (Get-Content -LiteralPath $run.artifacts.outMd.path -Raw) -match 'stdin chars [1-9]') "a run through an npm shim (node + cli.js) did not complete: $($r.Text)"
+            $npmReport = if ($run.artifacts -and $run.artifacts.outMd -and (Test-Path -LiteralPath $run.artifacts.outMd.path -PathType Leaf)) { Get-Content -LiteralPath $run.artifacts.outMd.path -Raw } else { $null }
+            & $expect ($r.Exit -eq 0) "npm shim run: exit code is '$($r.Exit)', expected 0: $($r.Text)"
+            & $expect ($run.outcome -eq 'completed') "npm shim run: outcome is '$($run.outcome)', expected 'completed': $($r.Text)"
+            & $expect ($run.sessionId -eq 'npm-stub-session') "npm shim run: session id is '$($run.sessionId)', expected 'npm-stub-session'"
+            & $expect ($run.claudeCliVersion -eq '9.9.9-npm-stub') "npm shim run: claudeCliVersion is '$($run.claudeCliVersion)', expected '9.9.9-npm-stub' (probe problem: '$($run.claudeCliVersionProblem)')"
+            & $expect ($run.claudeExecutable -match 'cli\.js') "npm shim run: claudeExecutable is '$($run.claudeExecutable)', expected a path naming cli.js"
+            & $expect ($run.executor.pid -gt 0) "npm shim run: executor pid is '$($run.executor.pid)', expected > 0"
+            & $expect ($npmReport -match 'stdin chars [1-9]') "npm shim run: the report (out.md) is '$npmReport', expected 'stdin chars' followed by a non-zero count"
 
             # node's own children are in the job: a grandchild of node does not survive the timeout.
             $env:POINTFRAME_PKG_TEST_JS_TREE = '1'
