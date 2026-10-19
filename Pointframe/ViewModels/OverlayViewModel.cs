@@ -15,6 +15,9 @@ public partial class OverlayViewModel : AnnotationViewModel
     private readonly IScreenshotWatermarkService _watermarkService;
     private readonly IShareService? _shareService;
     private IOverlayBitmapCapture? _bitmapCapture;
+    private bool _outputProduced;
+    private bool _handedOff;
+    private bool _closeReported;
 
     public OverlayViewModel(
         IAnnotationGeometryService geometry,
@@ -144,7 +147,7 @@ public partial class OverlayViewModel : AnnotationViewModel
 
         var finalBitmap = bitmapCapture.ComposeBitmap();
         _clipboardService.SetImage(ApplyWatermarkForCopy(finalBitmap));
-        _ = _eventAggregator.Publish(new CaptureCompletedMessage(null, "copy"));
+        PublishCaptureCompleted(null, "copy");
 
         if (_settings.Current.AutoSaveScreenshots)
         {
@@ -225,6 +228,7 @@ public partial class OverlayViewModel : AnnotationViewModel
             }
 
             _clipboardService.SetText(result.Link);
+            PublishCaptureCompleted(null, "upload_link");
             ToastRequested?.Invoke("Link copied to clipboard");
         }
         catch (Exception)
@@ -290,7 +294,32 @@ public partial class OverlayViewModel : AnnotationViewModel
             encoder.Save(outputStream);
         }
 
+        PublishCaptureCompleted(savePath, captureAction);
+    }
+
+    private void PublishCaptureCompleted(string? savePath, string captureAction)
+    {
+        _outputProduced = true;
         _ = _eventAggregator.Publish(new CaptureCompletedMessage(savePath, captureAction));
+    }
+
+    public void ReportWindowClosed(bool handedOffToRecording = false)
+    {
+        if (_closeReported)
+        {
+            return;
+        }
+
+        _closeReported = true;
+        if (CurrentPhase != Phase.Annotating || _outputProduced || _handedOff || handedOffToRecording)
+        {
+            return;
+        }
+
+        _telemetry.TrackEvent(TelemetryEvents.CaptureClosed, new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Annotated] = HasCommittedAnnotations ? "true" : "false",
+        });
     }
 
     [RelayCommand]
@@ -321,6 +350,7 @@ public partial class OverlayViewModel : AnnotationViewModel
             return;
         }
 
+        _handedOff = true;
         _telemetry.TrackEvent(TelemetryEvents.CapturePinned);
         PinRequested?.Invoke(bitmapCapture.ComposeBitmap(restoreOverlayVisibilityAfterCapture: false));
     }
@@ -335,6 +365,7 @@ public partial class OverlayViewModel : AnnotationViewModel
             return;
         }
 
+        _handedOff = true;
         _telemetry.TrackEvent(TelemetryEvents.BeautifyOpened);
         BeautifyRequested?.Invoke(bitmapCapture.ComposeBitmap(restoreOverlayVisibilityAfterCapture: false));
     }

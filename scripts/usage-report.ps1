@@ -14,8 +14,8 @@ Needs `az` logged in (exit 2 otherwise). Read-only: every query goes to the data
 not work for this resource. Exit 1 when any section fails (the rest is still printed), 2 on bad arguments or login.
 
 An install is identified by customDimensions.install_id. App events are customEvents whose name does not start
-with "website"; website events start with "website_". Activated = the install ever sent capture_completed or
-recording_completed. Sandbox-like (heuristic only) = lifetime under 2 minutes and only startup events; raw numbers
+with "website"; website events start with "website_". Activated = the install ever sent capture_completed,
+recording_completed, screenshot_beautified or screenshot_beautified_copied. Sandbox-like (heuristic only) = lifetime under 2 minutes and only startup events; raw numbers
 are always shown. Excluded installs (-ExcludeInstallId, or any install that ever reported -ExcludeRoleInstance) are
 removed from every app query.
 #>
@@ -85,12 +85,14 @@ let AppEvents = customEvents
 
 $InstallsKql = @'
 let startupEvents = dynamic(["app_started", "startup_completed", "app_heartbeat", "app_closed", "update_available", "update_applied", "onboarding_shown", "hotkey_status"]);
-let activationEvents = dynamic(["capture_completed", "recording_completed"]);
+let activationEvents = dynamic(["capture_completed", "recording_completed", "screenshot_beautified", "screenshot_beautified_copied"]);
 let Installs = AppEvents
 | summarize firstSeen = min(timestamp), lastSeen = max(timestamp),
     starts = countif(name == "app_started"),
     snips = countif(name == "snip_started"),
     cancels = countif(name == "snip_cancelled"),
+    closes = countif(name == "capture_closed"),
+    annotatedCloses = countif(name == "capture_closed" and tostring(customDimensions.annotated) == "true"),
     nonStartup = countif(name !in (startupEvents)),
     activatedAt = minif(timestamp, name in (activationEvents)),
     activeDays = dcount(startofday(timestamp)),
@@ -177,6 +179,8 @@ Installs
     ranOver10Min = countif(lastSeen - firstSeen > 10m),
     startedSnip = countif(snips > 0),
     allSnipsCancelled = countif(snips > 0 and cancels >= snips),
+    closedWithoutOutput = countif(closes > 0),
+    annotatedBeforeClosing = countif(annotatedCloses > 0),
     sandboxLike = countif(sandboxLike)
 '@) $Ctx
     }
@@ -550,6 +554,8 @@ function New-Report([scriptblock]$Runner, [hashtable]$Ctx, [datetime]$Now)
             ranOver10Min = [int](Get-Value $r 'ranOver10Min')
             startedSnip = [int](Get-Value $r 'startedSnip')
             allSnipsCancelled = [int](Get-Value $r 'allSnipsCancelled')
+            closedWithoutOutput = [int](Get-Value $r 'closedWithoutOutput')
+            annotatedBeforeClosing = [int](Get-Value $r 'annotatedBeforeClosing')
             sandboxLike = [int](Get-Value $r 'sandboxLike')
         }
     }
@@ -737,6 +743,7 @@ function Format-ReportText($Report, [bool]$SandboxView)
         $rows = @(
             @('never activated', $d.neverActivated), @('started once or more', $d.startedOnce), @('started 2+ times', $d.startedTwicePlus),
             @('ran longer than 10 min', $d.ranOver10Min), @('started a snip', $d.startedSnip), @('all snips cancelled', $d.allSnipsCancelled),
+            @('closed a capture without output', $d.closedWithoutOutput), @('annotated before closing', $d.annotatedBeforeClosing),
             @('(sandbox-like, heuristic)', $d.sandboxLike))
         Format-TextTable $rows @('step', 'installs') { param($r) $r }
     }
@@ -871,7 +878,7 @@ function Invoke-SelfTest
 
     & $check (@($report.splitOs.data).Count -eq 2 -and $report.splitOs.data[0].key -eq 'Win10' -and $report.splitOs.data[1].activation7dPct -eq 25.0) 'OS split'
     & $check ($report.splitMinor.data[0].key -eq '6.7') 'minor split'
-    & $check ($report.funnel.data.neverActivated -eq 590 -and $report.funnel.data.allSnipsCancelled -eq 12) 'funnel'
+    & $check ($report.funnel.data.neverActivated -eq 590 -and $report.funnel.data.allSnipsCancelled -eq 12 -and $report.funnel.data.closedWithoutOutput -eq 30 -and $report.funnel.data.annotatedBeforeClosing -eq 18) 'funnel'
     & $check ($report.retention.data.days2PlusPct -eq 50.0 -and $report.retention.data.span30Plus -eq 20) 'retention'
     & $check ($report.onboarding.ok -and -not $report.onboarding.data.hasData) 'absent onboarding events mean no data yet'
     $snipFixture = '{"tables":[{"name":"PrimaryResult","columns":[{"name":"snipInstalls","type":"long"},{"name":"capturedInstalls","type":"long"},{"name":"firstCaptureInstalls","type":"long"},{"name":"engagedNoCaptureInstalls","type":"long"},{"name":"cancelledInstalls","type":"long"}],"rows":[[9,1,1,3,1]]}]}' | ConvertFrom-Json

@@ -9,6 +9,7 @@ public enum TelemetryChannel
 public static class TelemetryPropertyKeys
 {
     public const string Action = "action";
+    public const string Annotated = "annotated";
     public const string AnnotationInputState = "annotation_input_state";
     public const string AnnotationTool = "annotation_tool";
     public const string AppSection = "app_section";
@@ -60,6 +61,7 @@ public static class TelemetryEvents
     public const string AppHeartbeat = "app_heartbeat";
     public const string AppStarted = "app_started";
     public const string BeautifyOpened = "beautify_opened";
+    public const string CaptureClosed = "capture_closed";
     public const string CaptureCompleted = "capture_completed";
     public const string CaptureDelayUsed = "capture_delay_used";
     public const string CapturePinned = "capture_pinned";
@@ -164,6 +166,7 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.AppHeartbeat] = Diagnostic(TelemetryEvents.AppHeartbeat, TelemetryPropertyKeys.UptimeMinutes),
             [TelemetryEvents.AppStarted] = Product(TelemetryEvents.AppStarted, TelemetryPropertyKeys.OsBuild, TelemetryPropertyKeys.ScreenCount),
             [TelemetryEvents.BeautifyOpened] = Product(TelemetryEvents.BeautifyOpened),
+            [TelemetryEvents.CaptureClosed] = Product(TelemetryEvents.CaptureClosed, TelemetryPropertyKeys.Annotated),
             [TelemetryEvents.CaptureCompleted] = Product(TelemetryEvents.CaptureCompleted, TelemetryPropertyKeys.Action),
             [TelemetryEvents.CaptureDelayUsed] = Product(TelemetryEvents.CaptureDelayUsed, TelemetryPropertyKeys.DelaySeconds),
             [TelemetryEvents.CapturePinned] = Product(TelemetryEvents.CapturePinned),

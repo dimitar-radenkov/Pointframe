@@ -293,6 +293,8 @@ public partial class AnnotationViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(RedoCommand))]
     private int _redoCount;
 
+    public bool HasCommittedAnnotations { get; private set; }
+
     public void BeginGroup() => _currentGroup = [];
 
     public void CommitGroup()
@@ -303,6 +305,7 @@ public partial class AnnotationViewModel : ObservableObject
             _redoStack.Clear();
             UndoCount = _undoStack.Count;
             RedoCount = 0;
+            HasCommittedAnnotations = true;
             _committedToolCounts[SelectedTool] = _committedToolCounts.GetValueOrDefault(SelectedTool) + 1;
         }
 

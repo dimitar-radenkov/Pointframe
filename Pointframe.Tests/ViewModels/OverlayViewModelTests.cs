@@ -554,4 +554,207 @@ public sealed class OverlayViewModelTests
         // Assert
         Assert.True(raised);
     }
+
+    private sealed class ClosedHarness
+    {
+        public Mock<ITelemetryService> Telemetry { get; } = new();
+        public Mock<IEventAggregator> Aggregator { get; } = new();
+        public Mock<IShareService> Share { get; } = new();
+        public OverlayViewModel Vm { get; }
+        public int CloseRequests { get; private set; }
+
+        public ClosedHarness(bool annotating = true)
+        {
+            var settingsMock = new Mock<IUserSettingsService>();
+            settingsMock.SetupGet(s => s.Current).Returns(new UserSettings { ShareDestinationUrl = "https://upload.example" });
+            var fileSystem = new Mock<IFileSystemService>();
+            fileSystem.Setup(f => f.OpenWrite(It.IsAny<string>())).Returns(() => new MemoryStream());
+            fileSystem.Setup(f => f.CombinePath(It.IsAny<string>(), It.IsAny<string>())).Returns("snip.png");
+            Aggregator.Setup(a => a.Publish(It.IsAny<object>())).Returns(ValueTask.CompletedTask);
+            var capture = new Mock<IOverlayBitmapCapture>();
+            capture.Setup(c => c.ComposeBitmap()).Returns(CreateBitmap());
+            capture.Setup(c => c.ComposeBitmap(false)).Returns(CreateBitmap());
+            Vm = new OverlayViewModel(
+                new AnnotationGeometryService(),
+                NullLogger<OverlayViewModel>.Instance,
+                settingsMock.Object,
+                Mock.Of<IDialogService>(),
+                Mock.Of<IClipboardService>(),
+                fileSystem.Object,
+                Aggregator.Object,
+                Telemetry.Object,
+                Mock.Of<IScreenshotWatermarkService>(),
+                Share.Object);
+            Vm.SetBitmapCapture(capture.Object);
+            if (annotating)
+            {
+                Vm.CommitSelection(new Rect(0, 0, 100, 100));
+            }
+
+            // Stands in for OverlayWindow: CloseRequested closes the window, and OnClosed reports it.
+            Vm.CloseRequested += () =>
+            {
+                CloseRequests++;
+                Vm.ReportWindowClosed();
+            };
+        }
+
+        public void AddAnnotation()
+        {
+            Vm.BeginGroup();
+            Vm.TrackElement(new object());
+            Vm.CommitGroup();
+        }
+
+        public IEnumerable<IReadOnlyDictionary<string, string>?> ClosedEvents() =>
+            Telemetry.Invocations
+                .Where(i => i.Method.Name == nameof(ITelemetryService.TrackEvent) && (string)i.Arguments[0] == TelemetryEvents.CaptureClosed)
+                .Select(i => (IReadOnlyDictionary<string, string>?)i.Arguments[1]);
+
+        public IEnumerable<string> CompletedActions() =>
+            Aggregator.Invocations
+                .Where(i => i.Method.Name == nameof(IEventAggregator.Publish) && i.Arguments[0] is CaptureCompletedMessage)
+                .Select(i => ((CaptureCompletedMessage)i.Arguments[0]).CaptureAction);
+    }
+
+    [Fact]
+    public void CaptureClosed_AfterSelectionWithoutAnnotation_IsSentOnceWithAnnotatedFalse()
+    {
+        var harness = new ClosedHarness();
+
+        harness.Vm.CloseCommand.Execute(null);
+
+        var props = Assert.Single(harness.ClosedEvents());
+        Assert.Equal("false", props![TelemetryPropertyKeys.Annotated]);
+        Assert.Empty(harness.CompletedActions());
+    }
+
+    [Fact]
+    public void CaptureClosed_AfterAnnotation_IsSentOnceWithAnnotatedTrue()
+    {
+        var harness = new ClosedHarness();
+        harness.AddAnnotation();
+
+        harness.Vm.ReportWindowClosed();
+
+        var props = Assert.Single(harness.ClosedEvents());
+        Assert.Equal("true", props![TelemetryPropertyKeys.Annotated]);
+    }
+
+    [Fact]
+    public void CaptureClosed_StaysAnnotatedAfterUndo()
+    {
+        var harness = new ClosedHarness();
+        harness.AddAnnotation();
+        harness.Vm.UndoCommand.Execute(null);
+
+        harness.Vm.ReportWindowClosed();
+
+        Assert.Equal("true", Assert.Single(harness.ClosedEvents())![TelemetryPropertyKeys.Annotated]);
+    }
+
+    [Fact]
+    public void CaptureClosed_ClosingTwice_IsSentOnce()
+    {
+        var harness = new ClosedHarness();
+
+        harness.Vm.CloseCommand.Execute(null);
+        harness.Vm.CloseCommand.Execute(null);
+        harness.Vm.ReportWindowClosed();
+
+        Assert.Single(harness.ClosedEvents());
+        Assert.Equal(2, harness.CloseRequests);
+    }
+
+    [Fact]
+    public void CaptureClosed_WhenSelectionWasNeverCommitted_IsNotSent()
+    {
+        var harness = new ClosedHarness(annotating: false);
+
+        harness.Vm.CloseCommand.Execute(null);
+
+        Assert.Empty(harness.ClosedEvents());
+    }
+
+    [Fact]
+    public void CaptureClosed_AfterCopy_IsNotSentAndCopyIsPublished()
+    {
+        var harness = new ClosedHarness();
+
+        harness.Vm.CopyCommand.Execute(null);
+
+        Assert.Empty(harness.ClosedEvents());
+        Assert.Contains("copy", harness.CompletedActions());
+    }
+
+    [Fact]
+    public void CaptureClosed_AfterSave_IsNotSent()
+    {
+        var harness = new ClosedHarness();
+
+        harness.Vm.SaveCommand.Execute(null);
+
+        Assert.Empty(harness.ClosedEvents());
+        Assert.Equal("save", Assert.Single(harness.CompletedActions()));
+    }
+
+    [Fact]
+    public void CaptureClosed_AfterPin_IsNotSent()
+    {
+        var harness = new ClosedHarness();
+
+        harness.Vm.PinCommand.Execute(null);
+        harness.Vm.ReportWindowClosed();
+
+        Assert.Empty(harness.ClosedEvents());
+    }
+
+    [Fact]
+    public void CaptureClosed_AfterBeautify_IsNotSent()
+    {
+        var harness = new ClosedHarness();
+
+        harness.Vm.BeautifyCommand.Execute(null);
+        harness.Vm.ReportWindowClosed();
+
+        Assert.Empty(harness.ClosedEvents());
+    }
+
+    [Fact]
+    public void CaptureClosed_WhenClosingToStartARecording_IsNotSent()
+    {
+        var harness = new ClosedHarness();
+
+        harness.Vm.ReportWindowClosed(handedOffToRecording: true);
+
+        Assert.Empty(harness.ClosedEvents());
+    }
+
+    [Fact]
+    public async Task CaptureClosed_AfterSuccessfulUpload_IsNotSentAndUploadLinkIsPublished()
+    {
+        var harness = new ClosedHarness();
+        harness.Share.Setup(s => s.UploadAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ShareResult.Success("https://share.example/1"));
+
+        await harness.Vm.UploadAndCopyLinkCommand.ExecuteAsync(null);
+        harness.Vm.ReportWindowClosed();
+
+        Assert.Equal("upload_link", Assert.Single(harness.CompletedActions()));
+        Assert.Empty(harness.ClosedEvents());
+    }
+
+    [Fact]
+    public async Task UploadAndCopyLink_OnFailure_PublishesNothingAndStillCountsAsClosedWithoutOutput()
+    {
+        var harness = new ClosedHarness();
+        harness.Share.Setup(s => s.UploadAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ShareResult.Failed(ShareFailure.HttpStatus, 503));
+
+        await harness.Vm.UploadAndCopyLinkCommand.ExecuteAsync(null);
+        harness.Vm.ReportWindowClosed();
+
+        Assert.Empty(harness.CompletedActions());
+        Assert.Single(harness.ClosedEvents());
+    }
 }

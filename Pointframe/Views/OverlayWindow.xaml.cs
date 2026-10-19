@@ -338,6 +338,7 @@ public partial class OverlayWindow : Window
         _undoSubscription.Dispose();
         _redoSubscription.Dispose();
         _vm.FlushAnnotationTelemetry();
+        _vm.ReportWindowClosed(_closeLeavesRecorderRunning);
 
         if (!_closeLeavesRecorderRunning && _recorder.IsRecording)
         {
