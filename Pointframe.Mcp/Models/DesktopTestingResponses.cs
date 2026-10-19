@@ -79,7 +79,8 @@ public sealed record DesktopUiAuditCoverageResponse(
     IReadOnlyDictionary<string, int> ElementsSkipped,
     string OcrAvailable,
     bool UiaTruncated,
-    string UiaStatus);
+    string UiaStatus,
+    int OcrLinesSuppressedAsUserContent);
 
 public sealed record DesktopUiAuditResponse(
     int SchemaVersion,

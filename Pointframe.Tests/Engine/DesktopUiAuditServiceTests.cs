@@ -224,6 +224,18 @@ public sealed class DesktopUiAuditServiceTests
     }
 
     [Fact]
+    public void PlaceholderText_LongOcrEvidenceClipsAroundActualMatchAfterEarlierLookalike()
+    {
+        var longLine = "TODOS " + new string('A', 201) + " TODO";
+        var finding = Assert.Single(Audit(new DesktopObservationOcrResult("image-1", longLine)).Findings);
+
+        Assert.Equal("TODO", finding.MatchedToken);
+        Assert.Contains("TODO", finding.OcrLine);
+        Assert.EndsWith("TODO", finding.OcrLine);
+        Assert.DoesNotContain("TODOS", finding.OcrLine);
+    }
+
+    [Fact]
     public void PlaceholderText_OcrNullAndUndefined_OnlyCountAsWholeLines()
     {
         var ocr = new DesktopObservationOcrResult("image-1", "value is null here\nundefined\nnull pointer");

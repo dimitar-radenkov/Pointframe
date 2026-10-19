@@ -202,6 +202,22 @@ public sealed class DesktopUiAuditToolTests
     }
 
     [Fact]
+    public async Task AuditUi_SerializedResponse_IncludesOcrSuppressionCoverage()
+    {
+        var observation = Save(
+            "observation-a",
+            Process,
+            new DesktopObservationOcrResult("image-9", "TODO buy milk"),
+            Element("e1", "", role: "Edit") with { Text = "TODO buy milk" });
+
+        var response = await _tools.AuditUiAsync(SessionId, observation);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        Assert.Equal(1, document.RootElement.GetProperty("coverage").GetProperty("ocrLinesSuppressedAsUserContent").GetInt32());
+        Assert.Empty(response.Findings);
+    }
+
+    [Fact]
     public async Task AuditUi_OcrOnlyMatch_ReportsImageRefAndOcrLine()
     {
         var observation = Save(

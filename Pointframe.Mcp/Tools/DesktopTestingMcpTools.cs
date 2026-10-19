@@ -324,7 +324,8 @@ internal sealed class DesktopTestingMcpTools(
                 coverage.ElementsSkipped,
                 coverage.OcrAvailable,
                 coverage.UiaTruncated,
-                coverage.UiaStatus));
+                coverage.UiaStatus,
+                coverage.OcrLinesSuppressedAsUserContent));
     }
 
     private static DesktopUiAuditResponse AuditError(string observationRef, string code, string message, string? sessionId) =>

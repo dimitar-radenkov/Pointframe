@@ -68,16 +68,17 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
             var best = new Dictionary<string, (string Field, string Text, bool Whole)>(StringComparer.Ordinal);
             foreach (var (field, text) in new[] { ("name", element.Name), ("text", element.Text) })
             {
-                foreach (var (token, whole) in FindTokens(text))
+                foreach (var match in FindTokens(text))
                 {
+                    var token = match.Token;
                     if (!best.TryGetValue(token, out var current))
                     {
                         order.Add(token);
-                        best[token] = (field, text!, whole);
+                        best[token] = (field, text!, match.Whole);
                     }
-                    else if (whole && !current.Whole)
+                    else if (match.Whole && !current.Whole)
                     {
-                        best[token] = (field, text!, whole);
+                        best[token] = (field, text!, match.Whole);
                     }
                 }
             }
@@ -124,8 +125,9 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
                     continue;
                 }
 
-                foreach (var (token, _) in FindTokens(normalizedLine))
+                foreach (var match in FindTokens(normalizedLine))
                 {
+                    var token = match.Token;
                     if (uiTokens.Contains(token) || !seen.Add((token, normalizedLine.ToUpperInvariant())))
                     {
                         continue;
@@ -138,9 +140,9 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
                         DesktopUiAuditConfidence.Low,
                         DesktopUiAuditSource.Ocr,
                         token,
-                        $"OCR text contains the placeholder \"{token}\" with no matching UI Automation text: \"{OcrEvidence(normalizedLine, token)}\".",
+                        $"OCR text contains the placeholder \"{token}\" with no matching UI Automation text: \"{OcrEvidence(normalizedLine, match.Index, match.Length)}\".",
                         ImageRef: ocr.ImageRef,
-                        OcrLine: OcrEvidence(normalizedLine, token)));
+                        OcrLine: OcrEvidence(normalizedLine, match.Index, match.Length)));
                 }
             }
         }
@@ -148,7 +150,7 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
         return new DesktopUiAuditRuleOutput(findings, inspected, skipped, suppressedOcrLines);
     }
 
-    private static IEnumerable<(string Token, bool Whole)> FindTokens(string? text)
+    private static IEnumerable<TokenMatch> FindTokens(string? text)
     {
         var normalized = Normalize(text);
         if (normalized.Length == 0)
@@ -160,7 +162,7 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
         {
             foreach (Match match in token.Pattern.Matches(normalized))
             {
-                yield return (token.Display ?? match.Value, match.Length == normalized.Length);
+                yield return new TokenMatch(token.Display ?? match.Value, match.Length == normalized.Length, match.Index, match.Length);
             }
         }
     }
@@ -171,20 +173,14 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
     private static string Truncate(string text) =>
         text.Length <= MaxEvidenceLength ? text : text[..MaxEvidenceLength] + "...";
 
-    private static string OcrEvidence(string line, string token)
+    private static string OcrEvidence(string line, int matchIndex, int matchLength)
     {
         if (line.Length <= MaxEvidenceLength)
         {
             return line;
         }
 
-        var index = line.IndexOf(token, StringComparison.OrdinalIgnoreCase);
-        if (index < 0)
-        {
-            return Truncate(line);
-        }
-
-        var start = Math.Max(0, index - (MaxEvidenceLength - token.Length) / 2);
+        var start = Math.Max(0, matchIndex - (MaxEvidenceLength - matchLength) / 2);
         var end = Math.Min(line.Length, start + MaxEvidenceLength);
         start = Math.Max(0, end - MaxEvidenceLength);
         return (start > 0 ? "..." : string.Empty) + line[start..end] + (end < line.Length ? "..." : string.Empty);
@@ -194,4 +190,5 @@ public sealed class PlaceholderTextAuditRule : IDesktopUiAuditRule
         skipped[reason] = skipped.GetValueOrDefault(reason) + 1;
 
     private sealed record PlaceholderToken(string? Display, Regex Pattern);
+    private sealed record TokenMatch(string Token, bool Whole, int Index, int Length);
 }
