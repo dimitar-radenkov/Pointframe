@@ -61,13 +61,15 @@ function Get-ScriptsChange
 
     $diff = @(& git -C $repoRoot diff --name-only $mergeBase -- scripts 2>$null | Where-Object { $_ })
     if ($LASTEXITCODE -ne 0) { return $null }
+    $staged = @(& git -C $repoRoot diff --cached --name-only $mergeBase -- scripts 2>$null | Where-Object { $_ })
+    if ($LASTEXITCODE -ne 0) { return $null }
     $untracked = @(& git -C $repoRoot ls-files --others --exclude-standard -- scripts 2>$null | Where-Object { $_ })
     if ($LASTEXITCODE -ne 0) { return $null }
 
     $shortOut = @(& git -C $repoRoot rev-parse --short $mergeBase 2>$null)
     $short = if ($LASTEXITCODE -eq 0) { "$(@($shortOut | Where-Object { "$_".Trim() })[0])".Trim() } else { '' }
     if (-not $short) { $short = $mergeBase }
-    return @{ Changed = (($diff.Count + $untracked.Count) -gt 0); Base = $short }
+    return @{ Changed = (($diff.Count + $staged.Count + $untracked.Count) -gt 0); Base = $short }
 }
 
 $scriptsChange = $null
@@ -114,16 +116,17 @@ foreach ($name in $SelfTestScripts)
     $ran++
 }
 
+$skippedText = if ($skipped -gt 0) { "$skipped skipped (no scripts/ change)" } else { '0 skipped' }
+
 if ($failures.Count -gt 0)
 {
     foreach ($failure in $failures)
     {
         Write-Host "FAIL  $failure"
     }
-    Write-Host "Script self-tests: $($failures.Count) problem(s)."
+    Write-Host "Script self-tests: $($failures.Count) problem(s), $ran scripts passed, $skippedText."
     exit 1
 }
 
-$skippedText = if ($skipped -gt 0) { ", $skipped skipped (no scripts/ change)" } else { '' }
-Write-Host "Script self-tests: $ran scripts passed$skippedText, every fixture is tracked."
+Write-Host "Script self-tests: $ran scripts passed, $skippedText, every fixture is tracked."
 exit 0
