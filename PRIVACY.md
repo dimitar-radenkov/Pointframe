@@ -68,7 +68,8 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 | `snip_cancelled` | `type` (region / whole_screen / scrolling) |
 | `scrolling_capture_completed` | `count` (frames captured), `stop_reason` (end_of_content / no_overlap / frame_limit / height_limit) |
 | `capture_delay_used` | `delay_seconds` |
-| `capture_completed` | `action` (copy / save / save_as / auto_save) |
+| `capture_completed` | `action` (copy / save / save_as / auto_save / upload_link) |
+| `capture_closed` | `annotated` (true / false; sent when a capture is closed without copying, saving or uploading it) |
 | `capture_pinned` | — |
 | `first_capture_completed` | `capture_type`, `first_action`, `time_from_install_minutes` when available |
 | `open_image_used` | — |

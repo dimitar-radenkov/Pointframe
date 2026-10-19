@@ -44,6 +44,15 @@ public sealed class TelemetryEventCatalogTests
     }
 
     [Fact]
+    public void CaptureClosed_IsAProductEventWithRequiredAnnotated()
+    {
+        Assert.True(TelemetryEventCatalog.TryGetDefinition(TelemetryEvents.CaptureClosed, out var definition));
+        Assert.Equal(TelemetryChannel.Product, definition!.Channel);
+        Assert.Equal([TelemetryPropertyKeys.Annotated], definition.RequiredProperties);
+        Assert.Empty(definition.OptionalProperties);
+    }
+
+    [Fact]
     public void Catalog_EveryDefinitionIsReachableByItsOwnName()
     {
         // Guards the dictionary literal against [TelemetryEvents.A] = Product(TelemetryEvents.B).
