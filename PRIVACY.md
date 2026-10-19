@@ -2,7 +2,7 @@
 
 ## Privacy Policy
 
-This policy covers the Pointframe desktop app, the Pointframe CLI, and the Pointframe MCP server. The same text is published at <https://dimitar-radenkov.github.io/Pointframe/privacy.html>.
+This policy covers the Pointframe desktop app, the Pointframe CLI, the Pointframe MCP server, and this website. The same text is published at <https://dimitar-radenkov.github.io/Pointframe/privacy.html>.
 
 **Data collection.** Pointframe is free, open source, and needs no account. Screenshots, recordings, OCR text, file names, and file paths are never collected by the project. They stay on your machine under `%LOCALAPPDATA%\Pointframe`, apart from what you choose to send somewhere yourself: an MCP capture tool returns the image to your MCP client (pass `includeImage: false` to return metadata only), and Upload & copy link sends one capture to the HTTPS destination you configured.
 
@@ -24,9 +24,19 @@ No arguments, paths, screenshots, text, error messages, user names, or machine n
 
 **Desktop app telemetry.** Official installer builds also send the usage telemetry described in [Privacy & Telemetry](#privacy--telemetry) below, including a random install ID. The desktop app has no in-app telemetry switch; the opt-out above applies to the CLI and the MCP server only.
 
+**This website.** The pages of this website at dimitar-radenkov.github.io/Pointframe, except the Screen Explainer pages, load a small script that measures how the site is used. It sends these data to Azure Application Insights:
+
+- Page views are recorded with the Application Insights JavaScript SDK's standard page-view and page-load timing data; see [Microsoft's documentation](https://learn.microsoft.com/azure/azure-monitor/app/javascript-sdk). Because the site turns off the library's cookies and storage, the random identifiers the library attaches to each page view are created anew on every page load and cannot link one visit to the next.
+- The event `website_session_started`, sent once per browser tab session, with the referring page and the browser's user agent.
+- The event `website_cta_clicked`, sent when you click a tracked button or link such as Download, with the button's type and location on the page and the address it links to.
+- The events `winget_command_copied` and `winget_command_copy_failed`, sent when you use the copy button for the install command, with the package manager and the command shown.
+- The page path and address, a timestamp, and the UTM campaign parameters (`utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`) when the address you arrived on carries them.
+
+The site configures the analytics library not to set cookies and not to use browser storage, and the site's own code sets no cookies and writes nothing to local storage. The only thing the site's own code keeps in the browser is, in the tab's session storage, a random session ID created by your browser, a marker that this tab's visit was already counted, and, when the address you arrived on carries UTM parameters, the attribution of the visit (those UTM parameters, the landing page path, the time it was first seen, and the referring page); the browser deletes them when the tab closes. The session ID is not tied to your name or account and lets the project count how many visits it sees. An earlier version of the site kept an event log and campaign parameters in local storage; the site now deletes those two entries when you visit. These data go to the same Application Insights resource as the telemetry above, under the Third-party sharing and Retention terms below. The Screen Explainer pages load no scripts. To avoid website measurement, block scripts for this site or use a tracker blocker; the site works without them.
+
 **Third-party sharing.** Telemetry goes to Microsoft Azure Application Insights, which acts as a processor on the project's behalf. Application Insights receives the IP address of the connection, derives a coarse country and city from it, and stores the address masked (IP masking is on); the exporter attaches no host name, user name, or other machine details. Nothing is sold or shared with anyone else.
 
-**Retention.** Telemetry is kept in the project's Application Insights resource under Application Insights' default retention (90 days unless the maintainer changes the resource setting) and is used only to see which tools and commands are used and whether they fail. Local files stay until you delete them.
+**Retention.** Telemetry is kept in the project's Application Insights resource under Application Insights' default retention (90 days unless the maintainer changes the resource setting) and is used only to see which tools and commands are used and whether they fail, and how visitors use this website. Local files stay until you delete them.
 
 **Contact.** Questions, deletion requests, and privacy concerns: open an issue at <https://github.com/dimitar-radenkov/Pointframe/issues>.
 

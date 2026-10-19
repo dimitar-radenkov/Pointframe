@@ -43,20 +43,21 @@ export function createAnalytics() {
         return properties;
     };
 
-    const readStoredEvents = () => {
+    const sessionEvents = [];
+
+    const clearLegacyLocalStorage = () => {
         try {
-            const raw = window.localStorage.getItem(EVENT_STORAGE_KEY);
-            const events = raw ? JSON.parse(raw) : [];
-            return Array.isArray(events) ? events : [];
+            window.localStorage.removeItem(EVENT_STORAGE_KEY);
+            window.localStorage.removeItem(ATTRIBUTION_STORAGE_KEY);
         }
         catch {
-            return [];
+            // No-op: storage may be unavailable.
         }
     };
 
     const readStoredAttribution = () => {
         try {
-            const raw = window.localStorage.getItem(ATTRIBUTION_STORAGE_KEY);
+            const raw = window.sessionStorage.getItem(ATTRIBUTION_STORAGE_KEY);
 
             if (!raw) {
                 return {};
@@ -75,7 +76,7 @@ export function createAnalytics() {
             return;
         }
 
-        const events = readStoredEvents();
+        const events = sessionEvents;
         const recentEvents = events.slice(-6);
         const attributionSnapshot = readStoredAttribution();
 
@@ -120,7 +121,7 @@ export function createAnalytics() {
                 <span style="color:#93c5fd;">?${DEBUG_QUERY_KEY}=1</span>
             </div>
             <div style="margin-bottom:4px;">App Insights: <span data-pf-debug="status">${appInsightsStatus}</span></div>
-            <div style="margin-bottom:4px;">Events stored: <span data-pf-debug="count">0</span></div>
+            <div style="margin-bottom:4px;">Events this tab: <span data-pf-debug="count">0</span></div>
             <div style="margin-bottom:8px;">Attribution: <span data-pf-debug="attribution">none</span></div>
             <div style="display:flex;gap:8px;margin-bottom:8px;">
                 <button type="button" data-pf-debug="copy" style="padding:4px 8px;border:1px solid rgba(255,255,255,0.25);background:rgba(31,41,55,0.9);color:#f3f4f6;border-radius:6px;cursor:pointer;">Copy JSON</button>
@@ -143,7 +144,7 @@ export function createAnalytics() {
             try {
                 const payload = {
                     attribution: readStoredAttribution(),
-                    events: readStoredEvents()
+                    events: sessionEvents
                 };
                 await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
             }
@@ -153,13 +154,7 @@ export function createAnalytics() {
         });
 
         clearButton?.addEventListener("click", () => {
-            try {
-                window.localStorage.setItem(EVENT_STORAGE_KEY, JSON.stringify([]));
-            }
-            catch {
-                // No-op in debug tool.
-            }
-
+            sessionEvents.length = 0;
             updateDebugOverlay();
         });
 
@@ -229,7 +224,11 @@ export function createAnalytics() {
 
                 const init = new aiRoot.ApplicationInsights({
                     config: {
-                        connectionString: APP_INSIGHTS_CONNECTION_STRING
+                        connectionString: APP_INSIGHTS_CONNECTION_STRING,
+                        // The site keeps no analytics data in the browser beyond the tab's session ID.
+                        disableCookiesUsage: true,
+                        isStorageUseDisabled: true,
+                        enableSessionStorageBuffer: false
                     }
                 });
 
@@ -268,12 +267,14 @@ export function createAnalytics() {
 
     const writeStoredAttribution = (attribution) => {
         try {
-            window.localStorage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(attribution));
+            window.sessionStorage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(attribution));
         }
         catch {
-            // No-op: analytics storage should never block user interaction.
+            // No-op: session storage should never block user interaction.
         }
     };
+
+    clearLegacyLocalStorage();
 
     const utmFromUrl = parseUtmParams();
     const storedAttribution = readStoredAttribution();
@@ -309,20 +310,11 @@ export function createAnalytics() {
         }
     })();
 
-    const persistEvent = (payload) => {
-        try {
-            const raw = window.localStorage.getItem(EVENT_STORAGE_KEY);
-            const events = raw ? JSON.parse(raw) : [];
+    const recordEvent = (payload) => {
+        sessionEvents.push(payload);
 
-            if (!Array.isArray(events)) {
-                return;
-            }
-
-            events.push(payload);
-            window.localStorage.setItem(EVENT_STORAGE_KEY, JSON.stringify(events.slice(-100)));
-        }
-        catch {
-            // No-op for local persistence failures.
+        if (sessionEvents.length > 100) {
+            sessionEvents.shift();
         }
     };
 
@@ -339,7 +331,7 @@ export function createAnalytics() {
 
         window.dataLayer = window.dataLayer || [];
         window.dataLayer.push(payload);
-        persistEvent(payload);
+        recordEvent(payload);
         sendToAppInsights(payload);
         updateDebugOverlay();
         return payload;
