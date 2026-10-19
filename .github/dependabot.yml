@@ -9,6 +9,11 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    groups:
+      dotnet-servicing:
+        patterns:
+          - "Microsoft.EntityFrameworkCore*"
+          - "Microsoft.Extensions*"
 
   # Keep GitHub Actions up to date
   - package-ecosystem: github-actions
