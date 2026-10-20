@@ -1,0 +1,32 @@
+name: Good linux
+on: push
+jobs:
+  matrix-job:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sample: [dotnet, node]
+    steps:
+      - name: Default shell on ubuntu is bash
+        run: echo "$TAG: ${{ matrix.sample }}"
+
+      - name: Explicit pwsh with strip chomping
+        shell: pwsh
+        run: |-
+          Copy-Item "samples/${{ matrix.sample }}" $project -Recurse
+
+  defaults-job:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Job default pwsh
+        run: |
+          $x = 1
+          Write-Host "x: ${x}"
+      - name: Second job default pwsh
+        run: Write-Host ok
+      - name: Override back to bash
+        shell: bash
+        run: while read -r l; do echo "$l:"; done < /dev/null

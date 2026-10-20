@@ -148,6 +148,10 @@
         },
         "handoff": {
           "$ref": "#/definitions/path"
+        },
+        "accountable": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -163,7 +167,8 @@
           "uniqueItems": true,
           "items": {
             "type": "string"
-          }
+          },
+          "minItems": 1
         }
       }
     },
@@ -207,9 +212,50 @@
             "items": {
               "type": "string"
             }
+          },
+          "gate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "log": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$"
+          },
+          "parser": {
+            "enum": [
+              "exit-code",
+              "dotnet-build",
+              "dotnet-format",
+              "dotnet-test"
+            ]
+          },
+          "passSummary": {
+            "type": "string"
+          },
+          "failSummary": {
+            "type": "string"
+          },
+          "fixHint": {
+            "type": "string"
+          },
+          "detailPattern": {
+            "type": "string",
+            "minLength": 1
+          },
+          "resultFile": {
+            "$ref": "#/definitions/path"
+          },
+          "filterFlag": {
+            "type": "string",
+            "minLength": 1
+          },
+          "continueOnFail": {
+            "type": "boolean"
           }
         }
-      }
+      },
+      "minItems": 1
     },
     "roles": {
       "additionalProperties": false,
@@ -406,6 +452,59 @@
           "items": {
             "$ref": "#/definitions/path"
           }
+        }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "outputDir": {
+          "$ref": "#/definitions/path"
+        },
+        "maxDetails": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "preflight": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "lockDirs"
+          ],
+          "properties": {
+            "lockDirs": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/definitions/path"
+              }
+            }
+          }
+        },
+        "doctor": {
+          "type": "boolean"
+        }
+      }
+    },
+    "agentRuns": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "log": {
+          "$ref": "#/definitions/path"
+        },
+        "maxMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440
+        },
+        "maxInputTokens": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     }

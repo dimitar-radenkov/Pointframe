@@ -1,0 +1,1 @@
+{"receipt":{"status":"fail","complete":false,"head":"head-a","treeHash":"tree-a"},"expect":{"ok":false,"reason":"not pass"}}

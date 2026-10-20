@@ -1,0 +1,32 @@
+{
+  "pr": {
+    "state": "OPEN",
+    "mergeable": "MERGEABLE",
+    "mergeStateStatus": "CLEAN",
+    "headRefOid": "aaa111"
+  },
+  "checks": [
+    {
+      "name": "unit-tests",
+      "bucket": "pass"
+    },
+    {
+      "name": "CodeQL",
+      "bucket": "pass"
+    },
+    {
+      "name": "Analyze (csharp)",
+      "bucket": "pass"
+    },
+    {
+      "name": "auto-merge",
+      "bucket": "skipping"
+    }
+  ],
+  "expectAuto": {
+    "action": "Enable"
+  },
+  "expect": {
+    "action": "Merge"
+  }
+}

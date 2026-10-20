@@ -1,0 +1,1 @@
+{"receipt":{"status":"pass","complete":true,"filter":null,"head":"head-a","treeHash":"tree-a","environment":{"dotnet":"8.0.1","pwsh":"7.4.1","verifySha256":"abc"}},"expect":{"ok":true,"reason":""}}

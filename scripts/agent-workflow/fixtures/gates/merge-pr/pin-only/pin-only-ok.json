@@ -1,0 +1,1 @@
+{"receipt":{"status":"pass","complete":true,"head":"v1","treeHash":"tree-v1"},"verifiedCommitTree":"tree-v1","isAncestor":true,"headTree":"tree-h","currentTree":"tree-h","changed":["vendor/pin/lock.json","vendor/pin/manifest.json"],"expect":{"ok":true,"reason":"only the plugin pin"}}

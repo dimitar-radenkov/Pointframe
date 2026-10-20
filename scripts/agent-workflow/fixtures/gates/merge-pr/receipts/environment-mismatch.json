@@ -1,0 +1,1 @@
+{"receipt":{"status":"pass","complete":true,"head":"head-a","treeHash":"tree-a","environment":{"dotnet":"10.0.100","pwsh":"7.5.0","verifySha256":"old"}},"environment":{"dotnet":"10.0.100","pwsh":"7.5.0","verifySha256":"new"},"expect":{"ok":false,"reason":"environment mismatch (verifySha256)"}}

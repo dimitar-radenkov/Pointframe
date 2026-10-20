@@ -1,7 +1,0 @@
-{
-  "record": null,
-  "expect": {
-    "ok": false,
-    "reason": "refused"
-  }
-}
