@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "source": "10252afdf58cd0d6b986537df115bde3e4945c2b",
-  "tag": "v0.4.0",
-  "commit": "100e09a2306a6d706baaa423b441473779b57a81",
-  "manifestSha256": "12d84c63fa9a9441365d98807ebe0936135ff0eead5defa3d8293c5557f68b4c",
+  "tag": "v0.4.1",
+  "commit": "a1aeb9e92bbdbc9f6718e17afe84bf709d92c786",
+  "manifestSha256": "9c1c83f0b7ca7b7d7193f495fe52b8c1a8ef995f72306527f5ae034f5da618e3",
   "files": {
     "fixtures/gates/agent-run/complete.md": "5588620c0a4e77b0feb6c39814237d23e1bd7618b8537709b5af8c2375878467",
     "fixtures/gates/agent-run/events.jsonl": "d9c21692f81f3faea91ecf499c3004db45f1337a87dd931ddfb9580ca9ea756c",
@@ -87,7 +87,7 @@
     "lib/root.ps1": "21cbd0588e6878a64512f254c377aa213820f4fc63ac0717bc86eba020e03821",
     "lib/selftest.ps1": "d8027d24da9c90a7c0ac061c08b0e23cca7d2eaa9b198ba08eb9962dae4d975a",
     "lib/tree-hash.ps1": "5462f4377ff9cb806004fe812347fbfd72a6da453240d581d7b4941574b56423",
-    "review/package-review-prompt.txt": "7c924d9788d5490b2219e406052b3687fbfd5217fd60d0f8d5a3067d6e10e013",
+    "review/package-review-prompt.txt": "cb7ac90d1fdd3ab5069f4ed9dbdd8688c930a0a02469012dd0e743d73e87537f",
     "review/package-verdict.schema.json": "2d91dec485dcb624e44ff02fdb94ccd41f53672d9de5fe904a96780f0d6fe3fb",
     "schema/agent-workflow.schema.json": "4932766319a5c9cc64d2fbb2e00862ad23afc9615903586bc4b14291164908eb",
     "skills/kb-check/SKILL.md": "43b6f36b0784cc0f173474bef12cc4ef165d7e3aff77fd476a68664c0ae53c8f",
@@ -102,10 +102,10 @@
     "tools/install.ps1": "7f606e8770baa84ef852c2d57bb75fef7117aef6b8615e7af6dddfe99839af93",
     "tools/kb.ps1": "7b0be3f986e95a53be64f56f202a9b7a0fb3bad8389b1030dce41188751f9869",
     "tools/merge-pr.ps1": "f5c933ee38bf1c40f9afa8ae859d8406a9379beb847bdc6037a5a4eef95c935b",
-    "tools/package.ps1": "26d5f1698afd8fc96281d0d334572112126381bb93d35247d42f2410f72464f8",
+    "tools/package.ps1": "7d69ac7e14bfb67ed9ac9d120a10b858d453f06d067503f2c14a70ec7cc75144",
     "tools/record-review.ps1": "bc5e6e9a342b250ae3ab43e4bd1f2f20741232679eadcd35db9cb336b1c386fc",
     "tools/status.ps1": "8dd892f33e2cea5b9fef7768d5f93aa3cc00fb83f1d6bc0e5e515d8552895ef4",
     "tools/verify.ps1": "ea3bd6eb8282cb497109564e2831bed6c76e420f87363b97fdb77775bc4dd6b3",
-    "workflow/workflow.template.md": "b8f21d201978c3e124edadce7ea0d7bdcb34cef7472473d83964cf14106e7886"
+    "workflow/workflow.template.md": "00c83055707354f24a32e47712f250f0ada79c142ba95cf66839dd15821a36e2"
   }
 }

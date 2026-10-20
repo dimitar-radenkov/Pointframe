@@ -106,7 +106,7 @@ Every behavior change gets an independent review from a different agent than its
 | Small-fix exception | All four small-fix conditions hold | The coordinator; logged and counted in the report |
 
 <!-- rule:W-19 roles=coordinator,reviewer -->
-- **Independence.** The reviewer gets the brief, the criteria, and the paths, not the executor's or the coordinator's opinion. The reviewer relies on the coordinator's verify receipt bound to the same head and tree and does not re-run the long suites; it runs targeted risk checks (refusals, tamper, reproductions of findings) and returns PASS or FAIL per criterion with evidence, plus what it could not check.
+- **Independence.** The reviewer gets the brief, the criteria, and the paths, not the executor's or the coordinator's opinion. The reviewer relies on the coordinator's verify receipt after confirming its head and tree equal the reviewed ones (without such a receipt the affected criteria are not-checked), does not re-run the long suites, and runs targeted risk checks (refusals, tamper, reproductions of findings); it returns PASS or FAIL per criterion with evidence, plus what it could not check.
 - **Consequences, not locations.** Heavy review follows what a change can break, not the directory. {{slot:consequences-examples}}
 {{slot:model-rule-note?}}
 <!-- rule:W-20 roles=coordinator -->
