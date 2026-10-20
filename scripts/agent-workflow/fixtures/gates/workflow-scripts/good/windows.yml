@@ -1,0 +1,27 @@
+name: Good windows
+on: push
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Default shell on windows is pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          if ($tag -eq '') { throw "Could not check release ${tag}: ${{ github.sha }}" }
+          Write-Host "tag: ${{ github.ref }} done"
+
+      - name: Folded block
+        shell: pwsh
+        run: >
+          Write-Host
+          "folded ${{ github.run_id }}"
+
+      - name: Single line
+        run: Write-Host "single ${{ github.ref }}"
+
+      - name: Bash block is not parsed as PowerShell
+        shell: bash
+        run: |
+          if [ -n "$TAG" ]; then echo "$TAG: ${{ github.sha }}"; fi

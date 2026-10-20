@@ -854,10 +854,10 @@ function Test-ClaudePluginRepository([string]$Root, [System.Collections.Generic.
     {
         Add-Problem $Problems "ci.yml does not ignore master pushes that change only plugin/**; a plugin-only merge would cut a release."
     }
-    $merge = Read-RepoFile $Root 'scripts/merge-pr.ps1'
+    $merge = Read-RepoFile $Root 'docs/knowledge-base/hooks/pin.ps1'
     if ($null -eq $merge -or -not $merge.Contains('update-plugin-pin.ps1') -or -not $merge.Contains('function Update-PluginPin'))
     {
-        Add-Problem $Problems 'scripts/merge-pr.ps1 no longer pins the Claude plugin to the latest release (Update-PluginPin calling update-plugin-pin.ps1).'
+        Add-Problem $Problems 'docs/knowledge-base/hooks/pin.ps1 no longer pins the Claude plugin to the latest release (Update-PluginPin calling update-plugin-pin.ps1).'
     }
     $draft = Read-RepoFile $Root 'packaging/directory-submissions/claude-plugin-directory.txt'
     if ($null -eq $draft)

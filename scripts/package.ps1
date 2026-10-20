@@ -143,10 +143,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'lib/process-tree.ps1')
-. (Join-Path $PSScriptRoot 'lib/codex.ps1')
-. (Join-Path $PSScriptRoot 'lib/tree-hash.ps1')
-. (Join-Path $PSScriptRoot 'lib/review-record.ps1')
+. (Join-Path $PSScriptRoot 'agent-workflow/lib/process-tree.ps1')
+. (Join-Path $PSScriptRoot 'agent-workflow/lib/codex.ps1')
+. (Join-Path $PSScriptRoot 'agent-workflow/lib/tree-hash.ps1')
+. (Join-Path $PSScriptRoot 'agent-workflow/lib/review-record.ps1')
 
 $SchemaVersion = 1
 $script:RepairLimit = 3
@@ -749,7 +749,7 @@ function Get-ClaudeCliVersion($Launcher)
     # The probe is a child like any other: inside a job, stdin closed, bounded by -ProbeSeconds, killed with its tree.
     Assert-SelfTestLauncher $Launcher
     Initialize-ProcessJob
-    $job = [PointframeProcessJob]::Create()
+    $job = [AwProcessJob]::Create()
     if ($job -eq [IntPtr]::Zero) { return $null }
     $base = Join-Path ([IO.Path]::GetTempPath()) "claude-version-$([guid]::NewGuid().ToString('N'))"
     $process = $null
@@ -784,8 +784,8 @@ function Get-ClaudeCliVersion($Launcher)
     finally
     {
         Stop-ProcessJob $job 5 | Out-Null
-        if ($process) { [PointframeProcessJob]::CloseProcess($process.Handle) }
-        [PointframeProcessJob]::Close($job)
+        if ($process) { [AwProcessJob]::CloseProcess($process.Handle) }
+        [AwProcessJob]::Close($job)
         Remove-Item -LiteralPath "$base.out", "$base.err" -Force -ErrorAction SilentlyContinue
     }
     $null
@@ -1565,7 +1565,7 @@ function Invoke-RunCore
     New-Item -ItemType Directory -Path $runDir -Force | Out-Null
     Initialize-ProcessJob
     $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-    $job = [PointframeProcessJob]::Create()
+    $job = [AwProcessJob]::Create()
     try
     {
         if ($job -eq [IntPtr]::Zero) { throw 'cannot create a job object; an uncontained executor is never started' }
@@ -1587,7 +1587,7 @@ function Invoke-RunCore
     catch
     {
         $launchError = $_.Exception.Message
-        if ($job -ne [IntPtr]::Zero) { [PointframeProcessJob]::Close($job) }
+        if ($job -ne [IntPtr]::Zero) { [AwProcessJob]::Close($job) }
         Update-State $info.StateRoot $Id 'run-launch-failed' {
             param($s)
             $s.runs = @($s.runs | ForEach-Object { if ($_.runId -eq $runId) { $_.termination = 'launch-failed'; $_.outcome = 'impl-failed'; $_.reason = $launchError; $_.endedUtc = (Get-Now) }; $_ })
@@ -1637,10 +1637,10 @@ function Invoke-RunCore
         $containment = Test-JobContainment $job
         if (-not $containment.Verified -and $containment.Alive) { $termination = 'kill-failed' }
     }
-    [PointframeProcessJob]::Close($job)
+    [AwProcessJob]::Close($job)
     $leftover = $containment.Leftover
     $exitCode = if ($termination -in @('timeout', 'kill-failed', 'budget') -or -not (Test-ProcessExited $process)) { $null } else { Get-ProcessExitCode $process }
-    [PointframeProcessJob]::CloseProcess($process.Handle)
+    [AwProcessJob]::CloseProcess($process.Handle)
     if ($termination -eq 'exit' -and $exitCode -eq 3 -and -not $isClaude) { $termination = 'budget' }
     if ($isClaude)
     {
@@ -2465,7 +2465,7 @@ function Invoke-ClaudeReviewProcess([string]$Wt, [string]$ReviewDir, [string]$Pr
     $events = Join-Path $ReviewDir 'events.jsonl'
     Initialize-ProcessJob
     $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-    $job = [PointframeProcessJob]::Create()
+    $job = [AwProcessJob]::Create()
     if ($job -eq [IntPtr]::Zero) { throw 'cannot create a job object; an uncontained reviewer is never started' }
     $launchArgs = @($launcher.Prefix) + @($arguments | ForEach-Object { Format-WindowsArgument ([string]$_) })
     $process = Start-ProcessInJob $job $launcher.File $launchArgs $Wt $PromptPath $events (Join-Path $ReviewDir 'claude.err')
@@ -2494,9 +2494,9 @@ function Invoke-ClaudeReviewProcess([string]$Wt, [string]$ReviewDir, [string]$Pr
         $containment = Test-JobContainment $job
         if (-not $containment.Verified -and $containment.Alive) { $termination = 'kill-failed' }
     }
-    [PointframeProcessJob]::Close($job)
+    [AwProcessJob]::Close($job)
     $exitCode = if ($termination -ne 'exit' -or -not (Test-ProcessExited $process)) { $null } else { Get-ProcessExitCode $process }
-    [PointframeProcessJob]::CloseProcess($process.Handle)
+    [AwProcessJob]::CloseProcess($process.Handle)
     Read-StreamMonitor $monitor -Final
     $tokens = Get-ClaudeTokenRecord $monitor
     if ($termination -eq 'exit' -and [Math]::Max((Get-MonitorEnforcedInput $monitor), [long]$tokens.input) -gt $MaxInputTokens) { $termination = 'budget' }
@@ -4156,7 +4156,7 @@ function Invoke-ReviewSelfTest
     & git -C $main config user.name SelfTest
     & git -C $main config user.email selftest@example.invalid
     $briefRv = Join-Path $root 'brief-review.md'
-    [IO.File]::WriteAllText($briefRv, (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'tests/agent-run/complete.md') -Raw) + "`r`n# Acceptance cases`r`n`r`n- The feature file exists.`r`n- The feature file says v2, and the`r`n  comment above it explains why.`r`n1. Nothing else changes.`r`n`r`n# Authorized repairs`r`n`r`nNone.`r`n")
+    [IO.File]::WriteAllText($briefRv, (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'agent-workflow/fixtures/gates/agent-run/complete.md') -Raw) + "`r`n# Acceptance cases`r`n`r`n- The feature file exists.`r`n- The feature file says v2, and the`r`n  comment above it explains why.`r`n1. Nothing else changes.`r`n`r`n# Authorized repairs`r`n`r`nNone.`r`n")
     $rvManifest = Join-Path $root 'rv-checks.json'
     [IO.File]::WriteAllText($rvManifest, (@{ extra = @(@{ name = 'passes'; exe = 'pwsh'; args = @('-NoProfile', '-Command', 'exit 0') }) } | ConvertTo-Json -Depth 6))
     $recheckManifest = Join-Path $root 'recheck-checks.json'
@@ -5231,7 +5231,7 @@ switch ($env:POINTFRAME_PKG_TEST_CHANNELMODE)
     $body = Get-Content -LiteralPath (Join-Path $ghDir 'body-101.md') -Raw
     & $expect ($body -match '## Summary' -and $body -match 'Use the checked executor launcher\.' -and $body -match '## Acceptance criteria' -and $body -match '\*\*C1\*\* The feature file exists\.' -and $body -match 'reviewer result: pass' -and $body -match '## Checks run' -and $body -match 'verify\.ps1: pass, complete True' -and $body -match "head ``$aHead``" -and $body -match 'codex:gpt-6-luna' -and $body -match 'claude-sonnet' -and $body -match 'light, round' -and $body -match '## What was not tested' -and $body -match 'integration tests were not run' -and $body -match 'No desktop run' -and $body -match 'desktop qualification: not required') "the PR body lacks the criteria, checks, identities or the not-tested section: $body"
     & $expect ($body -notmatch '(?i)generated with|co-authored-by|claude code' -and (Get-Content -LiteralPath (Join-Path $ghDir 'title-101.txt') -Raw) -eq 'Explicit PR title') 'the PR body has an attribution line, or -Title was ignored'
-    & $expect ((Get-ShipTitle (Join-Path $PSScriptRoot 'tests/agent-run/complete.md') '') -eq 'Objective / Why') 'the title is not the first H1 of the brief'
+    & $expect ((Get-ShipTitle (Join-Path $PSScriptRoot 'agent-workflow/fixtures/gates/agent-run/complete.md') '') -eq 'Objective / Why') 'the title is not the first H1 of the brief'
     $briefWithPrefix = Join-Path $root 'brief-prefix.md'
     [IO.File]::WriteAllText($briefWithPrefix, "# Brief: PR9 - Something useful`r`n`r`n## Objective`r`n`r`nDo the thing`r`nover two lines.`r`n`r`nSecond paragraph.`r`n")
     & $expect ((Get-ShipTitle $briefWithPrefix '') -eq 'PR9 - Something useful' -and (Get-ShipObjective $briefWithPrefix) -eq 'Do the thing over two lines.') 'the title or the objective is not taken from the brief'
@@ -5442,7 +5442,7 @@ Set-Content -LiteralPath (Join-Path $log 'events.jsonl') @('{"type":"thread.star
         [IO.File]::WriteAllText($statusStub, "Add-Content -LiteralPath '$statusLog' (`$args -join ' ')`r`n")
 
         $briefFile = Join-Path $root 'brief.md'
-        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'tests/agent-run/complete.md') -Destination $briefFile
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'agent-workflow/fixtures/gates/agent-run/complete.md') -Destination $briefFile
         $manifestFile = Join-Path $root 'checks.json'
         [IO.File]::WriteAllText($manifestFile, (@{ extra = @(
                     @{ name = 'passes'; exe = 'pwsh'; args = @('-NoProfile', '-Command', 'exit 0') },
@@ -5794,7 +5794,7 @@ Start-Sleep -Seconds 60
         & $expect ($sleeper.HasExited -and $recoveries.Count -eq 1 -and $stillRunning.Count -eq 0 -and $completedRuns.Count -ge 1 -and -not ($recoverCodes | Where-Object { $_ -notin @(0, 1) }) -and -not $state.currentRun -and $state.stage -eq 'executor-completed') "concurrent recoveries were not serialized (codes $($recoverCodes -join ','), $($recoveries.Count) recoveries, stage $($state.stage), $($completedRuns.Count) completed)"
 
         # Main checkout mutation: detected, the run stops, nothing is reverted.
-        $r = & $pkg @('new', '-Id', 'mut', '-Brief', (Join-Path $PSScriptRoot 'tests/agent-run/complete.md'))
+        $r = & $pkg @('new', '-Id', 'mut', '-Brief', (Join-Path $PSScriptRoot 'agent-workflow/fixtures/gates/agent-run/complete.md'))
         & $expect ($r.Exit -eq 0) "second package could not be created: $($r.Text)"
         $r = & $pkg @('run', '-Id', 'mut', '-AgentRunScript', (Join-Path $stubDir 'mutate.ps1'))
         $state = & $stateFile 'mut'
@@ -5851,9 +5851,9 @@ Emit '{"type":"result","subtype":"success","is_error":false,"result":"done: term
         [IO.File]::WriteAllText((Join-Path $stubDir 'unmarked.ps1'), "exit 0`r`n")
         $stub = { param($name) Join-Path $stubDir "$name.ps1" }
         $briefHaiku = Join-Path $root 'brief-haiku.md'
-        [IO.File]::WriteAllText($briefHaiku, (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'tests/agent-run/complete.md') -Raw) + "`r`nHaiku-scope: mechanical`r`n")
+        [IO.File]::WriteAllText($briefHaiku, (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'agent-workflow/fixtures/gates/agent-run/complete.md') -Raw) + "`r`nHaiku-scope: mechanical`r`n")
         $briefHelper = Join-Path $root 'brief-helper.md'
-        [IO.File]::WriteAllText($briefHelper, (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'tests/agent-run/complete.md') -Raw) + "`r`nHaiku-scope: helper`r`n")
+        [IO.File]::WriteAllText($briefHelper, (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'agent-workflow/fixtures/gates/agent-run/complete.md') -Raw) + "`r`nHaiku-scope: helper`r`n")
         $scopeManifest = Join-Path $root 'scope-checks.json'
         [IO.File]::WriteAllText($scopeManifest, (@{ allowedPaths = @('allowed/'); allowedScripts = @('scripts/custom-check.ps1') } | ConvertTo-Json))
         $fixPrompt = Join-Path $root 'fix.md'

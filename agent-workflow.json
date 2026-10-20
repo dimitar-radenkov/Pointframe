@@ -28,110 +28,274 @@
   "status": {
     "store": "plan/status.json",
     "issue": 186,
-    "handoff": "plan/handoff.md"
+    "handoff": "plan/handoff.md",
+    "accountable": "Claude"
   },
   "merge": {
     "requiredChecks": [
       "unit-tests",
       "package-checks",
-      "Analyze (csharp)",
-      "CodeQL"
+      "CodeQL",
+      "Analyze (csharp)"
     ]
   },
   "gates": [
     {
       "id": "build",
       "exe": "dotnet",
-      "args": ["build", "Pointframe.Tests/Pointframe.Tests.csproj", "--configuration", "Release", "--nologo", "-v", "q"],
+      "args": [
+        "build",
+        "Pointframe.Tests/Pointframe.Tests.csproj",
+        "--configuration",
+        "Release",
+        "--nologo",
+        "-v",
+        "q"
+      ],
       "cwd": ".",
       "timeoutMinutes": 30,
-      "dependsOn": []
+      "dependsOn": [],
+      "parser": "dotnet-build",
+      "passSummary": "Release build of the test project and everything it references succeeded."
     },
     {
       "id": "format",
       "exe": "dotnet",
-      "args": ["format", "Pointframe/Pointframe.csproj", "--verify-no-changes", "--no-restore"],
+      "args": [
+        "format",
+        "Pointframe/Pointframe.csproj",
+        "--verify-no-changes",
+        "--no-restore"
+      ],
       "cwd": ".",
       "timeoutMinutes": 30,
-      "dependsOn": []
+      "dependsOn": [],
+      "parser": "dotnet-format",
+      "passSummary": "dotnet format reports no changes.",
+      "fixHint": "Fix: dotnet format Pointframe/Pointframe.csproj (main project only; do not format Pointframe.Tests)."
     },
     {
       "id": "tests",
       "exe": "dotnet",
-      "args": ["test", "Pointframe.Tests/Pointframe.Tests.csproj", "--configuration", "Release", "--no-build", "--nologo", "--filter", "Category!=Integration", "--logger", "trx;LogFileName=tests.trx", "--results-directory", "artifacts/verify/test-results"],
+      "args": [
+        "test",
+        "Pointframe.Tests/Pointframe.Tests.csproj",
+        "--configuration",
+        "Release",
+        "--no-build",
+        "--nologo",
+        "--filter",
+        "Category!=Integration",
+        "--logger",
+        "trx;LogFileName=tests.trx",
+        "--results-directory",
+        "artifacts/verify/test-results"
+      ],
       "cwd": ".",
       "timeoutMinutes": 45,
-      "dependsOn": ["build"]
+      "dependsOn": [
+        "build"
+      ],
+      "parser": "dotnet-test",
+      "resultFile": "artifacts/verify/test-results/tests.trx",
+      "filterFlag": "--filter"
     },
     {
       "id": "kb-selftest",
+      "gate": "kb",
+      "log": "kb-selftest",
       "exe": "pwsh",
-      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/kb.ps1", "selftest"],
+      "args": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "scripts/kb.ps1",
+        "selftest"
+      ],
       "cwd": ".",
       "timeoutMinutes": 20,
-      "dependsOn": []
+      "dependsOn": [],
+      "failSummary": "Knowledge base self-test failed ({count} case(s)).",
+      "fixHint": "Fix: pwsh scripts/kb.ps1 selftest runs kb.ps1 against the synthetic knowledge bases shipped with the workflow kit; the log has each failed case.",
+      "detailPattern": "^FAIL"
     },
     {
       "id": "kb-check",
+      "gate": "kb",
+      "log": "kb",
       "exe": "pwsh",
-      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/kb.ps1", "check", "-NoFix"],
+      "args": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "scripts/kb.ps1",
+        "check",
+        "-NoFix"
+      ],
       "cwd": ".",
       "timeoutMinutes": 20,
-      "dependsOn": ["kb-selftest"]
+      "dependsOn": [
+        "kb-selftest"
+      ],
+      "passSummary": "Knowledge base check passed.",
+      "failSummary": "Knowledge base check reported {count} error(s).",
+      "fixHint": "Fix: run /kb-write or /kb-check (pwsh scripts/kb.ps1 check refreshes generated blocks).",
+      "detailPattern": "^\\s*ERROR"
     },
     {
       "id": "workflows-selftest",
+      "gate": "workflows",
+      "log": "workflows",
+      "continueOnFail": true,
       "exe": "pwsh",
-      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/check-workflow-scripts.ps1", "-SelfTest"],
+      "args": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "scripts/check-workflow-scripts.ps1",
+        "-SelfTest"
+      ],
       "cwd": ".",
       "timeoutMinutes": 10,
-      "dependsOn": []
+      "dependsOn": [],
+      "failSummary": "The workflow script checker failed its self-test.",
+      "detailPattern": "\\S"
     },
     {
       "id": "workflows",
+      "log": "workflows",
       "exe": "pwsh",
-      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/check-workflow-scripts.ps1"],
+      "args": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "scripts/check-workflow-scripts.ps1"
+      ],
       "cwd": ".",
       "timeoutMinutes": 10,
-      "dependsOn": ["workflows-selftest"]
+      "dependsOn": [
+        "workflows-selftest"
+      ],
+      "passSummary": "{lastLine}",
+      "failSummary": "{count} workflow run: block(s) do not parse as PowerShell.",
+      "fixHint": "Fix: delimit \"{dollar}{name}:\" in strings and re-run pwsh scripts/check-workflow-scripts.ps1.",
+      "detailPattern": "\\.yml:\\d+ step ",
+      "gate": "workflows"
     },
     {
       "id": "discovery-selftest",
+      "gate": "discovery",
+      "log": "discovery",
+      "continueOnFail": true,
       "exe": "pwsh",
-      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/check-agent-discovery.ps1", "-SelfTest"],
+      "args": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "scripts/check-agent-discovery.ps1",
+        "-SelfTest"
+      ],
       "cwd": ".",
       "timeoutMinutes": 10,
-      "dependsOn": []
+      "dependsOn": [],
+      "failSummary": "The agent discovery checker failed its self-test.",
+      "detailPattern": "\\S"
     },
     {
       "id": "discovery",
+      "log": "discovery",
       "exe": "pwsh",
-      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/check-agent-discovery.ps1"],
+      "args": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "scripts/check-agent-discovery.ps1"
+      ],
       "cwd": ".",
       "timeoutMinutes": 10,
-      "dependsOn": ["discovery-selftest"]
+      "dependsOn": [
+        "discovery-selftest"
+      ],
+      "passSummary": "{lastLine}",
+      "failSummary": "{count} agent discovery problem(s).",
+      "fixHint": "Fix the page, llms.txt, drafts, or packaging named below, then run pwsh scripts/check-agent-discovery.ps1.",
+      "detailPattern": "^ERROR ",
+      "gate": "discovery"
     },
     {
       "id": "scripts",
       "exe": "pwsh",
-      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/test-scripts.ps1"],
+      "args": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "scripts/test-scripts.ps1"
+      ],
       "cwd": ".",
       "timeoutMinutes": 30,
-      "dependsOn": []
+      "dependsOn": [],
+      "passSummary": "{lastLine}",
+      "failSummary": "{count} script self-test problem(s).",
+      "fixHint": "Fix the script or its fixtures, then run pwsh scripts/test-scripts.ps1.",
+      "detailPattern": "^FAIL "
     }
   ],
   "roles": {
-    "coordinator": {"provider": "claude", "model": "opus", "effort": "high", "sandbox": "read-only"},
-    "executor": {"provider": "openai", "model": "gpt-6-luna", "effort": "medium", "sandbox": "workspace-write"},
-    "lightReviewer": {"provider": "openai", "model": "gpt-6-luna", "effort": "medium", "sandbox": "read-only"},
-    "heavyReviewer": {"provider": "openai", "model": "gpt-6.1-sol", "effort": "high", "sandbox": "read-only"}
+    "coordinator": {
+      "provider": "claude",
+      "model": "opus",
+      "effort": "high",
+      "sandbox": "read-only"
+    },
+    "executor": {
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "effort": "medium",
+      "sandbox": "workspace-write"
+    },
+    "lightReviewer": {
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "effort": "medium",
+      "sandbox": "read-only"
+    },
+    "heavyReviewer": {
+      "provider": "openai",
+      "model": "gpt-6.1-sol",
+      "effort": "high",
+      "sandbox": "read-only"
+    }
   },
   "hooks": {
     "environment": "docs/knowledge-base/hooks/environment.ps1",
     "kbCoverage": "docs/knowledge-base/hooks/coverage.ps1",
-    "pin": null,
+    "pin": "docs/knowledge-base/hooks/pin.ps1",
     "qualify": null,
     "postMerge": null
   },
-  "pinException": null
+  "pinException": {
+    "paths": [
+      "plugin/pointframe/server.lock.json",
+      "plugin/pointframe/.claude-plugin/plugin.json"
+    ]
+  },
+  "verify": {
+    "outputDir": "artifacts/verify",
+    "maxDetails": 20,
+    "preflight": {
+      "lockDirs": [
+        "Pointframe/bin/Release",
+        "Pointframe.Engine/bin/Release",
+        "Pointframe.Mcp/bin/Release",
+        "Pointframe.Cli/bin/Release",
+        "Pointframe.Tests/bin/Release"
+      ]
+    },
+    "doctor": true
+  },
+  "agentRuns": {
+    "log": "plan/agent-runs.jsonl",
+    "maxMinutes": 30,
+    "maxInputTokens": 20000000
+  }
 }

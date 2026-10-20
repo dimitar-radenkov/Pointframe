@@ -1,0 +1,23 @@
+{
+  "record": {
+    "schema": 1,
+    "headSha": "head-a",
+    "treeSha": "tree-a",
+    "executor": "claude:coordinator",
+    "reviewer": "self",
+    "review": "light",
+    "verdict": "PASS",
+    "blockingFindings": 0,
+    "evidence": "existing fixture evidence",
+    "reason": "small-fix",
+    "changedFiles": [
+      "file0.txt",
+      "file1.txt"
+    ],
+    "changedLines": 12
+  },
+  "expect": {
+    "ok": true,
+    "reason": ""
+  }
+}
