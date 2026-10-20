@@ -4861,7 +4861,7 @@ function Invoke-ShipSelfTest
     New-Item -ItemType Directory -Path $shipRoot -Force | Out-Null
     $env:POINTFRAME_PKG_TEST_SHIPLOG = $shipLog
     $env:POINTFRAME_PKG_TEST_GH_DIR = $ghDir
-    $env:POINTFRAME_PKG_TEST_LIBDIR = Join-Path $PSScriptRoot 'lib'
+    $env:POINTFRAME_PKG_TEST_LIBDIR = Join-Path $PSScriptRoot 'agent-workflow' 'lib'
     Add-Content -LiteralPath (Join-Path $main '.git/info/exclude') -Value 'artifacts/'
 
     $stubBodies = [ordered]@{}
