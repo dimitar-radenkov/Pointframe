@@ -1,7 +1,8 @@
 #Requires -Version 7.0
 <#
 Writes the independent-review record of a commit under <git common dir>/<state.commonDirNamespace>/reviews/<sha>.json; merge-pr.ps1 refuses a merge
-without a passing record for the head. The repository is -Root, else -Worktree, else the repository that holds this script; the
+without a passing record for the head. The configuration is read from the MAIN CHECKOUT of the repository of -Worktree (never from the worktree itself, which a pull
+request can change); an explicit -Root must be that main checkout, else the record is refused. The
 base (repository.baseRef) and the pin files (pinException.paths, which do not count as review changes) come from agent-workflow.json.
 
   record-review.ps1 -Worktree <path> -Executor codex:gpt-6-luna -ExecutorSession <id> -Reviewer claude:opus -ReviewerSession <id> `n    -Verdict PASS -Evidence <file> -Requirement <text> -Review light|heavy [-Head <sha>] [-Brief <file>] [-SmallFix] [-Root <repository>]
@@ -106,7 +107,7 @@ if (-not $SmallFix) {
 if (-not (Test-Path -LiteralPath $Worktree -PathType Container)) { Refuse "worktree does not exist: $Worktree" }
 $worktreeRoot = (Resolve-Path -LiteralPath $Worktree).Path
 if (([string](& git -C $worktreeRoot rev-parse --is-inside-work-tree 2>$null)).Trim() -ne 'true') { Refuse "worktree is not a Git worktree: $worktreeRoot" }
-try { $Context = Get-AwToolContext -Root $Root -Worktree $worktreeRoot -ScriptRoot $PSScriptRoot }
+try { $Context = Get-AwGateContext -Root $Root -Worktree $worktreeRoot -ScriptRoot $PSScriptRoot }
 catch { Refuse $_.Exception.Message }
 $baseRef = $Context.BaseRef
 if (-not (Test-Path -LiteralPath $Evidence -PathType Leaf)) { Refuse "evidence file does not exist: $Evidence" }

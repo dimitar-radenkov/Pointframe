@@ -23,7 +23,7 @@ function Get-AwSelfTestConfig {
         }
         status = [ordered]@{ store = 'plan/status.json'; issue = $null; handoff = 'plan/handoff.md' }
         merge = [ordered]@{ requiredChecks = @('unit-tests') }
-        gates = @()
+        gates = @([ordered]@{ id = 'noop'; exe = 'pwsh'; args = @('-NoProfile', '-NonInteractive', '-Command', 'exit 0'); cwd = '.'; timeoutMinutes = 1; dependsOn = @() })
         roles = [ordered]@{
             coordinator = (& $role 'claude' 'opus' 'read-only')
             executor = (& $role 'openai' 'gpt-6-luna' 'workspace-write')

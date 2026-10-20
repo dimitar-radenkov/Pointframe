@@ -5005,7 +5005,7 @@ $tree = Get-WorkingTreeHash $top
 $status = switch ($env:POINTFRAME_PKG_TEST_VERMODE) { 'fail' { 'fail' } 'partial' { 'partial' } default { 'pass' } }
 $out = Join-Path $top 'artifacts/verify'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
-[ordered]@{ status = $status; complete = ($status -eq 'pass'); startedAt = [DateTime]::UtcNow.ToString('o'); head = $head; treeHash = $tree; filter = $null; gates = @() } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $out 'verdict.json')
+[ordered]@{ status = $status; complete = ($status -eq 'pass'); startedAt = [DateTime]::UtcNow.ToString('o'); head = $head; treeHash = $tree; filter = $null; gates = @([ordered]@{ name = 'noop'; status = 'pass' }) } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $out 'verdict.json')
 if ($status -eq 'pass') { Write-Host 'VERIFY PASSED: every gate passed.'; exit 0 }
 Write-Host "VERIFY FAILED (stub $status)"
 exit 1
@@ -5407,6 +5407,10 @@ function Invoke-SelfTest
         & git init -q --bare -b master $origin
         & git init -q -b master $seed
         [IO.File]::WriteAllText((Join-Path $seed 'a.txt'), "a`r`n")
+        # The repositories of the review and ship cases are valid consumers of the kit: record-review and merge-pr read the gate
+        # configuration from the main checkout (kit selftest shape; the gate matches the stub verify, the pin files the writePins cases).
+        . (Join-Path $PSScriptRoot 'agent-workflow' 'lib' 'selftest.ps1')
+        Write-AwSelfTestConfig $seed (Get-AwSelfTestConfig -Namespace 'pointframe' -PinFiles @('plugin/pointframe/server.lock.json', 'plugin/pointframe/.claude-plugin/plugin.json'))
         & $git $seed @('add', '-A'); & $git $seed @('commit', '-qm', 'one'); & $git $seed @('remote', 'add', 'origin', $origin); & $git $seed @('push', '-q', 'origin', 'master')
         & git clone -q $origin $main 2>&1 | Out-Null
         # A commit that exists only on origin: new must fetch before it resolves origin/master.

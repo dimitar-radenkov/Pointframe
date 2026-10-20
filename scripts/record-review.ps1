@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 Public entry point of the review record tool: forwards every argument unchanged to the vendored kit tool
-(scripts/agent-workflow/tools/record-review.ps1) with this repository as -Root, unless the caller gave -Root, and
+(scripts/agent-workflow/tools/record-review.ps1) with this repository as -Root, unless the caller gave -Root or -Worktree (the kit then reads the gate configuration from the main checkout of that worktree), and
 returns its exit code. Standard input passes through. A failure before the tool runs (a parameter that does not bind) is
 terminating here and exits 1. The tool and its libraries come from the agent workflow kit.
 #>
@@ -10,7 +10,7 @@ $tool = Join-Path $PSScriptRoot 'agent-workflow' 'tools' 'record-review.ps1'
 $global:LASTEXITCODE = 0
 try
 {
-    if (@($args | Where-Object { $_ -is [string] -and $_ -match '^-Root(:|$)' }))
+    if (@($args | Where-Object { $_ -is [string] -and $_ -match '^-(Root|Worktree)(:|$)' }))
     {
         & $tool @args
     }

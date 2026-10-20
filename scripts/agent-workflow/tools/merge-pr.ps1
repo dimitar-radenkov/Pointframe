@@ -12,9 +12,10 @@ Waits for a pull request's checks, squash-merges the exact head that was checked
   merge-pr.ps1 -SyncMain                        # fast-forward the main checkout to <remote>/<base> when nothing is running
   merge-pr.ps1 -SyncMain -DryRun                # print that decision; change nothing
   merge-pr.ps1 -SelfTest                        # offline: decision logic on the kit's merge-pr fixtures
-  merge-pr.ps1 ... -Root <repository>           # the repository (default: -Worktree, else the repository that holds this script)
+  merge-pr.ps1 ... -Root <main checkout>         # must be the main checkout of the repository of -Worktree (default: that main checkout)
 
-The configuration (agent-workflow.json) supplies the required checks (merge.requiredChecks), the base (repository.baseRef:
+The gate configuration is read ONLY from the main checkout of the repository that holds -Worktree (a pull request can change its own
+agent-workflow.json, so the worktree's copy is never trusted); an explicit -Root that is not that main checkout is refused. It supplies the required checks (merge.requiredChecks), the base (repository.baseRef:
 remote and branch), the state folder under git's common directory (state.commonDirNamespace: reviews, packages, ship.lock,
 main-sync.lock), the pin files (pinException.paths) and the pin adapter (hooks.pin). The caller's working folder is never
 consulted; gh runs in the main checkout.
@@ -233,6 +234,7 @@ function Test-MergeReview([string]$WorktreePath, [string]$PrHead, $Settings = $s
             $paths = @(& git -C $root diff --name-only $candidate $PrHead 2>$null)
             $receipt = [pscustomobject]@{ status='pass'; complete=$true; filter=$null; head=$candidate; treeHash=$recordTree }
             $pin = Test-PinOnlyChange $receipt $recordTree $true $tree (Get-WorkingTreeHash $root) $paths $Settings.PinFiles
+            if ($pin.Ok -and -not $Settings.PinHook) { return [pscustomobject]@{ Ok=$false; Reason='pin-only change after the reviewed commit, but hooks.pin is not configured to validate the pin files' } }
             if ($pin.Ok) { return [pscustomobject]@{ Ok=$true; Reason="review record for ancestor accepted; $($pin.Reason)" } }
             return [pscustomobject]@{ Ok=$false; Reason=$pin.Reason }
         }
@@ -605,7 +607,7 @@ function Invoke-SelfTest
 {
     $fixtureDir = Join-Path $PSScriptRoot '..' 'fixtures' 'gates' 'merge-pr'
     $script:SelfTestPinFiles = @('vendor/pin/lock.json', 'vendor/pin/manifest.json')
-    $script:ReviewSettings = [pscustomobject]@{ Namespace = 'selftest'; BaseRef = 'origin/master'; PinFiles = $script:SelfTestPinFiles }
+    $script:ReviewSettings = [pscustomobject]@{ Namespace = 'selftest'; BaseRef = 'origin/master'; PinFiles = $script:SelfTestPinFiles; PinHook = 'hooks/pin.ps1' }
     $failures = [Collections.Generic.List[string]]::new()
     $count = 0
     $files = @(Get-ChildItem -LiteralPath $fixtureDir -Filter '*.json' -File | Sort-Object Name)
@@ -720,6 +722,9 @@ function Invoke-SelfTest
         $pinHead = (& git -C $tempRepo rev-parse HEAD).Trim()
         $normalPin = Test-MergeReview $tempRepo $pinHead; $count++
         if (-not $normalPin.Ok) { $failures.Add("normal record at pin-only descendant refused: $($normalPin.Reason)") }
+        $noHook = [pscustomobject]@{ Namespace = 'selftest'; BaseRef = 'origin/master'; PinFiles = $script:SelfTestPinFiles; PinHook = $null }
+        $noHookPin = Test-MergeReview $tempRepo $pinHead $noHook; $count++
+        if ($noHookPin.Ok -or $noHookPin.Reason -notmatch 'hooks\.pin is not configured') { $failures.Add('a pin-only ancestor was accepted although hooks.pin is not configured') }
         & git -C $tempRepo checkout -qb small-fix $base
         [IO.File]::WriteAllText((Join-Path $tempRepo 'small.txt'), "small`n")
         & git -C $tempRepo add .; & git -C $tempRepo -c user.name=SelfTest -c user.email=selftest@example.invalid commit -qm small-fix
@@ -764,7 +769,7 @@ if ($SelfTest)
 
 try
 {
-    $Context = Get-AwToolContext -Root $Root -Worktree $Worktree -ScriptRoot $PSScriptRoot
+    $Context = Get-AwGateContext -Root $Root -Worktree $Worktree -ScriptRoot $PSScriptRoot
 }
 catch
 {
@@ -776,7 +781,7 @@ $script:Remote = $Context.BaseRemote
 $script:BaseBranchName = $Context.BaseBranch
 $script:Namespace = [string]$Context.Config.state.commonDirNamespace
 $script:MainCheckout = $Context.MainCheckout
-$script:ReviewSettings = [pscustomobject]@{ Namespace = $script:Namespace; BaseRef = $Context.BaseRef; PinFiles = $Context.PinFiles }
+$script:ReviewSettings = [pscustomobject]@{ Namespace = $script:Namespace; BaseRef = $Context.BaseRef; PinFiles = $Context.PinFiles; PinHook = $Context.Config.hooks.pin }
 if (-not $PSBoundParameters.ContainsKey('Required'))
 {
     $Required = @($Context.Config.merge.requiredChecks)
@@ -866,7 +871,24 @@ function Get-VerdictPath([string]$RepositoryRoot)
     [IO.Path]::GetFullPath((Join-Path $RepositoryRoot (Join-Path ([string](Get-AwSetting $settings 'outputDir' 'artifacts/verify')) 'verdict.json')))
 }
 
-function Test-MergeReceipt([string]$WorktreePath, [string]$PrHead)
+function Test-ReceiptGates($Receipt)
+{
+    # A receipt must contain every gate the main checkout's configuration defines, each passed; with verify.doctor on, that
+    # includes a passing doctor gate. A verdict made under a weaker configuration is refused.
+    $names = @(Get-AwConfiguredGateNames $script:Ctx.Config)
+    $byName = @{}
+    if ($Receipt.PSObject.Properties['gates'])
+    {
+        foreach ($g in @($Receipt.gates)) { if ($g -and $g.PSObject.Properties['name']) { $byName[[string]$g.name] = $g } }
+    }
+    foreach ($name in $names)
+    {
+        if (-not $byName.ContainsKey($name)) { return [pscustomobject]@{ Ok = $false; Reason = "the receipt lacks the configured gate '$name' (it was made under a weaker configuration)" } }
+        if ([string]$byName[$name].status -ne 'pass') { return [pscustomobject]@{ Ok = $false; Reason = "the receipt's gate '$name' did not pass (status '$($byName[$name].status)')" } }
+    }
+    [pscustomobject]@{ Ok = $true; Reason = 'every configured gate passed' }
+}
+function Test-MergeReceiptCore([string]$WorktreePath, [string]$PrHead)
 {
     # The receipt must describe the PR head's tree, or an ancestor whose only later change is the pin files
     # (then the pin adapter, which validates those files offline, must pass too).
@@ -905,6 +927,15 @@ function Test-MergeReceipt([string]$WorktreePath, [string]$PrHead)
 }
 
 
+function Test-MergeReceipt([string]$WorktreePath, [string]$PrHead)
+{
+    $core = Test-MergeReceiptCore $WorktreePath $PrHead
+    if (-not $core.Ok) { return $core }
+    $root = (Resolve-Path -LiteralPath $WorktreePath).Path
+    $gates = Test-ReceiptGates (Read-VerifyReceipt (Get-VerdictPath $root))
+    if (-not $gates.Ok) { return $gates }
+    $core
+}
 function Push-PluginPin([string]$WorktreePath, [string]$PullRequest)
 {
     # -Auto moves a stale pin itself: commit, push, and wait until GitHub reports the pushed commit as the PR head.
@@ -1027,13 +1058,47 @@ if ($Auto)
         exit 0
     }
     $out = & gh @mergeArgs 2>&1
-    if ($LASTEXITCODE -ne 0)
+    $mergeFailed = $LASTEXITCODE -ne 0
+    $mergedAtOnce = $false
+    if ($mergeFailed)
     {
-        Write-Host "ERROR enabling auto-merge failed: $out"
-        exit 1
+        # With the checks already green GitHub merges at once, and `--delete-branch` then fails to delete the local branch because
+        # the pull request worktree has it checked out: gh exits non-zero although the pull request is merged. Ask GitHub.
+        $viewText = & gh pr view ([string]$prInfo.number) --json state,mergeCommit 2>&1
+        $viewState = $null
+        if ($LASTEXITCODE -eq 0) { try { $viewState = ($viewText -join "`n") | ConvertFrom-Json } catch { $viewState = $null } }
+        if ($viewState -and [string]$viewState.state -eq 'MERGED')
+        {
+            $mergedAtOnce = $true
+            $mergeSha = if ($viewState.PSObject.Properties['mergeCommit'] -and $viewState.mergeCommit) { [string]$viewState.mergeCommit.oid } else { '' }
+            Write-Host "gh pr merge reported an error, but GitHub says pull request #$($prInfo.number) is MERGED: $(($out | Select-Object -Last 1))"
+            Write-Host "MERGED $mergeSha"
+        }
+        else
+        {
+            Write-Host "ERROR enabling auto-merge failed: $out"
+            exit 1
+        }
     }
-    $out | Select-Object -Last 3 | ForEach-Object { Write-Host $_ }
-    Write-Host 'AUTO-MERGE ENABLED (not merged yet)'
+    else
+    {
+        $out | Select-Object -Last 3 | ForEach-Object { Write-Host $_ }
+        Write-Host 'AUTO-MERGE ENABLED (not merged yet)'
+    }
+    if ($mergedAtOnce)
+    {
+        Update-Status "merged #$($prInfo.number)" $mergeSha ''
+        if ($WaitMerged)
+        {
+            Write-Host 'WAIT state=MERGED pending=0 failed=0'
+            Invoke-MergedCleanup ([string]$prInfo.headRefName)
+        }
+        else
+        {
+            Write-Host "Worktree '$Worktree' was NOT removed; clean it up after the merge (git worktree remove, git branch -D). Then bring the main checkout up to date with: pwsh scripts/merge-pr.ps1 -SyncMain"
+        }
+        exit 0
+    }
     Update-Status "auto-merge enabled #$($prInfo.number)" ([string]$decision.Head) ''
     if ($Worktree)
     {

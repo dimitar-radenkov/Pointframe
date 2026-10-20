@@ -140,3 +140,77 @@ function Invoke-AwHook {
         return [pscustomobject]@{ Configured = $true; Ran = $false; ExitCode = $null; Lines = @(); Errors = ''; Detail = "hook failed: $rel ($($_.Exception.Message))" }
     }
 }
+
+function Get-AwGateContext {
+    # The context of the merge gate (merge-pr, record-review). The gate configuration (required checks, pinException,
+    # hooks.pin, baseRef, the state namespace) is read ONLY from the main checkout of the repository that holds the target
+    # worktree: a pull request can change its own agent-workflow.json, and a gate must never be loosened by the change it
+    # judges. -Worktree (else -Root, else the repository that holds the script) only selects the tree to check. An explicit
+    # -Root must be the main checkout of that same repository, otherwise it is refused.
+    param(
+        [string]$Root,
+        [string]$Worktree,
+        [Parameter(Mandatory)]
+        [string]$ScriptRoot
+    )
+
+    $selected = if ($Worktree) { $Worktree } elseif ($Root) { $Root } else { $null }
+    if ($selected) {
+        $target = Resolve-AwRoot -Explicit (ConvertTo-AwFullPath $selected) -ScriptRoot $ScriptRoot
+    }
+    else {
+        $target = Resolve-AwRoot -ScriptRoot $ScriptRoot
+    }
+
+    if ($Root) {
+        $given = Resolve-AwRoot -Explicit (ConvertTo-AwFullPath $Root) -ScriptRoot $ScriptRoot
+        if (-not [string]::Equals($given.CommonDir, $target.CommonDir, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "-Root '$Root' belongs to another repository than the worktree '$($target.WorkTree)'; the gate configuration is read from the main checkout of the worktree's own repository."
+        }
+        if (-not [string]::Equals($given.WorkTree, $target.MainCheckout, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "-Root '$Root' is not the main checkout of the repository ($($target.MainCheckout)); the gate configuration is read from the main checkout only."
+        }
+    }
+
+    $main = Resolve-AwRoot -Explicit $target.MainCheckout -ScriptRoot $ScriptRoot
+    $config = Read-AwConfig -Root $main.WorkTree
+    $baseRef = [string]$config.repository.baseRef
+    $slash = $baseRef.IndexOf('/')
+    $pinFiles = @()
+    if ($null -ne $config.pinException) {
+        $pinFiles = @($config.pinException.paths | ForEach-Object { [string]$_ })
+    }
+
+    return [pscustomobject][ordered]@{
+        Root = $main.WorkTree
+        Worktree = $target.WorkTree
+        MainCheckout = $main.MainCheckout
+        CommonDir = $main.CommonDir
+        KitDir = $main.KitDir
+        Config = $config
+        StateDir = [IO.Path]::GetFullPath((Join-Path $main.CommonDir ([string]$config.state.commonDirNamespace)))
+        BaseRef = $baseRef
+        BaseRemote = $(if ($slash -gt 0) { $baseRef.Substring(0, $slash) } else { 'origin' })
+        BaseBranch = $(if ($slash -gt 0) { $baseRef.Substring($slash + 1) } else { $baseRef })
+        PinFiles = $pinFiles
+    }
+}
+
+function Get-AwConfiguredGateNames {
+    # The gates a complete verdict of this configuration must contain: the built-ins that are switched on, then the
+    # configured gates by their gate name (default: the record id), in configuration order.
+    param(
+        [Parameter(Mandatory)]
+        [Collections.IDictionary]$Config
+    )
+
+    $names = [Collections.Generic.List[string]]::new()
+    $settings = if ($Config.Contains('verify') -and $null -ne $Config['verify']) { $Config['verify'] } else { @{} }
+    if ($settings.Contains('preflight') -and $null -ne $settings['preflight']) { $names.Add('preflight') }
+    if ($settings.Contains('doctor') -and $settings['doctor'] -eq $true) { $names.Add('doctor') }
+    foreach ($record in $Config.gates) {
+        $name = if ($record.Contains('gate')) { [string]$record.gate } else { [string]$record.id }
+        if (-not $names.Contains($name)) { $names.Add($name) }
+    }
+    return $names.ToArray()
+}

@@ -167,7 +167,8 @@
           "uniqueItems": true,
           "items": {
             "type": "string"
-          }
+          },
+          "minItems": 1
         }
       }
     },
@@ -253,7 +254,8 @@
             "type": "boolean"
           }
         }
-      }
+      },
+      "minItems": 1
     },
     "roles": {
       "additionalProperties": false,

@@ -13,8 +13,8 @@
     "tasks": "docs/knowledge-base/kb-tasks.json"
   },
   "status": {"store": "plan/status.json", "issue": null, "handoff": "plan/handoff.md"},
-  "merge": {"requiredChecks": []},
-  "gates": [],
+  "merge": {"requiredChecks": ["done-gate"]},
+  "gates": [{"id": "noop", "exe": "pwsh", "args": ["-NoProfile", "-Command", "exit 0"], "cwd": ".", "timeoutMinutes": 1, "dependsOn": []}],
   "roles": {
     "coordinator": {"provider": "claude", "model": "opus", "effort": "high", "sandbox": "read-only"},
     "executor": {"provider": "claude", "model": "sonnet", "effort": "medium", "sandbox": "workspace-write"},
