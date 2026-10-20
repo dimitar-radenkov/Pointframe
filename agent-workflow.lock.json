@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "source": "10252afdf58cd0d6b986537df115bde3e4945c2b",
-  "tag": "v0.3.0",
-  "commit": "98880f1a8c03c1e667ce2eb04c1c46b3950cfae0",
-  "manifestSha256": "2a9db33a3b9076905725914bc66fe8d56c650c4b6cb30e684b2fb9dfcb5d6325",
+  "tag": "v0.3.1",
+  "commit": "8d7b90f3c89f4233f4376db5222344d1f56ce5b7",
+  "manifestSha256": "c69ecfc37416cf355cb49ae9b93ff5ceedb64bfa86900878a31f4645b5515339",
   "files": {
     "fixtures/gates/agent-run/complete.md": "5588620c0a4e77b0feb6c39814237d23e1bd7618b8537709b5af8c2375878467",
     "fixtures/gates/agent-run/events.jsonl": "d9c21692f81f3faea91ecf499c3004db45f1337a87dd931ddfb9580ca9ea756c",
@@ -73,8 +73,8 @@
     "fixtures/kb/base/src/beta/Other.cs": "468cef165db3831fc1ef51f0a5863e3c8dec6c4b6461e5e04182ccbfff40361a",
     "fixtures/kb/base/src/beta/Thing.cs": "468cef165db3831fc1ef51f0a5863e3c8dec6c4b6461e5e04182ccbfff40361a",
     "fixtures/kb/base/tracked.txt": "2c48869c8af7d865db2678939e9e0af9c848810854d5fe2190c1220a6b4b0f7d",
-    "fixtures/package-claude/smoke-1-events.jsonl": "ef6ff694e65680021ca920be2359289f01af66c40ff394f50605e1b9de377585",
-    "fixtures/package-claude/smoke-2-events.jsonl": "f4d5521cbe2fe87f8dab1d1f643c991ec375a02aad7344b82dc7b9e44ebf55ec",
+    "fixtures/package-claude/smoke-1-events.jsonl": "677625b3b2550d7fe80294a2383ee75162f33538e1d646dd63d6163145b2c93e",
+    "fixtures/package-claude/smoke-2-events.jsonl": "f62f0192fa88056f145a43462014f8b8ca3fa3ce1b30ddd6e7feba655beed1b6",
     "lib/codex.ps1": "1834161ddc2a2c137d2fe34cac159bbf33945137cc130f6e264b9a6b1b1c0919",
     "lib/config.ps1": "6fed913720d3afef0fe09c06869c11d74a27047492170080d6d57b00656293d5",
     "lib/context.ps1": "bf71fc5fdba73ee8d1cd16729e8a00bfe270dd38e8cad201f7de3ebebe43f4df",

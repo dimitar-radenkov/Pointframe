@@ -626,7 +626,8 @@ function Test-ClaudePlugin([string]$PluginRoot, [System.Collections.Generic.List
     }
     else
     {
-        try { $manifest = $manifestText | ConvertFrom-Json } catch { Add-Problem $Problems "$label/.claude-plugin/plugin.json is not valid JSON." }
+        $manifestBroken = $false; try { $manifest = $manifestText | ConvertFrom-Json -NoEnumerate } catch { $manifestBroken = $true; Add-Problem $Problems "$label/.claude-plugin/plugin.json is not valid JSON." }
+        if ($null -eq $manifest -or $manifest.GetType().FullName -ne 'System.Management.Automation.PSCustomObject') { $manifest = $null; if (-not $manifestBroken) { Add-Problem $Problems "$label/.claude-plugin/plugin.json is not a JSON object." } }
     }
     if ($manifest)
     {
@@ -708,7 +709,8 @@ function Test-ClaudePlugin([string]$PluginRoot, [System.Collections.Generic.List
     }
     else
     {
-        try { $lock = $lockText | ConvertFrom-Json } catch { Add-Problem $Problems "$label/server.lock.json is not valid JSON." }
+        $lockBroken = $false; try { $lock = $lockText | ConvertFrom-Json -NoEnumerate } catch { $lockBroken = $true; Add-Problem $Problems "$label/server.lock.json is not valid JSON." }
+        if ($null -eq $lock -or $lock.GetType().FullName -ne 'System.Management.Automation.PSCustomObject') { $lock = $null; if (-not $lockBroken) { Add-Problem $Problems "$label/server.lock.json is not a JSON object." } }
     }
     if ($lock)
     {
@@ -1033,6 +1035,11 @@ function Edit-FixtureFile([string]$Root, [string]$RelativePath, [string]$Old, [s
     Set-Content -LiteralPath $full -Value $text.Replace($Old, $New) -NoNewline
 }
 
+function Set-FixtureText([string]$Root, [string]$RelativePath, [string]$Text)
+{
+    Set-Content -LiteralPath (Join-Path $Root $RelativePath) -Value $Text -NoNewline
+}
+
 function Invoke-SelfTest
 {
     $good = Join-Path $PSScriptRoot 'tests' 'agent-discovery' 'good'
@@ -1103,6 +1110,12 @@ function Invoke-SelfTest
         @{ Name = 'uppercase plugin name'; Expect = 'plugin.json name must be'; Apply = { param($r) Edit-FixtureFile $r '.claude-plugin/plugin.json' '"name": "pointframe"' '"name": "Pointframe"' } },
         @{ Name = 'missing description'; Expect = 'does not set description'; Apply = { param($r) Edit-FixtureFile $r '.claude-plugin/plugin.json' '"description"' '"summary"' } },
         @{ Name = 'version drift'; Expect = 'differs from the pinned server version'; Apply = { param($r) Edit-FixtureFile $r '.claude-plugin/plugin.json' '"version": "' '"version": "0.0.' } },
+        @{ Name = 'server.lock.json is null'; Expect = 'server.lock.json is not a JSON object'; Apply = { param($r) Set-FixtureText $r 'server.lock.json' 'null' } },
+        @{ Name = 'server.lock.json is empty array'; Expect = 'server.lock.json is not a JSON object'; Apply = { param($r) Set-FixtureText $r 'server.lock.json' '[]' } },
+        @{ Name = 'server.lock.json is string'; Expect = 'server.lock.json is not a JSON object'; Apply = { param($r) Set-FixtureText $r 'server.lock.json' '"x"' } },
+        @{ Name = 'plugin.json is null'; Expect = 'plugin.json is not a JSON object'; Apply = { param($r) Set-FixtureText $r '.claude-plugin/plugin.json' 'null' } },
+        @{ Name = 'plugin.json is empty array'; Expect = 'plugin.json is not a JSON object'; Apply = { param($r) Set-FixtureText $r '.claude-plugin/plugin.json' '[]' } },
+        @{ Name = 'plugin.json is string'; Expect = 'plugin.json is not a JSON object'; Apply = { param($r) Set-FixtureText $r '.claude-plugin/plugin.json' '"x"' } },
         @{ Name = 'short sha256'; Expect = 'server.lock.json must have'; Apply = { param($r) Edit-FixtureFile $r 'server.lock.json' '"sha256": "' '"sha256": "AB' } },
         @{ Name = 'lock url for another version'; Expect = 'server.lock.json must have'; Apply = { param($r) Edit-FixtureFile $r 'server.lock.json' '/releases/download/v' '/releases/download/v9.' } },
         @{ Name = 'mcp command is not the plugin root launcher'; Expect = 'command must be a literal'; Apply = { param($r) Edit-FixtureFile $r '.mcp.json' '"${CLAUDE_PLUGIN_ROOT}/scripts/start-mcp.cmd"' '"powershell"' } },

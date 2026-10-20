@@ -96,6 +96,16 @@ try
         'Validate'
         {
             $resolved = (Resolve-Path -LiteralPath $Root).Path
+            # Both pin files (pinException.paths) must parse to JSON objects; a null, an array or a string is refused here, whatever the
+            # discovery check below says about them.
+            foreach ($pinFile in @('plugin/pointframe/server.lock.json', 'plugin/pointframe/.claude-plugin/plugin.json'))
+            {
+                $pinPath = Join-Path $resolved $pinFile
+                if (-not (Test-Path -LiteralPath $pinPath -PathType Leaf)) { Write-Output "$pinFile is missing"; exit 1 }
+                try { $pinDocument = Get-Content -LiteralPath $pinPath -Raw | ConvertFrom-Json -NoEnumerate -AsHashtable -ErrorAction Stop }
+                catch { Write-Output "$pinFile is not valid JSON"; exit 1 }
+                if ($pinDocument -isnot [hashtable]) { Write-Output "$pinFile is not a JSON object"; exit 1 }
+            }
             $discovery = & pwsh -NoProfile -NonInteractive -File (Join-Path $resolved 'scripts' 'check-agent-discovery.ps1') 2>&1
             if ($LASTEXITCODE -ne 0)
             {
