@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "source": "10252afdf58cd0d6b986537df115bde3e4945c2b",
-  "tag": "v0.4.1",
-  "commit": "a1aeb9e92bbdbc9f6718e17afe84bf709d92c786",
-  "manifestSha256": "9c1c83f0b7ca7b7d7193f495fe52b8c1a8ef995f72306527f5ae034f5da618e3",
+  "tag": "v0.4.2",
+  "commit": "9c6e5e72e207769b626aa7b74af02d81d7e18857",
+  "manifestSha256": "ccd5f75ac3613c136839f19aa1b6c077fdd6d3b53c1818312b44ad0c07afb25a",
   "files": {
     "fixtures/gates/agent-run/complete.md": "5588620c0a4e77b0feb6c39814237d23e1bd7618b8537709b5af8c2375878467",
     "fixtures/gates/agent-run/events.jsonl": "d9c21692f81f3faea91ecf499c3004db45f1337a87dd931ddfb9580ca9ea756c",
@@ -102,7 +102,7 @@
     "tools/install.ps1": "7f606e8770baa84ef852c2d57bb75fef7117aef6b8615e7af6dddfe99839af93",
     "tools/kb.ps1": "7b0be3f986e95a53be64f56f202a9b7a0fb3bad8389b1030dce41188751f9869",
     "tools/merge-pr.ps1": "f5c933ee38bf1c40f9afa8ae859d8406a9379beb847bdc6037a5a4eef95c935b",
-    "tools/package.ps1": "7d69ac7e14bfb67ed9ac9d120a10b858d453f06d067503f2c14a70ec7cc75144",
+    "tools/package.ps1": "3e58707fea62b9da7001a2595820dc074025c87e5ba5fef823949a26d97a29ac",
     "tools/record-review.ps1": "bc5e6e9a342b250ae3ab43e4bd1f2f20741232679eadcd35db9cb336b1c386fc",
     "tools/status.ps1": "8dd892f33e2cea5b9fef7768d5f93aa3cc00fb83f1d6bc0e5e515d8552895ef4",
     "tools/verify.ps1": "ea3bd6eb8282cb497109564e2831bed6c76e420f87363b97fdb77775bc4dd6b3",

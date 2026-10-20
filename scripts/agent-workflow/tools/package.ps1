@@ -2511,15 +2511,16 @@ function New-ReviewPrompt($State, $Review, [string]$VerdictPath, $Prior, [bool]$
         {
             # A Claude reviewer is never resumed (its earlier session ran in a snapshot that has been removed): it starts fresh and is told
             # what the previous round found.
-            $before = if ($Prior.status -eq 'valid') { "the verdict was $($Prior.verdict) on commit $($Prior.commit)" } else { "the review was INVALID, so it gave no verdict ($(@(Get-List $Prior.invalidReasons) -join '; '))" }
-            $lines = @("This is round $($Review.round) of a review. You are a new session with no memory of round $($Prior.round); that round's $before. The branch head may have changed since. What it reported is below, as information only: verify everything yourself. $tail")
+            # Every field of the earlier record is read with Get-Field: a record of an older version, or one that was interrupted, may lack any of them.
+            $before = if ((Get-Field $Prior 'status') -eq 'valid') { "the verdict was $(Get-Field $Prior 'verdict') on commit $(Get-Field $Prior 'commit')" } else { "the review was INVALID, so it gave no verdict ($(@(Get-List (Get-Field $Prior 'invalidReasons')) -join '; '))" }
+            $lines = @("This is round $($Review.round) of a review. You are a new session with no memory of round $(Get-Field $Prior 'round'); that round's $before. The branch head may have changed since. What it reported is below, as information only: verify everything yourself. $tail")
         }
-        foreach ($old in (Get-List $Prior.findings))
+        foreach ($old in (Get-List (Get-Field $Prior 'findings')))
         {
-            $disposition = $old.disposition
-            $lines += "Earlier finding $($old.id) ($($old.severity), $($old.file):$($old.line)): $($old.summary)$(if ($disposition) { " - the coordinator decided: $($disposition.decision) ($($disposition.reason))" } else { '' })"
+            $disposition = Get-Field $old 'disposition'
+            $lines += "Earlier finding $(Get-Field $old 'id') ($(Get-Field $old 'severity'), $(Get-Field $old 'file'):$(Get-Field $old 'line')): $(Get-Field $old 'summary')$(if ($disposition) { " - the coordinator decided: $(Get-Field $disposition 'decision') ($(Get-Field $disposition 'reason'))" } else { '' })"
         }
-        if (-not $Resumed) { foreach ($old in (Get-List $Prior.omissions)) { $lines += "Earlier omission: $old" } }
+        if (-not $Resumed) { foreach ($old in (Get-List (Get-Field $Prior 'omissions'))) { $lines += "Earlier omission: $old" } }
         $note = $lines -join "`n"
     }
     $text = [IO.File]::ReadAllText($template)
@@ -3100,7 +3101,7 @@ function Start-Review($Info)
     if (-not $mainBefore.treeHash) { throw "the main checkout cannot be fingerprinted (unreadable: $($mainBefore.unreadable -join ', ')); the review was not started" }
     $record = @{
         reviewId = $reviewId; round = $round; level = $Level; startedUtc = (Get-Now); endedUtc = $null; status = 'running'; verdict = $null; invalidReasons = @()
-        reviewer = @{ kind = $chosen.kind; provider = $chosen.provider; model = $chosen.model; effort = $chosen.effort; sessionId = $null; resumedFrom = $resumeSession; priorRound = $(if ($prior) { $prior.round } else { $null }); cliVersion = $null; permissions = $null; executable = $null }
+        reviewer = @{ kind = $chosen.kind; provider = $chosen.provider; model = $chosen.model; effort = $chosen.effort; sessionId = $null; resumedFrom = $resumeSession; priorRound = $(if ($prior) { Get-Field $prior 'round' } else { $null }); cliVersion = $null; permissions = $null; executable = $null }
         executor = @{ provider = $executorInfo.provider; model = $executorInfo.model; kind = $executorInfo.kind; runId = [string]$executorInfo.run.runId; session = $executorInfo.session }
         commit = $head; tree = $tree; contentTree = $content; checkId = [string]$latestCheck.checkId; baseSha = $(if ($observedBase) { $observedBase } else { [string]$state.baseSha }); baseObserved = $observedBase; startProblems = @($startProblems)
         executors = @($executorInfo.set); fileHashes = @{ path = $fileMapPath; sha256 = (Get-Sha256 $fileMapPath) }; manifestSha256 = [string]$state.manifest.sha256
@@ -3845,7 +3846,7 @@ function Get-ShipNotTested($Review, $Qualify)
             $items += "Criterion $($result.id) ($text): $($result.result) - $(Get-ShortText ([string]$result.evidence))"
         }
     }
-    foreach ($omission in (Get-List $Review.omissions)) { $items += "Reviewer omission: $(Get-ShortText ([string]$omission))" }
+    foreach ($omission in (Get-List (Get-Field $Review 'omissions'))) { $items += "Reviewer omission: $(Get-ShortText ([string]$omission))" }
     if (@(Get-List $Review.denials).Count) { $items += "The reviewer was denied $(@(Get-List $Review.denials).Count) tool call(s), so it may not have inspected everything." }
     if ($Qualify)
     {
@@ -4996,7 +4997,7 @@ exit 0
     $calls2 = @(& $rcalls)
     $c2 = if ($calls2.Count -ge 1) { & $readCall $calls2[-1] } else { $null }
     $c2args = @($c2.args)
-    & $expect ($calls2.Count -eq 1 -and $c2args -notcontains '--resume' -and $null -eq $rev2.reviewer.resumedFrom -and $rev2.reviewer.priorRound -eq 1 -and $c2.stdin -match 'COMPLETE, CURRENT verdict' -and $c2.stdin -match 'the verdict was FAIL' -and $c2.stdin -match 'Earlier finding F1' -and $c2.stdin -match 'Earlier finding F2' -and $c2.stdin -match "Reviewed commit: $head3") "the Claude reviewer was resumed, or was not told the earlier verdict and findings with a request for a complete, current verdict: $($c2args -join ' ')"
+    & $expect ($calls2.Count -eq 1 -and $c2args -notcontains '--resume' -and $null -eq $rev2.reviewer.resumedFrom -and (Get-Field $rev2.reviewer 'priorRound') -eq 1 -and $c2.stdin -match 'COMPLETE, CURRENT verdict' -and $c2.stdin -match 'the verdict was FAIL' -and $c2.stdin -match 'Earlier finding F1' -and $c2.stdin -match 'Earlier finding F2' -and $c2.stdin -match "Reviewed commit: $head3") "the Claude reviewer was resumed, or was not told the earlier verdict and findings with a request for a complete, current verdict: $($c2args -join ' ')"
     & $expect ($rev2.criteriaResults.Count -eq 3 -and @($rev2.criteriaResults | Where-Object { $_.result -ne 'pass' }).Count -eq 0) 'the resumed verdict does not cover every criterion'
 
     # accept: a separate recorded step; the record-review values come from the state.
@@ -5099,7 +5100,7 @@ exit 0
     $abandoned = @($state.reviews | Where-Object { $_.reviewId -eq 'abandoned' })[0]
     $final = Get-LatestReview $state
     & $expect ($abandoned.status -eq 'invalid' -and $abandoned.termination -eq 'abandoned' -and $r.Exit -eq 0 -and $final.status -eq 'valid' -and $final.verdict -eq 'PASS' -and $state.stage -eq 'review-passed') "the abandoned review was not recovered, or a fenced PASS was refused: $($r.Text)"
-    & $expect ($null -eq $final.reviewer.resumedFrom -and $null -ne $final.reviewer.priorRound) 'a later round of a Claude reviewer resumed a session instead of starting fresh with the earlier round in the prompt'
+    & $expect ($null -eq $final.reviewer.resumedFrom -and $null -ne (Get-Field $final.reviewer 'priorRound')) 'a later round of a Claude reviewer resumed a session instead of starting fresh with the earlier round in the prompt'
 
     # ---- package cx: Claude executor, Codex reviewer (read-only, heavy default), Claude resume fix, Codex resume ----
     $r = & $pkg @('new', '-Id', 'cx', '-Brief', $briefRv, '-Checks', $rvManifest)
@@ -5999,6 +6000,22 @@ function Invoke-PackageBSelfTest
         & $expect ($null -ne (Get-CliVersionProblem 'claude-sonnet-5-5' '2.9.9' '') -and $null -eq (Get-CliVersionProblem 'claude-sonnet-5-5' '3.0.0' '') -and $null -eq (Get-CliVersionProblem 'claude-opus-5-5' '2.0.1' '')) 'item 3 (CLI and model mismatch) the configuration did not override the kit table'
     }
     finally { if ($configured) { $script:Ctx.Config['package'] = $savedPackage } else { $script:Ctx.Config.Remove('package') } }
+
+    # ---- item 2 (no package): the prompt of a fresh round reads an earlier record that lacks fields (an older version's, or an interrupted one) ----
+    $promptState = @{ slug = 'p' }
+    $promptReview = @{ level = 'light'; round = 2; snapshot = @{ path = 'C:\snap'; inputDir = 'C:\snap-input' }; baseSha = 'b'; commit = 'c'; tree = 't'; criteria = @(@{ id = 'C1'; text = 'one' }) }
+    $sparsePriors = @(
+        @{ name = 'only an id'; prior = @{ reviewId = 'x' } }
+        @{ name = 'an interrupted review'; prior = @{ reviewId = 'x'; round = 1; status = 'invalid'; verdict = $null; reviewer = @{ kind = 'claude-sonnet' }; findings = @() } }
+        @{ name = 'a valid FAIL without omissions'; prior = @{ reviewId = 'x'; round = 1; status = 'valid'; verdict = 'FAIL'; commit = 'c0'; findings = @(@{ id = 'F1'; severity = 'blocking'; file = 'a'; line = 1; summary = 's' }) } }
+    )
+    foreach ($case in $sparsePriors)
+    {
+        $promptText = $null
+        $promptError = $null
+        try { $promptText = New-ReviewPrompt $promptState $promptReview 'C:\verdict.json' $case.prior $false } catch { $promptError = $_.Exception.Message }
+        & $expect ($promptText -and $promptText -match 'no memory of round' -and $promptText -match 'COMPLETE, CURRENT verdict') "item 2 (reviewer resume) the prompt of a fresh round could not be built from an earlier record that is $($case.name): $promptError"
+    }
 
     # ---- item 5 (no package): the coordinator's own findings file ----
     $findingsDir = Join-Path $root 'coordinator-findings'
