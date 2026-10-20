@@ -197,7 +197,7 @@ function Test-Kb
     if ($self.ExitCode -ne 0)
     {
         $failed = @($self.Lines | Where-Object { $_ -match '^FAIL' } | ForEach-Object { $_.Trim() })
-        $details = @('Fix: pwsh scripts/kb.ps1 selftest runs kb.ps1 against the synthetic knowledge bases in scripts/kb-fixtures; the log has each failed case.') + $failed
+        $details = @('Fix: pwsh scripts/kb.ps1 selftest runs kb.ps1 against the synthetic knowledge bases shipped with the workflow kit; the log has each failed case.') + $failed
         return New-Gate 'kb' 'fail' "Knowledge base self-test failed ($($failed.Count) case(s))." $details $self.Log
     }
     $run = Invoke-Logged 'kb' 'pwsh' @('-NoProfile', '-NonInteractive', '-File', (Join-Path $RepoRoot 'scripts' 'kb.ps1'), 'check', '-NoFix')

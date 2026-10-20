@@ -1,0 +1,17 @@
+{
+  "sections": {},
+  "workflowRules": {
+    "W-01": [
+      "all"
+    ],
+    "W-02": [
+      "executor"
+    ],
+    "W-03": [
+      "coordinator"
+    ],
+    "W-04": [
+      "reviewer"
+    ]
+  }
+}

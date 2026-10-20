@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "repository": {
+    "id": "pointframe",
+    "baseRef": "origin/master"
+  },
+  "state": {
+    "commonDirNamespace": "pointframe"
+  },
+  "kb": {
+    "root": "docs/knowledge-base",
+    "core": "docs/knowledge-base/knowledge-base.md",
+    "features": "docs/knowledge-base/features",
+    "lessons": "lessons.md",
+    "featurePrefix": "F-",
+    "decisionPrefix": "D-",
+    "baseline": "docs/knowledge-base/kb-baseline.json",
+    "tasks": "docs/knowledge-base/kb-tasks.json",
+    "render": {
+      "workflow": "docs/knowledge-base/workflow.md",
+      "slots": "docs/knowledge-base/kb-slots.txt",
+      "skills": {
+        "claude": ".claude/skills",
+        "agents": ".agents/skills"
+      }
+    }
+  },
+  "status": {
+    "store": "plan/status.json",
+    "issue": 186,
+    "handoff": "plan/handoff.md"
+  },
+  "merge": {
+    "requiredChecks": [
+      "unit-tests",
+      "package-checks",
+      "Analyze (csharp)",
+      "CodeQL"
+    ]
+  },
+  "gates": [
+    {
+      "id": "build",
+      "exe": "dotnet",
+      "args": ["build", "Pointframe.Tests/Pointframe.Tests.csproj", "--configuration", "Release", "--nologo", "-v", "q"],
+      "cwd": ".",
+      "timeoutMinutes": 30,
+      "dependsOn": []
+    },
+    {
+      "id": "format",
+      "exe": "dotnet",
+      "args": ["format", "Pointframe/Pointframe.csproj", "--verify-no-changes", "--no-restore"],
+      "cwd": ".",
+      "timeoutMinutes": 30,
+      "dependsOn": []
+    },
+    {
+      "id": "tests",
+      "exe": "dotnet",
+      "args": ["test", "Pointframe.Tests/Pointframe.Tests.csproj", "--configuration", "Release", "--no-build", "--nologo", "--filter", "Category!=Integration", "--logger", "trx;LogFileName=tests.trx", "--results-directory", "artifacts/verify/test-results"],
+      "cwd": ".",
+      "timeoutMinutes": 45,
+      "dependsOn": ["build"]
+    },
+    {
+      "id": "kb-selftest",
+      "exe": "pwsh",
+      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/kb.ps1", "selftest"],
+      "cwd": ".",
+      "timeoutMinutes": 20,
+      "dependsOn": []
+    },
+    {
+      "id": "kb-check",
+      "exe": "pwsh",
+      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/kb.ps1", "check", "-NoFix"],
+      "cwd": ".",
+      "timeoutMinutes": 20,
+      "dependsOn": ["kb-selftest"]
+    },
+    {
+      "id": "workflows-selftest",
+      "exe": "pwsh",
+      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/check-workflow-scripts.ps1", "-SelfTest"],
+      "cwd": ".",
+      "timeoutMinutes": 10,
+      "dependsOn": []
+    },
+    {
+      "id": "workflows",
+      "exe": "pwsh",
+      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/check-workflow-scripts.ps1"],
+      "cwd": ".",
+      "timeoutMinutes": 10,
+      "dependsOn": ["workflows-selftest"]
+    },
+    {
+      "id": "discovery-selftest",
+      "exe": "pwsh",
+      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/check-agent-discovery.ps1", "-SelfTest"],
+      "cwd": ".",
+      "timeoutMinutes": 10,
+      "dependsOn": []
+    },
+    {
+      "id": "discovery",
+      "exe": "pwsh",
+      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/check-agent-discovery.ps1"],
+      "cwd": ".",
+      "timeoutMinutes": 10,
+      "dependsOn": ["discovery-selftest"]
+    },
+    {
+      "id": "scripts",
+      "exe": "pwsh",
+      "args": ["-NoProfile", "-NonInteractive", "-File", "scripts/test-scripts.ps1"],
+      "cwd": ".",
+      "timeoutMinutes": 30,
+      "dependsOn": []
+    }
+  ],
+  "roles": {
+    "coordinator": {"provider": "claude", "model": "opus", "effort": "high", "sandbox": "read-only"},
+    "executor": {"provider": "openai", "model": "gpt-6-luna", "effort": "medium", "sandbox": "workspace-write"},
+    "lightReviewer": {"provider": "openai", "model": "gpt-6-luna", "effort": "medium", "sandbox": "read-only"},
+    "heavyReviewer": {"provider": "openai", "model": "gpt-6.1-sol", "effort": "high", "sandbox": "read-only"}
+  },
+  "hooks": {
+    "environment": "docs/knowledge-base/hooks/environment.ps1",
+    "kbCoverage": "docs/knowledge-base/hooks/coverage.ps1",
+    "pin": null,
+    "qualify": null,
+    "postMerge": null
+  },
+  "pinException": null
+}

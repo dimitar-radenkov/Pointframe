@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "jobs": [
+    {
+      "id": "alpha",
+      "objective": "Fixture objective alpha",
+      "accountable": "accountable-secret",
+      "stage": "stage alpha",
+      "artifact": "artifact alpha",
+      "evidence": "evidence alpha",
+      "next": "next alpha",
+      "blocker": "blocker alpha",
+      "due": "2026-12-24",
+      "note": "SECRET-NOTE",
+      "state": "active",
+      "updatedUtc": "2026-10-16T00:00:00Z"
+    },
+    {
+      "id": "finished",
+      "objective": "Fixture objective done",
+      "stage": "stage done",
+      "next": "",
+      "blocker": "",
+      "state": "done",
+      "updatedUtc": "2026-10-15T00:00:00Z"
+    }
+  ]
+}

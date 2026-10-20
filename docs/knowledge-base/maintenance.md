@@ -41,7 +41,7 @@ Warnings, not errors: a prose line over 600 characters (tables and `**Files.**` 
 
 ### Maintenance commands
 
-**Maintenance.** Five skills, all backed by `scripts/kb.ps1`. The owner types two: `/kb-init` to start and `/kb-done` to finish. `kb-read`, `kb-write`, and `kb-check` are model-only (`user-invocable: false`, hidden from the `/` menu); agents call them on their own. Edit them only under `.claude/skills/kb-*`; `check` regenerates the Codex copies in `.agents/skills/`.
+**Maintenance.** Five skills, all backed by `scripts/kb.ps1`, a wrapper for the vendored workflow kit's `scripts/agent-workflow/tools/kb.ps1`, which takes its paths and the Pointframe hooks (`docs/knowledge-base/hooks/`: environment probes, telemetry and smoke-test coverage) from `agent-workflow.json`. The owner types two: `/kb-init` to start and `/kb-done` to finish. `kb-read`, `kb-write`, and `kb-check` are model-only (`user-invocable: false`, hidden from the `/` menu); agents call them on their own. They, the Codex copies in `.agents/skills/`, and `workflow.md` are rendered from the kit's templates plus the local slots in `docs/knowledge-base/kb-slots.txt`: edit the slots (or the kit), never the rendered files, then run `pwsh scripts/kb.ps1 render`; `check -NoFix` fails on drift. The kit owns rule IDs W-01 to W-799; local rules go in the `additions` slot as W-800 to W-999.
 
 | Skill | Does | Script |
 |---|---|---|
@@ -51,7 +51,7 @@ Warnings, not errors: a prose line over 600 characters (tables and `**Files.**` 
 | `kb-check` | Refreshes the generated blocks and the baseline, checks every file, fixes what it reports | `pwsh scripts/kb.ps1 check` (CI: `check -NoFix`) |
 | `/kb-done [coordinator\|executor\|reviewer]` | Closes the work: updates the knowledge base or records it as reviewed unchanged, runs `check`, `dotnet format` and `verify.ps1`, and for a coordinator writes the status checkpoint. Never commits, pushes, or merges | `pwsh scripts/kb.ps1 changed -Base <merge-base>`, `check`, `pwsh scripts/verify.ps1` |
 
-`pwsh scripts/kb.ps1 selftest` runs the tool against synthetic fixtures in `scripts/kb-fixtures/` (section routing, hook dedup, baseline growth and shrinkage, rule IDs, `init` order and role filtering, the status allowlist, topic menus); `scripts/verify.ps1` runs it before `check -NoFix`.
+`pwsh scripts/kb.ps1 selftest` runs the tool against synthetic fixtures shipped with the kit (section routing, hook dedup, baseline growth and shrinkage, rule IDs, `init` order and role filtering, the status allowlist, topic menus); `scripts/verify.ps1` runs it before `check -NoFix`.
 
 When a change adds a folder, a project, or a file that belongs to a different section than its folder's row says, add or narrow a File map row in the same change; a row may not be broader than the section that owns its files. When it adds, removes, or rewires a user-facing feature, a telemetry event, or a smoke test, update the feature's row in its area file in the same change.
 

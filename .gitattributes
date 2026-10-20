@@ -3,3 +3,8 @@
 .squad/agents/*/history.md merge=union
 .squad/log/** merge=union
 .squad/orchestration-log/** merge=union
+
+# BEGIN agent-workflow managed attributes
+/scripts/agent-workflow/** -text
+/agent-workflow.lock.json -text
+# END agent-workflow managed attributes
