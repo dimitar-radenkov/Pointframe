@@ -7,17 +7,20 @@ host-checked acceptance, and `ship`, which takes an accepted head to a merged pu
   pwsh scripts/package.ps1 commit -Id <slug> [-Message <text>]
   pwsh scripts/package.ps1 review -Id <slug> -Level light|heavy [-Reviewer codex-sol|codex-luna|claude-opus|claude-sonnet] [-ResetBudget -Reason <text>]
   pwsh scripts/package.ps1 disposition -Id <slug> -Finding <id> -Accept|-Reject -Reason <text>
-  pwsh scripts/package.ps1 fix -Id <slug> [-Executor same] [-ResetBudget -Reason <text>]
+  pwsh scripts/package.ps1 fix -Id <slug> [-Executor same] [-ResetBudget -Reason <text>] [-Findings <file>]
   pwsh scripts/package.ps1 accept -Id <slug> -Reason <text>
   pwsh scripts/package.ps1 new -Id <slug> -Brief <file> [-Checks <manifest.json>] [-DryRun]
   pwsh scripts/package.ps1 run -Id <slug> [-Executor codex|claude-sonnet|claude-haiku] [-Effort medium|high -EscalationReason <text>] [-MaxMinutes 30]
   pwsh scripts/package.ps1 run -Id <slug> -Executor claude-sonnet -Resume -PromptFile <fix-request.md>
   pwsh scripts/package.ps1 check -Id <slug>
   pwsh scripts/package.ps1 show -Id <slug> [-Json]
-  pwsh scripts/package.ps1 -SelfTest
+  pwsh scripts/package.ps1 recover -Id <slug> -Reason <text>
+  pwsh scripts/package.ps1 -SelfTest [-Quick]
 
 new     snapshots the brief and the check manifest (SHA-256, read-only), creates branch pkg/<slug> and its worktree from
-        the fetched origin/master, preflight-builds the check targets, validates the brief with agent-run.ps1.
+        the fetched origin/master, preflight-builds the check targets, validates the brief with agent-run.ps1. It warns (and never refuses) about an
+        acceptance case that names only a command run ("tests pass") or the executor's report ("stated in the report"): a reviewer cannot run
+        commands and cannot trust a report, so such a case needs something it can observe (a file, the diff, a gate of the check summary).
 run     launches the Codex executor through agent-run.ps1 under a hard wall-clock bound, and fingerprints the main checkout
         before and after. A changed fingerprint stops the run (mainCheckoutMutated); nothing is ever reverted.
         -Executor claude-sonnet|claude-haiku launches `claude -p` through the same suspended job-object launch: the working
@@ -29,18 +32,30 @@ run     launches the Codex executor through agent-run.ps1 under a hard wall-cloc
         allowedPaths.
 check   runs the manifest's checks in the worktree as the runner. Mutating steps run first (extra commands marked "mutates",
         dotnet format, CRLF normalization), then build, focused tests and the other extra commands. Every command records
-        the content hash of the worktree it ran on; a result is fresh only while the worktree still has that hash.
+        the content hash of the worktree it ran on; a result is fresh only while the worktree still has that hash. A tracked file that git
+        sees as unchanged but whose raw bytes differ from what a checkout of it writes (an edit and revert hidden by autocrlf or
+        assume-unchanged) fails the check as a named problem with the file list; nothing is rewritten.
 show    prints stage, runs, checks (stale or incomplete evidence is reported), the guard and the allowed next steps.
 commit  coordinator step after a fresh passing check: commits the package changes on pkg/<slug> (trailer "Package: <slug> run
         <runId>"), fetches and rebases onto the base ref, and re-runs check when the rebase changed the tree. Executors never commit.
 review  runs a read-only reviewer of the other provider (Codex through codex-ask.ps1 -Sandbox read-only, Claude through claude -p
         with Read/Glob/Grep only and no shell) on exactly the committed head. The reviewer's final message is saved as
         the verdict file; the host validates it against the kit's review/package-verdict.schema.json and checks it against the observed head,
-        tree, clean worktree, the brief's criteria and a fresh check. Anything else is recorded as invalid, never PASS. Each review
-        round counts against a persisted budget of 3; later rounds resume the reviewer's session and must return a full verdict.
+        tree, clean worktree, the brief's criteria and a fresh check. Anything else is recorded as invalid, never PASS. The reviewer
+        also gets the fresh check summary (check-summary.json) and the executor's final report (executor-report.md) as hashed inputs.
+        Each review round counts against a persisted budget of 3. A Codex reviewer resumes its session in later rounds; a Claude reviewer
+        starts fresh every round, with the previous verdict and findings in the prompt; both must return a full verdict. A Claude CLI older
+        than the minimum its model needs (package.minCliVersions of the configuration over the kit table) refuses the round before it is
+        spent. A round that is invalid because of a host-detected environment failure (the reviewer could not be started or crashed before
+        any verdict, an interrupted wrapper) is refunded; the refund and its reason are recorded and shown.
 disposition  the coordinator's accept or reject (with a reason) of one finding of the latest review.
 fix     builds a fix request from the accepted findings, resumes the same executor (Claude -Resume; Codex: a new run with the
-        previous report appended), then runs check, commit and review again.
+        previous report appended), then runs check, commit and review again. A FAIL verdict that carries no finding at all has nothing to
+        accept: -Findings <file> (a JSON array of {file, line, summary, scenario[, id, severity]} the coordinator wrote) is recorded,
+        hashed and used as the findings of that fix.
+recover the audited way out of blocked-main-mutated: -Reason is required. It records the reason, the main checkout as it is now and the
+        guard it clears, invalidates every check, review PASS and the acceptance, and returns the package to the stage after its last run
+        (check, commit and review start again). It never clears the guard silently and reverts nothing.
 accept  the coordinator's recorded acceptance: only for a valid PASS bound to the current head and tree; writes the review record
         through record-review.ps1 from values in the state. A later change to the head invalidates it (the plugin pin files excepted).
 ship    resumable, one repository-wide ship lock (git common dir <namespace>/ship.lock; a dead ship's leftover ship.json is reported
@@ -67,15 +82,17 @@ allowedPaths globs: * stays inside one path segment, ** crosses segments, ? is o
 allowedScripts are the only scripts besides kb.ps1 (init|read|check|changed|selftest) and verify.ps1 a Claude executor may run.
 Configuration (agent-workflow.json, read from the main checkout of the repository): state.commonDirNamespace (<namespace> below),
 repository.baseRef, pinException.paths (the pin files), hooks.pin (-Action Validate), hooks.qualify (-Action Impact|Run), hooks.channels,
-package.commands and package.testFilter (the build, format and test commands), verify.outputDir (the receipt folder).
+package.commands and package.testFilter (the build, format and test commands), package.minCliVersions (model -> minimum Claude CLI version,
+over the kit's own table), verify.outputDir (the receipt folder).
 -SelfTest runs offline against marked stubs and temporary repositories; AW_PKG_SELFTEST_CASES=1 prints one CASE line per check and a
-KITCASE line per hook-contract check.
+KITCASE line per hook-contract check. -SelfTest -Quick runs the fast subset (every command's dispatch, state round-trip, the refusals
+and one ship path); the full suite stays the release gate.
 State lives in <git common dir>/<namespace>/packages/<slug>.json. Exit codes: 0 ok, 1 failure, 2 bad input, 5 main checkout mutated.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('new', 'run', 'check', 'show', 'commit', 'review', 'fix', 'disposition', 'accept', 'ship')]
+    [ValidateSet('new', 'run', 'check', 'show', 'commit', 'review', 'fix', 'disposition', 'accept', 'ship', 'recover')]
     [string]$Command,
     [string]$Id,
     [string]$Brief,
@@ -97,6 +114,7 @@ param(
     [ValidateSet('codex-sol', 'codex-luna', 'claude-opus', 'claude-sonnet')]
     [string]$Reviewer,
     [string]$Finding,
+    [string]$Findings,
     [switch]$Accept,
     [switch]$Reject,
     [string]$Reason,
@@ -138,7 +156,8 @@ param(
     [int]$LockTimeoutSeconds = 10,
     [ValidateRange(0, 3600)]
     [int]$GraceSeconds = 60,
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    [switch]$Quick
 )
 
 $ErrorActionPreference = 'Stop'
@@ -295,6 +314,10 @@ function Read-State([string]$Root, [string]$Slug)
     foreach ($key in @('reviews', 'commits')) { if (-not $state.ContainsKey($key) -or $null -eq $state[$key]) { $state[$key] = @() } }
     foreach ($key in @('commit', 'acceptance', 'pendingFix', 'ship')) { if (-not $state.ContainsKey($key)) { $state[$key] = $null } }
     foreach ($key in @('qualifications', 'pushes')) { if (-not $state.ContainsKey($key) -or $null -eq $state[$key]) { $state[$key] = @() } }
+    # Added after the first release (optional, so a state file written by v0.3.x reads as it did): the audited recoveries, the findings a
+    # coordinator wrote for a FAIL verdict that had none, and the review rounds refunded for a host-detected environment failure.
+    foreach ($key in @('recoveries', 'coordinatorFindings')) { if (-not $state.ContainsKey($key) -or $null -eq $state[$key]) { $state[$key] = @() } }
+    if (-not $state.repair.ContainsKey('refunds') -or $null -eq $state.repair['refunds']) { $state.repair['refunds'] = @() }
     $state
 }
 
@@ -548,6 +571,8 @@ function Get-CheckEvidenceProblems($Check, $Plan)
     # A check counts as evidence only if it covers every command of the manifest, in order, with an exit code and an
     # existing log, and each command ran on the tree the previous one left (validators on the check's final tree).
     $problems = [Collections.Generic.List[string]]::new()
+    $invalidation = Get-Field $Check 'invalidated'
+    if ($invalidation) { $problems.Add("the check was invalidated by recover ($(Get-Field $invalidation 'reason')); run check again") }
     $recorded = @($Check.commands)
     $covered = $recorded.Count -eq $Plan.Count
     for ($i = 0; $covered -and $i -lt $Plan.Count; $i++) { if ($recorded[$i].name -ne $Plan[$i].name) { $covered = $false } }
@@ -574,6 +599,8 @@ function Get-CheckEvidenceProblems($Check, $Plan)
     # ok must be exactly "every command ran, exited 0, and no validator changed the tree"; anything else contradicts itself.
     $derivedOk = $true
     foreach ($c in $recorded) { if ($c.skipped -or $null -eq $c.exitCode -or $c.exitCode -ne 0 -or ($c.ContainsKey('modifiedWorktree') -and $c.modifiedWorktree)) { $derivedOk = $false } }
+    # A check that named raw-byte problems did not pass (older checks have no such field).
+    if (@(Get-List (Get-Field $Check 'rawBytesProblems')).Count) { $derivedOk = $false }
     if ([bool]$Check.ok -ne $derivedOk) { $problems.Add("the check says ok=$([bool]$Check.ok) but its recorded exit codes say $derivedOk") }
     @($problems)
 }
@@ -606,6 +633,80 @@ function Invoke-CrlfNormalize([string]$Wt, [string]$BaseSha)
         $fixed.Add($relative)
     }
     @($fixed)
+}
+
+function Invoke-GitWithInput([string]$Dir, [string[]]$GitArgs, [byte[]]$InputBytes)
+{
+    # git with raw bytes on standard input (NUL separated path lists cannot go through the PowerShell pipeline). Returns the exit code and standard error.
+    $psi = [Diagnostics.ProcessStartInfo]::new('git')
+    $psi.WorkingDirectory = $Dir
+    foreach ($argument in @('-C', $Dir) + $GitArgs) { [void]$psi.ArgumentList.Add($argument) }
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $process = [Diagnostics.Process]::Start($psi)
+    $out = $process.StandardOutput.ReadToEndAsync()
+    $err = $process.StandardError.ReadToEndAsync()
+    try { $process.StandardInput.BaseStream.Write($InputBytes, 0, $InputBytes.Length) } finally { $process.StandardInput.Close() }
+    $process.WaitForExit()
+    $out.Wait()
+    $err.Wait()
+    @{ ExitCode = $process.ExitCode; Error = $err.Result }
+}
+
+function Get-RawByteProblems([string]$Wt)
+{
+    # Tracked files that git sees as unchanged (a clean filter such as autocrlf hides an edit and its revert, assume-unchanged hides
+    # everything) but whose raw bytes are not what checking their index entry out writes. The review snapshot is exactly such a checkout, so
+    # the checks would have run on bytes the reviewer never reads. Report only: nothing is rewritten, and no object is written (the
+    # checkout goes to a temporary folder, the index is not updated). Files git reports as changed are the change set; the CRLF step
+    # and the review's own content comparison cover them.
+    $staged = (& git -C $Wt ls-files -s -z 2>&1 | ForEach-Object { "$_" }) -join ''
+    if ($LASTEXITCODE -ne 0) { throw "git ls-files failed in ${Wt}: $staged" }
+    $changed = @{}
+    $diffRaw = (& git -C $Wt diff --name-only -z --no-renames --no-ext-diff --no-textconv 2>$null | ForEach-Object { "$_" }) -join ''
+    if ($LASTEXITCODE -ne 0) { throw "git diff failed in $Wt" }
+    foreach ($name in @($diffRaw -split "`0" | Where-Object { $_ })) { $changed[$name] = $true }
+    $candidates = [Collections.Generic.List[string]]::new()
+    foreach ($entry in @($staged -split "`0" | Where-Object { $_ }))
+    {
+        # <mode> SP <oid> SP <stage> TAB <path>; regular files at stage 0 only (not links, not submodules, not conflicted paths).
+        $parsed = [regex]::Match($entry, '^(100644|100755) [0-9a-f]+ 0\t(.+)$')
+        if (-not $parsed.Success) { continue }
+        $path = $parsed.Groups[2].Value
+        if ($changed.ContainsKey($path) -or -not (Test-Path -LiteralPath (Join-Path $Wt $path) -PathType Leaf)) { continue }
+        $candidates.Add($path)
+    }
+    if ($candidates.Count -eq 0) { return @() }
+    $temp = Join-Path ([IO.Path]::GetTempPath()) "package-rawbytes-$([guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Path $temp -Force | Out-Null
+    try
+    {
+        $listing = [Text.UTF8Encoding]::new($false).GetBytes((($candidates | ForEach-Object { "$_`0" }) -join ''))
+        $result = Invoke-GitWithInput $Wt @('checkout-index', '-f', '-z', '--stdin', "--prefix=$($temp -replace '\\', '/')/") $listing
+        if ($result.ExitCode -ne 0) { throw "git checkout-index failed in ${Wt}: $($result.Error)" }
+        $differing = [Collections.Generic.List[string]]::new()
+        foreach ($path in $candidates)
+        {
+            $expected = Join-Path $temp $path
+            $actual = Join-Path $Wt $path
+            if (-not (Test-Path -LiteralPath $expected -PathType Leaf)) { continue }
+            $same = $false
+            try
+            {
+                if ((Get-Item -LiteralPath $expected).Length -eq (Get-Item -LiteralPath $actual).Length) { $same = (Get-Sha256 $expected) -eq (Get-Sha256 $actual) }
+            }
+            catch { $same = $false }
+            if (-not $same) { $differing.Add($path) }
+        }
+        @($differing | Sort-Object)
+    }
+    finally
+    {
+        Get-ChildItem -LiteralPath $temp -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.IsReadOnly = $false }
+        Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Get-SessionIdFromEvents([string]$Path)
@@ -862,6 +963,43 @@ function Get-ClaudeCliVersion($Launcher)
         [AwProcessJob]::Close($job)
         Remove-Item -LiteralPath "$base.out", "$base.err" -Force -ErrorAction SilentlyContinue
     }
+    $null
+}
+
+# The oldest Claude CLI that serves each model: the kit's own table. package.minCliVersions of the configuration is merged over it.
+$script:ClaudeMinCliVersions = @{ 'claude-opus-5-5' = '2.1.280' }
+
+function Get-ClaudeMinCliVersions
+{
+    $table = @{}
+    foreach ($key in $script:ClaudeMinCliVersions.Keys) { $table[$key] = [string]$script:ClaudeMinCliVersions[$key] }
+    if ($script:Ctx)
+    {
+        $configured = Get-AwSetting (Get-AwSection $script:Ctx 'package') 'minCliVersions' @{}
+        foreach ($key in $configured.Keys) { $table[[string]$key] = [string]$configured[$key] }
+    }
+    $table
+}
+
+function ConvertTo-CliVersion([string]$Text)
+{
+    # The leading major.minor.patch of what `claude --version` prints ("2.1.280 (Claude Code)"); $null when there is none.
+    $parsed = [regex]::Match($Text, '(\d+)\.(\d+)\.(\d+)')
+    if (-not $parsed.Success) { return $null }
+    [version]::new([int]$parsed.Groups[1].Value, [int]$parsed.Groups[2].Value, [int]$parsed.Groups[3].Value)
+}
+
+function Get-CliVersionProblem([string]$Model, [string]$Reported, [string]$ProbeProblem)
+{
+    # $null when the CLI can serve the model (or the model has no minimum), else the actionable refusal. A minimum that cannot be checked
+    # because the probe produced no version is a refusal too: the round is not started on a guess.
+    $table = Get-ClaudeMinCliVersions
+    if (-not $table.ContainsKey($Model)) { return $null }
+    $minimum = ConvertTo-CliVersion $table[$Model]
+    $found = ConvertTo-CliVersion $Reported
+    $update = 'Update it (npm install -g @anthropic-ai/claude-code@latest) or pass -ClaudePath to a newer claude. No review round was spent.'
+    if (-not $found) { return "refused: the claude CLI version could not be read ($(if ($ProbeProblem) { $ProbeProblem } else { "it printed '$Reported'" })), and $Model needs $minimum or newer. $update" }
+    if ($found -lt $minimum) { return "refused: the claude CLI is version $found, but $Model needs $minimum or newer. $update" }
     $null
 }
 
@@ -1328,7 +1466,7 @@ function Get-NextTransitions($State, [bool]$SnapshotsOk = $true)
         'creating' { @() }
         'creation-failed' { @() }
         'preflight-failed' { @() }
-        'blocked-main-mutated' { @() }
+        'blocked-main-mutated' { @('recover -Reason <text>') }
         'checks-passed' { @('commit', 'run', 'check') }
         'committed' { @('review -Level light|heavy') }
         'reviewing' { @('review (recovers an abandoned review first)') }
@@ -1349,6 +1487,27 @@ function Get-NextTransitions($State, [bool]$SnapshotsOk = $true)
 }
 
 # ---- new --------------------------------------------------------------------------------------------------------
+
+function Get-UnobservableCriterionWarnings($Criteria, $Manifest)
+{
+    # An acceptance case the reviewer cannot observe: it names only a command run ("tests pass"; the reviewer has no shell, it reads the check
+    # summary of the commands the manifest lists) or only the executor's report ("stated in the report"; the report is the executor's word).
+    # Heuristic, and only ever a warning. A case that names a check of the manifest, or something to look at (a file, the diff, a line, an
+    # output), is left alone.
+    $commandRun = '(?i)\b(tests?|builds?|compil\w+|lint\w*|format\w*|verify|checks?|gates?|run-all|self-?test|suite)\b.{0,60}\b(pass(es|ed)?|succeed(s|ed)?|green|clean|ok)\b|\bexits?( with)?( code)? 0\b|\b(all )?(tests?|builds?|checks?) (are |is )?(pass|green)'
+    $reportOnly = '(?i)\b(stated|reported|documented|confirmed|mentioned|noted|listed|explained|claimed)\b.{0,40}\b(in|by)\b.{0,25}\breport\b|\b(the|executor''?s?|final)( \w+){0,2} report\b.{0,30}\b(says?|states?|lists?|confirms?|mentions?|names?|documents?|notes?)\b|\bin the report\b'
+    $observable = '(?i)\b(files?|diff|lines?|functions?|class(es)?|methods?|contains?|exists?|renamed?|removed?|adds?|added|unchanged|refus\w+|returns?|prints?|output|text|says)\b'
+    $names = @(@($Manifest.build) + @($Manifest.format) + @($Manifest.tests | ForEach-Object { $_.project }) + @($Manifest.extra | ForEach-Object { $_.name }) | Where-Object { $_ } | ForEach-Object { $_; [IO.Path]::GetFileName((([string]$_) -replace '\\', '/')) } | Where-Object { $_ })
+    foreach ($criterion in @($Criteria))
+    {
+        $text = [string]$criterion.text
+        $namesCheck = $false
+        foreach ($name in $names) { if ($text.IndexOf([string]$name, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $namesCheck = $true; break } }
+        if ($namesCheck) { continue }
+        $kind = if ($text -match $reportOnly -and $text -notmatch $commandRun) { 'the executor''s report' } elseif ($text -match $commandRun) { 'a command run' } else { $null }
+        if ($kind -and ($kind -ne 'a command run' -or $text -notmatch $observable)) { "acceptance case $($criterion.id) names only $kind (`"$(Get-ShortText $text 80)`"): a reviewer cannot run commands and cannot take the report for evidence. Name something it can observe: a file or line of the diff, or a gate of the check manifest (it reads check-summary.json). Not refused." }
+    }
+}
 
 function Invoke-New
 {
@@ -1379,6 +1538,9 @@ function Invoke-New
     Write-Host "  worktree     $wt"
     Write-Host "  branch       $branch from $BaseRef$(if ($remote) { " after 'git fetch $remote'" })"
     Write-Host "  preflight    $((Get-PackageCommand 'build').exe) build of: $((@($manifest.build) + @($manifest.tests | ForEach-Object { $_.project }) | Select-Object -Unique) -join ', ')"
+    # Warned about, never refused: a brief without acceptance cases is refused by 'review', not here.
+    $briefCriteria = @(try { Get-ReviewCriteria $briefSource } catch { })
+    foreach ($warning in @(Get-UnobservableCriterionWarnings $briefCriteria $manifest)) { Write-Host "WARNING $warning" }
     if ($DryRun) { Write-Host 'dry run: nothing was created.'; return }
 
     # The whole creation is one transaction under the package lock; existence is rechecked while holding it.
@@ -1577,7 +1739,7 @@ function Invoke-RunCore
     $paths = Get-PackagePaths $info.StateRoot $Id
     $problems = @(Test-SnapshotsIntact $state)
     if ($problems.Count) { throw ($problems -join '; ') }
-    if ($state.stage -eq 'blocked-main-mutated') { throw 'the main checkout was mutated by an earlier run; resolve it by hand, this package stays stopped' }
+    if ($state.stage -eq 'blocked-main-mutated') { throw 'the main checkout was mutated by an earlier run; resolve it by hand, then record that with: recover -Id <slug> -Reason <text>. Until then this package stays stopped' }
     if ($state.stage -in @('shipping', 'desktop-required', 'ship-failed', 'auto-merge-enabled', 'merged')) { throw "run is not allowed in stage '$($state.stage)': the package is being shipped" }
     if ($state.stage -in @('running', 'executor-kill-failed'))
     {
@@ -1867,8 +2029,13 @@ function Invoke-CheckCore($info)
             if (-not $command.mutator -and $tree -ne $record.inputTree) { $record.modifiedWorktree = $true; $modifiedByValidator = $true }
             $records += @($record)
         }
-        $ok = @($records | Where-Object { $null -ne $_.exitCode -and $_.exitCode -ne 0 }).Count -eq 0 -and -not $buildFailed -and -not $modifiedByValidator
-        $record = @{ checkId = $checkId; utc = (Get-Now); ok = $ok; treeBefore = $treeBefore; treeHash = $tree; commands = $records }
+        # The tracked files git sees as unchanged have to hold the bytes a checkout of them writes (the review snapshot is one); otherwise the
+        # commands above ran on content the reviewer will never read. Named here, with the file list, instead of costing a review round.
+        $rawProblems = @()
+        try { $rawProblems = @(Get-RawByteProblems $wt) }
+        catch { $rawProblems = @("(the raw-byte comparison could not run: $($_.Exception.Message))") }
+        $ok = @($records | Where-Object { $null -ne $_.exitCode -and $_.exitCode -ne 0 }).Count -eq 0 -and -not $buildFailed -and -not $modifiedByValidator -and $rawProblems.Count -eq 0
+        $record = @{ checkId = $checkId; utc = (Get-Now); ok = $ok; treeBefore = $treeBefore; treeHash = $tree; commands = $records; rawBytesProblems = @($rawProblems) }
         $stage = if ($ok) { 'checks-passed' } else { 'checks-failed' }
         Update-State $info.StateRoot $Id 'checked' {
             param($s)
@@ -1876,6 +2043,11 @@ function Invoke-CheckCore($info)
             $s.stage = $stage
         } -Locked | Out-Null
         foreach ($item in $records) { Write-Host ("  {0,-6} {1}{2}" -f $(if ($item.skipped) { 'SKIP' } elseif ($item.exitCode -eq 0) { 'ok' } else { "exit $($item.exitCode)" }), $item.name, $(if (Get-Field $item 'modifiedWorktree') { ' (changed the worktree, so the result cannot be trusted)' } else { '' })) }
+        if ($rawProblems.Count)
+        {
+            Write-Host "  RAW BYTES $($rawProblems.Count) tracked file(s) that git sees as unchanged differ from what a checkout of them writes (autocrlf or assume-unchanged hides the edit): $(($rawProblems | Select-Object -First 20) -join ', ')$(if ($rawProblems.Count -gt 20) { ", and $($rawProblems.Count - 20) more" })"
+            Write-Host '  RAW BYTES the review snapshot is such a checkout, so these bytes would never be read by the reviewer. Restore the files (clear assume-unchanged, then git checkout -- <file>); nothing was rewritten.'
+        }
         Write-Host "check ${checkId}: $(if ($ok) { 'passed' } else { 'FAILED' }) on tree $tree"
         if (-not $ok) { $script:ExitCode = 1 }
         return $ok
@@ -1908,6 +2080,7 @@ function Invoke-Show
             $evidence = @(if ($snapshotProblems.Count) { 'the manifest snapshot cannot be verified' } else { Get-CheckEvidenceProblems $check $plan })
             $stale = ($null -eq $currentTree -or $currentTree -ne $check.treeHash)
             [ordered]@{ checkId = $check.checkId; utc = $check.utc; ok = $check.ok; treeHash = $check.treeHash; stale = $stale; evidenceProblems = $evidence; fresh = (-not $stale -and $evidence.Count -eq 0)
+                rawBytesProblems = @(Get-List (Get-Field $check 'rawBytesProblems')); invalidated = $(if (Get-Field $check 'invalidated') { Get-Field (Get-Field $check 'invalidated') 'reason' } else { $null })
                 commands = @($check.commands | ForEach-Object { [ordered]@{ name = $_.name; exitCode = $_.exitCode; log = $_.log; inputTree = $_.inputTree; outputTree = $_.outputTree } }) }
         })
     $runs = @($state.runs | ForEach-Object {
@@ -1918,10 +2091,11 @@ function Invoke-Show
         })
     $latestReview = Get-LatestReview $state
     $binding = $null
-    if ($integrity.Count -eq 0 -and -not $worktreeGone -and $latestReview -and $latestReview.status -eq 'valid' -and $latestReview.verdict -eq 'PASS') { $binding = Get-ReviewBinding $state $latestReview }
+    if ($integrity.Count -eq 0 -and -not $worktreeGone -and $latestReview -and $latestReview.status -eq 'valid' -and $latestReview.verdict -eq 'PASS' -and -not (Get-Field $latestReview 'invalidated')) { $binding = Get-ReviewBinding $state $latestReview }
     $reviews = @(Get-List $state.reviews | ForEach-Object {
             [ordered]@{ reviewId = $_.reviewId; round = $_.round; level = $_.level; reviewer = $_.reviewer.kind; model = $_.reviewer.model; sessionId = $_.reviewer.sessionId; resumedFrom = $_.reviewer.resumedFrom; status = $_.status; verdict = $_.verdict
-                commit = $_.commit; tree = $_.tree; blockingFindings = $_.blockingFindings; invalidReasons = @($_.invalidReasons); verdictFile = $_.verdictFile.path; termination = $_.termination
+                commit = $_.commit; tree = (Get-Field $_ 'tree'); blockingFindings = $_.blockingFindings; invalidReasons = @($_.invalidReasons); verdictFile = $_.verdictFile.path; termination = $_.termination
+                refunded = $(if (Get-Field $_ 'refunded') { Get-Field (Get-Field $_ 'refunded') 'reason' } else { $null }); invalidated = $(if (Get-Field $_ 'invalidated') { Get-Field (Get-Field $_ 'invalidated') 'reason' } else { $null })
                 findings = @(Get-List $_.findings | ForEach-Object { [ordered]@{ id = $_.id; severity = $_.severity; file = $_.file; line = $_.line; summary = $_.summary; disposition = $(if ($_.disposition) { "$($_.disposition.decision): $($_.disposition.reason)" } else { $null }) } }) }
         })
     $acceptance = $null
@@ -1932,7 +2106,9 @@ function Invoke-Show
     }
     $view = [ordered]@{
         slug = $state.slug; packageId = $state.packageId; stage = $state.stage; worktree = $wt; branch = $state.branch; baseSha = $state.baseSha
-        commit = $state.commit; repair = [ordered]@{ roundsUsed = $state.repair.roundsUsed; limit = $script:RepairLimit; resets = @(Get-List $state.repair.resets) }; reviews = $reviews; acceptance = $acceptance
+        commit = $state.commit; repair = [ordered]@{ roundsUsed = $state.repair.roundsUsed; limit = $script:RepairLimit; resets = @(Get-List $state.repair.resets); refunds = @(Get-List $state.repair.refunds) }; reviews = $reviews; acceptance = $acceptance
+        recoveries = @(Get-List $state.recoveries | ForEach-Object { [ordered]@{ utc = $_.utc; reason = $_.reason; fromStage = $_.fromStage; toStage = $_.toStage; mainCheckout = $_.mainCheckout; mainStatus = @($_.mainStatus); invalidated = $_.invalidated } })
+        coordinatorFindings = @(Get-List $state.coordinatorFindings | ForEach-Object { [ordered]@{ utc = $_.utc; reviewId = $_.reviewId; path = $_.path; sha256 = $_.sha256; findings = @($_.findings) } })
         ship = (Get-ShipView $state)
         integrityProblems = $integrity; snapshotProblems = $snapshotProblems; runs = $runs; checks = $checks
         mainCheckoutGuard = [ordered]@{ mutated = [bool]$state.guard.mainCheckoutMutated; lastRunId = $state.guard.lastRunId }
@@ -1949,13 +2125,15 @@ function Invoke-Show
     foreach ($check in $checks)
     {
         $freshness = if ($check.fresh) { 'fresh' } elseif ($check.stale) { 'STALE (the worktree changed after this check)' } else { "NOT EVIDENCE ($($check.evidenceProblems -join '; '))" }
-        Write-Host "    $($check.utc) $(if ($check.ok) { 'passed' } else { 'FAILED' }) $freshness"
+        Write-Host "    $($check.utc) $(if ($check.ok) { 'passed' } else { 'FAILED' }) $freshness$(if ($check.rawBytesProblems.Count) { " RAW BYTES: $(($check.rawBytesProblems | Select-Object -First 10) -join ', ')" })"
     }
     if ($state.commit) { Write-Host "  commit: $($state.commit.sha) tree $($state.commit.tree) ($($state.commit.message))" }
-    Write-Host "  reviews: $($reviews.Count), repair rounds used $($view.repair.roundsUsed) of $script:RepairLimit$(if ($view.repair.resets.Count) { ", $($view.repair.resets.Count) reset(s)" })"
+    Write-Host "  reviews: $($reviews.Count), repair rounds used $($view.repair.roundsUsed) of $script:RepairLimit$(if ($view.repair.resets.Count) { ", $($view.repair.resets.Count) reset(s)" })$(if ($view.repair.refunds.Count) { ", $($view.repair.refunds.Count) refund(s)" })"
+    foreach ($refund in $view.repair.refunds) { Write-Host "    refunded round $($refund.round) ($($refund.utc)): $($refund.reason)" }
+    foreach ($recovery in $view.recoveries) { Write-Host "  recovered $($recovery.utc): $($recovery.reason) (main checkout: $(if ($recovery.mainCheckout.unknown) { 'unreadable' } else { "HEAD $($recovery.mainCheckout.head)" }), $(@($recovery.mainStatus).Count) changed path(s))" }
     foreach ($review in $reviews)
     {
-        Write-Host "    round $($review.round) $($review.level) $($review.reviewer) $($review.status) $($review.verdict) blocking=$($review.blockingFindings) commit=$($review.commit)$(if ($review.invalidReasons.Count) { ' INVALID: ' + ($review.invalidReasons -join '; ') })"
+        Write-Host "    round $($review.round) $($review.level) $($review.reviewer) $($review.status) $($review.verdict) blocking=$($review.blockingFindings) commit=$($review.commit)$(if ($review.invalidReasons.Count) { ' INVALID: ' + ($review.invalidReasons -join '; ') })$(if ($review.refunded) { ' REFUNDED: ' + $review.refunded })$(if ($review.invalidated) { ' INVALIDATED: ' + $review.invalidated })"
         foreach ($f in $review.findings) { Write-Host "      $($f.id) [$($f.severity)] $($f.file):$($f.line) $($f.summary)$(if ($f.disposition) { " => $($f.disposition)" })" }
     }
     if ($acceptance) { Write-Host "  acceptance: $($acceptance.status) ($($acceptance.reason))" }
@@ -2316,7 +2494,7 @@ function Resolve-ReviewerChoice($ExecutorInfo, [string]$LevelName, [string]$Requ
     $entry = $script:ReviewerCatalog[$kind]
     @{ kind = $kind; provider = $entry.provider; model = $entry.model; effort = $entry.effort }
 }
-function New-ReviewPrompt($State, $Review, [string]$VerdictPath, $Prior)
+function New-ReviewPrompt($State, $Review, [string]$VerdictPath, $Prior, [bool]$Resumed = $true)
 {
     $template = Join-Path $script:KitDir 'review/package-review-prompt.txt'
     $schema = Join-Path $script:KitDir 'review/package-verdict.schema.json'
@@ -2324,12 +2502,24 @@ function New-ReviewPrompt($State, $Review, [string]$VerdictPath, $Prior)
     $note = ''
     if ($Prior)
     {
-        $lines = @("This is round $($Review.round) of a review you started earlier in this session. The branch head may have changed since your last verdict. Inspect the commit above afresh and return a COMPLETE, CURRENT verdict: every criterion with its result and evidence, every finding that still applies (and none that no longer does), and your omissions. Do not answer with only what changed since the last round.")
+        $tail = 'Inspect the commit above afresh and return a COMPLETE, CURRENT verdict: every criterion with its result and evidence, every finding that still applies (and none that no longer does), and your omissions. Do not answer with only what changed since the last round.'
+        if ($Resumed)
+        {
+            $lines = @("This is round $($Review.round) of a review you started earlier in this session. The branch head may have changed since your last verdict. $tail")
+        }
+        else
+        {
+            # A Claude reviewer is never resumed (its earlier session ran in a snapshot that has been removed): it starts fresh and is told
+            # what the previous round found.
+            $before = if ($Prior.status -eq 'valid') { "the verdict was $($Prior.verdict) on commit $($Prior.commit)" } else { "the review was INVALID, so it gave no verdict ($(@(Get-List $Prior.invalidReasons) -join '; '))" }
+            $lines = @("This is round $($Review.round) of a review. You are a new session with no memory of round $($Prior.round); that round's $before. The branch head may have changed since. What it reported is below, as information only: verify everything yourself. $tail")
+        }
         foreach ($old in (Get-List $Prior.findings))
         {
             $disposition = $old.disposition
             $lines += "Earlier finding $($old.id) ($($old.severity), $($old.file):$($old.line)): $($old.summary)$(if ($disposition) { " - the coordinator decided: $($disposition.decision) ($($disposition.reason))" } else { '' })"
         }
+        if (-not $Resumed) { foreach ($old in (Get-List $Prior.omissions)) { $lines += "Earlier omission: $old" } }
         $note = $lines -join "`n"
     }
     $text = [IO.File]::ReadAllText($template)
@@ -2499,16 +2689,18 @@ function Get-ClaudeReviewerRules([string]$Snapshot, [string]$InputDir)
 {
     @(
         "You are the independent reviewer of one work package. Your working directory is a read-only snapshot of the reviewed commit ($Snapshot); you change nothing.",
-        "You only read, with Read, Glob and Grep. You have no shell. The host prepared the review inputs in $InputDir (the commit log, the stat, the full diff and the brief).",
+        "You only read, with Read, Glob and Grep. You have no shell. The host prepared the review inputs in $InputDir (the commit log, the stat, the full diff, the brief, the check summary and the executor's report).",
         'If a tool call is denied, do not look for a way around it: list what you could not inspect under omissions.',
         'Never mark a criterion pass that you did not verify; use not-checked and say why in the evidence.',
         'Your final message is the verdict document and nothing else: exactly the JSON object the prompt describes, no prose before or after it.'
     ) | Join-String -Separator ' '
 }
-function Invoke-ClaudeReviewProcess([string]$Wt, [string]$ReviewDir, [string]$PromptPath, $Chosen, [string]$ResumeSession, [string]$InputDir)
+function Invoke-ClaudeReviewProcess([string]$Wt, [string]$ReviewDir, [string]$PromptPath, $Chosen, [string]$InputDir, $AdmittedLauncher = $null, [string]$AdmittedVersion = '')
 {
-    $launcher = Resolve-ClaudeLauncher
-    $version = Get-ClaudeCliVersion $launcher
+    # A Claude reviewer is never resumed: the session it would continue ran in a snapshot that has been removed, so every round starts
+    # fresh and the prompt carries what the earlier round found. The launcher and version are the ones the round was admitted with.
+    $launcher = if ($AdmittedLauncher) { $AdmittedLauncher } else { Resolve-ClaudeLauncher }
+    $version = if ($AdmittedLauncher) { $AdmittedVersion } else { Get-ClaudeCliVersion $launcher }
     $settingsPath = Join-Path $ReviewDir 'claude-settings.json'
     $mcpPath = Join-Path $ReviewDir 'empty-mcp.json'
     New-ClaudeReviewerSettings $settingsPath
@@ -2517,7 +2709,6 @@ function Invoke-ClaudeReviewProcess([string]$Wt, [string]$ReviewDir, [string]$Pr
     $arguments = @('-p', '--model', $Chosen.model, '--output-format', 'stream-json', '--verbose', '--settings', $settingsPath, '--setting-sources', '',
         '--tools', 'Read,Glob,Grep', '--add-dir', $InputDir, '--strict-mcp-config', '--mcp-config', $mcpPath, '--append-system-prompt', $rules)
     if ($MaxBudgetUsd -gt 0) { $arguments += @('--max-budget-usd', $MaxBudgetUsd.ToString([Globalization.CultureInfo]::InvariantCulture)) }
-    if ($ResumeSession) { $arguments += @('--resume', $ResumeSession) }
     Assert-NoBypass $arguments
     $events = Join-Path $ReviewDir 'events.jsonl'
     Initialize-ProcessJob
@@ -2559,9 +2750,13 @@ function Invoke-ClaudeReviewProcess([string]$Wt, [string]$ReviewDir, [string]$Pr
     if ($termination -eq 'exit' -and [Math]::Max((Get-MonitorEnforcedInput $monitor), [long]$tokens.input) -gt $MaxInputTokens) { $termination = 'budget' }
     $identityProblem = $null
     if (-not $monitor.SessionId) { $identityProblem = 'the stream has no init event with a session id' }
-    elseif ($ResumeSession -and $monitor.SessionId -ne $ResumeSession) { $identityProblem = "the resumed session answered with id $($monitor.SessionId), not $ResumeSession" }
+    # A host-detected environment failure (not the reviewer's own output): the CLI died before it said anything, or said that it cannot serve
+    # this model. Such a round is refunded.
+    $infra = $null
+    if ($termination -eq 'exit' -and $exitCode -ne 0 -and -not $monitor.ResultSeen) { $infra = "the claude CLI exited with code $exitCode before any verdict (a process crash, not a verdict)" }
+    elseif ($termination -eq 'exit' -and $monitor.ResultSeen -and $monitor.ResultError -and [string]$monitor.ResultText -match '(?i)newer (version|claude)|update (claude|the cli)|upgrade (claude|the cli)|unknown model|model .{0,60}(not found|not available|not supported)|issue with the selected model') { $infra = "the claude CLI refused the model: $(Get-ShortText ([string]$monitor.ResultText) 200)" }
     @{
-        Termination = $termination; ExitCode = $exitCode; ContainmentVerified = [bool]$containment.Verified; ContainmentReason = $containment.Reason
+        Termination = $termination; ExitCode = $exitCode; ContainmentVerified = [bool]$containment.Verified; ContainmentReason = $containment.Reason; InfraFailure = $infra
         SessionId = $(if ($identityProblem) { $null } else { $monitor.SessionId }); IdentityProblem = $identityProblem; FinalText = $(if ($monitor.ResultSeen) { $monitor.ResultText } else { $null }); ResultError = $monitor.ResultError
         Denials = @($monitor.Denials); Tokens = $tokens; Seconds = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 1); CliVersion = $version
         Permissions = @{ tools = 'Read,Glob,Grep'; addDir = $InputDir; settingsFile = @{ path = $settingsPath; sha256 = (Get-Sha256 $settingsPath) }; shell = 'none'; mode = 'default' }
@@ -2589,7 +2784,12 @@ function Invoke-CodexReviewProcess([string]$Wt, [string]$ReviewDir, [string]$Pro
     $termination = if (-not $result) { 'failed' } elseif ($result.timedOut) { 'timeout' } elseif ($exit -ne 0 -or $result.outcome -ne 'completed') { 'failed' } else { 'exit' }
     if ($result -and $result.timedOut -and $result.terminated -ne $true) { $termination = 'kill-failed' }
     $tokens = if ($result -and $result.tokens) { @{ input = $result.tokens.inputTokens; cached = $result.tokens.cachedInputTokens; output = $result.tokens.outputTokens } } else { $null }
+    # A host-detected environment failure: Codex failed before it wrote any final message (a resume that Codex could not continue included).
+    $finalText = if (Test-Path -LiteralPath $final -PathType Leaf) { [IO.File]::ReadAllText($final) } else { $null }
+    $infra = $null
+    if ($termination -eq 'failed' -and [string]::IsNullOrWhiteSpace($finalText)) { $infra = "$(if ($ResumeSession) { "resume failure: codex could not continue session $ResumeSession" } else { 'codex failed' }) before any verdict (codex-ask.ps1 exit $exit)" }
     @{
+        InfraFailure = $infra
         Termination = $termination; ExitCode = $(if ($result) { $result.exitCode } else { $exit }); ContainmentVerified = [bool]($result -and $result.containmentVerified); ContainmentReason = $(if ($result) { $result.containmentReason } else { "codex-ask.ps1 exit $exit without a result file: $(($output | Select-Object -Last 2) -join ' ')" })
         SessionId = $(if ($result -and $result.sessionId) { [string]$result.sessionId } else { $null }); IdentityProblem = $null
         FinalText = $(if (Test-Path -LiteralPath $final -PathType Leaf) { [IO.File]::ReadAllText($final) } else { $null }); ResultError = $false
@@ -2641,6 +2841,10 @@ function New-ReviewSnapshot($State, $Record)
     Save-GitOutput $wt @('show', '--stat', '--no-ext-diff', '--no-textconv', '--no-color', $commit) (Join-Path $inputs 'stat.txt')
     Save-GitOutput $wt @('diff', '--no-ext-diff', '--no-textconv', '--no-color', $base, $commit) (Join-Path $inputs 'diff.patch')
     Copy-Item -LiteralPath ([string]$State.brief.path) -Destination (Join-Path $inputs 'brief.md') -Force
+    # The two things an acceptance case can rest on that a reviewer without a shell could not see: what the fresh check ran and returned,
+    # and what the executor said it did.
+    [IO.File]::WriteAllText((Join-Path $inputs 'check-summary.json'), (Get-CheckSummaryText $State ([string]$Record.checkId) $commit ([string]$Record.tree)), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $inputs 'executor-report.md'), (Get-ExecutorReportText $State ([string]$Record.executor.runId)), [Text.UTF8Encoding]::new($false))
     Set-TreeReadOnly $inputs $true
     $observed
 }
@@ -2665,6 +2869,9 @@ function Get-ReviewInputHashes([string]$InputDir, [string]$PromptPath)
 {
     $hashes = @{}
     foreach ($name in @('brief.md', 'diff.patch', 'log.txt', 'stat.txt')) { $hashes[$name] = Get-OptionalSha256 (Join-Path $InputDir $name) }
+    # The check summary and the executor's report exist only in reviews prepared by this version of the runner; an older review has
+    # neither file, and is checked without them.
+    foreach ($name in $script:ReviewOptionalInputs) { if (Test-Path -LiteralPath (Join-Path $InputDir $name) -PathType Leaf) { $hashes[$name] = Get-Sha256 (Join-Path $InputDir $name) } }
     $hashes['prompt.md'] = Get-OptionalSha256 $PromptPath
     $hashes
 }
@@ -2674,7 +2881,36 @@ function Get-ReviewInputProblems($Recorded, [string]$InputDir, [string]$PromptPa
     # Every file the reviewer was given, against the hashes recorded before it started.
     if (-not $Recorded) { return @('no review input hashes were recorded') }
     $now = Get-ReviewInputHashes $InputDir $PromptPath
-    @($now.Keys | Sort-Object | Where-Object { -not $Recorded.ContainsKey($_) -or -not $Recorded[$_] -or $Recorded[$_] -ne $now[$_] } | ForEach-Object { "review input $_ changed or is missing" })
+    $problems = @($now.Keys | Sort-Object | Where-Object { -not $Recorded.ContainsKey($_) -or -not $Recorded[$_] -or $Recorded[$_] -ne $now[$_] } | ForEach-Object { "review input $_ changed or is missing" })
+    # An input that was recorded and is gone now.
+    $problems + @($Recorded.Keys | Sort-Object | Where-Object { $Recorded[$_] -and -not $now.ContainsKey($_) } | ForEach-Object { "review input $_ changed or is missing" })
+}
+
+$script:ReviewOptionalInputs = @('check-summary.json', 'executor-report.md')
+
+function Get-CheckSummaryText($State, [string]$CheckId, [string]$Commit, [string]$Tree)
+{
+    # What the reviewer cannot run: the gates of the fresh check with their exit codes, and the head and tree they were checked for. Built
+    # from the state alone, so accept builds the very same text again.
+    $check = @(Get-List $State.checks | Where-Object { $_.checkId -eq $CheckId })[0]
+    if (-not $check) { return ((([ordered]@{ schemaVersion = 1; checkId = $CheckId; head = $Commit; tree = $Tree; ok = $false; note = 'the check is not in the state' }) | ConvertTo-Json -Depth 4) + "`n") }
+    $summary = [ordered]@{
+        schemaVersion = 1
+        note = 'The runner ran these gates in the package worktree before the review; exit code 0 means the gate passed. They were run on the content tree below, which is the content of the reviewed commit.'
+        checkId = [string]$check.checkId; utc = [string]$check.utc; ok = [bool]$check.ok; head = $Commit; tree = $Tree; contentTree = [string]$check.treeHash
+        gates = @(Get-List $check.commands | ForEach-Object { [ordered]@{ name = [string]$_.name; kind = [string](Get-Field $_ 'kind'); command = [string](Get-Field $_ 'command'); exitCode = $_.exitCode; skipped = $_.skipped; changedTheWorktree = [bool](Get-Field $_ 'modifiedWorktree') } })
+        rawBytesProblems = @(Get-List (Get-Field $check 'rawBytesProblems'))
+    }
+    ($summary | ConvertTo-Json -Depth 6) + "`n"
+}
+
+function Get-ExecutorReportText($State, [string]$RunId)
+{
+    # The executor's final report as the runner kept it (the artifact of the run the review names), or a line saying there is none.
+    $run = @(Get-List $State.runs | Where-Object { $_.runId -eq $RunId })[0]
+    $path = if ($run) { [string](Get-Field (Get-Field (Get-Field $run 'artifacts') 'outMd') 'path') } else { '' }
+    if ($path -and (Test-Path -LiteralPath $path -PathType Leaf)) { return [IO.File]::ReadAllText($path) }
+    '(the executor left no report that the runner kept)'
 }
 
 function Test-ReviewInputsAtAccept($State, $Review)
@@ -2685,6 +2921,10 @@ function Test-ReviewInputsAtAccept($State, $Review)
     if ($problems.Count) { return $problems }
     $dir = [string]$Review.snapshot.inputDir
     if ((Get-Sha256 (Join-Path $dir 'brief.md')) -ne (Get-Sha256 ([string]$State.brief.path))) { $problems += 'the brief the reviewer read is not the brief snapshot byte for byte' }
+    # The check summary is the one the state yields for the review's check and commit, the executor report the one of the run the review names.
+    $recordedInputs = Get-Field $Review 'inputHashes'
+    if ($recordedInputs -and $recordedInputs.ContainsKey('check-summary.json') -and (Get-Sha256 (Join-Path $dir 'check-summary.json')) -ne (Get-StringSha256 (Get-CheckSummaryText $State ([string]$Review.checkId) ([string]$Review.commit) ([string]$Review.tree)))) { $problems += 'check-summary.json is not the summary of the check the review is bound to' }
+    if ($recordedInputs -and $recordedInputs.ContainsKey('executor-report.md') -and (Get-Sha256 (Join-Path $dir 'executor-report.md')) -ne (Get-StringSha256 (Get-ExecutorReportText $State ([string]$Review.executor.runId)))) { $problems += 'executor-report.md is not the report of the executor run the review names' }
     $temp = Join-Path ([IO.Path]::GetTempPath()) "package-diff-$([guid]::NewGuid().ToString('N')).patch"
     try
     {
@@ -2697,7 +2937,7 @@ function Test-ReviewInputsAtAccept($State, $Review)
 }
 function Resolve-AbandonedReview($Info, [string]$Slug)
 {
-    # A package left in 'reviewing' (its wrapper died): the round stays spent, the review is recorded as invalid.
+    # A package left in 'reviewing' (its wrapper died): the review is recorded as invalid and its round is given back.
     $stateLock = Enter-StateLock $Info.StateRoot $Slug
     try
     {
@@ -2708,13 +2948,26 @@ function Resolve-AbandonedReview($Info, [string]$Slug)
         $reviewId = if ($review) { [string]$review.reviewId } else { '' }
         $leftover = if ($review) { Get-Field (Get-Field $review 'snapshot') 'path' } else { $null }
         if ($leftover -and (Test-Path -LiteralPath $leftover)) { Close-ReviewSnapshot ([string]$state.worktree) ([string]$leftover) | Out-Null }
-        $exhausted = [int]$state.repair.roundsUsed -ge $script:RepairLimit
+        # The runner died before any verdict existed: an environment failure, so the round is given back (reason on record).
+        $refund = [bool]$review
+        $roundsAfter = [int]$state.repair.roundsUsed - $(if ($refund) { 1 } else { 0 })
+        $exhausted = $roundsAfter -ge $script:RepairLimit
+        $abandonedReason = 'the review was interrupted before it finished (the wrapper died)'
         Update-State $Info.StateRoot $Slug 'review-recovered' {
             param($s)
             $s.reviews = @(Get-List $s.reviews | ForEach-Object {
-                    if ($_.reviewId -eq $reviewId) { $_.status = 'invalid'; $_.verdict = $null; $_.invalidReasons = @('the review was interrupted before it finished (the wrapper died)'); $_.termination = 'abandoned'; $_.endedUtc = (Get-Now) }
+                    if ($_.reviewId -eq $reviewId)
+                    {
+                        $_.status = 'invalid'; $_.verdict = $null; $_.invalidReasons = @($abandonedReason); $_.termination = 'abandoned'; $_.endedUtc = (Get-Now)
+                        if ($refund) { $_.refunded = @{ utc = (Get-Now); reason = $abandonedReason } }
+                    }
                     $_
                 })
+            if ($refund)
+            {
+                $s.repair.refunds = @(Get-List $s.repair.refunds) + @(@{ utc = (Get-Now); reviewId = $reviewId; round = (Get-Field $review 'round'); reason = $abandonedReason; roundsUsedBefore = [int]$s.repair.roundsUsed })
+                $s.repair.roundsUsed = [Math]::Max(0, [int]$s.repair.roundsUsed - 1)
+            }
             $s.stage = if ($exhausted) { 'needs-coordinator' } else { 'review-invalid' }
         } -Locked | Out-Null
     }
@@ -2747,6 +3000,20 @@ function Start-Review($Info)
     if ($stale) { throw "review needs a fresh passing check for this commit's tree: $stale" }
     $latestCheck = @(Get-List $state.checks)[-1]
 
+    # The reviewer is chosen, and a Claude CLI that is too old for its model refuses the round, before the budget is looked at or spent.
+    $criteria = @(Get-ReviewCriteria ([string]$state.brief.path))
+    $executorInfo = Get-ExecutorIdentity $state
+    $chosen = Resolve-ReviewerChoice $executorInfo $Level $Reviewer
+    $claudeLauncher = $null
+    $claudeVersion = $null
+    if ($chosen.provider -eq 'claude')
+    {
+        $claudeLauncher = Resolve-ClaudeLauncher
+        $claudeVersion = Get-ClaudeCliVersion $claudeLauncher
+        $versionProblem = Get-CliVersionProblem ([string]$chosen.model) $claudeVersion $script:ClaudeVersionProbeProblem
+        if ($versionProblem) { throw $versionProblem }
+    }
+
     $used = [int]$state.repair.roundsUsed
     if ($ResetBudget)
     {
@@ -2760,11 +3027,11 @@ function Start-Review($Info)
         throw "the repair budget is used up ($used of $script:RepairLimit review rounds): the package needs the coordinator. Reassess it, then resume with -ResetBudget -Reason <text>"
     }
 
-    $criteria = @(Get-ReviewCriteria ([string]$state.brief.path))
-    $executorInfo = Get-ExecutorIdentity $state
-    $chosen = Resolve-ReviewerChoice $executorInfo $Level $Reviewer
-    $prior = @(Get-List $state.reviews | Where-Object { $who = Get-Field $_ 'reviewer'; $who -and $who.kind -eq $chosen.kind -and $who.sessionId }) | Select-Object -Last 1
-    $resumeSession = if ($prior) { [string]$prior.reviewer.sessionId } else { $null }
+    # Codex continues its earlier session. Claude never does: its earlier round ran in a snapshot that is gone, so it starts fresh and
+    # the prompt carries the previous round's verdict and findings. A round that was refunded gave nothing to carry.
+    $prior = if ($chosen.provider -eq 'claude') { @(Get-List $state.reviews | Where-Object { $who = Get-Field $_ 'reviewer'; $who -and $who.kind -eq $chosen.kind -and -not (Get-Field $_ 'refunded') }) | Select-Object -Last 1 }
+    else { @(Get-List $state.reviews | Where-Object { $who = Get-Field $_ 'reviewer'; $who -and $who.kind -eq $chosen.kind -and $who.sessionId }) | Select-Object -Last 1 }
+    $resumeSession = if ($prior -and $chosen.provider -ne 'claude') { [string]$prior.reviewer.sessionId } else { $null }
     $reviewId = [guid]::NewGuid().ToString('N')
     $round = $used + 1
     $paths = Get-PackagePaths $Info.StateRoot $Id
@@ -2786,7 +3053,7 @@ function Start-Review($Info)
     if (-not $mainBefore.treeHash) { throw "the main checkout cannot be fingerprinted (unreadable: $($mainBefore.unreadable -join ', ')); the review was not started" }
     $record = @{
         reviewId = $reviewId; round = $round; level = $Level; startedUtc = (Get-Now); endedUtc = $null; status = 'running'; verdict = $null; invalidReasons = @()
-        reviewer = @{ kind = $chosen.kind; provider = $chosen.provider; model = $chosen.model; effort = $chosen.effort; sessionId = $null; resumedFrom = $resumeSession; cliVersion = $null; permissions = $null; executable = $null }
+        reviewer = @{ kind = $chosen.kind; provider = $chosen.provider; model = $chosen.model; effort = $chosen.effort; sessionId = $null; resumedFrom = $resumeSession; priorRound = $(if ($prior) { $prior.round } else { $null }); cliVersion = $null; permissions = $null; executable = $null }
         executor = @{ provider = $executorInfo.provider; model = $executorInfo.model; kind = $executorInfo.kind; runId = [string]$executorInfo.run.runId; session = $executorInfo.session }
         commit = $head; tree = $tree; contentTree = $content; checkId = [string]$latestCheck.checkId; baseSha = $(if ($observedBase) { $observedBase } else { [string]$state.baseSha }); baseObserved = $observedBase; startProblems = @($startProblems)
         executors = @($executorInfo.set); fileHashes = @{ path = $fileMapPath; sha256 = (Get-Sha256 $fileMapPath) }; manifestSha256 = [string]$state.manifest.sha256
@@ -2796,7 +3063,7 @@ function Start-Review($Info)
         wrapper = @{ pid = $PID; startUtc = (Get-ProcessStartIdentity $PID) }; mainCheckoutBefore = $mainBefore; mainCheckoutAfter = $null; termination = 'running'; exitCode = $null; containmentVerified = $null
         tokens = $null; denials = @(); findings = @(); criteriaResults = @(); omissions = @(); blockingFindings = 0; seconds = $null
     }
-    $promptText = New-ReviewPrompt $state $record $verdictPath $prior
+    $promptText = New-ReviewPrompt $state $record $verdictPath $prior ([bool]$resumeSession)
     $promptPath = Join-Path $dir 'prompt.md'
     [IO.File]::WriteAllText($promptPath, $promptText, [Text.UTF8Encoding]::new($false))
     $record.promptFile = @{ path = $promptPath; sha256 = (Get-Sha256 $promptPath) }
@@ -2808,7 +3075,7 @@ function Start-Review($Info)
         $s.stage = 'reviewing'
     } -Locked | Out-Null
     Write-Host "review ${reviewId}: round $round of $script:RepairLimit, $Level, reviewer $($chosen.kind) ($($chosen.model))$(if ($resumeSession) { ", resuming session $resumeSession" })"
-    @{ Record = $record; Chosen = $chosen; Dir = $dir; PromptPath = $promptPath; ResumeSession = $resumeSession; Worktree = $wt; MainCheckout = $mainCheckout; MainBefore = $mainBefore; StartProblems = @($startProblems); SnapshotStart = $null; SnapshotEnd = $null; InputHashes = $null }
+    @{ Record = $record; Chosen = $chosen; Dir = $dir; PromptPath = $promptPath; ResumeSession = $resumeSession; Worktree = $wt; MainCheckout = $mainCheckout; MainBefore = $mainBefore; StartProblems = @($startProblems); SnapshotStart = $null; SnapshotEnd = $null; InputHashes = $null; ClaudeLauncher = $claudeLauncher; ClaudeVersion = $claudeVersion }
 }
 
 function Complete-Review($Info, $Context, $Proc)
@@ -2877,7 +3144,12 @@ function Complete-Review($Info, $Context, $Proc)
         $valid = ($reasons.Count -eq 0) -and $validation -and $validation.ok
         $verdict = if ($valid) { $validation.verdict } else { $null }
 
-        $exhausted = [int]$state.repair.roundsUsed -ge $script:RepairLimit
+        # A round lost to a host-detected environment failure (the reviewer could not be started, or crashed before any verdict) is given
+        # back, with the reason on record. What the reviewer itself got wrong (schema, criteria, an unclean snapshot, a timeout) still costs it.
+        $infraReason = [string](Get-Field $Proc 'InfraFailure')
+        $refund = [bool]($infraReason -and -not $valid -and -not $mainMutated)
+        $roundsAfter = [int]$state.repair.roundsUsed - $(if ($refund) { 1 } else { 0 })
+        $exhausted = $roundsAfter -ge $script:RepairLimit
         $stage = if ($mainMutated) { 'blocked-main-mutated' } elseif ($valid -and $verdict -eq 'PASS') { 'review-passed' } elseif ($exhausted) { 'needs-coordinator' } elseif ($valid) { 'review-failed' } else { 'review-invalid' }
         $finalHash = Get-OptionalSha256 $finalPath
         $verdictHash = Get-OptionalSha256 $verdictPath
@@ -2892,9 +3164,15 @@ function Complete-Review($Info, $Context, $Proc)
                         $_.observedEnd = $observedEnd; $_.mainCheckoutAfter = $mainAfter; $_.startProblems = @($Context.StartProblems); $_.inputHashes = $Context.InputHashes; $_.snapshot.created = [bool]$snapStart; $_.snapshot.startObservation = $snapStart; $_.snapshot.endObservation = $(if ($snapEnd) { $snapEnd.endObservation } else { $null }); $_.snapshot.removed = [bool]($snapEnd -and $snapEnd.removed); $_.snapshot.removeError = $(if ($snapEnd) { $snapEnd.removeError } else { $null }); $_.termination = $Proc.Termination; $_.exitCode = $Proc.ExitCode; $_.containmentVerified = [bool]$Proc.ContainmentVerified
                         $_.tokens = $Proc.Tokens; $_.denials = @($Proc.Denials); $_.seconds = $Proc.Seconds
                         if ($valid) { $_.findings = @($validation.findings); $_.criteriaResults = @($validation.criteria); $_.omissions = @($validation.omissions); $_.blockingFindings = $validation.blocking }
+                        if ($refund) { $_.refunded = @{ utc = (Get-Now); reason = $infraReason } }
                     }
                     $_
                 })
+            if ($refund)
+            {
+                $s.repair.refunds = @(Get-List $s.repair.refunds) + @(@{ utc = (Get-Now); reviewId = $reviewId; round = $record.round; reason = $infraReason; roundsUsedBefore = [int]$s.repair.roundsUsed })
+                $s.repair.roundsUsed = [Math]::Max(0, [int]$s.repair.roundsUsed - 1)
+            }
             if ($mainMutated) { $s.guard = @{ mainCheckoutMutated = $true; lastRunId = $reviewId; before = $Context.MainBefore; after = $mainAfter } }
             $s.stage = $stage
         } -Locked | Out-Null
@@ -2908,8 +3186,9 @@ function Complete-Review($Info, $Context, $Proc)
         {
             Write-Host "review ${reviewId}: INVALID (never a PASS)"
             foreach ($why in $reasons) { Write-Host "  - $why" }
+            if ($refund) { Write-Host "  the round was refunded because the failure was the environment's, not the reviewer's ($infraReason): repair rounds used $roundsAfter of $script:RepairLimit" }
         }
-        if ($stage -eq 'needs-coordinator') { Write-Host "the repair budget is used up ($script:RepairLimit of $script:RepairLimit rounds): the package needs the coordinator" }
+        if ($stage -eq 'needs-coordinator') { Write-Host "the repair budget is used up ($roundsAfter of $script:RepairLimit rounds): the package needs the coordinator" }
         if ($stage -ne 'review-passed') { $script:ExitCode = 1 }
     }
     finally { $stateLock.Dispose() }
@@ -2925,7 +3204,7 @@ function Invoke-ReviewCore
     $process = $null
     $record = $context.Record
     $snapshotCreated = $false
-    $failed = { param($why) @{ Termination = 'failed'; ExitCode = $null; ContainmentVerified = $false; ContainmentReason = $why; SessionId = $null; IdentityProblem = $null; FinalText = $null; ResultError = $false; Denials = @(); Tokens = $null; Seconds = $null; CliVersion = $null; Permissions = $null; Executable = $null } }
+    $failed = { param($why, $infra = $null) @{ Termination = 'failed'; ExitCode = $null; ContainmentVerified = $false; ContainmentReason = $why; SessionId = $null; IdentityProblem = $null; FinalText = $null; ResultError = $false; Denials = @(); Tokens = $null; Seconds = $null; CliVersion = $null; Permissions = $null; Executable = $null; InfraFailure = $infra } }
     try
     {
         if (@($context.StartProblems).Count) { $process = & $failed "the reviewer was not started: $(@($context.StartProblems) -join '; ')" }
@@ -2948,11 +3227,11 @@ function Invoke-ReviewCore
             $inputHashes = $context.InputHashes
             $reviewIdNow = [string]$record.reviewId
             Update-State $info.StateRoot $Id 'review-inputs-bound' { param($s) $s.reviews = @(Get-List $s.reviews | ForEach-Object { if ($_.reviewId -eq $reviewIdNow) { $_.inputHashes = $inputHashes }; $_ }) } | Out-Null
-            $process = if (@($context.StartProblems).Count) { & $failed "the reviewer was not started: $(@($context.StartProblems) -join '; ')" } elseif ($context.Chosen.provider -eq 'claude') { Invoke-ClaudeReviewProcess $snap $context.Dir $context.PromptPath $context.Chosen $context.ResumeSession ([string]$record.snapshot.inputDir) }
+            $process = if (@($context.StartProblems).Count) { & $failed "the reviewer was not started: $(@($context.StartProblems) -join '; ')" } elseif ($context.Chosen.provider -eq 'claude') { Invoke-ClaudeReviewProcess $snap $context.Dir $context.PromptPath $context.Chosen ([string]$record.snapshot.inputDir) $context.ClaudeLauncher ([string]$context.ClaudeVersion) }
             else { Invoke-CodexReviewProcess $snap $context.Dir $context.PromptPath $context.Chosen $context.ResumeSession }
         }
     }
-    catch { $process = & $failed "the reviewer could not be started: $($_.Exception.Message)" }
+    catch { $process = & $failed "the reviewer could not be started: $($_.Exception.Message)" "the reviewer could not be started: $($_.Exception.Message)" }
     finally
     {
         if ($snapshotCreated -and (Test-Path -LiteralPath ([string]$record.snapshot.path))) { $context.SnapshotEnd = Close-ReviewSnapshot $context.Worktree ([string]$record.snapshot.path) }
@@ -3010,6 +3289,46 @@ function Invoke-Disposition
     finally { $stateLock.Dispose() }
 }
 
+function Read-CoordinatorFindings([string]$Path, $Review, [string]$PackageDir)
+{
+    # The findings the coordinator wrote for a FAIL verdict that listed none: a strict JSON array (or { "findings": [...] }) of objects with
+    # file, line, summary and scenario (id and severity optional: K1.. and blocking). A copy is kept read-only in the package state
+    # directory and hashed; the entry returned is what the state records.
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "-Findings file not found: $Path" }
+    $raw = [IO.File]::ReadAllText($Path)
+    $scan = Find-DuplicateJsonProperty $raw
+    if ($scan -like 'error:*') { throw "-Findings is not strict JSON: $($scan.Substring(6))" }
+    if ($scan -like 'dup:*') { throw "-Findings repeats the property '$($scan.Substring(4))'" }
+    $document = $raw | ConvertFrom-Json -AsHashtable -NoEnumerate @script:JsonDate
+    $list = if ($document -is [System.Collections.IDictionary] -and $document.Contains('findings')) { ,$document['findings'] } else { ,$document }
+    if ($list -isnot [array] -or $list.Count -eq 0) { throw '-Findings must be a non-empty JSON array of {file, line, summary, scenario[, id, severity]} objects' }
+    $items = @()
+    $seen = @{}
+    $index = 0
+    foreach ($item in $list)
+    {
+        $index++
+        if ($item -isnot [System.Collections.IDictionary]) { throw "-Findings[$index] is not an object" }
+        $unknown = @($item.Keys | Where-Object { $_ -notin @('id', 'severity', 'file', 'line', 'summary', 'scenario') })
+        if ($unknown.Count) { throw "-Findings[$index] has unknown key(s): $($unknown -join ', ')" }
+        foreach ($key in @('file', 'summary', 'scenario')) { if ($item[$key] -isnot [string] -or [string]::IsNullOrWhiteSpace($item[$key])) { throw "-Findings[$index].$key must be a non-empty string" } }
+        if (-not ($item['line'] -is [int] -or $item['line'] -is [long]) -or $item['line'] -lt 0) { throw "-Findings[$index].line must be an integer >= 0" }
+        $severity = if ($item.Contains('severity')) { $item['severity'] } else { 'blocking' }
+        if ($severity -isnot [string] -or $severity -cnotin @('blocking', 'non-blocking')) { throw "-Findings[$index].severity must be blocking or non-blocking" }
+        $id = if ($item.Contains('id')) { $item['id'] } else { "K$index" }
+        if ($id -isnot [string] -or [string]::IsNullOrWhiteSpace($id)) { throw "-Findings[$index].id must be a non-empty string" }
+        if ($seen.ContainsKey($id)) { throw "-Findings: id $id appears twice" }
+        $seen[$id] = $true
+        $items += @(@{ id = $id; severity = $severity; file = $item['file']; line = [int]$item['line']; summary = $item['summary']; scenario = $item['scenario'] })
+    }
+    $dir = Join-Path $PackageDir 'coordinator-findings'
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $kept = Join-Path $dir "$([guid]::NewGuid().ToString('N')).json"
+    Copy-Item -LiteralPath $Path -Destination $kept
+    Set-ItemProperty -LiteralPath $kept -Name IsReadOnly -Value $true
+    @{ utc = (Get-Now); reviewId = [string]$Review.reviewId; round = $Review.round; source = ([IO.Path]::GetFullPath($Path)); path = $kept; sha256 = (Get-Sha256 $kept); findings = @($items) }
+}
+
 function Invoke-FixCore
 {
     if ($script:ExecutorBound -and $Executor -ne 'same') { throw "fix resumes the same executor; -Executor $Executor is not supported" }
@@ -3025,6 +3344,7 @@ function Invoke-FixCore
         if ($problems.Count) { throw ($problems -join '; ') }
         $review = Get-LatestReview $state
         if (-not $review -or $review.status -ne 'valid' -or $review.verdict -ne 'FAIL') { throw 'fix needs a valid FAIL review as the latest review' }
+        if ($Findings -and @(Get-List $review.findings).Count -gt 0) { throw "-Findings is only for a FAIL verdict that carries no finding at all; this review lists $(@(Get-List $review.findings).Count) finding(s): dispose of them with 'disposition' instead" }
         $pending = $state.pendingFix
         $retry = $pending -and $pending.reviewId -eq $review.reviewId -and [string]$state.stage -in @('executor-completed', 'executor-impl-failed', 'executor-env-blocked', 'checks-failed')
         if ([string]$state.stage -notin @('review-failed', 'needs-coordinator') -and -not $retry) { throw "fix is not allowed in stage '$($state.stage)'" }
@@ -3043,7 +3363,23 @@ function Invoke-FixCore
         $undecided = @($blocking | Where-Object { -not $_.disposition } | ForEach-Object { $_.id })
         if ($undecided.Count) { throw "blocking finding(s) without a disposition: $($undecided -join ', '). Set each with: disposition -Finding <id> -Accept|-Reject -Reason <text>" }
         $accepted = @(Get-List $review.findings | Where-Object { $_.disposition -and $_.disposition.decision -eq 'accept' })
-        if ($accepted.Count -eq 0) { throw 'every blocking finding was rejected: there is nothing to fix. Review again, or reassess' }
+        # A FAIL verdict can carry no finding at all (a failing criterion alone). Then there is nothing to accept, and the coordinator's own
+        # list stands in for the findings: recorded, hashed, and the only thing the fix request is built from.
+        $reviewFindingCount = @(Get-List $review.findings).Count
+        $coordinatorEntry = $null
+        $coordinatorFresh = $false
+        if ($Findings)
+        {
+            $coordinatorEntry = Read-CoordinatorFindings $Findings $review $paths.Dir
+            $coordinatorFresh = $true
+        }
+        elseif ($reviewFindingCount -eq 0 -and $retry -and (Get-Field $pending 'coordinatorFindings'))
+        {
+            $coordinatorEntry = $pending.coordinatorFindings
+            if (-not (Test-Path -LiteralPath ([string]$coordinatorEntry.path) -PathType Leaf) -or (Get-Sha256 ([string]$coordinatorEntry.path)) -ne [string]$coordinatorEntry.sha256) { throw 'the coordinator findings recorded for this fix changed or are missing; pass -Findings <file> again' }
+        }
+        if ($reviewFindingCount -eq 0 -and -not $coordinatorEntry) { throw "the FAIL verdict carries no finding, so there is nothing to accept or reject. Write the findings yourself and pass them with: fix -Findings <file> (a JSON array of {file, line, summary, scenario[, id, severity]})" }
+        if ($accepted.Count -eq 0 -and -not $coordinatorEntry) { throw 'every blocking finding was rejected: there is nothing to fix. Review again, or reassess' }
         $executorInfo = Get-ExecutorIdentity $state
         $kind = $executorInfo.kind
         if (-not $kind) { $kind = if ($executorInfo.provider -eq 'codex') { 'codex' } else { throw 'the executor kind of the last run is unknown' } }
@@ -3054,6 +3390,14 @@ function Invoke-FixCore
         {
             $fixLines += @("## $($f.id) ($($f.severity)) $($f.file):$($f.line)", "Summary: $($f.summary)", "Scenario: $($f.scenario)", "Coordinator: $($f.disposition.reason)", '')
         }
+        if ($coordinatorEntry)
+        {
+            foreach ($f in @(Get-List $coordinatorEntry.findings))
+            {
+                $fixLines += @("## $($f.id) ($($f.severity), written by the coordinator) $($f.file):$($f.line)", "Summary: $($f.summary)", "Scenario: $($f.scenario)", "Coordinator: the verdict failed a criterion without naming a finding; this one is the coordinator's own (list sha256 $(([string]$coordinatorEntry.sha256).Substring(0, 12)))", '')
+            }
+        }
+        $fixIds = @(@($accepted | ForEach-Object { $_.id }) + @(Get-List (Get-Field $coordinatorEntry findings) | ForEach-Object { $_.id }))
         $fixText = $fixLines -join "`r`n"
         $fixPath = Join-Path $fixDir 'fix-request.md'
         [IO.File]::WriteAllText($fixPath, $fixText, [Text.UTF8Encoding]::new($false))
@@ -3071,11 +3415,15 @@ function Invoke-FixCore
         $fixReviewId = [string]$review.reviewId
         $fixReviewLevel = [string]$review.level
         $fixReviewerKind = [string]$review.reviewer.kind
-        Update-State $info.StateRoot $Id 'fix-started' { param($s) $s.pendingFix = @{ reviewId = $fixReviewId; utc = (Get-Now); fixRequest = $fixPath } } -Locked | Out-Null
+        Update-State $info.StateRoot $Id 'fix-started' {
+            param($s)
+            $s.pendingFix = @{ reviewId = $fixReviewId; utc = (Get-Now); fixRequest = $fixPath; coordinatorFindings = $coordinatorEntry }
+            if ($coordinatorFresh) { $s.coordinatorFindings = @(Get-List $s.coordinatorFindings) + @($coordinatorEntry) }
+        } -Locked | Out-Null
     }
     finally { $stateLock.Dispose() }
 
-    Write-Host "fix: $(($accepted | ForEach-Object { $_.id }) -join ', ') accepted; executor $kind$(if ($kind -ne 'codex') { ' (resumed)' } else { ' (new run with the previous report)' })"
+    Write-Host "fix: $($fixIds -join ', ') $(if ($coordinatorEntry) { 'taken (the coordinator wrote the findings)' } else { 'accepted' }); executor $kind$(if ($kind -ne 'codex') { ' (resumed)' } else { ' (new run with the previous report)' })"
     $script:Executor = $kind
     # The latest run of that kind is the one continued, with its own model and effort, not the defaults.
     if ($fixModel) { $script:Model = $fixModel; $script:ModelBound = $true }
@@ -3170,6 +3518,61 @@ function Invoke-Accept
         $acceptance = @{ utc = (Get-Now); reason = $Reason.Trim(); reviewId = [string]$review.reviewId; commit = [string]$review.commit; tree = [string]$review.tree; head = $binding.Head; pinOnly = [bool]$binding.PinOnly; recordPath = $recordPath; recordSha256 = (Get-Sha256 $recordPath); invalidated = $null }
         Update-State $info.StateRoot $Id 'accepted' { param($s) $s.acceptance = $acceptance; $s.stage = 'accepted' } -Locked | Out-Null
         Write-Host "accepted: review $($review.reviewId) (PASS) is bound to $($review.commit)$(if ($binding.PinOnly) { " and the plugin-pin-only head $($binding.Head)" }); review record $recordPath"
+    }
+    finally { $stateLock.Dispose() }
+}
+
+# ---- recover: the audited way out of blocked-main-mutated ------------------------------------------------------------
+
+function Get-StageAfterLastRun($State)
+{
+    # The stage a package is in once its last run has finished and nothing has been checked since: what 'run' itself leaves behind.
+    $runs = @(Get-List $State.runs)
+    if ($runs.Count -eq 0) { return 'ready' }
+    $last = $runs[-1]
+    if ([string](Get-Field $last 'termination') -eq 'kill-failed') { return 'executor-kill-failed' }
+    $outcome = [string](Get-Field $last 'outcome')
+    if ($outcome -in @('completed', 'impl-failed', 'env-blocked')) { return "executor-$outcome" }
+    'executor-impl-failed'
+}
+
+function Invoke-Recover
+{
+    if ([string]::IsNullOrWhiteSpace($Reason)) { throw 'recover needs -Reason: what was found in the main checkout and what was done about it' }
+    $info = Get-RepoInfo $Repo
+    $stateLock = Enter-StateLock $info.StateRoot $Id
+    try
+    {
+        $state = Read-State $info.StateRoot $Id
+        if ([string]$state.stage -ne 'blocked-main-mutated') { throw "recover is only for stage 'blocked-main-mutated' (the main-checkout guard), not '$($state.stage)'" }
+        $mainCheckout = [string]$state.repository.mainCheckout
+        # The main checkout as it is now, recorded and never reverted: its fingerprint (or that it cannot be read) and what git reports as changed.
+        $fingerprint = Get-Fingerprint $mainCheckout
+        $mainStatus = @(& git -C $mainCheckout status --porcelain --untracked-files=all 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ } | Select-Object -First 50)
+        $toStage = Get-StageAfterLastRun $state
+        $when = Get-Now
+        $why = $Reason.Trim()
+        $guardBefore = $state.guard
+        $counts = @{ checks = @(Get-List $state.checks).Count; reviewPasses = @(Get-List $state.reviews | Where-Object { $_.status -eq 'valid' -and $_.verdict -eq 'PASS' }).Count; acceptance = [bool]$state.acceptance }
+        $entry = @{
+            utc = $when; reason = $why; fromStage = 'blocked-main-mutated'; toStage = $toStage
+            guard = @{ lastRunId = (Get-Field $guardBefore 'lastRunId'); before = (Get-Field $guardBefore 'before'); after = (Get-Field $guardBefore 'after') }
+            mainCheckout = @{ path = $mainCheckout; head = (Get-Field $fingerprint 'head'); treeHash = (Get-Field $fingerprint 'treeHash'); files = (Get-Field $fingerprint 'files'); unknown = [bool](Get-Field $fingerprint 'unknown'); unreadable = @(Get-List (Get-Field $fingerprint 'unreadable')) }
+            mainStatus = @($mainStatus); invalidated = $counts
+        }
+        $mark = @{ utc = $when; reason = "recover: $why" }
+        Update-State $info.StateRoot $Id 'recovered' {
+            param($s)
+            $s.recoveries = @(Get-List $s.recoveries) + @($entry)
+            $s.checks = @(Get-List $s.checks | ForEach-Object { if (-not (Get-Field $_ 'invalidated')) { $_['invalidated'] = $mark }; $_ })
+            $s.reviews = @(Get-List $s.reviews | ForEach-Object { if ($_.status -eq 'valid' -and $_.verdict -eq 'PASS' -and -not (Get-Field $_ 'invalidated')) { $_['invalidated'] = $mark }; $_ })
+            if ($s.acceptance -and -not $s.acceptance.invalidated) { $s.acceptance.invalidated = $mark }
+            # The guard is cleared here, in the open: the flag goes down, what it saw stays, and the recovery entry holds the reason.
+            $s.guard = @{ mainCheckoutMutated = $false; lastRunId = (Get-Field $guardBefore 'lastRunId'); before = (Get-Field $guardBefore 'before'); after = (Get-Field $guardBefore 'after'); recoveredUtc = $when }
+            $s.stage = $toStage
+        } -Locked | Out-Null
+        Write-Host "recovered: the main-checkout guard is cleared on your word ($why). Recorded: the main checkout now ($(if ($entry.mainCheckout.unknown) { 'cannot be fingerprinted' } else { "HEAD $($entry.mainCheckout.head), tree $($entry.mainCheckout.treeHash)" }), $($mainStatus.Count) changed path(s) in git status), and $($counts.checks) check(s), $($counts.reviewPasses) review PASS(es)$(if ($counts.acceptance) { ' and the acceptance' }) invalidated."
+        Write-Host "stage is now $toStage; nothing was reverted. Next: $((Get-NextTransitions (Read-State $info.StateRoot $Id)) -join ', ')"
     }
     finally { $stateLock.Dispose() }
 }
@@ -4222,6 +4625,7 @@ function Invoke-ReviewSelfTest
 {
     # Runs inside Invoke-SelfTest (dynamic scope): $root, $main, $origin, $seed, $git, $stubDir, $stub, $pkg, $stateFile, $statePath, $packagesRoot,
     # $expect and $failures are the caller's. Reviewers and executors are marked stubs; no real claude or codex process is ever started.
+    Write-Host 'PHASE review'
     & git -C $main config user.name SelfTest
     & git -C $main config user.email selftest@example.invalid
     $briefRv = Join-Path $root 'brief-review.md'
@@ -4258,6 +4662,7 @@ $minor = [ordered]@{ id = 'F2'; severity = 'non-blocking'; file = 'a.txt'; line 
 switch ($mode)
 {
     'fail' { $doc.verdict = 'FAIL'; $doc.criteria[0].result = 'fail'; $doc.findings = @($blocking, $minor) }
+    'failcrit' { $doc.verdict = 'FAIL'; $doc.criteria[0].result = 'fail' }
     'stale' { $doc.reviewedCommit = $zero }
     'missingcrit' { $doc.criteria = @($doc.criteria | Select-Object -SkipLast 1) }
     'passblock' { $doc.findings = @($blocking) }
@@ -4277,6 +4682,7 @@ switch ($mode)
 
 '@
     $codexReviewer = "# aw-selftest-stub`r`n" + $verdictCore + @'
+if ($mode -eq 'crash') { exit 3 }
 $oi = [Array]::IndexOf($all, '-o')
 [IO.File]::WriteAllText($all[$oi + 1], $json)
 $sid = if ($all -contains 'resume') { $all[$all.Count - 2] } else { 'codex-rv-session' }
@@ -4284,7 +4690,7 @@ $sid = if ($all -contains 'resume') { $all[$all.Count - 2] } else { 'codex-rv-se
 '{"type":"turn.completed","usage":{"input_tokens":7,"cached_input_tokens":2,"output_tokens":3}}'
 
 '@
-    $claudeReviewer = "# aw-selftest-stub`r`n`$a = @(`$args)`r`nif (`$a -contains '--version') { '9.9.9-stub (Claude Code)'; exit 0 }`r`n" + $verdictCore + @'
+    $claudeReviewer = "# aw-selftest-stub`r`n`$a = @(`$args)`r`nif (`$a -contains '--version') { `$v = if (`$env:AW_PKG_TEST_CLIVERSION) { `$env:AW_PKG_TEST_CLIVERSION } else { '9.9.9-stub' }; `"`$v (Claude Code)`"; exit 0 }`r`n" + $verdictCore + @'
 function Emit([string]$Line) { [Console]::Out.WriteLine($Line); [Console]::Out.Flush() }
 $resumeAt = [Array]::IndexOf($all, '--resume')
 $sid = if ($resumeAt -ge 0) { $all[$resumeAt + 1] } else { 'stub-claude-review' }
@@ -4294,6 +4700,7 @@ if ($mode -eq 'denied')
     Emit '{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"m1-t","name":"Bash","input":{}}],"usage":{"input_tokens":50,"output_tokens":9}}}'
     Emit '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"m1-t","is_error":true,"content":"Permission to use Bash has been denied."}]}}'
 }
+if ($mode -eq 'crash') { exit 1 }
 Emit ('{"type":"result","subtype":"success","is_error":false,"result":' + ($json | ConvertTo-Json) + ',"session_id":"' + $sid + '","usage":{"input_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":9},"permission_denials":[]}')
 
 '@
@@ -4410,6 +4817,15 @@ exit 0
     & $expect ((Get-VerdictJsonText "Here is my verdict:`n{}") -ne '{}') 'prose around a verdict was stripped instead of refused'
     $reviewerParams = (Get-Command $PSCommandPath).Parameters.Keys
     & $expect (@(@('Head', 'Verdict', 'Evidence', 'BlockingFindings', 'ReviewerSession', 'ExecutorSession', 'ReviewerIdentity') | Where-Object { $_ -in $reviewerParams }).Count -eq 0) 'accept takes record values from the caller'
+
+    if ($Quick)
+    {
+        # -Quick: the in-process cases above, then the thin path of package B (it ends with bx accepted) and one ship of bx. The packages below are the full suite's.
+        Invoke-PackageBSelfTest
+        Invoke-ShipSelfTest
+        Write-Host 'quick self-test: review, recovery and ship cases finished.'
+        return
+    }
 
     # ---- package rv: commit, review, dispositions, fix, resume, accept (Codex executor, Claude reviewer) ----
     & $newPackage 'rv' $rvManifest @('-Effort', 'high', '-EscalationReason', 'selftest')
@@ -4531,7 +4947,7 @@ exit 0
     $calls2 = @(& $rcalls)
     $c2 = if ($calls2.Count -ge 1) { & $readCall $calls2[-1] } else { $null }
     $c2args = @($c2.args)
-    & $expect ($calls2.Count -eq 1 -and $c2args[[Array]::IndexOf($c2args, '--resume') + 1] -eq 'stub-claude-review' -and $rev2.reviewer.resumedFrom -eq 'stub-claude-review' -and $c2.stdin -match 'COMPLETE, CURRENT verdict' -and $c2.stdin -match 'Earlier finding F1' -and $c2.stdin -match 'Earlier finding F2' -and $c2.stdin -match "Reviewed commit: $head3") "the reviewer was not resumed with a request for a complete, current verdict: $($c2args -join ' ')"
+    & $expect ($calls2.Count -eq 1 -and $c2args -notcontains '--resume' -and $null -eq $rev2.reviewer.resumedFrom -and $rev2.reviewer.priorRound -eq 1 -and $c2.stdin -match 'COMPLETE, CURRENT verdict' -and $c2.stdin -match 'the verdict was FAIL' -and $c2.stdin -match 'Earlier finding F1' -and $c2.stdin -match 'Earlier finding F2' -and $c2.stdin -match "Reviewed commit: $head3") "the Claude reviewer was resumed, or was not told the earlier verdict and findings with a request for a complete, current verdict: $($c2args -join ' ')"
     & $expect ($rev2.criteriaResults.Count -eq 3 -and @($rev2.criteriaResults | Where-Object { $_.result -ne 'pass' }).Count -eq 0) 'the resumed verdict does not cover every criterion'
 
     # accept: a separate recorded step; the record-review values come from the state.
@@ -4634,7 +5050,7 @@ exit 0
     $abandoned = @($state.reviews | Where-Object { $_.reviewId -eq 'abandoned' })[0]
     $final = Get-LatestReview $state
     & $expect ($abandoned.status -eq 'invalid' -and $abandoned.termination -eq 'abandoned' -and $r.Exit -eq 0 -and $final.status -eq 'valid' -and $final.verdict -eq 'PASS' -and $state.stage -eq 'review-passed') "the abandoned review was not recovered, or a fenced PASS was refused: $($r.Text)"
-    & $expect ($final.reviewer.resumedFrom -eq 'stub-claude-review') 'a later round did not resume the reviewer session'
+    & $expect ($null -eq $final.reviewer.resumedFrom -and $null -ne $final.reviewer.priorRound) 'a later round of a Claude reviewer resumed a session instead of starting fresh with the earlier round in the prompt'
 
     # ---- package cx: Claude executor, Codex reviewer (read-only, heavy default), Claude resume fix, Codex resume ----
     $r = & $pkg @('new', '-Id', 'cx', '-Brief', $briefRv, '-Checks', $rvManifest)
@@ -4820,7 +5236,7 @@ exit 0
     & $expect ($r.Exit -eq 0 -and (& $stateFile 'bm').stage -eq 'review-passed') "the review of bm did not pass: $($r.Text)"
     $bmRev = Get-LatestReview (& $stateFile 'bm')
     $bmInputs = [string]$bmRev.snapshot.inputDir
-    & $expect ((@($bmRev.inputHashes.Keys) | Sort-Object) -join ',' -eq 'brief.md,diff.patch,log.txt,prompt.md,stat.txt') 'the review did not record a hash for each input and the prompt'
+    & $expect ((@($bmRev.inputHashes.Keys) | Sort-Object) -join ',' -eq 'brief.md,check-summary.json,diff.patch,executor-report.md,log.txt,prompt.md,stat.txt') 'the review did not record a hash for each input and the prompt'
     $editFile = { param($path, $text) (Get-Item -LiteralPath $path).IsReadOnly = $false; [IO.File]::AppendAllText($path, $text) }
     $logPath = Join-Path $bmInputs 'log.txt'
     $logBytes = [IO.File]::ReadAllBytes($logPath)
@@ -4853,13 +5269,13 @@ exit 0
     & $expect ($r.Exit -ne 0 -and $r.Text -match 'criteria parsed from the brief differ' -and (& $stateFile 'bm').stage -eq 'review-passed') "accept did not re-check the criteria: $($r.Text)"
 
     # ---- package ac: the snapshot has to hold the content the checks ran on ----
+    # The check names the tracked files whose raw bytes a checkout would not write (item 7 below); what it cannot see is a file that is new, whose
+    # committed form differs from the bytes it was checked as: here an eol=lf attribute turns CRLF into LF on commit. The review still refuses it.
     & $newPackage 'ac'
+    & $write 'ac' '.gitattributes' "lfattr.txt text eol=lf`r`n"
+    & $write 'ac' 'lfattr.txt' "checked as CRLF, committed as LF`r`n"
     & $write 'ac' 'feature.txt' "v2`r`n"
-    $r = & $pkg @('check', '-Id', 'ac'); $r = & $pkg @('commit', '-Id', 'ac')
     $acWt = & $wtOf 'ac'
-    & $git $acWt @('update-index', '--assume-unchanged', 'feature.txt')
-    [IO.File]::WriteAllText((Join-Path $acWt 'feature.txt'), "hidden edit that no commit holds`r`n")
-    & $write 'ac' 'other.txt' "another file`r`n"
     $r = & $pkg @('check', '-Id', 'ac')
     & $expect ($r.Exit -eq 0) "check of ac failed: $($r.Text)"
     $r = & $pkg @('commit', '-Id', 'ac')
@@ -4869,7 +5285,7 @@ exit 0
     $env:AW_PKG_TEST_VMODE = 'pass'
     $r = & $pkg @('review', '-Id', 'ac', '-Level', 'light', '-ClaudePath', $rvClaude)
     $acRev = Get-LatestReview (& $stateFile 'ac')
-    & $expect ($r.Exit -eq 1 -and $acRev.status -eq 'invalid' -and ($acRev.invalidReasons -join ' ') -match 'checks did not run on the committed content' -and @(& $rcalls).Count -eq 0 -and $acRev.snapshot.removed) "a snapshot that differs from the checked content was reviewed: $($r.Text)"
+    & $expect ($r.Exit -eq 1 -and $acRev.status -eq 'invalid' -and ($acRev.invalidReasons -join ' ') -match 'checks did not run on the committed content \(raw bytes differ: [^)]*lfattr\.txt' -and @(& $rcalls).Count -eq 0 -and $acRev.snapshot.removed) "a snapshot that differs from the checked content was reviewed: $($r.Text)"
 
     # ---- package nl: raw bytes, no line-ending tolerance; the ordinary CRLF path still matches ----
     & $newPackage 'nl'
@@ -4890,14 +5306,13 @@ exit 0
     [IO.File]::WriteAllBytes((Join-Path $nlWt 'raw.dat'), [byte[]](1, 0, 13, 10, 2))
     [IO.File]::WriteAllBytes((Join-Path $nlWt 'raw2.sh'), [byte[]](97, 13, 10, 98, 13, 10))
     [IO.File]::WriteAllText((Join-Path $nlWt 'other.txt'), "other`r`n")
+    # Item 7: the hidden edits are named by check itself (the later review would have found them as "checks did not run on the committed content").
     $r = & $pkg @('check', '-Id', 'nl')
-    & $expect ($r.Exit -eq 0) "check of nl after the hidden edit failed: $($r.Text)"
+    $nlCheck = @((& $stateFile 'nl').checks)[-1]
+    & $expect ($r.Exit -eq 1 -and -not $nlCheck.ok -and (& $stateFile 'nl').stage -eq 'checks-failed' -and ($nlCheck.rawBytesProblems -join ',') -eq 'raw.dat,raw2.sh' -and $r.Text -match 'RAW BYTES' -and $r.Text -match 'raw\.dat, raw2\.sh') "a newline-only hidden edit of a -text file (with or without a NUL byte) was not named by check: $($r.Text)"
+    & $expect (([IO.File]::ReadAllBytes((Join-Path $nlWt 'raw.dat')) -join ',') -eq '1,0,13,10,2' -and ([IO.File]::ReadAllBytes((Join-Path $nlWt 'raw2.sh')) -join ',') -eq '97,13,10,98,13,10') 'check rewrote a file it reported (report only)'
     $r = & $pkg @('commit', '-Id', 'nl')
-    & $expect ($r.Exit -eq 0 -and (& $stateFile 'nl').stage -eq 'committed') "commit of nl after the hidden edit failed: $($r.Text)"
-    & $resetR
-    $r = & $pkg @('review', '-Id', 'nl', '-Level', 'light', '-ClaudePath', $rvClaude)
-    $nlRev = Get-LatestReview (& $stateFile 'nl')
-    & $expect ($r.Exit -eq 1 -and $nlRev.status -eq 'invalid' -and ($nlRev.invalidReasons -join ' ') -match 'checks did not run on the committed content \(raw bytes differ: [^)]*raw\.dat' -and ($nlRev.invalidReasons -join ' ') -match 'raw bytes differ: [^)]*raw2\.sh' -and @(& $rcalls).Count -eq 0) "a newline-only hidden edit of a -text file (with or without a NUL byte) was tolerated: $($r.Text) $($nlRev.invalidReasons -join '; ')"
+    & $expect ($r.Exit -ne 0 -and $r.Text -match "needs 'checks-passed'" -and (& $stateFile 'nl').stage -eq 'checks-failed') "commit was allowed after a check that named raw-byte problems: $($r.Text)"
     & $expect ($null -eq (Get-Command Get-NormalizedContentHash -ErrorAction SilentlyContinue)) 'the normalized fallback still exists'
 
     # ---- package cf: a rebase conflict is aborted truthfully ----
@@ -4915,6 +5330,8 @@ exit 0
     Write-Host 'review self-test: commit, review, fix, accept cases finished.'
     Invoke-ShipSelfTest
     Write-Host 'ship self-test: cases finished.'
+    Invoke-PackageBSelfTest
+    Write-Host 'package B self-test: cases finished.'
 }
 
 function Invoke-ShipSelfTest
@@ -5119,6 +5536,21 @@ exit 1
         & $expect ($r.Exit -eq 0) "ship test package $slug : review failed: $($r.Text)"
         $r = & $pkg @('accept', '-Id', $slug, '-Reason', 'ship test')
         & $expect ($r.Exit -eq 0 -and (& $stateFile $slug).stage -eq 'accepted') "ship test package $slug : accept failed: $($r.Text)"
+    }
+
+    if ($Quick)
+    {
+        # -Quick: one ship, of the package bx that Invoke-PackageBSelfTest left accepted: base, pin, verify, record, qualify, push, pr and merge, each recorded.
+        & $setEnv @{}
+        & $resetLog
+        $res = & $ship 'bx'
+        $state = & $stateFile 'bx'
+        $steps = $state.ship.steps
+        & $expect ($res.Exit -eq 0 -and $state.stage -eq 'merged' -and $steps.base.status -eq 'done' -and $steps.verify.status -eq 'done' -and $steps.qualify.status -eq 'done' -and $steps.push.status -eq 'done' -and $steps.pr.status -eq 'done' -and $steps.merge.status -eq 'done' -and (& $calls '^verify$') -eq 1 -and (& $calls '^push') -eq 1 -and (& $calls 'pr create') -eq 1 -and (& $calls '^mergepr .*-Auto -NoPluginPin') -eq 1 -and -not (Test-Path $state.worktree)) "the quick ship of bx did not reach merged through every step: exit $($res.Exit) stage $($state.stage) $($res.Text)"
+        $res = & $pkg @('show', '-Id', 'bx', '-Json')
+        $view = $res.Text | ConvertFrom-Json
+        & $expect ($res.Exit -eq 0 -and $view.stage -eq 'merged' -and @($view.ship.steps).Count -ge 7) "show does not list the ship steps of a merged package: $($res.Text)"
+        return
     }
 
     # ---- the packages: all accepted on the same base before anything moves it ----
@@ -5444,6 +5876,346 @@ exit 1
     & $setEnv @{}
 }
 
+function Invoke-PackageBSelfTest
+{
+    # Runs inside Invoke-ReviewSelfTest (dynamic scope, like Invoke-ShipSelfTest): its helpers ($pkg, $stateFile, $statePath, $packagesRoot, $wtOf,
+    # $write, $newPackage, $rvClaude, $rvCodex, $fixerCodex, $briefRv, $rvManifest, $resetR, $rcalls, $readCall, $rrecordDir, $git, $seed, $main,
+    # $root, $stubDir, $expect) are the caller's. The cases of the review fixes (items 1-5), the audited recovery (6) and the raw-byte check (7).
+    # Each case name starts with "item N". With -Quick it runs the thin path only: one package that goes through items 1 to 4 and 6 (and is shipped
+    # afterwards by Invoke-ShipSelfTest), and the checks that need no package.
+    Write-Host 'PHASE package-b'
+    $review = { param([string]$Slug, [string]$Mode, [string[]]$More = @()) $env:AW_PKG_TEST_VMODE = $Mode; & $pkg (@('review', '-Id', $Slug, '-Level', 'light', '-ClaudePath', $rvClaude) + @($More)) }
+    $prepare = {
+        param([string]$Slug)
+        & $newPackage $Slug
+        & $write $Slug 'feature.txt' "v2`r`n"
+        $res = & $pkg @('check', '-Id', $Slug)
+        & $expect ($res.Exit -eq 0) "package $Slug check failed: $($res.Text)"
+        $res = & $pkg @('commit', '-Id', $Slug)
+        & $expect ($res.Exit -eq 0 -and (& $stateFile $Slug).stage -eq 'committed') "package $Slug commit failed: $($res.Text)"
+    }
+    $lastCall = { $found = @(& $rcalls); if ($found.Count) { & $readCall $found[-1] } else { $null } }
+    $editInput = { param([string]$File, [string]$Text) (Get-Item -LiteralPath $File).IsReadOnly = $false; [IO.File]::AppendAllText($File, $Text) }
+    $env:AW_PKG_TEST_TOKENS = '100'
+
+    # ---- item 1 (no package): an acceptance case that only a command run or the report could settle is warned about, never refused ----
+    $warnManifest = @{ build = @(); format = @(); tests = @(@{ project = 'src/App.Tests.csproj'; filter = '' }); extra = @(@{ name = 'passes' }) }
+    $warnCases = @(
+        @{ text = 'The unit tests pass.'; warn = $true }
+        @{ text = 'All tests pass and the build succeeds.'; warn = $true }
+        @{ text = 'dotnet test exits 0.'; warn = $true }
+        @{ text = 'The feature is stated in the report.'; warn = $true }
+        @{ text = 'The executor''s report confirms the migration.'; warn = $true }
+        @{ text = 'The feature file exists.'; warn = $false }
+        @{ text = 'feature.txt says v2 and the tests pass.'; warn = $false }
+        @{ text = 'The check passes exits 0.'; warn = $false }
+        @{ text = 'src/App.Tests.csproj tests pass.'; warn = $false }
+    )
+    foreach ($case in $warnCases)
+    {
+        $found = @(Get-UnobservableCriterionWarnings @(@{ id = 'C1'; text = $case.text }) $warnManifest)
+        & $expect ((($found.Count -eq 1) -eq $case.warn) -and (-not $case.warn -or $found[0] -match 'acceptance case C1 names only')) "item 1 (unobservable acceptance cases) '$($case.text)' should warn=$($case.warn), got $($found.Count): $($found -join ' / ')"
+    }
+    $briefWarn = Join-Path $root 'brief-warn.md'
+    [IO.File]::WriteAllText($briefWarn, (Get-Content -LiteralPath (Join-Path $script:KitDir 'fixtures/gates/agent-run/complete.md') -Raw) + "`r`n# Acceptance cases`r`n`r`n- The unit tests pass.`r`n- The feature is stated in the executor's report.`r`n- The feature file exists.`r`n")
+    $res = & $pkg @('new', '-Id', 'wn', '-Brief', $briefWarn, '-DryRun')
+    & $expect ($res.Exit -eq 0 -and $res.Text -match 'WARNING acceptance case C1 names only a command run' -and $res.Text -match 'WARNING acceptance case C2 names only the executor' -and $res.Text -notmatch 'acceptance case C3' -and $res.Text -match 'dry run: nothing was created') "item 1 (unobservable acceptance cases) new did not warn about the command-only and the report-only case, or refused: $($res.Text)"
+    if (-not $Quick)
+    {
+        $res = & $pkg @('new', '-Id', 'wn', '-Brief', $briefWarn, '-Checks', $rvManifest)
+        & $expect ($res.Exit -eq 0 -and $res.Text -match 'WARNING acceptance case C1' -and (& $stateFile 'wn').stage -eq 'ready') "item 1 (unobservable acceptance cases) new refused a brief it only had to warn about: $($res.Text)"
+    }
+
+    # ---- item 3 (no package): the minimum CLI version of a model, from the kit's table and from the configuration ----
+    $versionCases = @(
+        @{ model = 'claude-opus-5-5'; seen = '2.1.160 (Claude Code)'; refused = $true }
+        @{ model = 'claude-opus-5-5'; seen = '2.1.279'; refused = $true }
+        @{ model = 'claude-opus-5-5'; seen = '2.1.280 (Claude Code)'; refused = $false }
+        @{ model = 'claude-opus-5-5'; seen = '2.2.0'; refused = $false }
+        @{ model = 'claude-opus-5-5'; seen = '10.0.0-beta'; refused = $false }
+        @{ model = 'claude-opus-5-5'; seen = 'not a version'; refused = $true }
+        @{ model = 'claude-opus-5-5'; seen = ''; refused = $true }
+        @{ model = 'claude-sonnet-5-5'; seen = '1.0.0'; refused = $false }
+    )
+    foreach ($case in $versionCases)
+    {
+        $problem = Get-CliVersionProblem $case.model $case.seen ''
+        & $expect ((($null -ne $problem) -eq $case.refused) -and (-not $case.refused -or $problem -match 'No review round was spent')) "item 3 (CLI and model mismatch) model $($case.model) with CLI '$($case.seen)' should be refused=$($case.refused), got '$problem'"
+    }
+    $configured = $script:Ctx.Config.Contains('package')
+    $savedPackage = if ($configured) { $script:Ctx.Config['package'] } else { $null }
+    try
+    {
+        $script:Ctx.Config['package'] = @{ minCliVersions = @{ 'claude-sonnet-5-5' = '3.0.0'; 'claude-opus-5-5' = '2.0.0' } }
+        & $expect ($null -ne (Get-CliVersionProblem 'claude-sonnet-5-5' '2.9.9' '') -and $null -eq (Get-CliVersionProblem 'claude-sonnet-5-5' '3.0.0' '') -and $null -eq (Get-CliVersionProblem 'claude-opus-5-5' '2.0.1' '')) 'item 3 (CLI and model mismatch) the configuration did not override the kit table'
+    }
+    finally { if ($configured) { $script:Ctx.Config['package'] = $savedPackage } else { $script:Ctx.Config.Remove('package') } }
+
+    # ---- item 5 (no package): the coordinator's own findings file ----
+    $findingsDir = Join-Path $root 'coordinator-findings'
+    New-Item -ItemType Directory -Path $findingsDir -Force | Out-Null
+    $fakeReview = @{ reviewId = 'r0'; round = 1 }
+    $findingCases = @(
+        @{ name = 'a valid list'; json = '[{"file":"a.txt","line":3,"summary":"s","scenario":"sc"},{"id":"X","severity":"non-blocking","file":"b.txt","line":0,"summary":"s2","scenario":"sc2"}]'; ok = $true }
+        @{ name = 'an object holding the list'; json = '{"findings":[{"file":"a.txt","line":1,"summary":"s","scenario":"sc"}]}'; ok = $true }
+        @{ name = 'an empty list'; json = '[]'; ok = $false }
+        @{ name = 'not a list'; json = '{"file":"a.txt"}'; ok = $false }
+        @{ name = 'a missing scenario'; json = '[{"file":"a.txt","line":1,"summary":"s"}]'; ok = $false }
+        @{ name = 'an unknown key'; json = '[{"file":"a.txt","line":1,"summary":"s","scenario":"sc","extra":1}]'; ok = $false }
+        @{ name = 'a negative line'; json = '[{"file":"a.txt","line":-1,"summary":"s","scenario":"sc"}]'; ok = $false }
+        @{ name = 'a bad severity'; json = '[{"file":"a.txt","line":1,"summary":"s","scenario":"sc","severity":"critical"}]'; ok = $false }
+        @{ name = 'a repeated id'; json = '[{"id":"K1","file":"a.txt","line":1,"summary":"s","scenario":"sc"},{"id":"K1","file":"b.txt","line":1,"summary":"s","scenario":"sc"}]'; ok = $false }
+        @{ name = 'a repeated property'; json = '[{"file":"a.txt","file":"b.txt","line":1,"summary":"s","scenario":"sc"}]'; ok = $false }
+        @{ name = 'free text'; json = 'please fix it'; ok = $false }
+    )
+    foreach ($case in $findingCases)
+    {
+        $file = Join-Path $findingsDir 'case.json'
+        [IO.File]::WriteAllText($file, $case.json)
+        $entry = $null
+        try { $entry = Read-CoordinatorFindings $file $fakeReview $findingsDir } catch { $entry = $null }
+        $holds = $case.ok -eq [bool]$entry
+        if ($holds -and $entry) { $holds = $entry.sha256 -eq (Get-Sha256 $file) -and (Get-Item -LiteralPath $entry.path).IsReadOnly -and $entry.findings[0].id -in @('K1') }
+        & $expect $holds "item 5 (a FAIL verdict with no finding) the findings file '$($case.name)' was $(if ($case.ok) { 'refused' } else { 'accepted' }) or not kept as recorded"
+    }
+    $absent = $null
+    try { $absent = Read-CoordinatorFindings (Join-Path $findingsDir 'nope.json') $fakeReview $findingsDir } catch { $absent = $null }
+    & $expect ($null -eq $absent) 'item 5 (a FAIL verdict with no finding) a findings file that does not exist was accepted'
+
+    # ---- item 7 (no package): tracked files that git sees as unchanged but whose raw bytes a checkout would not write ----
+    $rawRepo = Join-Path $root 'raw-bytes'
+    New-Item -ItemType Directory -Path $rawRepo -Force | Out-Null
+    & $git $rawRepo @('init', '-q', '-b', 'master')
+    & $git $rawRepo @('config', 'core.autocrlf', 'true')
+    [IO.File]::WriteAllBytes((Join-Path $rawRepo 'text.txt'), [byte[]](108, 102, 10))
+    [IO.File]::WriteAllBytes((Join-Path $rawRepo 'other.txt'), [byte[]](111, 10))
+    [IO.File]::WriteAllBytes((Join-Path $rawRepo 'bin.dat'), [byte[]](1, 0, 10, 2))
+    [IO.File]::WriteAllText((Join-Path $rawRepo '.gitattributes'), "bin.dat -text`n")
+    & $git $rawRepo @('add', '-A'); & $git $rawRepo @('commit', '-qm', 'one')
+    Remove-Item -LiteralPath (Join-Path $rawRepo 'text.txt'), (Join-Path $rawRepo 'other.txt'), (Join-Path $rawRepo 'bin.dat'), (Join-Path $rawRepo '.gitattributes')
+    & $git $rawRepo @('checkout', '--', 'text.txt', 'other.txt', 'bin.dat', '.gitattributes')
+    & $expect (@(Get-RawByteProblems $rawRepo).Count -eq 0) 'item 7 (raw bytes) a clean checkout was reported'
+    [IO.File]::WriteAllBytes((Join-Path $rawRepo 'text.txt'), [byte[]](108, 102, 10))
+    & $expect ((@(Get-RawByteProblems $rawRepo) -join ',') -eq 'text.txt') 'item 7 (raw bytes) an edit and revert that autocrlf hides was not reported'
+    [IO.File]::WriteAllBytes((Join-Path $rawRepo 'other.txt'), [byte[]](111, 111, 10))
+    & $expect ((@(Get-RawByteProblems $rawRepo) -join ',') -eq 'text.txt') 'item 7 (raw bytes) a real change was reported as a raw-byte problem'
+    & $git $rawRepo @('update-index', '--assume-unchanged', 'bin.dat')
+    [IO.File]::WriteAllBytes((Join-Path $rawRepo 'bin.dat'), [byte[]](1, 0, 13, 10, 2))
+    [IO.File]::WriteAllBytes((Join-Path $rawRepo 'new.txt'), [byte[]](110, 10))
+    & $expect ((@(Get-RawByteProblems $rawRepo) -join ',') -eq 'bin.dat,text.txt') 'item 7 (raw bytes) an assume-unchanged hidden edit was not reported, or an untracked file was'
+    Remove-Item -LiteralPath $rawRepo -Recurse -Force -ErrorAction SilentlyContinue
+
+    # ---- package bx: items 3, 4, 2, 1 and 6 on one package (executor Codex stub, reviewer Claude stub) ----
+    & $prepare 'bx'
+    $before = & $stateFile 'bx'
+    $roundsBefore = [int]$before.repair.roundsUsed
+    & $resetR
+    $res = & $pkg @('review', '-Id', 'bx', '-ClaudePath', $rvClaude)
+    & $expect ($res.Exit -ne 0 -and $res.Text -match '-Level' -and (& $stateFile 'bx').stage -eq 'committed') "review without -Level was accepted: $($res.Text)"
+    if (-not $Quick)
+    {
+        $res = & $pkg @('accept', '-Id', 'bx', '-Reason', 'too early')
+        & $expect ($res.Exit -ne 0 -and $res.Text -match 'needs a valid PASS review') "accept was allowed without a review: $($res.Text)"
+        $res = & $pkg @('disposition', '-Id', 'bx', '-Finding', 'F1', '-Accept', '-Reason', 'x')
+        & $expect ($res.Exit -ne 0 -and $res.Text -match 'no valid review') "a disposition without a review was accepted: $($res.Text)"
+    }
+    $res = & $pkg @('fix', '-Id', 'bx')
+    & $expect ($res.Exit -ne 0 -and $res.Text -match 'valid FAIL review') "fix was allowed without a FAIL review: $($res.Text)"
+
+    # item 3: a CLI older than its model needs refuses the round, and no round is spent
+    $versionRuns = if ($Quick) { @('2.1.160') } else { @('2.1.160', '2.1.279', 'garbage') }
+    foreach ($seen in $versionRuns)
+    {
+        $env:AW_PKG_TEST_CLIVERSION = $seen
+        $env:AW_PKG_TEST_VMODE = 'pass'
+        $res = & $pkg @('review', '-Id', 'bx', '-Level', 'light', '-Reviewer', 'claude-opus', '-ClaudePath', $rvClaude)
+        $after = & $stateFile 'bx'
+        & $expect ($res.Exit -ne 0 -and $res.Text -match 'claude-opus-5-5 needs 2\.1\.280' -and $res.Text -match 'No review round was spent' -and $after.repair.roundsUsed -eq $roundsBefore -and @($after.reviews).Count -eq 0 -and $after.stage -eq 'committed' -and @(& $rcalls).Count -eq 0) "item 3 (CLI and model mismatch) a claude CLI reporting '$seen' served claude-opus-5-5, or the refusal spent a round: $($res.Text)"
+    }
+    Remove-Item Env:AW_PKG_TEST_CLIVERSION -ErrorAction SilentlyContinue
+
+    # item 4: a crash before any verdict is refunded and shown
+    $res = & $review 'bx' 'crash'
+    $state = & $stateFile 'bx'
+    $crashed = Get-LatestReview $state
+    & $expect ($res.Exit -eq 1 -and $crashed.status -eq 'invalid' -and $crashed.refunded -and $crashed.refunded.reason -match 'exited with code 1' -and $state.repair.roundsUsed -eq $roundsBefore -and @($state.repair.refunds).Count -eq 1 -and $state.repair.refunds[0].reviewId -eq $crashed.reviewId -and $state.stage -eq 'review-invalid' -and $res.Text -match 'round was refunded') "item 4 (refund) a reviewer that crashed before any verdict spent a round, or the refund was not recorded: $($res.Text)"
+    $shown = (& $pkg @('show', '-Id', 'bx')).Text
+    & $expect ($shown -match 'REFUNDED: ' -and $shown -match '1 refund\(s\)' -and $shown -match 'refunded round 1' -and $shown -match 'repair rounds used 0 of 3') "item 4 (refund) show does not report the refund: $shown"
+
+    # item 1: the reviewer is given the check summary and the executor's report, both hashed
+    $res = & $review 'bx' 'fail'
+    $state = & $stateFile 'bx'
+    $failed = Get-LatestReview $state
+    $inputs = [string]$failed.snapshot.inputDir
+    $summary = if (Test-Path (Join-Path $inputs 'check-summary.json')) { Get-Content -LiteralPath (Join-Path $inputs 'check-summary.json') -Raw | ConvertFrom-Json } else { $null }
+    $reportText = if (Test-Path (Join-Path $inputs 'executor-report.md')) { (Get-Content -LiteralPath (Join-Path $inputs 'executor-report.md') -Raw).Trim() } else { $null }
+    $reviewerCall = & $lastCall
+    & $expect ($res.Exit -eq 1 -and $failed.status -eq 'valid' -and $failed.verdict -eq 'FAIL' -and $summary -and $summary.head -eq $failed.commit -and $summary.tree -eq $failed.tree -and $summary.checkId -eq $failed.checkId -and $summary.ok -eq $true -and @($summary.gates | Where-Object { $_.name -eq 'passes' -and $_.exitCode -eq 0 }).Count -eq 1 -and $reportText -eq 'done') "item 1 (unobservable acceptance cases) the reviewer was not given the check summary and the executor report: $($res.Text)"
+    & $expect ($failed.inputHashes.ContainsKey('check-summary.json') -and $failed.inputHashes['check-summary.json'] -eq (Get-Sha256 (Join-Path $inputs 'check-summary.json')) -and $failed.inputHashes['executor-report.md'] -eq (Get-Sha256 (Join-Path $inputs 'executor-report.md')) -and $reviewerCall.stdin -match 'check-summary\.json' -and $reviewerCall.stdin -match 'executor-report\.md' -and $reviewerCall.stdin -match 'verify receipt') 'item 1 (unobservable acceptance cases) the two inputs are not hashed with the others, or the prompt does not name them and the receipt reliance'
+    $res = & $pkg @('disposition', '-Id', 'bx', '-Finding', 'F1', '-Accept', '-Reason', 'the reviewer is right')
+    & $expect ($res.Exit -eq 0) "disposition failed: $($res.Text)"
+
+    # item 2: the next round of a Claude reviewer is a fresh session that is told what the last one found
+    & $resetR
+    $res = & $review 'bx' 'pass'
+    $state = & $stateFile 'bx'
+    $passed = Get-LatestReview $state
+    $reviewerCall = & $lastCall
+    & $expect ($res.Exit -eq 0 -and $state.stage -eq 'review-passed' -and @($reviewerCall.args) -notcontains '--resume' -and $null -eq $passed.reviewer.resumedFrom -and $passed.reviewer.priorRound -eq $failed.round -and $reviewerCall.stdin -match 'no memory of round' -and $reviewerCall.stdin -match 'the verdict was FAIL' -and $reviewerCall.stdin -match 'Earlier finding F1' -and $reviewerCall.stdin -match 'the coordinator decided: accept') "item 2 (reviewer resume) the Claude reviewer was resumed, or the previous verdict and findings are not in its prompt: $($res.Text) $(@($reviewerCall.args) -join ' ')"
+
+    # item 1 again, at accept: the two inputs are re-hashed and bound to their sources
+    if (-not $Quick)
+    {
+        $passedInputs = [string]$passed.snapshot.inputDir
+        foreach ($name in @('check-summary.json', 'executor-report.md'))
+        {
+            $file = Join-Path $passedInputs $name
+            $bytes = [IO.File]::ReadAllBytes($file)
+            & $editInput $file 'edited after the review'
+            $res = & $pkg @('accept', '-Id', 'bx', '-Reason', 'x')
+            & $expect ($res.Exit -ne 0 -and $res.Text -match [regex]::Escape("review input $name changed") -and (& $stateFile 'bx').stage -eq 'review-passed') "item 1 (unobservable acceptance cases) accept took a review whose $name was edited afterwards: $($res.Text)"
+            $forged = Get-Sha256 $file
+            Update-State $packagesRoot 'bx' 'forge-input-hash' { param($s) $s.reviews = @(Get-List $s.reviews | ForEach-Object { if ($_.reviewId -eq $passed.reviewId) { $_.inputHashes[$name] = $forged }; $_ }) } | Out-Null
+            $res = & $pkg @('accept', '-Id', 'bx', '-Reason', 'x')
+            & $expect ($res.Exit -ne 0 -and $res.Text -match 'is not the (summary|report)' -and (& $stateFile 'bx').stage -eq 'review-passed') "item 1 (unobservable acceptance cases) accept took a $name that is not what the state yields, although its recorded hash was forged to match: $($res.Text)"
+            [IO.File]::WriteAllBytes($file, $bytes)
+            $restored = Get-Sha256 $file
+            Update-State $packagesRoot 'bx' 'restore-input-hash' { param($s) $s.reviews = @(Get-List $s.reviews | ForEach-Object { if ($_.reviewId -eq $passed.reviewId) { $_.inputHashes[$name] = $restored }; $_ }) } | Out-Null
+        }
+    }
+    $res = & $pkg @('accept', '-Id', 'bx', '-Reason', 'checked against the diff, the check summary and the report')
+    & $expect ($res.Exit -eq 0 -and (& $stateFile 'bx').stage -eq 'accepted') "accept of bx failed: $($res.Text)"
+    $legacy = Get-Content -LiteralPath (& $statePath 'bx') -Raw | ConvertFrom-Json -AsHashtable @script:JsonDate
+
+    # ---- package br: item 6 on a real block (an executor that writes into the main checkout) ----
+    Remove-Item -LiteralPath (Join-Path $main 'rogue.txt') -Force -ErrorAction SilentlyContinue
+    $res = & $pkg @('new', '-Id', 'br', '-Brief', $briefRv, '-Checks', $rvManifest)
+    $res = & $pkg @('run', '-Id', 'br', '-AgentRunScript', (Join-Path $stubDir 'mutate.ps1'))
+    & $expect ($res.Exit -eq 5 -and (& $stateFile 'br').stage -eq 'blocked-main-mutated') "item 6 (recover) the package was not blocked by a run that wrote into the main checkout: $($res.Text)"
+    $res = & $pkg @('recover', '-Id', 'br', '-Reason', 'rogue.txt was written by the stub and is left in place on purpose')
+    $state = & $stateFile 'br'
+    & $expect ($res.Exit -eq 0 -and $state.stage -eq 'executor-completed' -and @($state.recoveries[0].mainStatus | Where-Object { $_ -match 'rogue\.txt' }).Count -eq 1) "item 6 (recover) a real block was not recovered, or the changed paths of the main checkout were not recorded: $($res.Text)"
+    $res = & $pkg @('run', '-Id', 'br', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+    & $expect ($res.Exit -eq 0 -and (& $stateFile 'br').stage -eq 'executor-completed') "item 6 (recover) a recovered package could not run again: $($res.Text)"
+
+    if ($Quick) { return }
+
+    # ---- package bx again: the recovery of an accepted package invalidates its checks, its PASS and its acceptance ----
+    # item 6: recover, the audited way out of blocked-main-mutated
+    $blockedFor = 'the main checkout changed while the executor ran'
+    Update-State $packagesRoot 'bx' 'test-block' { param($s) $s.stage = 'blocked-main-mutated'; $s.guard = @{ mainCheckoutMutated = $true; lastRunId = 'test'; before = $null; after = $null } } | Out-Null
+    $res = & $pkg @('recover', '-Id', 'bx')
+    $state = & $stateFile 'bx'
+    & $expect ($res.Exit -ne 0 -and $res.Text -match 'recover needs -Reason' -and $state.stage -eq 'blocked-main-mutated' -and $state.guard.mainCheckoutMutated -and @($state.recoveries).Count -eq 0) "item 6 (recover) recover without -Reason was accepted: $($res.Text)"
+    $res = & $pkg @('run', '-Id', 'bx', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+    & $expect ($res.Exit -ne 0 -and $res.Text -match 'recover -Id <slug> -Reason' -and (& $stateFile 'bx').stage -eq 'blocked-main-mutated') "item 6 (recover) a blocked package was not pointed at recover: $($res.Text)"
+    $mainNow = Get-Fingerprint $main
+    $res = & $pkg @('recover', '-Id', 'bx', '-Reason', $blockedFor)
+    $state = & $stateFile 'bx'
+    $entry = if (@($state.recoveries).Count) { $state.recoveries[0] } else { $null }
+    & $expect ($res.Exit -eq 0 -and $state.stage -ne 'blocked-main-mutated' -and $state.stage -eq 'executor-completed' -and $entry -and $entry.reason -eq $blockedFor -and $entry.fromStage -eq 'blocked-main-mutated' -and $entry.mainCheckout.head -eq $mainNow.head -and $entry.mainCheckout.treeHash -eq $mainNow.treeHash -and $null -ne $entry.mainStatus -and -not $state.guard.mainCheckoutMutated -and $state.guard.recoveredUtc -and @($state.history | Where-Object { $_.event -eq 'recovered' }).Count -eq 1) "item 6 (recover) recover with -Reason did not record the reason and the main checkout, clear the guard and return to the stage after the last run: $($res.Text)"
+    $passes = @($state.reviews | Where-Object { $_.status -eq 'valid' -and $_.verdict -eq 'PASS' })
+    & $expect ($state.acceptance.invalidated.reason -match 'recover' -and $passes.Count -ge 1 -and @($passes | Where-Object { -not $_.invalidated }).Count -eq 0 -and @($state.checks | Where-Object { -not $_.invalidated }).Count -eq 0 -and $entry.invalidated.acceptance -eq $true) 'item 6 (recover) recover left a check, a review PASS or the acceptance valid'
+    $view = (& $pkg @('show', '-Id', 'bx', '-Json')).Text | ConvertFrom-Json
+    & $expect ($view.acceptance.status -match '^invalidated' -and @($view.checks | Where-Object { $_.fresh }).Count -eq 0 -and @($view.nextTransitions) -contains 'run' -and @($view.recoveries).Count -eq 1 -and $view.recoveries[0].reason -eq $blockedFor) "item 6 (recover) show reports the acceptance or a check as still valid, or lacks the recovery: $($view.acceptance.status)"
+    foreach ($command in @(@('accept', '-Reason', 'x'), @('commit'), @('recover', '-Reason', 'again')))
+    {
+        $res = & $pkg (@($command[0], '-Id', 'bx') + @($command | Select-Object -Skip 1))
+        & $expect ($res.Exit -ne 0 -and $res.Text -match 'not allowed in stage|only for stage') "item 6 (recover) '$($command -join ' ')' was allowed right after recover: $($res.Text)"
+    }
+    $res = & $pkg @('check', '-Id', 'bx')
+    & $expect ($res.Exit -eq 0 -and (& $stateFile 'bx').stage -eq 'checks-passed') "item 6 (recover) check after recover failed: $($res.Text)"
+    $res = & $pkg @('commit', '-Id', 'bx')
+    & $expect ($res.Exit -eq 0 -and (& $stateFile 'bx').stage -eq 'committed') "item 6 (recover) commit after recover failed: $($res.Text)"
+    & $resetR
+    $res = & $review 'bx' 'pass'
+    & $expect ($res.Exit -eq 0 -and (& $stateFile 'bx').stage -eq 'review-passed') "item 6 (recover) review after recover failed: $($res.Text)"
+    $res = & $pkg @('accept', '-Id', 'bx', '-Reason', 'accepted again after the recovery')
+    & $expect ($res.Exit -eq 0 -and (& $stateFile 'bx').stage -eq 'accepted') "item 6 (recover) accept after recover failed: $($res.Text)"
+
+    # a state file written before this version has none of the new fields, and show still reads it
+    foreach ($key in @('recoveries', 'coordinatorFindings')) { $legacy.Remove($key) }
+    $legacy.repair.Remove('refunds')
+    $legacy.reviews = @($legacy.reviews | ForEach-Object { $_.Remove('refunded'); $_.Remove('invalidated'); $_.reviewer.Remove('priorRound'); $_ })
+    $legacy.slug = 'old'
+    $oldPath = Join-Path $packagesRoot 'old.json'
+    [IO.File]::WriteAllText($oldPath, ($legacy | ConvertTo-Json -Depth 20))
+    $res = & $pkg @('show', '-Id', 'old', '-Json')
+    $oldView = if ($res.Exit -eq 0) { $res.Text | ConvertFrom-Json } else { $null }
+    & $expect ($res.Exit -eq 0 -and $oldView -and $oldView.stage -eq 'accepted' -and @($oldView.recoveries).Count -eq 0 -and @($oldView.repair.refunds).Count -eq 0) "a state file without the fields of this version was not read by show: $($res.Text)"
+    Remove-Item -LiteralPath $oldPath -Force
+
+    # ---- package bk: item 5, a FAIL verdict that carries no finding ----
+    & $prepare 'bk'
+    $res = & $review 'bk' 'failcrit'
+    $state = & $stateFile 'bk'
+    $silent = Get-LatestReview $state
+    & $expect ($res.Exit -eq 1 -and $state.stage -eq 'review-failed' -and $silent.verdict -eq 'FAIL' -and @($silent.findings).Count -eq 0) "item 5 (a FAIL verdict with no finding) the zero-finding FAIL was not recorded: $($res.Text)"
+    $runsBefore = @($state.runs).Count
+    $res = & $pkg @('fix', '-Id', 'bk', '-AgentRunScript', $fixerCodex, '-ClaudePath', $rvClaude)
+    & $expect ($res.Exit -ne 0 -and $res.Text -match 'carries no finding' -and $res.Text -match '-Findings' -and @((& $stateFile 'bk').runs).Count -eq $runsBefore) "item 5 (a FAIL verdict with no finding) fix gave no way forward, or ran anyway: $($res.Text)"
+    $badFile = Join-Path $root 'bk-bad.json'
+    [IO.File]::WriteAllText($badFile, '[{"file":"feature.txt","line":1,"summary":"no scenario"}]')
+    $res = & $pkg @('fix', '-Id', 'bk', '-AgentRunScript', $fixerCodex, '-ClaudePath', $rvClaude, '-Findings', $badFile)
+    & $expect ($res.Exit -ne 0 -and $res.Text -match 'scenario' -and @((& $stateFile 'bk').runs).Count -eq $runsBefore -and @((& $stateFile 'bk').coordinatorFindings).Count -eq 0) "item 5 (a FAIL verdict with no finding) an invalid findings file was taken: $($res.Text)"
+    $goodFile = Join-Path $root 'bk-findings.json'
+    [IO.File]::WriteAllText($goodFile, '[{"file":"feature.txt","line":1,"summary":"criterion C1 fails: the feature file does not say v2 where the brief wants it","scenario":"open feature.txt and compare it with C1"}]')
+    & $resetR
+    $env:AW_PKG_TEST_VMODE = 'pass'
+    $res = & $pkg @('fix', '-Id', 'bk', '-AgentRunScript', $fixerCodex, '-ClaudePath', $rvClaude, '-Findings', $goodFile)
+    $state = & $stateFile 'bk'
+    $recorded = if (@($state.coordinatorFindings).Count) { $state.coordinatorFindings[0] } else { $null }
+    $fixBrief = if (Test-Path (Join-Path $rrecordDir 'fix-brief.md')) { Get-Content -LiteralPath (Join-Path $rrecordDir 'fix-brief.md') -Raw } else { '' }
+    & $expect ($res.Exit -eq 0 -and $state.stage -eq 'review-passed' -and @($state.runs).Count -eq $runsBefore + 1 -and $recorded -and $recorded.sha256 -eq (Get-Sha256 $goodFile) -and (Get-Sha256 $recorded.path) -eq $recorded.sha256 -and $recorded.findings[0].id -eq 'K1' -and $recorded.reviewId -eq $silent.reviewId -and $fixBrief -match 'K1 \(blocking, written by the coordinator\) feature\.txt:1' -and $fixBrief -match 'the feature file does not say v2') "item 5 (a FAIL verdict with no finding) the coordinator findings did not drive the fix, or were not recorded and hashed: $($res.Text)"
+    $shownFindings = ((& $pkg @('show', '-Id', 'bk', '-Json')).Text | ConvertFrom-Json).coordinatorFindings
+    & $expect (@($shownFindings).Count -eq 1 -and $shownFindings[0].sha256 -eq $recorded.sha256) 'item 5 (a FAIL verdict with no finding) show does not list the coordinator findings'
+
+    # ---- package bc: item 4 with Codex (a verdict the reviewer got wrong costs a round, a resume that fails is refunded); -Findings only for a verdict without findings ----
+    & $prepare 'bc'
+    $env:AW_PKG_TEST_VMODE = 'malformed'
+    $res = & $pkg @('review', '-Id', 'bc', '-Level', 'heavy', '-Reviewer', 'codex-sol', '-CodexTestScript', $rvCodex)
+    $state = & $stateFile 'bc'
+    $codexBad = Get-LatestReview $state
+    & $expect ($res.Exit -eq 1 -and $codexBad.status -eq 'invalid' -and -not (Get-Field $codexBad 'refunded') -and $state.repair.roundsUsed -eq 1 -and @($state.repair.refunds).Count -eq 0) "item 4 (refund) a malformed verdict was refunded although the output was the reviewer's own: $($res.Text)"
+    $env:AW_PKG_TEST_VMODE = 'fail'
+    $res = & $pkg @('review', '-Id', 'bc', '-Level', 'heavy', '-Reviewer', 'codex-sol', '-CodexTestScript', $rvCodex)
+    $state = & $stateFile 'bc'
+    $codexFail = Get-LatestReview $state
+    & $expect ($res.Exit -eq 1 -and $codexFail.status -eq 'valid' -and $codexFail.verdict -eq 'FAIL' -and $codexFail.reviewer.sessionId -eq 'codex-rv-session') "the Codex heavy FAIL round of bc was not recorded: $($res.Text)"
+    $usedBefore = [int]$state.repair.roundsUsed
+    $runsOfBc = @($state.runs).Count
+    $res = & $pkg @('fix', '-Id', 'bc', '-AgentRunScript', $fixerCodex, '-ClaudePath', $rvClaude, '-Findings', $goodFile)
+    & $expect ($res.Exit -ne 0 -and $res.Text -match 'only for a FAIL verdict that carries no finding' -and @((& $stateFile 'bc').runs).Count -eq $runsOfBc) "item 5 (a FAIL verdict with no finding) -Findings replaced the findings of a verdict that has some: $($res.Text)"
+    $env:AW_PKG_TEST_VMODE = 'crash'
+    $res = & $pkg @('review', '-Id', 'bc', '-Level', 'heavy', '-Reviewer', 'codex-sol', '-CodexTestScript', $rvCodex)
+    $state = & $stateFile 'bc'
+    $codexCrash = Get-LatestReview $state
+    & $expect ($res.Exit -eq 1 -and $codexCrash.status -eq 'invalid' -and $codexCrash.refunded -and $codexCrash.refunded.reason -match 'resume failure' -and $state.repair.roundsUsed -eq $usedBefore -and @($state.repair.refunds).Count -eq 1) "item 4 (refund) a Codex resume that failed before any verdict spent a round: $($res.Text)"
+
+    # ---- package cr: item 7 end to end. A file that git sees as unchanged (autocrlf) holds LF where a checkout writes CRLF ----
+    & $git $seed @('fetch', '-q', 'origin'); & $git $seed @('reset', '-q', '--hard', 'origin/master')
+    [IO.File]::WriteAllBytes((Join-Path $seed 'lf-base.txt'), [byte[]](108, 102, 10))
+    & $git $seed @('add', '-A'); & $git $seed @('commit', '-qm', 'an LF file'); & $git $seed @('push', '-q', 'origin', 'master')
+    & git -C $main config core.autocrlf true
+    try
+    {
+        & $newPackage 'cr'
+        $crWt = & $wtOf 'cr'
+        $crFile = Join-Path $crWt 'lf-base.txt'
+        $checkedOut = [IO.File]::ReadAllBytes($crFile) -join ','
+        [IO.File]::WriteAllBytes($crFile, [byte[]](108, 102, 10))
+        & $write 'cr' 'feature.txt' "v2`r`n"
+        $res = & $pkg @('check', '-Id', 'cr')
+        $state = & $stateFile 'cr'
+        $crCheck = @($state.checks)[-1]
+        & $expect ($checkedOut -eq '108,102,13,10' -and $res.Exit -eq 1 -and -not $crCheck.ok -and $state.stage -eq 'checks-failed' -and ($crCheck.rawBytesProblems -join ',') -eq 'lf-base.txt' -and $res.Text -match 'RAW BYTES' -and $res.Text -match 'lf-base\.txt' -and ([IO.File]::ReadAllBytes($crFile) -join ',') -eq '108,102,10') "item 7 (raw bytes) check did not name the file an edit and revert left behind, or rewrote it (checked out as '$checkedOut'): $($res.Text)"
+        & $git $crWt @('checkout', '--', 'lf-base.txt')
+        $res = & $pkg @('check', '-Id', 'cr')
+        & $expect ($res.Exit -eq 0 -and (& $stateFile 'cr').stage -eq 'checks-passed' -and @(@((& $stateFile 'cr').checks)[-1].rawBytesProblems).Count -eq 0) "item 7 (raw bytes) check still fails once the file is restored: $($res.Text)"
+    }
+    finally { & git -C $main config --unset core.autocrlf }
+}
+
 function Get-SelfTestHookScripts
 {
     # The hooks of the self-test repositories, all marked stubs. They take their behavior from the AW_PKG_TEST_* variables and log to the
@@ -5527,6 +6299,66 @@ switch ($env:AW_PKG_TEST_CHANNELMODE)
     [ordered]@{ pin = $pin + "`r`n"; qualify = $qualify + "`r`n"; channels = $channels + "`r`n" }
 }
 
+
+function Invoke-QuickSelfTest
+{
+    # -SelfTest -Quick. Runs inside Invoke-SelfTest (dynamic scope): $pkg, $stateFile, $statePath, $packagesRoot, $briefFile, $manifestFile, $badManifest,
+    # $stubDir, $originHead, $statusLog, $main, $root and $expect are the caller's. The cases of Invoke-SelfTestMain that cost little and between them
+    # reach new, run, check and show (with their refusals), then the thin form of the review, fix, disposition, accept, recover and ship cases of
+    # Invoke-ReviewSelfTest. What it leaves out is the timeouts, the races, the crash recoveries, the Claude executor matrix, the pin cases, the rebases
+    # and the long ship matrix: the full suite is the release gate, this is the loop while a change is made.
+    Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
+    # The Claude executor stubs belong to the full suite; the review preamble only writes a file that would use this prelude.
+    $claudeStubPrelude = "# aw-selftest-stub`r`n"
+
+    $res = & $pkg @('new', '-Id', 'dry', '-Brief', $briefFile, '-DryRun')
+    & $expect ($res.Exit -eq 0 -and $res.Text -match 'dry run: nothing was created') "dry run failed: $($res.Text)"
+    & $expect (-not (Test-Path (& $statePath 'dry')) -and -not (Test-Path (Join-Path $root 'main.worktrees')) -and -not (Test-Path (Join-Path $main '.git/selftest'))) 'dry run created state or a worktree'
+    $res = & $pkg @('new', '-Id', 'badpath', '-Brief', $briefFile, '-Checks', $badManifest)
+    & $expect ($res.Exit -eq 1 -and $res.Text -match 'manifest path is not in' -and -not (Test-Path (& $statePath 'badpath'))) "missing manifest path accepted: $($res.Text)"
+
+    $res = & $pkg @('new', '-Id', 'pk', '-Brief', $briefFile, '-Checks', $manifestFile)
+    & $expect ($res.Exit -eq 0) "new failed: $($res.Text)"
+    $state = & $stateFile 'pk'
+    & $expect ($state.stage -eq 'ready' -and $state.baseSha -eq $originHead -and (Test-Path (Join-Path $state.worktree 'b.txt')) -and $state.branch -eq 'pkg/pk') 'new did not fetch and branch from origin/master'
+    & $expect ($state.brief.sha256 -eq (Get-Sha256 $briefFile) -and $state.manifest.sha256 -eq (Get-Sha256 $state.manifest.path) -and (Test-Path $statusLog) -and @($state.history).Count -ge 2) 'snapshot hashes, the status call or the history were not recorded'
+    $res = & $pkg @('new', '-Id', 'pk', '-Brief', $briefFile)
+    & $expect ($res.Exit -ne 0 -and $res.Text -match 'already exists') 'a second new for the same slug was accepted'
+
+    $res = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'), '-CodexVersion', '9.9.9-test')
+    $state = & $stateFile 'pk'
+    $run = $state.runs[-1]
+    & $expect ($res.Exit -eq 0 -and $run.outcome -eq 'completed' -and $run.provider -eq 'codex' -and $run.model -eq 'gpt-6-luna' -and $run.sessionId -eq 'stub-session' -and $run.artifacts.outMd.sha256 -eq (Get-Sha256 $run.artifacts.outMd.path) -and $run.mainCheckoutBefore.treeHash -eq $run.mainCheckoutAfter.treeHash -and -not $state.guard.mainCheckoutMutated) "completed run not recorded: $($res.Text)"
+
+    [IO.File]::WriteAllText((Join-Path $state.worktree 'lf.txt'), "one`ntwo`n")
+    $res = & $pkg @('check', '-Id', 'pk')
+    $state = & $stateFile 'pk'
+    $check = $state.checks[-1]
+    $named = @{}; foreach ($c in $check.commands) { $named[$c.name] = $c }
+    & $expect ($res.Exit -eq 1 -and -not $check.ok -and $named['passes'].exitCode -eq 0 -and $named['fails'].exitCode -eq 3 -and $state.stage -eq 'checks-failed' -and (($check.commands | ForEach-Object { $_.name }) -join ',') -eq 'mutator,crlf normalization,passes,fails' -and [IO.File]::ReadAllText((Join-Path $state.worktree 'lf.txt')) -eq "one`r`ntwo`r`n") "check results not recorded, in order, or the changed text file was not normalized: $($res.Text)"
+    $res = & $pkg @('show', '-Id', 'pk', '-Json')
+    $view = $res.Text | ConvertFrom-Json
+    & $expect ($res.Exit -eq 0 -and $view.checks[-1].fresh -eq $true -and $view.nextTransitions -contains 'run' -and @($view.snapshotProblems).Count -eq 0) "a check on an unchanged tree was not fresh: $($res.Text)"
+    $holder = Enter-StateLock (Join-Path $main '.git/selftest/packages') 'pk'
+    try
+    {
+        $res = & $pkg @('check', '-Id', 'pk')
+        & $expect ($res.Exit -eq 1 -and $res.Text -match 'locked') "locked state not refused: $($res.Text)"
+    }
+    finally { $holder.Dispose() }
+    $old = Get-Sha256 (& $statePath 'pk')
+    $interrupted = $false
+    try { Update-State $packagesRoot 'pk' 'interrupted' { param($s) $s.stage = 'torn' } { throw 'simulated crash before rename' } | Out-Null } catch { $interrupted = $true }
+    & $expect ($interrupted -and (Get-Sha256 (& $statePath 'pk')) -eq $old -and (Read-State $packagesRoot 'pk').stage -ne 'torn') 'an interrupted write changed the state file'
+    Update-State $packagesRoot 'pk' 'recovered' { param($s) $s.stage = 'checks-failed' } | Out-Null
+    & $expect (@(Get-ChildItem $packagesRoot -Filter 'pk.json.*.tmp').Count -eq 0) 'the next write did not recover and clean the stale temp file'
+    Set-ItemProperty -LiteralPath $state.brief.path -Name IsReadOnly -Value $false
+    Add-Content -LiteralPath $state.brief.path 'tampered'
+    $res = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+    & $expect ($res.Exit -ne 0 -and $res.Text -match 'snapshot changed' -and (Read-State $packagesRoot 'pk').stage -eq 'checks-failed') "tampered snapshot accepted: $($res.Text)"
+
+    Invoke-ReviewSelfTest
+}
 
 function Invoke-SelfTest
 {
@@ -5631,335 +6463,338 @@ Set-Content -LiteralPath (Join-Path $log 'events.jsonl') @('{"type":"thread.star
         & $expect ($objectsBefore -eq $objectsAfter) 'fingerprinting wrote objects into the shared database'
         & git -C $main config --unset core.autocrlf
 
-        # Dry run prints the plan and creates nothing.
-        $r = & $pkg @('new', '-Id', 'dry', '-Brief', $briefFile, '-DryRun')
-        & $expect ($r.Exit -eq 0 -and $r.Text -match 'dry run: nothing was created') "dry run failed: $($r.Text)"
-        & $expect (-not (Test-Path (& $statePath 'dry')) -and -not (Test-Path (Join-Path $root 'main.worktrees')) -and -not (Test-Path (Join-Path $main '.git/selftest'))) 'dry run created state or a worktree'
-        & git -C $main show-ref --verify --quiet refs/heads/pkg/dry
-        & $expect ($LASTEXITCODE -ne 0) 'dry run created a branch'
-
-        # A manifest that names a missing project is refused before anything is created.
-        $r = & $pkg @('new', '-Id', 'badpath', '-Brief', $briefFile, '-Checks', $badManifest)
-        & $expect ($r.Exit -eq 1 -and $r.Text -match 'manifest path is not in' -and -not (Test-Path (& $statePath 'badpath'))) "missing manifest path accepted: $($r.Text)"
-
-        # new: worktree, branch and base from the fetched origin/master, snapshots with hashes, status call.
-        $r = & $pkg @('new', '-Id', 'pk', '-Brief', $briefFile, '-Checks', $manifestFile)
-        & $expect ($r.Exit -eq 0) "new failed: $($r.Text)"
-        $state = & $stateFile 'pk'
-        & $expect ($state.stage -eq 'ready' -and $state.baseSha -eq $originHead) 'new did not fetch and branch from origin/master'
-        & $expect ((Test-Path (Join-Path $state.worktree 'b.txt')) -and $state.branch -eq 'pkg/pk') 'worktree does not hold the fetched commit'
-        & $expect ($state.brief.sha256 -eq (Get-Sha256 $briefFile) -and $state.manifest.sha256 -eq (Get-Sha256 $state.manifest.path)) 'snapshot hashes were not recorded'
-        & $expect ((Test-Path $statusLog) -and (Get-Content $statusLog -Raw) -match '-Set -Id pk') 'status.ps1 -Set was not called'
-        & $expect (@($state.history).Count -ge 2 -and $state.history[-1].to -eq 'ready') 'history is missing transitions'
-        $r = & $pkg @('new', '-Id', 'pk', '-Brief', $briefFile)
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'already exists') 'a second new for the same slug was accepted'
-
-        # Immutable snapshots: read-only on disk, source edits do not matter, tampering is detected.
-        $snapshot = [string]$state.brief.path
-        $writable = $true
-        try { Add-Content -LiteralPath $snapshot 'x' -ErrorAction Stop } catch { $writable = $false }
-        & $expect (-not $writable) 'the brief snapshot was writable'
-        $originalHash = $state.brief.sha256
-        Add-Content -LiteralPath $briefFile "`r`n# Edited after new"
-        $r = & $pkg @('show', '-Id', 'pk', '-Json')
-        if ($r.Exit -ne 0) { throw "show -Json failed: $($r.Text)" }
-        $view = $r.Text | ConvertFrom-Json
-        & $expect (@($view.snapshotProblems).Count -eq 0 -and (Get-Sha256 $snapshot) -eq $originalHash) 'editing the source brief changed the snapshot'
-
-        # Non-zero exit: an implementation failure stays one, even when its report mentions an access error.
-        $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'fail.ps1'))
-        $state = & $stateFile 'pk'
-        if (@($state.runs).Count -eq 0) { throw "run recorded nothing (exit $($r.Exit)): $($r.Text)" }
-        $run = $state.runs[-1]
-        & $expect ($r.Exit -eq 1 -and $run.exitCode -eq 7 -and $run.termination -eq 'exit' -and $run.outcome -eq 'impl-failed' -and -not $run.envBlocked -and $state.stage -eq 'executor-impl-failed') "non-zero exit not recorded: $($r.Text)"
-
-        # Environment-blocked: only the explicit ENV-BLOCKED line, and the exit status is kept next to it.
-        $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'env.ps1'))
-        $state = & $stateFile 'pk'
-        & $expect ($state.runs[-1].outcome -eq 'env-blocked' -and $state.runs[-1].exitCode -eq 0 -and $state.runs[-1].envBlocked -and $state.runs[-1].envEvidence -match 'ENV-BLOCKED' -and $state.stage -eq 'executor-env-blocked') "env-blocked report not classified: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'envfail.ps1'))
-        $state = & $stateFile 'pk'
-        & $expect ($state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].exitCode -eq 5 -and $state.runs[-1].envBlocked -and $state.runs[-1].envEvidence -match 'ENV-BLOCKED' -and $state.runs[-1].reason -match 'mixed: implementation failure with environment blocker') 'a mixed failure (non-zero exit plus an ENV-BLOCKED line) was not kept as impl-failed with the evidence'
-
-        # A completed run records provider, model, effort, session id, artifact hashes and the provenance of the execution.
-        $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'), '-CodexVersion', '9.9.9-test')
-        $state = & $stateFile 'pk'
-        $run = $state.runs[-1]
-        & $expect ($r.Exit -eq 0 -and $run.outcome -eq 'completed' -and $run.provider -eq 'codex' -and $run.model -eq 'gpt-6-luna' -and $run.effort -eq 'medium' -and $run.sessionId -eq 'stub-session') "completed run not recorded: $($r.Text)"
-        & $expect ($run.artifacts.outMd.sha256 -eq (Get-Sha256 $run.artifacts.outMd.path) -and $run.artifacts.eventsJsonl.sha256 -eq (Get-Sha256 $run.artifacts.eventsJsonl.path)) 'artifact hashes are wrong'
-        & $expect ($run.mainCheckoutBefore.treeHash -eq $run.mainCheckoutAfter.treeHash -and -not $state.guard.mainCheckoutMutated -and $run.mainCheckoutBefore.files -ge 1) 'the guard reported a mutation for a clean run'
-        & $expect ($run.codexCliVersion -eq '9.9.9-test' -and $run.permissions.sandbox -eq 'workspace-write' -and $run.permissions.approval -eq 'never' -and $run.maxInputTokens -eq 20000000 -and $run.tokens.input -eq 3 -and $run.tokens.output -eq 2) 'run provenance (CLI version, permissions, token budget, tokens) was not recorded'
-        & $expect ($run.executor.pid -gt 0 -and $run.executor.startUtc -and $run.wrapper.pid -gt 0 -and $run.wrapper.startUtc) 'the executor and wrapper process identities were not recorded'
-
-        # Exit 0 without both artifacts is not a completed run.
-        $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'bare.ps1'))
-        $state = & $stateFile 'pk'
-        & $expect ($r.Exit -eq 1 -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].reason -match 'missing artifacts: out.md') "a run without its report was accepted as completed: $($r.Text)"
-
-        # Timeout: the process tree is killed at the bound; an ENV-BLOCKED line does not turn it into something else.
-        $timer = [Diagnostics.Stopwatch]::StartNew()
-        $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'sleep.ps1'), '-MaxMinutes', '0.03')
-        $state = & $stateFile 'pk'
-        & $expect ($r.Exit -eq 1 -and $state.runs[-1].termination -eq 'timeout' -and $null -eq $state.runs[-1].exitCode -and $state.runs[-1].outcome -eq 'impl-failed' -and $timer.Elapsed.TotalSeconds -lt 60) "timeout not enforced: exit $($r.Exit), $([int]$timer.Elapsed.TotalSeconds)s, $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'envsleep.ps1'), '-MaxMinutes', '0.1')
-        $state = & $stateFile 'pk'
-        & $expect ($state.runs[-1].termination -eq 'timeout' -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].envBlocked) "a timeout with an ENV-BLOCKED line was relabelled: $($r.Text)"
-
-        # A grandchild of the executor does not survive the timeout.
-        Remove-Item -LiteralPath $env:AW_PKG_TEST_PIDFILE -ErrorAction SilentlyContinue
-        $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'tree.ps1'), '-MaxMinutes', '0.15')
-        $state = & $stateFile 'pk'
-        $childPid = if (Test-Path $env:AW_PKG_TEST_PIDFILE) { [int](Get-Content $env:AW_PKG_TEST_PIDFILE -Raw).Trim() } else { 0 }
-        Start-Sleep -Milliseconds 500
-        & $expect ($childPid -gt 0 -and $state.runs[-1].termination -eq 'timeout' -and -not (Get-Process -Id $childPid -ErrorAction SilentlyContinue)) "a grandchild survived the timeout (pid $childPid): $($r.Text)"
-        if ($childPid -gt 0) { Stop-Process -Id $childPid -Force -ErrorAction SilentlyContinue }
-
-        # A kill that cannot be verified is recorded as kill-failed, never left as running, and the next run recovers.
-        $r = & $pkg @('run', '-Id', 'pk', '-SimulateKillFailure')
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'only accepted together with a marked self-test stub') "fault injection was accepted for a real executor: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'sleep.ps1'), '-MaxMinutes', '0.03', '-SimulateKillFailure')
-        $state = & $stateFile 'pk'
-        & $expect ($state.runs[-1].termination -eq 'kill-failed' -and $state.stage -eq 'executor-kill-failed' -and $r.Exit -eq 1) "kill failure not recorded: stage $($state.stage), $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
-        $state = & $stateFile 'pk'
-        & $expect ($r.Exit -eq 0 -and $state.stage -eq 'executor-completed' -and $state.runs[-2].termination -eq 'kill-failed' -and $state.runs[-2].reason -match 'interrupted') "recovery after kill-failed did not complete: $($r.Text)"
-        & $expect ($state.runs[-1].containmentVerified -eq $true) 'a completed run did not record verified containment'
-
-        # An unreadable file makes the fingerprint unknown: the run is refused, nothing is reported clean.
-        $locked = [IO.File]::Open((Join-Path $main 'a.txt'), 'Open', 'Read', 'None')
-        try
+        # The cases after the shared set-up: the full suite. -Quick runs Invoke-QuickSelfTest instead.
+        function Invoke-SelfTestMain
         {
-            $unknown = Get-Fingerprint $main
-            & $expect ($unknown.unknown -eq $true -and -not $unknown.treeHash -and -not (Test-FingerprintsEqual $unknown $unknown)) 'an unreadable file did not make the fingerprint unknown'
+            # Dry run prints the plan and creates nothing.
+            $r = & $pkg @('new', '-Id', 'dry', '-Brief', $briefFile, '-DryRun')
+            & $expect ($r.Exit -eq 0 -and $r.Text -match 'dry run: nothing was created') "dry run failed: $($r.Text)"
+            & $expect (-not (Test-Path (& $statePath 'dry')) -and -not (Test-Path (Join-Path $root 'main.worktrees')) -and -not (Test-Path (Join-Path $main '.git/selftest'))) 'dry run created state or a worktree'
+            & git -C $main show-ref --verify --quiet refs/heads/pkg/dry
+            & $expect ($LASTEXITCODE -ne 0) 'dry run created a branch'
+
+            # A manifest that names a missing project is refused before anything is created.
+            $r = & $pkg @('new', '-Id', 'badpath', '-Brief', $briefFile, '-Checks', $badManifest)
+            & $expect ($r.Exit -eq 1 -and $r.Text -match 'manifest path is not in' -and -not (Test-Path (& $statePath 'badpath'))) "missing manifest path accepted: $($r.Text)"
+
+            # new: worktree, branch and base from the fetched origin/master, snapshots with hashes, status call.
+            $r = & $pkg @('new', '-Id', 'pk', '-Brief', $briefFile, '-Checks', $manifestFile)
+            & $expect ($r.Exit -eq 0) "new failed: $($r.Text)"
+            $state = & $stateFile 'pk'
+            & $expect ($state.stage -eq 'ready' -and $state.baseSha -eq $originHead) 'new did not fetch and branch from origin/master'
+            & $expect ((Test-Path (Join-Path $state.worktree 'b.txt')) -and $state.branch -eq 'pkg/pk') 'worktree does not hold the fetched commit'
+            & $expect ($state.brief.sha256 -eq (Get-Sha256 $briefFile) -and $state.manifest.sha256 -eq (Get-Sha256 $state.manifest.path)) 'snapshot hashes were not recorded'
+            & $expect ((Test-Path $statusLog) -and (Get-Content $statusLog -Raw) -match '-Set -Id pk') 'status.ps1 -Set was not called'
+            & $expect (@($state.history).Count -ge 2 -and $state.history[-1].to -eq 'ready') 'history is missing transitions'
+            $r = & $pkg @('new', '-Id', 'pk', '-Brief', $briefFile)
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'already exists') 'a second new for the same slug was accepted'
+
+            # Immutable snapshots: read-only on disk, source edits do not matter, tampering is detected.
+            $snapshot = [string]$state.brief.path
+            $writable = $true
+            try { Add-Content -LiteralPath $snapshot 'x' -ErrorAction Stop } catch { $writable = $false }
+            & $expect (-not $writable) 'the brief snapshot was writable'
+            $originalHash = $state.brief.sha256
+            Add-Content -LiteralPath $briefFile "`r`n# Edited after new"
+            $r = & $pkg @('show', '-Id', 'pk', '-Json')
+            if ($r.Exit -ne 0) { throw "show -Json failed: $($r.Text)" }
+            $view = $r.Text | ConvertFrom-Json
+            & $expect (@($view.snapshotProblems).Count -eq 0 -and (Get-Sha256 $snapshot) -eq $originalHash) 'editing the source brief changed the snapshot'
+
+            # Non-zero exit: an implementation failure stays one, even when its report mentions an access error.
+            $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'fail.ps1'))
+            $state = & $stateFile 'pk'
+            if (@($state.runs).Count -eq 0) { throw "run recorded nothing (exit $($r.Exit)): $($r.Text)" }
+            $run = $state.runs[-1]
+            & $expect ($r.Exit -eq 1 -and $run.exitCode -eq 7 -and $run.termination -eq 'exit' -and $run.outcome -eq 'impl-failed' -and -not $run.envBlocked -and $state.stage -eq 'executor-impl-failed') "non-zero exit not recorded: $($r.Text)"
+
+            # Environment-blocked: only the explicit ENV-BLOCKED line, and the exit status is kept next to it.
+            $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'env.ps1'))
+            $state = & $stateFile 'pk'
+            & $expect ($state.runs[-1].outcome -eq 'env-blocked' -and $state.runs[-1].exitCode -eq 0 -and $state.runs[-1].envBlocked -and $state.runs[-1].envEvidence -match 'ENV-BLOCKED' -and $state.stage -eq 'executor-env-blocked') "env-blocked report not classified: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'envfail.ps1'))
+            $state = & $stateFile 'pk'
+            & $expect ($state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].exitCode -eq 5 -and $state.runs[-1].envBlocked -and $state.runs[-1].envEvidence -match 'ENV-BLOCKED' -and $state.runs[-1].reason -match 'mixed: implementation failure with environment blocker') 'a mixed failure (non-zero exit plus an ENV-BLOCKED line) was not kept as impl-failed with the evidence'
+
+            # A completed run records provider, model, effort, session id, artifact hashes and the provenance of the execution.
+            $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'), '-CodexVersion', '9.9.9-test')
+            $state = & $stateFile 'pk'
+            $run = $state.runs[-1]
+            & $expect ($r.Exit -eq 0 -and $run.outcome -eq 'completed' -and $run.provider -eq 'codex' -and $run.model -eq 'gpt-6-luna' -and $run.effort -eq 'medium' -and $run.sessionId -eq 'stub-session') "completed run not recorded: $($r.Text)"
+            & $expect ($run.artifacts.outMd.sha256 -eq (Get-Sha256 $run.artifacts.outMd.path) -and $run.artifacts.eventsJsonl.sha256 -eq (Get-Sha256 $run.artifacts.eventsJsonl.path)) 'artifact hashes are wrong'
+            & $expect ($run.mainCheckoutBefore.treeHash -eq $run.mainCheckoutAfter.treeHash -and -not $state.guard.mainCheckoutMutated -and $run.mainCheckoutBefore.files -ge 1) 'the guard reported a mutation for a clean run'
+            & $expect ($run.codexCliVersion -eq '9.9.9-test' -and $run.permissions.sandbox -eq 'workspace-write' -and $run.permissions.approval -eq 'never' -and $run.maxInputTokens -eq 20000000 -and $run.tokens.input -eq 3 -and $run.tokens.output -eq 2) 'run provenance (CLI version, permissions, token budget, tokens) was not recorded'
+            & $expect ($run.executor.pid -gt 0 -and $run.executor.startUtc -and $run.wrapper.pid -gt 0 -and $run.wrapper.startUtc) 'the executor and wrapper process identities were not recorded'
+
+            # Exit 0 without both artifacts is not a completed run.
+            $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'bare.ps1'))
+            $state = & $stateFile 'pk'
+            & $expect ($r.Exit -eq 1 -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].reason -match 'missing artifacts: out.md') "a run without its report was accepted as completed: $($r.Text)"
+
+            # Timeout: the process tree is killed at the bound; an ENV-BLOCKED line does not turn it into something else.
+            $timer = [Diagnostics.Stopwatch]::StartNew()
+            $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'sleep.ps1'), '-MaxMinutes', '0.03')
+            $state = & $stateFile 'pk'
+            & $expect ($r.Exit -eq 1 -and $state.runs[-1].termination -eq 'timeout' -and $null -eq $state.runs[-1].exitCode -and $state.runs[-1].outcome -eq 'impl-failed' -and $timer.Elapsed.TotalSeconds -lt 60) "timeout not enforced: exit $($r.Exit), $([int]$timer.Elapsed.TotalSeconds)s, $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'envsleep.ps1'), '-MaxMinutes', '0.1')
+            $state = & $stateFile 'pk'
+            & $expect ($state.runs[-1].termination -eq 'timeout' -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].envBlocked) "a timeout with an ENV-BLOCKED line was relabelled: $($r.Text)"
+
+            # A grandchild of the executor does not survive the timeout.
+            Remove-Item -LiteralPath $env:AW_PKG_TEST_PIDFILE -ErrorAction SilentlyContinue
+            $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'tree.ps1'), '-MaxMinutes', '0.15')
+            $state = & $stateFile 'pk'
+            $childPid = if (Test-Path $env:AW_PKG_TEST_PIDFILE) { [int](Get-Content $env:AW_PKG_TEST_PIDFILE -Raw).Trim() } else { 0 }
+            Start-Sleep -Milliseconds 500
+            & $expect ($childPid -gt 0 -and $state.runs[-1].termination -eq 'timeout' -and -not (Get-Process -Id $childPid -ErrorAction SilentlyContinue)) "a grandchild survived the timeout (pid $childPid): $($r.Text)"
+            if ($childPid -gt 0) { Stop-Process -Id $childPid -Force -ErrorAction SilentlyContinue }
+
+            # A kill that cannot be verified is recorded as kill-failed, never left as running, and the next run recovers.
+            $r = & $pkg @('run', '-Id', 'pk', '-SimulateKillFailure')
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'only accepted together with a marked self-test stub') "fault injection was accepted for a real executor: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'sleep.ps1'), '-MaxMinutes', '0.03', '-SimulateKillFailure')
+            $state = & $stateFile 'pk'
+            & $expect ($state.runs[-1].termination -eq 'kill-failed' -and $state.stage -eq 'executor-kill-failed' -and $r.Exit -eq 1) "kill failure not recorded: stage $($state.stage), $($r.Text)"
             $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
-            & $expect ($r.Exit -ne 0 -and $r.Text -match 'cannot be fingerprinted' -and (& $stateFile 'pk').stage -eq 'executor-completed') "a run started with an unknown main checkout fingerprint: $($r.Text)"
-        }
-        finally { $locked.Dispose() }
+            $state = & $stateFile 'pk'
+            & $expect ($r.Exit -eq 0 -and $state.stage -eq 'executor-completed' -and $state.runs[-2].termination -eq 'kill-failed' -and $state.runs[-2].reason -match 'interrupted') "recovery after kill-failed did not complete: $($r.Text)"
+            & $expect ($state.runs[-1].containmentVerified -eq $true) 'a completed run did not record verified containment'
 
-        # Checks: mutating steps first, every command with its exit code, log and the tree it ran on.
-        [IO.File]::WriteAllText((Join-Path $state.worktree 'lf.txt'), "one`ntwo`n")
-        $r = & $pkg @('check', '-Id', 'pk')
-        $state = & $stateFile 'pk'
-        if (@($state.checks).Count -eq 0) { throw "check recorded nothing (exit $($r.Exit)): $($r.Text)" }
-        $check = $state.checks[-1]
-        $named = @{}; foreach ($c in $check.commands) { $named[$c.name] = $c }
-        & $expect ($r.Exit -eq 1 -and -not $check.ok -and $named['passes'].exitCode -eq 0 -and $named['fails'].exitCode -eq 3 -and (Test-Path $named['fails'].log) -and $state.stage -eq 'checks-failed') "check results not recorded: $($r.Text)"
-        & $expect ([IO.File]::ReadAllText((Join-Path $state.worktree 'lf.txt')) -eq "one`r`ntwo`r`n" -and $named['crlf normalization'].files -contains 'lf.txt') 'changed text file was not normalized to CRLF'
-        $order = @($check.commands | ForEach-Object { $_.name })
-        & $expect (($order -join ',') -eq 'mutator,crlf normalization,passes,fails') "mutating steps did not run first: $($order -join ',')"
-        & $expect ($named['mutator'].outputTree -ne $named['mutator'].inputTree -and $named['passes'].inputTree -eq $check.treeHash -and $named['fails'].inputTree -eq $check.treeHash -and $named['crlf normalization'].outputTree -eq $check.treeHash) 'commands do not record the tree they ran on'
-        $r = & $pkg @('show', '-Id', 'pk', '-Json')
-        if ($r.Exit -ne 0) { throw "show failed: $($r.Text)" }
-        $view = $r.Text | ConvertFrom-Json
-        & $expect ($view.checks[-1].stale -eq $false -and $view.checks[-1].fresh -eq $true -and $view.nextTransitions -contains 'run') "a check on an unchanged tree was not fresh: $($view.checks[-1].evidenceProblems)"
-        [IO.File]::WriteAllText((Join-Path $state.worktree 'later.txt'), "changed after the check`r`n")
-        $r = & $pkg @('show', '-Id', 'pk', '-Json'); $view = $r.Text | ConvertFrom-Json
-        & $expect ($view.checks[-1].stale -eq $true -and $view.checks[-1].fresh -eq $false) 'a check was not reported stale after a worktree change'
-        $r = & $pkg @('show', '-Id', 'pk')
-        & $expect ($r.Text -match 'STALE' -and $r.Text -match 'next: run, check') 'show text does not report the stale check and next steps'
+            # An unreadable file makes the fingerprint unknown: the run is refused, nothing is reported clean.
+            $locked = [IO.File]::Open((Join-Path $main 'a.txt'), 'Open', 'Read', 'None')
+            try
+            {
+                $unknown = Get-Fingerprint $main
+                & $expect ($unknown.unknown -eq $true -and -not $unknown.treeHash -and -not (Test-FingerprintsEqual $unknown $unknown)) 'an unreadable file did not make the fingerprint unknown'
+                $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+                & $expect ($r.Exit -ne 0 -and $r.Text -match 'cannot be fingerprinted' -and (& $stateFile 'pk').stage -eq 'executor-completed') "a run started with an unknown main checkout fingerprint: $($r.Text)"
+            }
+            finally { $locked.Dispose() }
 
-        # A forged check (ok, current tree, no commands) is not evidence.
-        $currentTree = $view.currentTreeHash
-        Update-State $packagesRoot 'pk' 'forge' { param($s) $s.checks = @($s.checks) + @(@{ checkId = 'forged'; utc = (Get-Now); ok = $true; treeBefore = 'x'; treeHash = $currentTree; commands = @() }) } | Out-Null
-        $r = & $pkg @('show', '-Id', 'pk', '-Json'); $view = $r.Text | ConvertFrom-Json
-        & $expect ($view.checks[-1].checkId -eq 'forged' -and $view.checks[-1].stale -eq $false -and $view.checks[-1].fresh -eq $false -and @($view.checks[-1].evidenceProblems).Count -gt 0) 'a forged check was displayed as fresh'
-        Update-State $packagesRoot 'pk' 'unforge' { param($s) $s.checks = @($s.checks | Where-Object { $_.checkId -ne 'forged' }) } | Out-Null
-
-        # A check whose ok contradicts its own exit codes is not evidence, even on an unchanged tree.
-        Remove-Item -LiteralPath (Join-Path $state.worktree 'later.txt') -Force
-        $lastCheckId = (& $stateFile 'pk').checks[-1].checkId
-        Update-State $packagesRoot 'pk' 'contradict' { param($s) $s.checks = @($s.checks | ForEach-Object { if ($_.checkId -eq $lastCheckId) { $_.ok = $true }; $_ }) } | Out-Null
-        $r = & $pkg @('show', '-Id', 'pk', '-Json'); $view = $r.Text | ConvertFrom-Json
-        & $expect ($view.checks[-1].stale -eq $false -and $view.checks[-1].fresh -eq $false -and ($view.checks[-1].evidenceProblems -join ' ') -match 'ok=True but') "a contradictory passing check was fresh: $($r.Text)"
-        Update-State $packagesRoot 'pk' 'uncontradict' { param($s) $s.checks = @($s.checks | ForEach-Object { if ($_.checkId -eq $lastCheckId) { $_.ok = $false }; $_ }) } | Out-Null
-        $r = & $pkg @('show', '-Id', 'pk', '-Json'); $view = $r.Text | ConvertFrom-Json
-        & $expect ($view.checks[-1].fresh -eq $true) 'restoring the check did not make it fresh again'
-
-        # A worktree path pointing at another checkout is refused, not followed.
-        $realWorktree = $state.worktree
-        $foreign = Join-Path $root 'foreign'
-        & git clone -q $origin $foreign 2>&1 | Out-Null
-        foreach ($case in @(@{ path = $foreign; expect = 'different repository' }, @{ path = $main; expect = 'recorded branch' }))
-        {
-            $target = $case.path
-            Update-State $packagesRoot 'pk' 'redirect' { param($s) $s.worktree = $target } | Out-Null
+            # Checks: mutating steps first, every command with its exit code, log and the tree it ran on.
+            [IO.File]::WriteAllText((Join-Path $state.worktree 'lf.txt'), "one`ntwo`n")
             $r = & $pkg @('check', '-Id', 'pk')
-            & $expect ($r.Exit -eq 1 -and $r.Text -match $case.expect) "a redirected worktree ($target) was accepted: $($r.Text)"
+            $state = & $stateFile 'pk'
+            if (@($state.checks).Count -eq 0) { throw "check recorded nothing (exit $($r.Exit)): $($r.Text)" }
+            $check = $state.checks[-1]
+            $named = @{}; foreach ($c in $check.commands) { $named[$c.name] = $c }
+            & $expect ($r.Exit -eq 1 -and -not $check.ok -and $named['passes'].exitCode -eq 0 -and $named['fails'].exitCode -eq 3 -and (Test-Path $named['fails'].log) -and $state.stage -eq 'checks-failed') "check results not recorded: $($r.Text)"
+            & $expect ([IO.File]::ReadAllText((Join-Path $state.worktree 'lf.txt')) -eq "one`r`ntwo`r`n" -and $named['crlf normalization'].files -contains 'lf.txt') 'changed text file was not normalized to CRLF'
+            $order = @($check.commands | ForEach-Object { $_.name })
+            & $expect (($order -join ',') -eq 'mutator,crlf normalization,passes,fails') "mutating steps did not run first: $($order -join ',')"
+            & $expect ($named['mutator'].outputTree -ne $named['mutator'].inputTree -and $named['passes'].inputTree -eq $check.treeHash -and $named['fails'].inputTree -eq $check.treeHash -and $named['crlf normalization'].outputTree -eq $check.treeHash) 'commands do not record the tree they ran on'
+            $r = & $pkg @('show', '-Id', 'pk', '-Json')
+            if ($r.Exit -ne 0) { throw "show failed: $($r.Text)" }
+            $view = $r.Text | ConvertFrom-Json
+            & $expect ($view.checks[-1].stale -eq $false -and $view.checks[-1].fresh -eq $true -and $view.nextTransitions -contains 'run') "a check on an unchanged tree was not fresh: $($view.checks[-1].evidenceProblems)"
+            [IO.File]::WriteAllText((Join-Path $state.worktree 'later.txt'), "changed after the check`r`n")
             $r = & $pkg @('show', '-Id', 'pk', '-Json'); $view = $r.Text | ConvertFrom-Json
-            & $expect (@($view.integrityProblems).Count -gt 0 -and -not ($view.checks | Where-Object { $_.fresh })) 'show trusted a redirected worktree'
-        }
-        Update-State $packagesRoot 'pk' 'restore' { param($s) $s.worktree = $realWorktree } | Out-Null
+            & $expect ($view.checks[-1].stale -eq $true -and $view.checks[-1].fresh -eq $false) 'a check was not reported stale after a worktree change'
+            $r = & $pkg @('show', '-Id', 'pk')
+            & $expect ($r.Text -match 'STALE' -and $r.Text -match 'next: run, check') 'show text does not report the stale check and next steps'
 
-        # A validator that changes the worktree makes its own result untrustworthy.
-        $r = & $pkg @('new', '-Id', 'dirty', '-Brief', $briefFile, '-Checks', $dirtyManifest)
-        & $expect ($r.Exit -eq 0) "dirty package could not be created: $($r.Text)"
-        $r = & $pkg @('check', '-Id', 'dirty')
-        $state = & $stateFile 'dirty'
-        & $expect ($r.Exit -eq 1 -and -not $state.checks[-1].ok -and $state.checks[-1].commands[-1].modifiedWorktree) "a validator that changed the tree was trusted: $($r.Text)"
-        $r = & $pkg @('show', '-Id', 'dirty', '-Json'); $view = $r.Text | ConvertFrom-Json
-        & $expect ($view.checks[-1].fresh -eq $false) 'a check whose validator changed the tree was reported fresh'
+            # A forged check (ok, current tree, no commands) is not evidence.
+            $currentTree = $view.currentTreeHash
+            Update-State $packagesRoot 'pk' 'forge' { param($s) $s.checks = @($s.checks) + @(@{ checkId = 'forged'; utc = (Get-Now); ok = $true; treeBefore = 'x'; treeHash = $currentTree; commands = @() }) } | Out-Null
+            $r = & $pkg @('show', '-Id', 'pk', '-Json'); $view = $r.Text | ConvertFrom-Json
+            & $expect ($view.checks[-1].checkId -eq 'forged' -and $view.checks[-1].stale -eq $false -and $view.checks[-1].fresh -eq $false -and @($view.checks[-1].evidenceProblems).Count -gt 0) 'a forged check was displayed as fresh'
+            Update-State $packagesRoot 'pk' 'unforge' { param($s) $s.checks = @($s.checks | Where-Object { $_.checkId -ne 'forged' }) } | Out-Null
 
-        # A locked state is refused, not overwritten.
-        $holder = Enter-StateLock (Join-Path $main '.git/selftest/packages') 'pk'
-        try
-        {
-            $before = Get-Sha256 (& $statePath 'pk')
-            $r = & $pkg @('check', '-Id', 'pk')
-            & $expect ($r.Exit -eq 1 -and $r.Text -match 'locked' -and (Get-Sha256 (& $statePath 'pk')) -eq $before) "locked state not refused: $($r.Text)"
-        }
-        finally { $holder.Dispose() }
+            # A check whose ok contradicts its own exit codes is not evidence, even on an unchanged tree.
+            Remove-Item -LiteralPath (Join-Path $state.worktree 'later.txt') -Force
+            $lastCheckId = (& $stateFile 'pk').checks[-1].checkId
+            Update-State $packagesRoot 'pk' 'contradict' { param($s) $s.checks = @($s.checks | ForEach-Object { if ($_.checkId -eq $lastCheckId) { $_.ok = $true }; $_ }) } | Out-Null
+            $r = & $pkg @('show', '-Id', 'pk', '-Json'); $view = $r.Text | ConvertFrom-Json
+            & $expect ($view.checks[-1].stale -eq $false -and $view.checks[-1].fresh -eq $false -and ($view.checks[-1].evidenceProblems -join ' ') -match 'ok=True but') "a contradictory passing check was fresh: $($r.Text)"
+            Update-State $packagesRoot 'pk' 'uncontradict' { param($s) $s.checks = @($s.checks | ForEach-Object { if ($_.checkId -eq $lastCheckId) { $_.ok = $false }; $_ }) } | Out-Null
+            $r = & $pkg @('show', '-Id', 'pk', '-Json'); $view = $r.Text | ConvertFrom-Json
+            & $expect ($view.checks[-1].fresh -eq $true) 'restoring the check did not make it fresh again'
 
-        # A write interrupted between the temp file and the rename leaves the old state, readable.
-        $packages = Join-Path $main '.git/selftest/packages'
-        $old = Get-Sha256 (& $statePath 'pk')
-        $interrupted = $false
-        try { Update-State $packages 'pk' 'interrupted' { param($s) $s.stage = 'torn' } { throw 'simulated crash before rename' } | Out-Null } catch { $interrupted = $true }
-        $survivor = Read-State $packages 'pk'
-        & $expect ($interrupted -and (Get-Sha256 (& $statePath 'pk')) -eq $old -and $survivor.stage -ne 'torn') 'an interrupted write changed the state file'
-        & $expect (@(Get-ChildItem $packages -Filter 'pk.json.*.tmp').Count -eq 1) 'the interrupted write left no temp file to recover from'
-        Update-State $packages 'pk' 'recovered' { param($s) $s.stage = 'ready' } | Out-Null
-        & $expect ((Read-State $packages 'pk').stage -eq 'ready' -and @(Get-ChildItem $packages -Filter 'pk.json.*.tmp').Count -eq 0) 'the next write did not recover and clean the stale temp file'
+            # A worktree path pointing at another checkout is refused, not followed.
+            $realWorktree = $state.worktree
+            $foreign = Join-Path $root 'foreign'
+            & git clone -q $origin $foreign 2>&1 | Out-Null
+            foreach ($case in @(@{ path = $foreign; expect = 'different repository' }, @{ path = $main; expect = 'recorded branch' }))
+            {
+                $target = $case.path
+                Update-State $packagesRoot 'pk' 'redirect' { param($s) $s.worktree = $target } | Out-Null
+                $r = & $pkg @('check', '-Id', 'pk')
+                & $expect ($r.Exit -eq 1 -and $r.Text -match $case.expect) "a redirected worktree ($target) was accepted: $($r.Text)"
+                $r = & $pkg @('show', '-Id', 'pk', '-Json'); $view = $r.Text | ConvertFrom-Json
+                & $expect (@($view.integrityProblems).Count -gt 0 -and -not ($view.checks | Where-Object { $_.fresh })) 'show trusted a redirected worktree'
+            }
+            Update-State $packagesRoot 'pk' 'restore' { param($s) $s.worktree = $realWorktree } | Out-Null
 
-        # Tampered snapshot: refused before anything starts.
-        Set-ItemProperty -LiteralPath $snapshot -Name IsReadOnly -Value $false
-        Add-Content -LiteralPath $snapshot 'tampered'
-        $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'snapshot changed' -and (Read-State $packages 'pk').stage -eq 'ready') "tampered snapshot accepted: $($r.Text)"
+            # A validator that changes the worktree makes its own result untrustworthy.
+            $r = & $pkg @('new', '-Id', 'dirty', '-Brief', $briefFile, '-Checks', $dirtyManifest)
+            & $expect ($r.Exit -eq 0) "dirty package could not be created: $($r.Text)"
+            $r = & $pkg @('check', '-Id', 'dirty')
+            $state = & $stateFile 'dirty'
+            & $expect ($r.Exit -eq 1 -and -not $state.checks[-1].ok -and $state.checks[-1].commands[-1].modifiedWorktree) "a validator that changed the tree was trusted: $($r.Text)"
+            $r = & $pkg @('show', '-Id', 'dirty', '-Json'); $view = $r.Text | ConvertFrom-Json
+            & $expect ($view.checks[-1].fresh -eq $false) 'a check whose validator changed the tree was reported fresh'
 
-        # new is one transaction under the lock: a held lock refuses it, and two concurrent creations cannot both win.
-        $holder = Enter-StateLock $packagesRoot 'lk'
-        try
-        {
-            $r = & $pkg @('new', '-Id', 'lk', '-Brief', $briefFile)
-            & $expect ($r.Exit -eq 1 -and $r.Text -match 'locked' -and -not (Test-Path (& $statePath 'lk'))) "new ignored a held lock: $($r.Text)"
-        }
-        finally { $holder.Dispose() }
-        # Main sync lock: an exclusive child blocks run before state changes or executor launch; shared holders coexist.
-        $lockHolder = Join-Path $root 'main-sync-lock-holder.ps1'
-        [IO.File]::WriteAllText($lockHolder, @'
+            # A locked state is refused, not overwritten.
+            $holder = Enter-StateLock (Join-Path $main '.git/selftest/packages') 'pk'
+            try
+            {
+                $before = Get-Sha256 (& $statePath 'pk')
+                $r = & $pkg @('check', '-Id', 'pk')
+                & $expect ($r.Exit -eq 1 -and $r.Text -match 'locked' -and (Get-Sha256 (& $statePath 'pk')) -eq $before) "locked state not refused: $($r.Text)"
+            }
+            finally { $holder.Dispose() }
+
+            # A write interrupted between the temp file and the rename leaves the old state, readable.
+            $packages = Join-Path $main '.git/selftest/packages'
+            $old = Get-Sha256 (& $statePath 'pk')
+            $interrupted = $false
+            try { Update-State $packages 'pk' 'interrupted' { param($s) $s.stage = 'torn' } { throw 'simulated crash before rename' } | Out-Null } catch { $interrupted = $true }
+            $survivor = Read-State $packages 'pk'
+            & $expect ($interrupted -and (Get-Sha256 (& $statePath 'pk')) -eq $old -and $survivor.stage -ne 'torn') 'an interrupted write changed the state file'
+            & $expect (@(Get-ChildItem $packages -Filter 'pk.json.*.tmp').Count -eq 1) 'the interrupted write left no temp file to recover from'
+            Update-State $packages 'pk' 'recovered' { param($s) $s.stage = 'ready' } | Out-Null
+            & $expect ((Read-State $packages 'pk').stage -eq 'ready' -and @(Get-ChildItem $packages -Filter 'pk.json.*.tmp').Count -eq 0) 'the next write did not recover and clean the stale temp file'
+
+            # Tampered snapshot: refused before anything starts.
+            Set-ItemProperty -LiteralPath $snapshot -Name IsReadOnly -Value $false
+            Add-Content -LiteralPath $snapshot 'tampered'
+            $r = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'snapshot changed' -and (Read-State $packages 'pk').stage -eq 'ready') "tampered snapshot accepted: $($r.Text)"
+
+            # new is one transaction under the lock: a held lock refuses it, and two concurrent creations cannot both win.
+            $holder = Enter-StateLock $packagesRoot 'lk'
+            try
+            {
+                $r = & $pkg @('new', '-Id', 'lk', '-Brief', $briefFile)
+                & $expect ($r.Exit -eq 1 -and $r.Text -match 'locked' -and -not (Test-Path (& $statePath 'lk'))) "new ignored a held lock: $($r.Text)"
+            }
+            finally { $holder.Dispose() }
+            # Main sync lock: an exclusive child blocks run before state changes or executor launch; shared holders coexist.
+            $lockHolder = Join-Path $root 'main-sync-lock-holder.ps1'
+            [IO.File]::WriteAllText($lockHolder, @'
 param([string]$LockPath, [string]$Mode, [string]$ReadyPath)
 $share = if ($Mode -eq 'shared') { [IO.FileShare]::ReadWrite } else { [IO.FileShare]::None }
 $stream = [IO.File]::Open($LockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Read, $share)
 [IO.File]::WriteAllText($ReadyPath, 'ready')
 Start-Sleep -Seconds 60
 '@)
-        $commonDir = ([string](& git -C $main rev-parse --path-format=absolute --git-common-dir)).Trim()
-        $mainSyncLock = Join-Path $commonDir 'selftest/main-sync.lock'
-        New-Item -ItemType Directory -Path (Split-Path $mainSyncLock) -Force | Out-Null
-        $executorMarker = Join-Path $root 'locked-run-executor-started.txt'
-        $lockedRunStub = Join-Path $stubDir 'locked-run.ps1'
-        [IO.File]::WriteAllText($lockedRunStub, "# aw-selftest-stub`r`nSet-Content -LiteralPath '$executorMarker' 'started'`r`n" + $prelude + $stubs.ok + "`r`n")
-        $r = & $pkg @('new', '-Id', 'msl', '-Brief', $briefFile)
-        & $expect ($r.Exit -eq 0) "main-lock refusal package could not be created: $($r.Text)"
-        $beforeLockStage = [string](& $stateFile 'msl').stage
-        $ready = Join-Path $root 'main-sync-exclusive.ready'
-        $holder = Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -ArgumentList @('-NoProfile', '-File', "`"$lockHolder`"", "`"$mainSyncLock`"", 'exclusive', "`"$ready`"") -PassThru -NoNewWindow
-        try
-        {
-            $waitUntil = [DateTime]::UtcNow.AddSeconds(10)
-            while (-not (Test-Path -LiteralPath $ready) -and [DateTime]::UtcNow -lt $waitUntil) { Start-Sleep -Milliseconds 50 }
-            $env:AW_PKG_SELFTEST_LOCK_WAIT_SECONDS = '1'
-            $r = & $pkg @('run', '-Id', 'msl', '-AgentRunScript', $lockedRunStub)
-            $afterLockStage = [string](& $stateFile 'msl').stage
-            & $expect ($r.Exit -eq 1 -and $r.Text -match 'main-sync\.lock' -and $r.Text -match '-SyncMain' -and $afterLockStage -eq $beforeLockStage -and -not (Test-Path -LiteralPath $executorMarker)) "run did not refuse an exclusive main-sync lock before state or executor changes: $($r.Text); stage $beforeLockStage -> $afterLockStage"
-        }
-        finally { Stop-Process -Id $holder.Id -Force -ErrorAction SilentlyContinue; Remove-Item Env:AW_PKG_SELFTEST_LOCK_WAIT_SECONDS -ErrorAction SilentlyContinue }
+            $commonDir = ([string](& git -C $main rev-parse --path-format=absolute --git-common-dir)).Trim()
+            $mainSyncLock = Join-Path $commonDir 'selftest/main-sync.lock'
+            New-Item -ItemType Directory -Path (Split-Path $mainSyncLock) -Force | Out-Null
+            $executorMarker = Join-Path $root 'locked-run-executor-started.txt'
+            $lockedRunStub = Join-Path $stubDir 'locked-run.ps1'
+            [IO.File]::WriteAllText($lockedRunStub, "# aw-selftest-stub`r`nSet-Content -LiteralPath '$executorMarker' 'started'`r`n" + $prelude + $stubs.ok + "`r`n")
+            $r = & $pkg @('new', '-Id', 'msl', '-Brief', $briefFile)
+            & $expect ($r.Exit -eq 0) "main-lock refusal package could not be created: $($r.Text)"
+            $beforeLockStage = [string](& $stateFile 'msl').stage
+            $ready = Join-Path $root 'main-sync-exclusive.ready'
+            $holder = Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -ArgumentList @('-NoProfile', '-File', "`"$lockHolder`"", "`"$mainSyncLock`"", 'exclusive', "`"$ready`"") -PassThru -NoNewWindow
+            try
+            {
+                $waitUntil = [DateTime]::UtcNow.AddSeconds(10)
+                while (-not (Test-Path -LiteralPath $ready) -and [DateTime]::UtcNow -lt $waitUntil) { Start-Sleep -Milliseconds 50 }
+                $env:AW_PKG_SELFTEST_LOCK_WAIT_SECONDS = '1'
+                $r = & $pkg @('run', '-Id', 'msl', '-AgentRunScript', $lockedRunStub)
+                $afterLockStage = [string](& $stateFile 'msl').stage
+                & $expect ($r.Exit -eq 1 -and $r.Text -match 'main-sync\.lock' -and $r.Text -match '-SyncMain' -and $afterLockStage -eq $beforeLockStage -and -not (Test-Path -LiteralPath $executorMarker)) "run did not refuse an exclusive main-sync lock before state or executor changes: $($r.Text); stage $beforeLockStage -> $afterLockStage"
+            }
+            finally { Stop-Process -Id $holder.Id -Force -ErrorAction SilentlyContinue; Remove-Item Env:AW_PKG_SELFTEST_LOCK_WAIT_SECONDS -ErrorAction SilentlyContinue }
 
-        $r = & $pkg @('new', '-Id', 'msls', '-Brief', $briefFile)
-        & $expect ($r.Exit -eq 0) "shared-lock coexistence package could not be created: $($r.Text)"
-        $ready = Join-Path $root 'main-sync-shared.ready'
-        $holder = Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -ArgumentList @('-NoProfile', '-File', "`"$lockHolder`"", "`"$mainSyncLock`"", 'shared', "`"$ready`"") -PassThru -NoNewWindow
-        try
-        {
-            $waitUntil = [DateTime]::UtcNow.AddSeconds(10)
-            while (-not (Test-Path -LiteralPath $ready) -and [DateTime]::UtcNow -lt $waitUntil) { Start-Sleep -Milliseconds 50 }
-            $r = & $pkg @('run', '-Id', 'msls', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
-            & $expect ($r.Exit -eq 0 -and (& $stateFile 'msls').stage -eq 'executor-completed') "a run could not coexist with another shared main-sync holder: $($r.Text)"
-        }
-        finally { Stop-Process -Id $holder.Id -Force -ErrorAction SilentlyContinue }
+            $r = & $pkg @('new', '-Id', 'msls', '-Brief', $briefFile)
+            & $expect ($r.Exit -eq 0) "shared-lock coexistence package could not be created: $($r.Text)"
+            $ready = Join-Path $root 'main-sync-shared.ready'
+            $holder = Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -ArgumentList @('-NoProfile', '-File', "`"$lockHolder`"", "`"$mainSyncLock`"", 'shared', "`"$ready`"") -PassThru -NoNewWindow
+            try
+            {
+                $waitUntil = [DateTime]::UtcNow.AddSeconds(10)
+                while (-not (Test-Path -LiteralPath $ready) -and [DateTime]::UtcNow -lt $waitUntil) { Start-Sleep -Milliseconds 50 }
+                $r = & $pkg @('run', '-Id', 'msls', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+                & $expect ($r.Exit -eq 0 -and (& $stateFile 'msls').stage -eq 'executor-completed') "a run could not coexist with another shared main-sync holder: $($r.Text)"
+            }
+            finally { Stop-Process -Id $holder.Id -Force -ErrorAction SilentlyContinue }
 
-        $raceOutputs = @()
-        $raceProcesses = foreach ($n in 1..2)
-        {
-            $raceOutputs += @(Join-Path $root "race$n.out")
-            Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $root "race$n.out") `
-                -ArgumentList @('-NoProfile', '-File', "`"$PSCommandPath`"", 'new', '-Id', 'race', '-Brief', "`"$briefFile`"", '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-LockTimeoutSeconds', '120')
-        }
-        foreach ($p in $raceProcesses) { if (-not $p.WaitForExit(180000)) { $p.Kill($true) } }
-        $codes = @($raceProcesses | ForEach-Object { $_.ExitCode } | Sort-Object)
-        $raceState = & $stateFile 'race'
-        $creations = @($raceState.history | Where-Object { $_.event -eq 'new' })
-        & $expect (($codes -join ',') -eq '0,1' -and $raceState.stage -eq 'ready' -and $creations.Count -eq 1) "concurrent creation was not serialized (exit codes $($codes -join ','), stage $($raceState.stage), $($creations.Count) creations)"
+            $raceOutputs = @()
+            $raceProcesses = foreach ($n in 1..2)
+            {
+                $raceOutputs += @(Join-Path $root "race$n.out")
+                Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $root "race$n.out") `
+                    -ArgumentList @('-NoProfile', '-File', "`"$PSCommandPath`"", 'new', '-Id', 'race', '-Brief', "`"$briefFile`"", '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-LockTimeoutSeconds', '120')
+            }
+            foreach ($p in $raceProcesses) { if (-not $p.WaitForExit(180000)) { $p.Kill($true) } }
+            $codes = @($raceProcesses | ForEach-Object { $_.ExitCode } | Sort-Object)
+            $raceState = & $stateFile 'race'
+            $creations = @($raceState.history | Where-Object { $_.event -eq 'new' })
+            & $expect (($codes -join ',') -eq '0,1' -and $raceState.stage -eq 'ready' -and $creations.Count -eq 1) "concurrent creation was not serialized (exit codes $($codes -join ','), stage $($raceState.stage), $($creations.Count) creations)"
 
-        # Crash recovery: the wrapper died, its executor survived. The next run reaps it, reconciles the main checkout
-        # against the fingerprint saved before the interrupted run, and only then starts.
-        $r = & $pkg @('new', '-Id', 'rec', '-Brief', $briefFile)
-        & $expect ($r.Exit -eq 0) "recovery package could not be created: $($r.Text)"
-        $deadWrapper = Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -ArgumentList @('-NoProfile', '-Command', 'exit 0') -PassThru -NoNewWindow
-        $deadWrapper.WaitForExit()
-        $crash = {
-            param([string]$Before, [string]$Slug = 'rec')
-            $sleeper =Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 300') -PassThru -NoNewWindow
-            $sleeperStart = Get-ProcessStartIdentity $sleeper.Id
-            $fingerprint = if ($Before -eq 'actual') { Get-Fingerprint $main } else { @{ head = 'bogus'; treeHash = 'bogus'; files = 1; seconds = 0 } }
-            $deadId = $deadWrapper.Id
-            Update-State $packagesRoot $Slug 'test-crash' {
-                param($s)
-                $s.stage = 'running'
-                $s.currentRun = @{ runId = "crashed-$Before"; pid = $deadId }
-                $s.runs = @($s.runs) + @(@{ runId = "crashed-$Before"; seq = 99; termination = 'running'; outcome = 'running'; wrapper = @{ pid = $deadId; startUtc = '2000-01-01T00:00:00.0000000+00:00' }
-                        executor = @{ pid = $sleeper.Id; startUtc = $sleeperStart; jobObject = $false }; mainCheckoutBefore = $fingerprint; mainCheckoutAfter = $null; mainCheckoutMutated = $false })
-            } | Out-Null
-            $sleeper
-        }
-        $sleeper = & $crash 'actual'
-        $r = & $pkg @('run', '-Id', 'rec', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
-        $state = & $stateFile 'rec'
-        $sleeper.WaitForExit(5000) | Out-Null
-        $crashed = @($state.runs | Where-Object { $_.runId -eq 'crashed-actual' })[0]
-        & $expect ($r.Exit -eq 0 -and $sleeper.HasExited -and $crashed.termination -eq 'abandoned' -and $crashed.reason -match 'reaped: True' -and $state.runs[-1].outcome -eq 'completed') "an interrupted run was not recovered: $($r.Text)"
-        $sleeper = & $crash 'bogus'
-        $r = & $pkg @('run', '-Id', 'rec', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
-        $state = & $stateFile 'rec'
-        $sleeper.WaitForExit(5000) | Out-Null
-        & $expect ($r.Exit -eq 5 -and $sleeper.HasExited -and $state.stage -eq 'blocked-main-mutated' -and $state.guard.mainCheckoutMutated -and $r.Text -match 'since the interrupted run started') "a main checkout change before the restart became the new baseline: $($r.Text)"
-        if (-not $sleeper.HasExited) { $sleeper.Kill() }
+            # Crash recovery: the wrapper died, its executor survived. The next run reaps it, reconciles the main checkout
+            # against the fingerprint saved before the interrupted run, and only then starts.
+            $r = & $pkg @('new', '-Id', 'rec', '-Brief', $briefFile)
+            & $expect ($r.Exit -eq 0) "recovery package could not be created: $($r.Text)"
+            $deadWrapper = Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -ArgumentList @('-NoProfile', '-Command', 'exit 0') -PassThru -NoNewWindow
+            $deadWrapper.WaitForExit()
+            $crash = {
+                param([string]$Before, [string]$Slug = 'rec')
+                $sleeper =Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 300') -PassThru -NoNewWindow
+                $sleeperStart = Get-ProcessStartIdentity $sleeper.Id
+                $fingerprint = if ($Before -eq 'actual') { Get-Fingerprint $main } else { @{ head = 'bogus'; treeHash = 'bogus'; files = 1; seconds = 0 } }
+                $deadId = $deadWrapper.Id
+                Update-State $packagesRoot $Slug 'test-crash' {
+                    param($s)
+                    $s.stage = 'running'
+                    $s.currentRun = @{ runId = "crashed-$Before"; pid = $deadId }
+                    $s.runs = @($s.runs) + @(@{ runId = "crashed-$Before"; seq = 99; termination = 'running'; outcome = 'running'; wrapper = @{ pid = $deadId; startUtc = '2000-01-01T00:00:00.0000000+00:00' }
+                            executor = @{ pid = $sleeper.Id; startUtc = $sleeperStart; jobObject = $false }; mainCheckoutBefore = $fingerprint; mainCheckoutAfter = $null; mainCheckoutMutated = $false })
+                } | Out-Null
+                $sleeper
+            }
+            $sleeper = & $crash 'actual'
+            $r = & $pkg @('run', '-Id', 'rec', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+            $state = & $stateFile 'rec'
+            $sleeper.WaitForExit(5000) | Out-Null
+            $crashed = @($state.runs | Where-Object { $_.runId -eq 'crashed-actual' })[0]
+            & $expect ($r.Exit -eq 0 -and $sleeper.HasExited -and $crashed.termination -eq 'abandoned' -and $crashed.reason -match 'reaped: True' -and $state.runs[-1].outcome -eq 'completed') "an interrupted run was not recovered: $($r.Text)"
+            $sleeper = & $crash 'bogus'
+            $r = & $pkg @('run', '-Id', 'rec', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+            $state = & $stateFile 'rec'
+            $sleeper.WaitForExit(5000) | Out-Null
+            & $expect ($r.Exit -eq 5 -and $sleeper.HasExited -and $state.stage -eq 'blocked-main-mutated' -and $state.guard.mainCheckoutMutated -and $r.Text -match 'since the interrupted run started') "a main checkout change before the restart became the new baseline: $($r.Text)"
+            if (-not $sleeper.HasExited) { $sleeper.Kill() }
 
-        # Two callers recovering the same abandoned run: the recovery is serialized, the second never clears the first's run.
-        $r = & $pkg @('new', '-Id', 'rec2', '-Brief', $briefFile)
-        & $expect ($r.Exit -eq 0) "concurrent-recovery package could not be created: $($r.Text)"
-        $sleeper = & $crash 'actual' 'rec2'
-        $recoverers = foreach ($n in 1..2)
-        {
-            Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $root "recover$n.out") `
-                -ArgumentList @('-NoProfile', '-File', "`"$PSCommandPath`"", 'run', '-Id', 'rec2', '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-AgentRunScript', "`"$(Join-Path $stubDir 'ok.ps1')`"", '-CodexVersion', '9.9.9-test', '-LockTimeoutSeconds', '120', '-GraceSeconds', '0')
-        }
-        foreach ($p in $recoverers) { if (-not $p.WaitForExit(240000)) { $p.Kill($true) } }
-        $sleeper.WaitForExit(5000) | Out-Null
-        $recoverCodes = @($recoverers | ForEach-Object { $_.ExitCode })
-        $state = & $stateFile 'rec2'
-        $recoveries = @($state.history | Where-Object { $_.event -eq 'run-recovered' })
-        $stillRunning = @($state.runs | Where-Object { $_.termination -eq 'running' })
-        $completedRuns = @($state.runs | Where-Object { $_.outcome -eq 'completed' })
-        & $expect ($sleeper.HasExited -and $recoveries.Count -eq 1 -and $stillRunning.Count -eq 0 -and $completedRuns.Count -ge 1 -and -not ($recoverCodes | Where-Object { $_ -notin @(0, 1) }) -and -not $state.currentRun -and $state.stage -eq 'executor-completed') "concurrent recoveries were not serialized (codes $($recoverCodes -join ','), $($recoveries.Count) recoveries, stage $($state.stage), $($completedRuns.Count) completed)"
+            # Two callers recovering the same abandoned run: the recovery is serialized, the second never clears the first's run.
+            $r = & $pkg @('new', '-Id', 'rec2', '-Brief', $briefFile)
+            & $expect ($r.Exit -eq 0) "concurrent-recovery package could not be created: $($r.Text)"
+            $sleeper = & $crash 'actual' 'rec2'
+            $recoverers = foreach ($n in 1..2)
+            {
+                Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $root "recover$n.out") `
+                    -ArgumentList @('-NoProfile', '-File', "`"$PSCommandPath`"", 'run', '-Id', 'rec2', '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-AgentRunScript', "`"$(Join-Path $stubDir 'ok.ps1')`"", '-CodexVersion', '9.9.9-test', '-LockTimeoutSeconds', '120', '-GraceSeconds', '0')
+            }
+            foreach ($p in $recoverers) { if (-not $p.WaitForExit(240000)) { $p.Kill($true) } }
+            $sleeper.WaitForExit(5000) | Out-Null
+            $recoverCodes = @($recoverers | ForEach-Object { $_.ExitCode })
+            $state = & $stateFile 'rec2'
+            $recoveries = @($state.history | Where-Object { $_.event -eq 'run-recovered' })
+            $stillRunning = @($state.runs | Where-Object { $_.termination -eq 'running' })
+            $completedRuns = @($state.runs | Where-Object { $_.outcome -eq 'completed' })
+            & $expect ($sleeper.HasExited -and $recoveries.Count -eq 1 -and $stillRunning.Count -eq 0 -and $completedRuns.Count -ge 1 -and -not ($recoverCodes | Where-Object { $_ -notin @(0, 1) }) -and -not $state.currentRun -and $state.stage -eq 'executor-completed') "concurrent recoveries were not serialized (codes $($recoverCodes -join ','), $($recoveries.Count) recoveries, stage $($state.stage), $($completedRuns.Count) completed)"
 
-        # Main checkout mutation: detected, the run stops, nothing is reverted.
-        $r = & $pkg @('new', '-Id', 'mut', '-Brief', (Join-Path $script:KitDir 'fixtures/gates/agent-run/complete.md'))
-        & $expect ($r.Exit -eq 0) "second package could not be created: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'mut', '-AgentRunScript', (Join-Path $stubDir 'mutate.ps1'))
-        $state = & $stateFile 'mut'
-        & $expect ($r.Exit -eq 5 -and $state.guard.mainCheckoutMutated -and $state.runs[-1].mainCheckoutMutated -and $state.stage -eq 'blocked-main-mutated') "main checkout mutation not detected: $($r.Text)"
-        & $expect (Test-Path (Join-Path $main 'rogue.txt')) 'the guard reverted the executor''s change'
-        $r = & $pkg @('run', '-Id', 'mut', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'mutated') 'a package with a mutated main checkout accepted another run'
+            # Main checkout mutation: detected, the run stops, nothing is reverted.
+            $r = & $pkg @('new', '-Id', 'mut', '-Brief', (Join-Path $script:KitDir 'fixtures/gates/agent-run/complete.md'))
+            & $expect ($r.Exit -eq 0) "second package could not be created: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'mut', '-AgentRunScript', (Join-Path $stubDir 'mutate.ps1'))
+            $state = & $stateFile 'mut'
+            & $expect ($r.Exit -eq 5 -and $state.guard.mainCheckoutMutated -and $state.runs[-1].mainCheckoutMutated -and $state.stage -eq 'blocked-main-mutated') "main checkout mutation not detected: $($r.Text)"
+            & $expect (Test-Path (Join-Path $main 'rogue.txt')) 'the guard reverted the executor''s change'
+            $r = & $pkg @('run', '-Id', 'mut', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'mutated') 'a package with a mutated main checkout accepted another run'
 
-        # ---- Claude executors, against a marked stub that emits a recorded stream-json. No real claude process is ever started. ----
-        Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
-        $recordDir = Join-Path $root 'claude-records'
-        $env:AW_PKG_TEST_RECORD = $recordDir
-        $resetRecords = { Remove-Item -LiteralPath $recordDir -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path $recordDir -Force | Out-Null }
-        $calls = { @(Get-ChildItem -LiteralPath $recordDir -Filter 'call-*.json' -ErrorAction SilentlyContinue | Sort-Object { [int]($_.BaseName -replace '\D') }) }
-        $claudeStubPrelude = @'
+            # ---- Claude executors, against a marked stub that emits a recorded stream-json. No real claude process is ever started. ----
+            Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
+            $recordDir = Join-Path $root 'claude-records'
+            $env:AW_PKG_TEST_RECORD = $recordDir
+            $resetRecords = { Remove-Item -LiteralPath $recordDir -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path $recordDir -Force | Out-Null }
+            $calls = { @(Get-ChildItem -LiteralPath $recordDir -Filter 'call-*.json' -ErrorAction SilentlyContinue | Sort-Object { [int]($_.BaseName -replace '\D') }) }
+            $claudeStubPrelude = @'
 # aw-selftest-stub
 $a = @($args)
 if ($a -contains '--version') { if ($env:AW_PKG_TEST_HANGVERSION) { Start-Sleep -Seconds 60 }; '9.9.9-stub (Claude Code)'; exit 0 }
@@ -5981,368 +6816,368 @@ $denyEvent = '{"type":"user","message":{"content":[{"type":"tool_result","tool_u
 $denyList = '[{"tool_name":"Bash","tool_use_id":"m1-t","tool_input":{"command":"rm -rf x"}}]'
 
 '@
-        $claudeStubs = @{
-            'c-ok' = "Emit-Assistant 'm1' 'Read'; Emit-Assistant 'm1' 'Read'; Emit-Result 'done: all good'; exit 0"
-            'c-deny' = "Emit-Assistant 'm1' 'Bash'; Emit `$denyEvent; Emit-Result 'I could not run the command.' `$denyList; exit 0"
-            'c-denyenv' = "Emit-Assistant 'm1' 'Bash'; Emit `$denyEvent; Emit-Result 'ENV-BLOCKED: dotnet build: Permission to use Bash has been denied.' `$denyList; exit 0"
-            'c-usagesleep' = "Emit-Assistant 'm1' 'Read'; Start-Sleep -Seconds 120"
-            'c-tree' = "`$child = Start-Process pwsh -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru -NoNewWindow; Set-Content -LiteralPath `$env:AW_PKG_TEST_PIDFILE `$child.Id; Start-Sleep -Seconds 120"
-            'c-write-in' = "New-Item -ItemType Directory -Path 'allowed' -Force | Out-Null; Set-Content -LiteralPath (Join-Path (Resolve-Path -LiteralPath '.').Path 'allowed/a.txt') 'x'; Emit-Result 'changed allowed/a.txt'; exit 0"
-            'c-write-out' = "Set-Content -LiteralPath (Join-Path (Resolve-Path -LiteralPath '.').Path 'outside.txt') 'x'; Emit-Result 'changed outside.txt'; exit 0"
-            'c-write-ignored' = "Set-Content -LiteralPath (Join-Path (Resolve-Path -LiteralPath '.').Path 'ignored-note.txt') 'x'; Emit-Result 'changed an ignored file'; exit 0"
-            'c-rename' = "New-Item -ItemType Directory -Path 'allowed' -Force | Out-Null; Move-Item -LiteralPath 'b.txt' -Destination 'allowed/moved.txt'; Emit-Result 'moved b.txt into allowed/'; exit 0"
-            'c-write-bin' = "New-Item -ItemType Directory -Path 'bin' -Force | Out-Null; Set-Content -LiteralPath (Join-Path (Resolve-Path -LiteralPath '.').Path 'bin/out.dll') 'x'; Emit-Result 'build output'; exit 0"
-            'c-terminal-only' = @'
+            $claudeStubs = @{
+                'c-ok' = "Emit-Assistant 'm1' 'Read'; Emit-Assistant 'm1' 'Read'; Emit-Result 'done: all good'; exit 0"
+                'c-deny' = "Emit-Assistant 'm1' 'Bash'; Emit `$denyEvent; Emit-Result 'I could not run the command.' `$denyList; exit 0"
+                'c-denyenv' = "Emit-Assistant 'm1' 'Bash'; Emit `$denyEvent; Emit-Result 'ENV-BLOCKED: dotnet build: Permission to use Bash has been denied.' `$denyList; exit 0"
+                'c-usagesleep' = "Emit-Assistant 'm1' 'Read'; Start-Sleep -Seconds 120"
+                'c-tree' = "`$child = Start-Process pwsh -ArgumentList '-NoProfile','-Command','Start-Sleep 300' -PassThru -NoNewWindow; Set-Content -LiteralPath `$env:AW_PKG_TEST_PIDFILE `$child.Id; Start-Sleep -Seconds 120"
+                'c-write-in' = "New-Item -ItemType Directory -Path 'allowed' -Force | Out-Null; Set-Content -LiteralPath (Join-Path (Resolve-Path -LiteralPath '.').Path 'allowed/a.txt') 'x'; Emit-Result 'changed allowed/a.txt'; exit 0"
+                'c-write-out' = "Set-Content -LiteralPath (Join-Path (Resolve-Path -LiteralPath '.').Path 'outside.txt') 'x'; Emit-Result 'changed outside.txt'; exit 0"
+                'c-write-ignored' = "Set-Content -LiteralPath (Join-Path (Resolve-Path -LiteralPath '.').Path 'ignored-note.txt') 'x'; Emit-Result 'changed an ignored file'; exit 0"
+                'c-rename' = "New-Item -ItemType Directory -Path 'allowed' -Force | Out-Null; Move-Item -LiteralPath 'b.txt' -Destination 'allowed/moved.txt'; Emit-Result 'moved b.txt into allowed/'; exit 0"
+                'c-write-bin' = "New-Item -ItemType Directory -Path 'bin' -Force | Out-Null; Set-Content -LiteralPath (Join-Path (Resolve-Path -LiteralPath '.').Path 'bin/out.dll') 'x'; Emit-Result 'build output'; exit 0"
+                'c-terminal-only' = @'
 Emit '{"type":"result","subtype":"success","is_error":false,"result":"done: terminal usage only","session_id":"stub-claude-session","usage":{"input_tokens":1200,"cache_creation_input_tokens":0,"cache_read_input_tokens":800,"output_tokens":10},"permission_denials":[]}'; exit 0
 '@
-            'c-mutate' ="Set-Content -LiteralPath (Join-Path `$env:AW_PKG_TEST_MAIN 'rogue-claude.txt') 'x'; Emit-Result 'wrote into main'; exit 0"
-        }
-        foreach ($name in $claudeStubs.Keys) { [IO.File]::WriteAllText((Join-Path $stubDir "$name.ps1"), $claudeStubPrelude + $claudeStubs[$name] + "`r`n") }
-        [IO.File]::WriteAllText((Join-Path $stubDir 'unmarked.ps1'), "exit 0`r`n")
-        $stub = { param($name) Join-Path $stubDir "$name.ps1" }
-        $briefHaiku = Join-Path $root 'brief-haiku.md'
-        [IO.File]::WriteAllText($briefHaiku, (Get-Content -LiteralPath (Join-Path $script:KitDir 'fixtures/gates/agent-run/complete.md') -Raw) + "`r`nHaiku-scope: mechanical`r`n")
-        $briefHelper = Join-Path $root 'brief-helper.md'
-        [IO.File]::WriteAllText($briefHelper, (Get-Content -LiteralPath (Join-Path $script:KitDir 'fixtures/gates/agent-run/complete.md') -Raw) + "`r`nHaiku-scope: helper`r`n")
-        $scopeManifest = Join-Path $root 'scope-checks.json'
-        [IO.File]::WriteAllText($scopeManifest, (@{ allowedPaths = @('allowed/'); allowedScripts = @('scripts/custom-check.ps1') } | ConvertTo-Json))
-        $fixPrompt = Join-Path $root 'fix.md'
-        [IO.File]::WriteAllText($fixPrompt, "Fix request: please make the build pass.`r`n")
+                'c-mutate' ="Set-Content -LiteralPath (Join-Path `$env:AW_PKG_TEST_MAIN 'rogue-claude.txt') 'x'; Emit-Result 'wrote into main'; exit 0"
+            }
+            foreach ($name in $claudeStubs.Keys) { [IO.File]::WriteAllText((Join-Path $stubDir "$name.ps1"), $claudeStubPrelude + $claudeStubs[$name] + "`r`n") }
+            [IO.File]::WriteAllText((Join-Path $stubDir 'unmarked.ps1'), "exit 0`r`n")
+            $stub = { param($name) Join-Path $stubDir "$name.ps1" }
+            $briefHaiku = Join-Path $root 'brief-haiku.md'
+            [IO.File]::WriteAllText($briefHaiku, (Get-Content -LiteralPath (Join-Path $script:KitDir 'fixtures/gates/agent-run/complete.md') -Raw) + "`r`nHaiku-scope: mechanical`r`n")
+            $briefHelper = Join-Path $root 'brief-helper.md'
+            [IO.File]::WriteAllText($briefHelper, (Get-Content -LiteralPath (Join-Path $script:KitDir 'fixtures/gates/agent-run/complete.md') -Raw) + "`r`nHaiku-scope: helper`r`n")
+            $scopeManifest = Join-Path $root 'scope-checks.json'
+            [IO.File]::WriteAllText($scopeManifest, (@{ allowedPaths = @('allowed/'); allowedScripts = @('scripts/custom-check.ps1') } | ConvertTo-Json))
+            $fixPrompt = Join-Path $root 'fix.md'
+            [IO.File]::WriteAllText($fixPrompt, "Fix request: please make the build pass.`r`n")
 
-        # In-process: argument quoting, the bypass refusal and the incremental stream reader.
-        & $expect ((Format-WindowsArgument 'plain') -eq 'plain' -and (Format-WindowsArgument 'a b') -eq '"a b"' -and (Format-WindowsArgument 'say "hi"') -eq '"say \"hi\""' -and (Format-WindowsArgument 'C:\dir with space\') -eq '"C:\dir with space\\"') 'argument quoting is wrong'
-        foreach ($bad in @('bypassPermissions', '--dangerously-skip-permissions', '--permission-mode', '--allow-dangerously-skip-permissions'))
-        {
+            # In-process: argument quoting, the bypass refusal and the incremental stream reader.
+            & $expect ((Format-WindowsArgument 'plain') -eq 'plain' -and (Format-WindowsArgument 'a b') -eq '"a b"' -and (Format-WindowsArgument 'say "hi"') -eq '"say \"hi\""' -and (Format-WindowsArgument 'C:\dir with space\') -eq '"C:\dir with space\\"') 'argument quoting is wrong'
+            foreach ($bad in @('bypassPermissions', '--dangerously-skip-permissions', '--permission-mode', '--allow-dangerously-skip-permissions'))
+            {
+                $refused = $false
+                try { Assert-NoBypass @('-p', $bad) } catch { $refused = $true }
+                & $expect $refused "a bypass argument ($bad) was not refused"
+            }
             $refused = $false
-            try { Assert-NoBypass @('-p', $bad) } catch { $refused = $true }
-            & $expect $refused "a bypass argument ($bad) was not refused"
-        }
-        $refused = $false
-        try { Assert-NoBypass @('-p', '--model', 'x', '--settings', 'y') } catch { $refused = $true }
-        & $expect (-not $refused) 'a harmless argument list was refused'
-        $partialPath = Join-Path $root 'partial.jsonl'
-        [IO.File]::WriteAllText($partialPath, '{"type":"system","subtype":"init","session_id":"s1"}' + "`n" + '{"type":"result","result":"tail"')
-        $partial = New-StreamMonitor $partialPath
-        Read-StreamMonitor $partial
-        & $expect ($partial.SessionId -eq 's1' -and -not $partial.ResultSeen) 'a partial last line was consumed early'
-        [IO.File]::AppendAllText($partialPath, ',"session_id":"s1"}' + "`n")
-        Read-StreamMonitor $partial
-        & $expect ($partial.ResultSeen -and $partial.ResultText -eq 'tail') 'the completed line was not read on the next poll'
+            try { Assert-NoBypass @('-p', '--model', 'x', '--settings', 'y') } catch { $refused = $true }
+            & $expect (-not $refused) 'a harmless argument list was refused'
+            $partialPath = Join-Path $root 'partial.jsonl'
+            [IO.File]::WriteAllText($partialPath, '{"type":"system","subtype":"init","session_id":"s1"}' + "`n" + '{"type":"result","result":"tail"')
+            $partial = New-StreamMonitor $partialPath
+            Read-StreamMonitor $partial
+            & $expect ($partial.SessionId -eq 's1' -and -not $partial.ResultSeen) 'a partial last line was consumed early'
+            [IO.File]::AppendAllText($partialPath, ',"session_id":"s1"}' + "`n")
+            Read-StreamMonitor $partial
+            & $expect ($partial.ResultSeen -and $partial.ResultText -eq 'tail') 'the completed line was not read on the next poll'
 
-        # Glob semantics of allowedPaths: * stays inside one segment, ** crosses segments, ? is one non-/ character, a trailing / is a directory.
-        $globCases = @(
-            @('docs/*.md', 'docs/a.md', $true), @('docs/*.md', 'docs/nested/a.md', $false), @('docs/**', 'docs/nested/a.md', $true), @('docs/**/*.md', 'docs/a.md', $true), @('docs/**/*.md', 'docs/x/y/a.md', $true)
-            @('a?.txt', 'ab.txt', $true), @('a?.txt', 'a/.txt', $false), @('a?.txt', 'abc.txt', $false), @('src/', 'src/deep/file.cs', $true), @('src/', 'srcx/file.cs', $false)
-            @('exact.txt', 'exact.txt', $true), @('exact.txt', 'dir/exact.txt', $false), @('*.md', 'README.md', $true), @('*.md', 'docs/README.md', $false), @('**/x.md', 'x.md', $true), @('**/x.md', 'a/b/x.md', $true)
-        )
-        foreach ($case in $globCases) { & $expect ((Test-PathAllowed $case[1] @($case[0])) -eq $case[2]) "glob '$($case[0])' against '$($case[1])' should be $($case[2])" }
+            # Glob semantics of allowedPaths: * stays inside one segment, ** crosses segments, ? is one non-/ character, a trailing / is a directory.
+            $globCases = @(
+                @('docs/*.md', 'docs/a.md', $true), @('docs/*.md', 'docs/nested/a.md', $false), @('docs/**', 'docs/nested/a.md', $true), @('docs/**/*.md', 'docs/a.md', $true), @('docs/**/*.md', 'docs/x/y/a.md', $true)
+                @('a?.txt', 'ab.txt', $true), @('a?.txt', 'a/.txt', $false), @('a?.txt', 'abc.txt', $false), @('src/', 'src/deep/file.cs', $true), @('src/', 'srcx/file.cs', $false)
+                @('exact.txt', 'exact.txt', $true), @('exact.txt', 'dir/exact.txt', $false), @('*.md', 'README.md', $true), @('*.md', 'docs/README.md', $false), @('**/x.md', 'x.md', $true), @('**/x.md', 'a/b/x.md', $true)
+            )
+            foreach ($case in $globCases) { & $expect ((Test-PathAllowed $case[1] @($case[0])) -eq $case[2]) "glob '$($case[0])' against '$($case[1])' should be $($case[2])" }
 
-        # Token totals come from the terminal result; the per-message sums are kept next to them. Fixtures: the two real smoke streams.
-        $fixtureDir = Join-Path $script:KitDir 'fixtures/package-claude'
-        foreach ($case in @(@{ file = 'smoke-1-events.jsonl'; input = 81942; output = 1842; session = '11111111' }, @{ file = 'smoke-2-events.jsonl'; input = 87489; output = 1897; session = '22222222' }))
-        {
-            $fixtureMonitor = New-StreamMonitor (Join-Path $fixtureDir $case.file)
-            Read-StreamMonitor $fixtureMonitor -Final
-            $record = Get-ClaudeTokenRecord $fixtureMonitor
-            & $expect ($record.input -eq $case.input -and $record.output -eq $case.output -and $record.source -eq 'terminal result usage' -and $record.reported.output -eq $case.output -and $record.perMessage.output -gt 0 -and $record.crossCheck -and $fixtureMonitor.SessionId -like "$($case.session)*") "token totals of $($case.file) are wrong: $($record | ConvertTo-Json -Depth 4 -Compress)"
-        }
-
-        # A completed Sonnet run: working directory, stdin, settings, no bypass, provenance.
-        $r = & $pkg @('new', '-Id', 'cl', '-Brief', $briefFile)
-        & $expect ($r.Exit -eq 0) "claude package could not be created: $($r.Text)"
-        & $resetRecords
-        $env:AW_PKG_TEST_TOKENS = '100'
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'))
-        $state = & $stateFile 'cl'
-        if (@($state.runs).Count -eq 0) { throw "claude run recorded nothing (exit $($r.Exit)): $($r.Text)" }
-        $run = $state.runs[-1]
-        & $expect ($r.Exit -eq 0 -and $run.outcome -eq 'completed' -and $run.provider -eq 'claude' -and $run.executorKind -eq 'claude-sonnet' -and $run.model -eq 'claude-sonnet-5-5' -and $run.sessionId -eq 'stub-claude-session' -and $state.stage -eq 'executor-completed') "claude run not completed: $($r.Text)"
-        & $expect ($run.tokens.input -eq 100 -and $run.tokens.output -eq 10 -and $run.tokens.reportedCostUsd -eq 0.0123 -and $run.tokens.costNote -match 'not an invoice') "tokens were not summed once per message or the cost is not labelled: $($run.tokens | ConvertTo-Json -Compress)"
-        & $expect ($run.claudeCliVersion -eq '9.9.9-stub (Claude Code)' -and $run.permissions.mode -eq 'default' -and $run.permissions.bypass -eq $false -and $run.permissions.settingsFile.sha256 -eq (Get-Sha256 $run.permissions.settingsFile.path) -and $run.authMode -match '^subscription') 'claude provenance (version, permission mode, settings hash, auth mode) was not recorded'
-        & $expect ($run.artifacts.outMd.sha256 -and (Get-Content -LiteralPath $run.artifacts.outMd.path -Raw) -match 'done: all good' -and $run.containmentVerified -eq $true -and @($run.permissionDenials).Count -eq 0) 'the report, containment or denial list of a clean claude run is wrong'
-        $callFiles = @(& $calls)
-        & $expect ($callFiles.Count -eq 1) "expected exactly one claude invocation, got $($callFiles.Count)"
-        $call = Get-Content -LiteralPath $callFiles[0].FullName -Raw | ConvertFrom-Json
-        $callArgs = @($call.args)
-        & $expect ([IO.Path]::GetFullPath([string]$call.cwd).TrimEnd('\') -ieq [IO.Path]::GetFullPath([string]$state.worktree).TrimEnd('\')) "the process working directory was '$($call.cwd)', not the worktree '$($state.worktree)'"
-        & $expect ($call.stdin -eq (Get-Content -LiteralPath $run.prompt.path -Raw) -and $call.stdin -match 'Use the checked executor launcher' -and $call.stdin -match [regex]::Escape([string]$state.worktree)) 'stdin was not the prompt file followed by EOF'
-        $settingsAt = [Array]::IndexOf($callArgs, '--settings')
-        $settingsArg = if ($settingsAt -ge 0) { [string]$callArgs[$settingsAt + 1] } else { '' }
-        & $expect ($settingsAt -ge 0 -and $settingsArg -like "$(Join-Path $packagesRoot 'cl')*" -and $settingsArg -notlike "$($state.worktree)*" -and (Get-Sha256 $settingsArg) -eq $run.permissions.settingsFile.sha256) "the settings file was not passed from the package state directory: $settingsArg"
-        & $expect (-not ($callArgs -match '(?i)bypass|dangerously|permission-mode')) 'a bypass or permission-mode argument was passed'
-        foreach ($required in @('-p', '--model', 'claude-sonnet-5-5', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--mcp-config', '--append-system-prompt', '--setting-sources')) { & $expect ($callArgs -contains $required) "claude argument '$required' is missing" }
-        # No project, user or local settings are loaded, and the tool set is explicit.
-        $sourcesAt = [Array]::IndexOf($callArgs, '--setting-sources')
-        $toolsAt = [Array]::IndexOf($callArgs, '--tools')
-        & $expect ($sourcesAt -ge 0 -and $callArgs[$sourcesAt + 1] -eq '' -and -not ($callArgs -contains 'project')) "--setting-sources must be empty so no project settings load: '$($callArgs[$sourcesAt + 1])'"
-        & $expect ($toolsAt -ge 0 -and $callArgs[$toolsAt + 1] -eq 'Read,Edit,Write,Glob,Grep,Bash') "--tools is not the explicit tool list: '$($callArgs[$toolsAt + 1])'"
-        $rulesArg = [string]$callArgs[[Array]::IndexOf($callArgs, '--append-system-prompt') + 1]
-        & $expect ($rulesArg -match 'not a sandbox' -and $rulesArg -match 'main-checkout guard') 'the rules do not state the accepted limitation of the allowlist'
-        & $expect ($rulesArg -match 'absolute paths' -and $rulesArg -match 'explicit working directory' -and $rulesArg -match 'stdin' -and $rulesArg -match 'Never commit, push' -and $rulesArg -match 'ENV-BLOCKED: <command>: <error>' -and $rulesArg -match 'End with a report') 'the executor rules are incomplete'
-        $settingsJson = $call.settings | ConvertFrom-Json
-        & $expect ($settingsJson.permissions.defaultMode -eq 'default' -and $settingsJson.permissions.allow -contains 'Read' -and $settingsJson.permissions.allow -contains 'Bash(dotnet test:*)' -and $settingsJson.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 init:*)' -and $settingsJson.permissions.allow -contains 'Bash(pwsh scripts/verify.ps1:*)' -and -not ($settingsJson.permissions.allow -contains 'Bash(pwsh scripts/*)') -and -not ($settingsJson.permissions.allow -contains 'Bash(dotnet restore:*)') -and $settingsJson.permissions.deny -contains 'WebFetch' -and $settingsJson.permissions.deny -contains 'Bash(git push:*)' -and -not ($settingsJson.permissions.allow -match 'python|bypass|rm ')) "the settings allowlist is wrong: $($call.settings)"
-        & $expect (@(($call.mcp | ConvertFrom-Json).mcpServers.PSObject.Properties).Count -eq 0) 'the MCP config is not empty'
-        & $expect ($settingsJson.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 check:*)' -and $settingsJson.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 selftest:*)') 'an executor lost kb.ps1 check'
-        & $expect ($rulesArg -match 'pwsh scripts/kb\.ps1 init -Role executor' -and $rulesArg -match 'without -C') 'the rules do not start with the kb init or forbid git -C'
-        $wtForward = ([string]$state.worktree -replace '\\', '/').TrimEnd('/')
-        $wtBack = ([string]$state.worktree -replace '/', '\').TrimEnd('\')
-        $allowed = {
-            param([string]$Tool, [string]$Command)
-            foreach ($rule in @($settingsJson.permissions.allow))
+            # Token totals come from the terminal result; the per-message sums are kept next to them. Fixtures: the two real smoke streams.
+            $fixtureDir = Join-Path $script:KitDir 'fixtures/package-claude'
+            foreach ($case in @(@{ file = 'smoke-1-events.jsonl'; input = 81942; output = 1842; session = '11111111' }, @{ file = 'smoke-2-events.jsonl'; input = 87489; output = 1897; session = '22222222' }))
             {
-                if ($rule -match "^$Tool\((.*)\)$" -and $Command -like ($Matches[1] -replace ':\*$', '*')) { return $true }
+                $fixtureMonitor = New-StreamMonitor (Join-Path $fixtureDir $case.file)
+                Read-StreamMonitor $fixtureMonitor -Final
+                $record = Get-ClaudeTokenRecord $fixtureMonitor
+                & $expect ($record.input -eq $case.input -and $record.output -eq $case.output -and $record.source -eq 'terminal result usage' -and $record.reported.output -eq $case.output -and $record.perMessage.output -gt 0 -and $record.crossCheck -and $fixtureMonitor.SessionId -like "$($case.session)*") "token totals of $($case.file) are wrong: $($record | ConvertTo-Json -Depth 4 -Compress)"
             }
-            $false
-        }
-        & $expect (-not (@($settingsJson.permissions.allow) -match '^PowerShell') -and $settingsJson.permissions.deny -contains 'PowerShell' -and $callArgs[$toolsAt + 1] -notmatch 'PowerShell' -and $rulesArg -match 'Use the Bash tool for every shell command') 'the PowerShell tool is still available or the rules do not say to use Bash'
-        foreach ($tool in @('Bash'))
-        {
-            foreach ($command in @('pwsh scripts/kb.ps1 init -Role helper', 'pwsh scripts/kb.ps1 init -Role executor', 'pwsh -NoProfile -File scripts/kb.ps1 init -Role helper', 'pwsh -NoProfile -File scripts/kb.ps1 init -Role executor',
-                    "git -C `"$wtForward`" status --short", "git -C $wtForward diff --stat", "git -C `"$wtBack`" log -3", "git -C $wtBack show HEAD", 'pwsh scripts/verify.ps1', 'pwsh -NoProfile -File scripts/verify.ps1', 'pwsh scripts/kb.ps1 read scripts/package.ps1', 'pwsh scripts/kb.ps1 check'))
-            {
-                & $expect (& $allowed $tool $command) "$tool rule does not allow '$command'"
+
+            # A completed Sonnet run: working directory, stdin, settings, no bypass, provenance.
+            $r = & $pkg @('new', '-Id', 'cl', '-Brief', $briefFile)
+            & $expect ($r.Exit -eq 0) "claude package could not be created: $($r.Text)"
+            & $resetRecords
+            $env:AW_PKG_TEST_TOKENS = '100'
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'))
+            $state = & $stateFile 'cl'
+            if (@($state.runs).Count -eq 0) { throw "claude run recorded nothing (exit $($r.Exit)): $($r.Text)" }
+            $run = $state.runs[-1]
+            & $expect ($r.Exit -eq 0 -and $run.outcome -eq 'completed' -and $run.provider -eq 'claude' -and $run.executorKind -eq 'claude-sonnet' -and $run.model -eq 'claude-sonnet-5-5' -and $run.sessionId -eq 'stub-claude-session' -and $state.stage -eq 'executor-completed') "claude run not completed: $($r.Text)"
+            & $expect ($run.tokens.input -eq 100 -and $run.tokens.output -eq 10 -and $run.tokens.reportedCostUsd -eq 0.0123 -and $run.tokens.costNote -match 'not an invoice') "tokens were not summed once per message or the cost is not labelled: $($run.tokens | ConvertTo-Json -Compress)"
+            & $expect ($run.claudeCliVersion -eq '9.9.9-stub (Claude Code)' -and $run.permissions.mode -eq 'default' -and $run.permissions.bypass -eq $false -and $run.permissions.settingsFile.sha256 -eq (Get-Sha256 $run.permissions.settingsFile.path) -and $run.authMode -match '^subscription') 'claude provenance (version, permission mode, settings hash, auth mode) was not recorded'
+            & $expect ($run.artifacts.outMd.sha256 -and (Get-Content -LiteralPath $run.artifacts.outMd.path -Raw) -match 'done: all good' -and $run.containmentVerified -eq $true -and @($run.permissionDenials).Count -eq 0) 'the report, containment or denial list of a clean claude run is wrong'
+            $callFiles = @(& $calls)
+            & $expect ($callFiles.Count -eq 1) "expected exactly one claude invocation, got $($callFiles.Count)"
+            $call = Get-Content -LiteralPath $callFiles[0].FullName -Raw | ConvertFrom-Json
+            $callArgs = @($call.args)
+            & $expect ([IO.Path]::GetFullPath([string]$call.cwd).TrimEnd('\') -ieq [IO.Path]::GetFullPath([string]$state.worktree).TrimEnd('\')) "the process working directory was '$($call.cwd)', not the worktree '$($state.worktree)'"
+            & $expect ($call.stdin -eq (Get-Content -LiteralPath $run.prompt.path -Raw) -and $call.stdin -match 'Use the checked executor launcher' -and $call.stdin -match [regex]::Escape([string]$state.worktree)) 'stdin was not the prompt file followed by EOF'
+            $settingsAt = [Array]::IndexOf($callArgs, '--settings')
+            $settingsArg = if ($settingsAt -ge 0) { [string]$callArgs[$settingsAt + 1] } else { '' }
+            & $expect ($settingsAt -ge 0 -and $settingsArg -like "$(Join-Path $packagesRoot 'cl')*" -and $settingsArg -notlike "$($state.worktree)*" -and (Get-Sha256 $settingsArg) -eq $run.permissions.settingsFile.sha256) "the settings file was not passed from the package state directory: $settingsArg"
+            & $expect (-not ($callArgs -match '(?i)bypass|dangerously|permission-mode')) 'a bypass or permission-mode argument was passed'
+            foreach ($required in @('-p', '--model', 'claude-sonnet-5-5', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--mcp-config', '--append-system-prompt', '--setting-sources')) { & $expect ($callArgs -contains $required) "claude argument '$required' is missing" }
+            # No project, user or local settings are loaded, and the tool set is explicit.
+            $sourcesAt = [Array]::IndexOf($callArgs, '--setting-sources')
+            $toolsAt = [Array]::IndexOf($callArgs, '--tools')
+            & $expect ($sourcesAt -ge 0 -and $callArgs[$sourcesAt + 1] -eq '' -and -not ($callArgs -contains 'project')) "--setting-sources must be empty so no project settings load: '$($callArgs[$sourcesAt + 1])'"
+            & $expect ($toolsAt -ge 0 -and $callArgs[$toolsAt + 1] -eq 'Read,Edit,Write,Glob,Grep,Bash') "--tools is not the explicit tool list: '$($callArgs[$toolsAt + 1])'"
+            $rulesArg = [string]$callArgs[[Array]::IndexOf($callArgs, '--append-system-prompt') + 1]
+            & $expect ($rulesArg -match 'not a sandbox' -and $rulesArg -match 'main-checkout guard') 'the rules do not state the accepted limitation of the allowlist'
+            & $expect ($rulesArg -match 'absolute paths' -and $rulesArg -match 'explicit working directory' -and $rulesArg -match 'stdin' -and $rulesArg -match 'Never commit, push' -and $rulesArg -match 'ENV-BLOCKED: <command>: <error>' -and $rulesArg -match 'End with a report') 'the executor rules are incomplete'
+            $settingsJson = $call.settings | ConvertFrom-Json
+            & $expect ($settingsJson.permissions.defaultMode -eq 'default' -and $settingsJson.permissions.allow -contains 'Read' -and $settingsJson.permissions.allow -contains 'Bash(dotnet test:*)' -and $settingsJson.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 init:*)' -and $settingsJson.permissions.allow -contains 'Bash(pwsh scripts/verify.ps1:*)' -and -not ($settingsJson.permissions.allow -contains 'Bash(pwsh scripts/*)') -and -not ($settingsJson.permissions.allow -contains 'Bash(dotnet restore:*)') -and $settingsJson.permissions.deny -contains 'WebFetch' -and $settingsJson.permissions.deny -contains 'Bash(git push:*)' -and -not ($settingsJson.permissions.allow -match 'python|bypass|rm ')) "the settings allowlist is wrong: $($call.settings)"
+            & $expect (@(($call.mcp | ConvertFrom-Json).mcpServers.PSObject.Properties).Count -eq 0) 'the MCP config is not empty'
+            & $expect ($settingsJson.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 check:*)' -and $settingsJson.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 selftest:*)') 'an executor lost kb.ps1 check'
+            & $expect ($rulesArg -match 'pwsh scripts/kb\.ps1 init -Role executor' -and $rulesArg -match 'without -C') 'the rules do not start with the kb init or forbid git -C'
+            $wtForward = ([string]$state.worktree -replace '\\', '/').TrimEnd('/')
+            $wtBack = ([string]$state.worktree -replace '/', '\').TrimEnd('\')
+            $allowed = {
+                param([string]$Tool, [string]$Command)
+                foreach ($rule in @($settingsJson.permissions.allow))
+                {
+                    if ($rule -match "^$Tool\((.*)\)$" -and $Command -like ($Matches[1] -replace ':\*$', '*')) { return $true }
+                }
+                $false
             }
-            foreach ($command in @("git -C `"C:/somewhere/else`" status", "git -C `"$wtForward`" commit -m x", "git -C $wtBack push", 'pwsh scripts/custom.ps1', 'pwsh scripts/../outside.ps1', 'pwsh scripts/status.ps1 -Publish', 'pwsh -NoProfile -File scripts/status.ps1 -Publish', 'dotnet restore'))
+            & $expect (-not (@($settingsJson.permissions.allow) -match '^PowerShell') -and $settingsJson.permissions.deny -contains 'PowerShell' -and $callArgs[$toolsAt + 1] -notmatch 'PowerShell' -and $rulesArg -match 'Use the Bash tool for every shell command') 'the PowerShell tool is still available or the rules do not say to use Bash'
+            foreach ($tool in @('Bash'))
             {
-                & $expect (-not (& $allowed $tool $command)) "$tool rule allows '$command'"
+                foreach ($command in @('pwsh scripts/kb.ps1 init -Role helper', 'pwsh scripts/kb.ps1 init -Role executor', 'pwsh -NoProfile -File scripts/kb.ps1 init -Role helper', 'pwsh -NoProfile -File scripts/kb.ps1 init -Role executor',
+                        "git -C `"$wtForward`" status --short", "git -C $wtForward diff --stat", "git -C `"$wtBack`" log -3", "git -C $wtBack show HEAD", 'pwsh scripts/verify.ps1', 'pwsh -NoProfile -File scripts/verify.ps1', 'pwsh scripts/kb.ps1 read scripts/package.ps1', 'pwsh scripts/kb.ps1 check'))
+                {
+                    & $expect (& $allowed $tool $command) "$tool rule does not allow '$command'"
+                }
+                foreach ($command in @("git -C `"C:/somewhere/else`" status", "git -C `"$wtForward`" commit -m x", "git -C $wtBack push", 'pwsh scripts/custom.ps1', 'pwsh scripts/../outside.ps1', 'pwsh scripts/status.ps1 -Publish', 'pwsh -NoProfile -File scripts/status.ps1 -Publish', 'dotnet restore'))
+                {
+                    & $expect (-not (& $allowed $tool $command)) "$tool rule allows '$command'"
+                }
             }
-        }
-        & $expect (($run.claudeArguments -join ' ') -match '--settings' -and -not (($run.claudeArguments -join ' ') -match 'absolute paths')) 'the recorded argument list is wrong'
+            & $expect (($run.claudeArguments -join ' ') -match '--settings' -and -not (($run.claudeArguments -join ' ') -match 'absolute paths')) 'the recorded argument list is wrong'
 
-        # The key is never read for its value: only its presence selects the auth mode.
-        $env:ANTHROPIC_API_KEY = 'sk-selftest-not-a-real-key'
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'))
-        $state = & $stateFile 'cl'
-        & $expect ($state.runs[-1].authMode -match '^api-key' -and -not ((Get-Content -LiteralPath (& $statePath 'cl') -Raw) -match 'sk-selftest')) 'the auth mode was wrong or the key value reached the state'
-        Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
+            # The key is never read for its value: only its presence selects the auth mode.
+            $env:ANTHROPIC_API_KEY = 'sk-selftest-not-a-real-key'
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'))
+            $state = & $stateFile 'cl'
+            & $expect ($state.runs[-1].authMode -match '^api-key' -and -not ((Get-Content -LiteralPath (& $statePath 'cl') -Raw) -match 'sk-selftest')) 'the auth mode was wrong or the key value reached the state'
+            Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
 
-        # A permission denial is recorded as a blocker, the outcome is impl-failed, and there is no retry.
-        & $resetRecords
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-deny'))
-        $state = & $stateFile 'cl'
-        $run = $state.runs[-1]
-        & $expect ($r.Exit -eq 1 -and $run.outcome -eq 'impl-failed' -and @($run.permissionDenials).Count -eq 1 -and $run.permissionDenials[0].tool -eq 'Bash' -and $run.permissionDenials[0].reason -match 'denied' -and $run.reason -match 'permission denied' -and -not $run.envBlocked -and $state.stage -eq 'executor-impl-failed') "a permission denial was not recorded as impl-failed: $($r.Text)"
-        & $expect (@(& $calls).Count -eq 1) 'a denied run was retried'
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-denyenv'))
-        $state = & $stateFile 'cl'
-        $run = $state.runs[-1]
-        & $expect ($run.outcome -eq 'env-blocked' -and $run.envBlocked -and @($run.permissionDenials).Count -eq 1 -and $state.stage -eq 'executor-env-blocked') "an executor ENV-BLOCKED line with a denial was not env-blocked: $($r.Text)"
+            # A permission denial is recorded as a blocker, the outcome is impl-failed, and there is no retry.
+            & $resetRecords
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-deny'))
+            $state = & $stateFile 'cl'
+            $run = $state.runs[-1]
+            & $expect ($r.Exit -eq 1 -and $run.outcome -eq 'impl-failed' -and @($run.permissionDenials).Count -eq 1 -and $run.permissionDenials[0].tool -eq 'Bash' -and $run.permissionDenials[0].reason -match 'denied' -and $run.reason -match 'permission denied' -and -not $run.envBlocked -and $state.stage -eq 'executor-impl-failed') "a permission denial was not recorded as impl-failed: $($r.Text)"
+            & $expect (@(& $calls).Count -eq 1) 'a denied run was retried'
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-denyenv'))
+            $state = & $stateFile 'cl'
+            $run = $state.runs[-1]
+            & $expect ($run.outcome -eq 'env-blocked' -and $run.envBlocked -and @($run.permissionDenials).Count -eq 1 -and $state.stage -eq 'executor-env-blocked') "an executor ENV-BLOCKED line with a denial was not env-blocked: $($r.Text)"
 
-        # The runner refuses to add a bypass, or to override its own isolation arguments, and starts nothing.
-        & $resetRecords
-        $runsBefore = @((& $stateFile 'cl').runs).Count
-        foreach ($extra in @(' --permission-mode bypassPermissions', ' --permission-mode=bypassPermissions', ' --dangerously-skip-permissions', ' --settings other.json', ' --settings=other.json', ' --allowedTools=Bash(*)', ' --allowed-tools Bash', ' --tools=Bash',
-                ' --mcp-config=other.json', ' --resume=other-session', ' --model=claude-opus-9', ' --add-dir=C:/elsewhere', ' --system-prompt=x', ' --setting-sources=user', ' --verbose-extra'))
-        {
-            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-ClaudeExtraArgs', $extra)
-            & $expect ($r.Exit -ne 0 -and $r.Text -match 'refused' -and @(& $calls).Count -eq 0 -and @((& $stateFile 'cl').runs).Count -eq $runsBefore) "extra arguments '$extra' were not refused before the launch: $($r.Text)"
-        }
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'unmarked'))
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'marked self-test stub' -and @(& $calls).Count -eq 0) "an unmarked script was accepted as claude: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'cl', '-Resume', '-PromptFile', $fixPrompt)
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'only supported for the Claude executors') "-Resume was accepted for codex: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-Resume')
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'needs -PromptFile') "-Resume without a prompt file was accepted: $($r.Text)"
-
-        # Token budget: enforced from the stream while the process runs; the tree is killed, termination=budget.
-        $env:AW_PKG_TEST_TOKENS = '5000'
-        $timer = [Diagnostics.Stopwatch]::StartNew()
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-usagesleep'), '-MaxInputTokens', '1000')
-        $state = & $stateFile 'cl'
-        $run = $state.runs[-1]
-        & $expect ($r.Exit -eq 1 -and $run.termination -eq 'budget' -and $null -eq $run.exitCode -and $run.outcome -eq 'impl-failed' -and $run.containmentVerified -eq $true -and $timer.Elapsed.TotalSeconds -lt 90) "the token budget was not enforced: exit $($r.Exit), $([int]$timer.Elapsed.TotalSeconds)s, $($r.Text)"
-        # Terminal usage alone (no per-message usage) counts: 1200 fresh + 800 cached against a 1000 limit is over budget, never completed.
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-terminal-only'), '-MaxInputTokens', '1000')
-        $state = & $stateFile 'cl'
-        & $expect ($r.Exit -eq 1 -and $state.runs[-1].termination -eq 'budget' -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].tokens.input -eq 2000) "terminal-only usage over the limit was not a budget failure: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-terminal-only'), '-MaxInputTokens', '5000')
-        $state = & $stateFile 'cl'
-        & $expect ($r.Exit -eq 0 -and $state.runs[-1].termination -eq 'exit' -and $state.runs[-1].outcome -eq 'completed' -and $state.runs[-1].tokens.input -eq 2000) "terminal-only usage within the limit did not complete: $($r.Text)"
-        $peak = New-StreamMonitor (Join-Path $root 'no-such-peak.jsonl')
-        $peak.ResultUsage = @{ input = 1200; cacheCreation = 0; cacheRead = 800; output = 10 }
-        $first = Get-MonitorEnforcedInput $peak
-        $peak.ResultUsage = @{ input = 10; cacheCreation = 0; cacheRead = 0; output = 10 }
-        & $expect ($first -eq 2000 -and (Get-MonitorEnforcedInput $peak) -eq 2000) 'the enforced input went down after a smaller report'
-
-        # Resume continues the same session; the remaining budget is what is left of the cumulative one.
-        $env:AW_PKG_TEST_TOKENS = '600'
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxInputTokens', '1000')
-        $state = & $stateFile 'cl'
-        & $expect ($r.Exit -eq 0 -and $state.runs[-1].outcome -eq 'completed' -and $state.runs[-1].tokens.input -eq 600 -and $state.runs[-1].budget.priorInputTokens -eq 0) "the budget of a new session did not start fresh: $($r.Text)"
-        & $resetRecords
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-usagesleep'), '-MaxInputTokens', '1000', '-Resume', '-PromptFile', $fixPrompt)
-        $state = & $stateFile 'cl'
-        $run = $state.runs[-1]
-        & $expect ($run.termination -eq 'budget' -and $run.budget.priorInputTokens -eq 600 -and $run.budget.remainingInputTokens -eq 400 -and $run.budget.priorSeconds -gt 0 -and $run.resumedFrom.sessionId -eq 'stub-claude-session' -and $run.chainId -eq $state.runs[-2].chainId) "resume did not carry the budgets: $($r.Text)"
-        $callFiles = @(& $calls)
-        $call = if ($callFiles.Count) { Get-Content -LiteralPath $callFiles[0].FullName -Raw | ConvertFrom-Json } else { $null }
-        $resumeAt = if ($call) { [Array]::IndexOf(@($call.args), '--resume') } else { -1 }
-        & $expect ($call -and $resumeAt -ge 0 -and $call.args[$resumeAt + 1] -eq 'stub-claude-session' -and $call.stdin -match 'Fix request' -and [IO.Path]::GetFullPath([string]$call.cwd).TrimEnd('\') -ieq [IO.Path]::GetFullPath([string]$state.worktree).TrimEnd('\')) 'resume did not continue the session with the new prompt in the worktree'
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxInputTokens', '1000', '-Resume', '-PromptFile', $fixPrompt)
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'budget of this executor is used up') "a resume past the cumulative budget was started: $($r.Text)"
-
-        # A grandchild of the Claude executor does not survive the timeout.
-        $env:AW_PKG_TEST_TOKENS = '100'
-        Remove-Item -LiteralPath $env:AW_PKG_TEST_PIDFILE -ErrorAction SilentlyContinue
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-tree'), '-MaxMinutes', '0.15')
-        $state = & $stateFile 'cl'
-        $childPid = if (Test-Path $env:AW_PKG_TEST_PIDFILE) { [int](Get-Content $env:AW_PKG_TEST_PIDFILE -Raw).Trim() } else { 0 }
-        Start-Sleep -Milliseconds 500
-        & $expect ($childPid -gt 0 -and $state.runs[-1].termination -eq 'timeout' -and -not (Get-Process -Id $childPid -ErrorAction SilentlyContinue)) "a grandchild of the claude stub survived the timeout (pid $childPid): $($r.Text)"
-        if ($childPid -gt 0) { Stop-Process -Id $childPid -Force -ErrorAction SilentlyContinue }
-
-        # Haiku: refused without the header line, before anything is recorded or started.
-        & $resetRecords
-        $runsBefore = @((& $stateFile 'cl').runs).Count
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-ok'))
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'Haiku-scope' -and @(& $calls).Count -eq 0 -and @((& $stateFile 'cl').runs).Count -eq $runsBefore) "claude-haiku was accepted without the Haiku-scope header: $($r.Text)"
-        # The model belongs to the executor's family: a Haiku model cannot ride in on another executor kind, and the reverse.
-        foreach ($pair in @(@('claude-sonnet', 'claude-haiku-5-5'), @('claude-sonnet', 'haiku'), @('claude-haiku', 'claude-sonnet-5-5'), @('claude-sonnet', 'claude-opus-5-5')))
-        {
-            $r = & $pkg @('run', '-Id', 'cl', '-Executor', $pair[0], '-Model', $pair[1], '-ClaudePath', (& $stub 'c-ok'))
-            & $expect ($r.Exit -ne 0 -and $r.Text -match 'does not belong to executor' -and @(& $calls).Count -eq 0 -and @((& $stateFile 'cl').runs).Count -eq $runsBefore) "model $($pair[1]) was accepted for $($pair[0]): $($r.Text)"
-        }
-
-        # The version probe is bounded and contained: a hanging --version does not stall the run.
-        $env:AW_PKG_TEST_HANGVERSION = '1'
-        $timer = [Diagnostics.Stopwatch]::StartNew()
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-ProbeSeconds', '2')
-        $state = & $stateFile 'cl'
-        Remove-Item Env:AW_PKG_TEST_HANGVERSION -ErrorAction SilentlyContinue
-        & $expect ($r.Exit -eq 0 -and $null -eq $state.runs[-1].claudeCliVersion -and $state.runs[-1].outcome -eq 'completed' -and $timer.Elapsed.TotalSeconds -lt 50) "a hanging version probe was not bounded: $([int]$timer.Elapsed.TotalSeconds)s, $($r.Text)"
-
-        # The session identity comes from the init event; a resumed session must answer with the id it resumed.
-        $env:AW_PKG_TEST_NOINIT = '1'
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'))
-        $state = & $stateFile 'cl'
-        Remove-Item Env:AW_PKG_TEST_NOINIT -ErrorAction SilentlyContinue
-        & $expect ($r.Exit -eq 1 -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].reason -match 'session identity' -and $null -eq $state.runs[-1].sessionId) "a run without an init session id was accepted: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'))
-        $env:AW_PKG_TEST_SID = 'some-other-session'
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-Resume', '-PromptFile', $fixPrompt)
-        $state = & $stateFile 'cl'
-        Remove-Item Env:AW_PKG_TEST_SID -ErrorAction SilentlyContinue
-        & $expect ($r.Exit -eq 1 -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].reason -match 'session identity: the resumed session answered' -and $null -eq $state.runs[-1].sessionId) "a resumed session with a different init id was accepted: $($r.Text)"
-
-        # Haiku mechanical: changes inside allowedPaths pass, a change outside them is a scope failure.
-        $r = & $pkg @('new', '-Id', 'hk', '-Brief', $briefHaiku, '-Checks', $scopeManifest)
-        & $expect ($r.Exit -eq 0) "haiku package could not be created: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'hk', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-in'))
-        $state = & $stateFile 'hk'
-        & $expect ($r.Exit -eq 0 -and $state.runs[-1].outcome -eq 'completed' -and $state.runs[-1].model -eq 'claude-haiku-5-5' -and $state.runs[-1].haikuScope -eq 'mechanical') "a change inside allowedPaths was refused: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'hk', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-out'))
-        $state = & $stateFile 'hk'
-        & $expect ($r.Exit -eq 1 -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].reason -match '^scope:' -and $state.runs[-1].reason -match 'outside\.txt' -and @($state.runs[-1].scopeViolations) -contains 'outside.txt') "a change outside allowedPaths was not a scope failure: $($r.Text)"
-        # The brief-named script is allowed (executors), the settings are the executor's, and nothing else of scripts/ is.
-        $hkSettings = Get-Content -LiteralPath $state.runs[-1].permissions.settingsFile.path -Raw | ConvertFrom-Json
-        & $expect ($hkSettings.permissions.allow -contains 'Bash(pwsh scripts/custom-check.ps1:*)' -and $hkSettings.permissions.allow -contains 'Bash(pwsh -NoProfile -File scripts/custom-check.ps1:*)' -and $hkSettings.permissions.allow -contains 'Edit') 'the script named by the brief is not allowed'
-        $badScripts = Join-Path $root 'bad-scripts.json'
-        foreach ($badScript in @('../outside.ps1', 'scripts/../x.ps1', 'other/x.ps1', '/abs/x.ps1', 'scripts/x.sh'))
-        {
-            [IO.File]::WriteAllText($badScripts, (@{ allowedScripts = @($badScript) } | ConvertTo-Json))
-            $refused = $false
-            try { Read-Manifest $badScripts | Out-Null } catch { $refused = $true }
-            & $expect $refused "allowed script '$badScript' was accepted"
-        }
-        # Ignored files and renames are scope too (the run's own changes are the difference of two worktree snapshots).
-        Add-Content -LiteralPath (Join-Path $main '.git/info/exclude') "ignored-*.txt`n"
-        $r = & $pkg @('run', '-Id', 'hk', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-ignored'))
-        $state = & $stateFile 'hk'
-        & $expect ($r.Exit -eq 1 -and $state.runs[-1].reason -match '^scope:' -and @($state.runs[-1].scopeViolations) -contains 'ignored-note.txt') "an ignored file outside allowedPaths was not a scope failure: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'hk', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-rename'))
-        $state = & $stateFile 'hk'
-        & $expect ($r.Exit -eq 1 -and @($state.runs[-1].scopeViolations) -contains 'b.txt' -and @($state.runs[-1].scopeViolations) -notcontains 'allowed/moved.txt') "a rename out of scope into allowed/ hid the source: $($r.Text) $(@($state.runs[-1].scopeViolations) -join ',')"
-        $r = & $pkg @('run', '-Id', 'hk', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-bin'))
-        $state = & $stateFile 'hk'
-        & $expect ($r.Exit -eq 0 -and $state.runs[-1].outcome -eq 'completed') "build output was treated as scope: $($r.Text)"
-
-        # Haiku helper is read-only: any change is a scope failure; the main checkout guard covers Claude executors too.
-        $r = & $pkg @('new', '-Id', 'hh', '-Brief', $briefHelper)
-        & $expect ($r.Exit -eq 0) "helper package could not be created: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'hh', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-ok'))
-        $state = & $stateFile 'hh'
-        & $expect ($r.Exit -eq 0 -and $state.runs[-1].outcome -eq 'completed') "a read-only helper run failed: $($r.Text)"
-        $helperCall = Get-Content -LiteralPath (@(& $calls)[-1].FullName) -Raw | ConvertFrom-Json
-        $helperRules = [string]$helperCall.args[[Array]::IndexOf(@($helperCall.args), '--append-system-prompt') + 1]
-        & $expect ($helperRules -match 'pwsh scripts/kb\.ps1 init -Role helper' -and $helperRules -notmatch 'init -Role executor') 'a Haiku helper was not told to start with kb init -Role helper'
-        $helperSettings = Get-Content -LiteralPath $state.runs[-1].permissions.settingsFile.path -Raw | ConvertFrom-Json
-        $helperArgs = @($helperCall.args)
-        & $expect ($helperArgs[[Array]::IndexOf($helperArgs, '--tools') + 1] -eq 'Read,Glob,Grep,Bash' -and $helperSettings.permissions.deny -contains 'Edit' -and $helperSettings.permissions.deny -contains 'Write' -and -not ($helperSettings.permissions.allow -contains 'Edit') -and -not ($helperSettings.permissions.allow -contains 'Write') -and -not ($helperSettings.permissions.allow -contains 'Bash(dotnet build:*)') -and -not ($helperSettings.permissions.allow -contains 'Bash(pwsh scripts/verify.ps1:*)') -and $helperSettings.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 read:*)') 'a Haiku helper still has Edit, Write or mutating shell rules'
-        & $expect ($helperSettings.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 check -NoFix)' -and $helperSettings.permissions.allow -contains 'Bash(pwsh -NoProfile -File scripts/kb.ps1 check -NoFix)' -and -not ($helperSettings.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 check:*)') -and -not ($helperSettings.permissions.allow -contains 'Bash(pwsh -NoProfile -File scripts/kb.ps1 check:*)') -and -not ($helperSettings.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 selftest:*)') -and $helperSettings.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 changed:*)') 'a helper can run kb.ps1 check without -NoFix'
-        $helperRuleMatches = {
-            param([string]$Command)
-            foreach ($rule in @($helperSettings.permissions.allow)) { if ($rule -match '^Bash\((.*)\)$' -and $Command -like ($Matches[1] -replace ':\*$', '*')) { return $true } }
-            $false
-        }
-        & $expect ((& $helperRuleMatches 'pwsh scripts/kb.ps1 check -NoFix') -and -not (& $helperRuleMatches 'pwsh scripts/kb.ps1 check') -and -not (& $helperRuleMatches 'pwsh scripts/kb.ps1 check -Json') -and -not (& $helperRuleMatches 'pwsh scripts/kb.ps1 check -NoFix; rm -rf x')) 'the helper check rule does not pin -NoFix exactly'
-        $r = & $pkg @('run', '-Id', 'hh', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-ignored'))
-        $state = & $stateFile 'hh'
-        & $expect ($r.Exit -eq 1 -and @($state.runs[-1].scopeViolations) -contains 'ignored-note.txt') "a helper that wrote an ignored file was not a scope failure: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'hh', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-in'))
-        $state = & $stateFile 'hh'
-        & $expect ($r.Exit -eq 1 -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].reason -match '^scope:') "a helper that changed a file was not a scope failure: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'hh', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-mutate'))
-        $state = & $stateFile 'hh'
-        & $expect ($r.Exit -eq 5 -and $state.guard.mainCheckoutMutated -and $state.stage -eq 'blocked-main-mutated') "a claude executor writing into the main checkout was not stopped: $($r.Text)"
-
-        # The real install is an npm shim: it is resolved from its own text to node plus the package script, never run through a shell.
-        $fakeNpm = Join-Path $root 'fake-npm'
-        $fakeScriptDir = Join-Path $fakeNpm 'node_modules/@anthropic-ai/claude-code'
-        New-Item -ItemType Directory -Path $fakeScriptDir -Force | Out-Null
-        $fakeShim = Join-Path $fakeNpm 'claude.cmd'
-        [IO.File]::WriteAllText($fakeShim, "@ECHO off`r`nSETLOCAL`r`nSET dp0=%~dp0`r`n`"%_prog%`"  `"%dp0%\node_modules\@anthropic-ai\claude-code\cli.js`" %*`r`n")
-        [IO.File]::WriteAllText((Join-Path $fakeScriptDir 'cli.js'), "// replaced below`r`n")
-        $oldClaudePath = $script:ClaudePath
-        try
-        {
-            $pwshExe = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
-            $script:ClaudePath = $pwshExe
-            $launcher = Resolve-ClaudeLauncher
-            & $expect ($launcher.File -eq $pwshExe -and @($launcher.Prefix).Count -eq 0) 'an .exe path was not accepted as is'
-            $nodeCommand = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-            if (-not $nodeCommand) { Write-Host 'SKIP self-test: node is not installed, the npm shim cases cannot run.' }
-            else
+            # The runner refuses to add a bypass, or to override its own isolation arguments, and starts nothing.
+            & $resetRecords
+            $runsBefore = @((& $stateFile 'cl').runs).Count
+            foreach ($extra in @(' --permission-mode bypassPermissions', ' --permission-mode=bypassPermissions', ' --dangerously-skip-permissions', ' --settings other.json', ' --settings=other.json', ' --allowedTools=Bash(*)', ' --allowed-tools Bash', ' --tools=Bash',
+                    ' --mcp-config=other.json', ' --resume=other-session', ' --model=claude-opus-9', ' --add-dir=C:/elsewhere', ' --system-prompt=x', ' --setting-sources=user', ' --verbose-extra'))
             {
-                $script:ClaudePath = $fakeShim
+                $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-ClaudeExtraArgs', $extra)
+                & $expect ($r.Exit -ne 0 -and $r.Text -match 'refused' -and @(& $calls).Count -eq 0 -and @((& $stateFile 'cl').runs).Count -eq $runsBefore) "extra arguments '$extra' were not refused before the launch: $($r.Text)"
+            }
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'unmarked'))
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'marked self-test stub' -and @(& $calls).Count -eq 0) "an unmarked script was accepted as claude: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'cl', '-Resume', '-PromptFile', $fixPrompt)
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'only supported for the Claude executors') "-Resume was accepted for codex: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-Resume')
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'needs -PromptFile') "-Resume without a prompt file was accepted: $($r.Text)"
+
+            # Token budget: enforced from the stream while the process runs; the tree is killed, termination=budget.
+            $env:AW_PKG_TEST_TOKENS = '5000'
+            $timer = [Diagnostics.Stopwatch]::StartNew()
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-usagesleep'), '-MaxInputTokens', '1000')
+            $state = & $stateFile 'cl'
+            $run = $state.runs[-1]
+            & $expect ($r.Exit -eq 1 -and $run.termination -eq 'budget' -and $null -eq $run.exitCode -and $run.outcome -eq 'impl-failed' -and $run.containmentVerified -eq $true -and $timer.Elapsed.TotalSeconds -lt 90) "the token budget was not enforced: exit $($r.Exit), $([int]$timer.Elapsed.TotalSeconds)s, $($r.Text)"
+            # Terminal usage alone (no per-message usage) counts: 1200 fresh + 800 cached against a 1000 limit is over budget, never completed.
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-terminal-only'), '-MaxInputTokens', '1000')
+            $state = & $stateFile 'cl'
+            & $expect ($r.Exit -eq 1 -and $state.runs[-1].termination -eq 'budget' -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].tokens.input -eq 2000) "terminal-only usage over the limit was not a budget failure: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-terminal-only'), '-MaxInputTokens', '5000')
+            $state = & $stateFile 'cl'
+            & $expect ($r.Exit -eq 0 -and $state.runs[-1].termination -eq 'exit' -and $state.runs[-1].outcome -eq 'completed' -and $state.runs[-1].tokens.input -eq 2000) "terminal-only usage within the limit did not complete: $($r.Text)"
+            $peak = New-StreamMonitor (Join-Path $root 'no-such-peak.jsonl')
+            $peak.ResultUsage = @{ input = 1200; cacheCreation = 0; cacheRead = 800; output = 10 }
+            $first = Get-MonitorEnforcedInput $peak
+            $peak.ResultUsage = @{ input = 10; cacheCreation = 0; cacheRead = 0; output = 10 }
+            & $expect ($first -eq 2000 -and (Get-MonitorEnforcedInput $peak) -eq 2000) 'the enforced input went down after a smaller report'
+
+            # Resume continues the same session; the remaining budget is what is left of the cumulative one.
+            $env:AW_PKG_TEST_TOKENS = '600'
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxInputTokens', '1000')
+            $state = & $stateFile 'cl'
+            & $expect ($r.Exit -eq 0 -and $state.runs[-1].outcome -eq 'completed' -and $state.runs[-1].tokens.input -eq 600 -and $state.runs[-1].budget.priorInputTokens -eq 0) "the budget of a new session did not start fresh: $($r.Text)"
+            & $resetRecords
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-usagesleep'), '-MaxInputTokens', '1000', '-Resume', '-PromptFile', $fixPrompt)
+            $state = & $stateFile 'cl'
+            $run = $state.runs[-1]
+            & $expect ($run.termination -eq 'budget' -and $run.budget.priorInputTokens -eq 600 -and $run.budget.remainingInputTokens -eq 400 -and $run.budget.priorSeconds -gt 0 -and $run.resumedFrom.sessionId -eq 'stub-claude-session' -and $run.chainId -eq $state.runs[-2].chainId) "resume did not carry the budgets: $($r.Text)"
+            $callFiles = @(& $calls)
+            $call = if ($callFiles.Count) { Get-Content -LiteralPath $callFiles[0].FullName -Raw | ConvertFrom-Json } else { $null }
+            $resumeAt = if ($call) { [Array]::IndexOf(@($call.args), '--resume') } else { -1 }
+            & $expect ($call -and $resumeAt -ge 0 -and $call.args[$resumeAt + 1] -eq 'stub-claude-session' -and $call.stdin -match 'Fix request' -and [IO.Path]::GetFullPath([string]$call.cwd).TrimEnd('\') -ieq [IO.Path]::GetFullPath([string]$state.worktree).TrimEnd('\')) 'resume did not continue the session with the new prompt in the worktree'
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxInputTokens', '1000', '-Resume', '-PromptFile', $fixPrompt)
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'budget of this executor is used up') "a resume past the cumulative budget was started: $($r.Text)"
+
+            # A grandchild of the Claude executor does not survive the timeout.
+            $env:AW_PKG_TEST_TOKENS = '100'
+            Remove-Item -LiteralPath $env:AW_PKG_TEST_PIDFILE -ErrorAction SilentlyContinue
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-tree'), '-MaxMinutes', '0.15')
+            $state = & $stateFile 'cl'
+            $childPid = if (Test-Path $env:AW_PKG_TEST_PIDFILE) { [int](Get-Content $env:AW_PKG_TEST_PIDFILE -Raw).Trim() } else { 0 }
+            Start-Sleep -Milliseconds 500
+            & $expect ($childPid -gt 0 -and $state.runs[-1].termination -eq 'timeout' -and -not (Get-Process -Id $childPid -ErrorAction SilentlyContinue)) "a grandchild of the claude stub survived the timeout (pid $childPid): $($r.Text)"
+            if ($childPid -gt 0) { Stop-Process -Id $childPid -Force -ErrorAction SilentlyContinue }
+
+            # Haiku: refused without the header line, before anything is recorded or started.
+            & $resetRecords
+            $runsBefore = @((& $stateFile 'cl').runs).Count
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-ok'))
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'Haiku-scope' -and @(& $calls).Count -eq 0 -and @((& $stateFile 'cl').runs).Count -eq $runsBefore) "claude-haiku was accepted without the Haiku-scope header: $($r.Text)"
+            # The model belongs to the executor's family: a Haiku model cannot ride in on another executor kind, and the reverse.
+            foreach ($pair in @(@('claude-sonnet', 'claude-haiku-5-5'), @('claude-sonnet', 'haiku'), @('claude-haiku', 'claude-sonnet-5-5'), @('claude-sonnet', 'claude-opus-5-5')))
+            {
+                $r = & $pkg @('run', '-Id', 'cl', '-Executor', $pair[0], '-Model', $pair[1], '-ClaudePath', (& $stub 'c-ok'))
+                & $expect ($r.Exit -ne 0 -and $r.Text -match 'does not belong to executor' -and @(& $calls).Count -eq 0 -and @((& $stateFile 'cl').runs).Count -eq $runsBefore) "model $($pair[1]) was accepted for $($pair[0]): $($r.Text)"
+            }
+
+            # The version probe is bounded and contained: a hanging --version does not stall the run.
+            $env:AW_PKG_TEST_HANGVERSION = '1'
+            $timer = [Diagnostics.Stopwatch]::StartNew()
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-ProbeSeconds', '2')
+            $state = & $stateFile 'cl'
+            Remove-Item Env:AW_PKG_TEST_HANGVERSION -ErrorAction SilentlyContinue
+            & $expect ($r.Exit -eq 0 -and $null -eq $state.runs[-1].claudeCliVersion -and $state.runs[-1].outcome -eq 'completed' -and $timer.Elapsed.TotalSeconds -lt 50) "a hanging version probe was not bounded: $([int]$timer.Elapsed.TotalSeconds)s, $($r.Text)"
+
+            # The session identity comes from the init event; a resumed session must answer with the id it resumed.
+            $env:AW_PKG_TEST_NOINIT = '1'
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'))
+            $state = & $stateFile 'cl'
+            Remove-Item Env:AW_PKG_TEST_NOINIT -ErrorAction SilentlyContinue
+            & $expect ($r.Exit -eq 1 -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].reason -match 'session identity' -and $null -eq $state.runs[-1].sessionId) "a run without an init session id was accepted: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'))
+            $env:AW_PKG_TEST_SID = 'some-other-session'
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-Resume', '-PromptFile', $fixPrompt)
+            $state = & $stateFile 'cl'
+            Remove-Item Env:AW_PKG_TEST_SID -ErrorAction SilentlyContinue
+            & $expect ($r.Exit -eq 1 -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].reason -match 'session identity: the resumed session answered' -and $null -eq $state.runs[-1].sessionId) "a resumed session with a different init id was accepted: $($r.Text)"
+
+            # Haiku mechanical: changes inside allowedPaths pass, a change outside them is a scope failure.
+            $r = & $pkg @('new', '-Id', 'hk', '-Brief', $briefHaiku, '-Checks', $scopeManifest)
+            & $expect ($r.Exit -eq 0) "haiku package could not be created: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'hk', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-in'))
+            $state = & $stateFile 'hk'
+            & $expect ($r.Exit -eq 0 -and $state.runs[-1].outcome -eq 'completed' -and $state.runs[-1].model -eq 'claude-haiku-5-5' -and $state.runs[-1].haikuScope -eq 'mechanical') "a change inside allowedPaths was refused: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'hk', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-out'))
+            $state = & $stateFile 'hk'
+            & $expect ($r.Exit -eq 1 -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].reason -match '^scope:' -and $state.runs[-1].reason -match 'outside\.txt' -and @($state.runs[-1].scopeViolations) -contains 'outside.txt') "a change outside allowedPaths was not a scope failure: $($r.Text)"
+            # The brief-named script is allowed (executors), the settings are the executor's, and nothing else of scripts/ is.
+            $hkSettings = Get-Content -LiteralPath $state.runs[-1].permissions.settingsFile.path -Raw | ConvertFrom-Json
+            & $expect ($hkSettings.permissions.allow -contains 'Bash(pwsh scripts/custom-check.ps1:*)' -and $hkSettings.permissions.allow -contains 'Bash(pwsh -NoProfile -File scripts/custom-check.ps1:*)' -and $hkSettings.permissions.allow -contains 'Edit') 'the script named by the brief is not allowed'
+            $badScripts = Join-Path $root 'bad-scripts.json'
+            foreach ($badScript in @('../outside.ps1', 'scripts/../x.ps1', 'other/x.ps1', '/abs/x.ps1', 'scripts/x.sh'))
+            {
+                [IO.File]::WriteAllText($badScripts, (@{ allowedScripts = @($badScript) } | ConvertTo-Json))
+                $refused = $false
+                try { Read-Manifest $badScripts | Out-Null } catch { $refused = $true }
+                & $expect $refused "allowed script '$badScript' was accepted"
+            }
+            # Ignored files and renames are scope too (the run's own changes are the difference of two worktree snapshots).
+            Add-Content -LiteralPath (Join-Path $main '.git/info/exclude') "ignored-*.txt`n"
+            $r = & $pkg @('run', '-Id', 'hk', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-ignored'))
+            $state = & $stateFile 'hk'
+            & $expect ($r.Exit -eq 1 -and $state.runs[-1].reason -match '^scope:' -and @($state.runs[-1].scopeViolations) -contains 'ignored-note.txt') "an ignored file outside allowedPaths was not a scope failure: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'hk', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-rename'))
+            $state = & $stateFile 'hk'
+            & $expect ($r.Exit -eq 1 -and @($state.runs[-1].scopeViolations) -contains 'b.txt' -and @($state.runs[-1].scopeViolations) -notcontains 'allowed/moved.txt') "a rename out of scope into allowed/ hid the source: $($r.Text) $(@($state.runs[-1].scopeViolations) -join ',')"
+            $r = & $pkg @('run', '-Id', 'hk', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-bin'))
+            $state = & $stateFile 'hk'
+            & $expect ($r.Exit -eq 0 -and $state.runs[-1].outcome -eq 'completed') "build output was treated as scope: $($r.Text)"
+
+            # Haiku helper is read-only: any change is a scope failure; the main checkout guard covers Claude executors too.
+            $r = & $pkg @('new', '-Id', 'hh', '-Brief', $briefHelper)
+            & $expect ($r.Exit -eq 0) "helper package could not be created: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'hh', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-ok'))
+            $state = & $stateFile 'hh'
+            & $expect ($r.Exit -eq 0 -and $state.runs[-1].outcome -eq 'completed') "a read-only helper run failed: $($r.Text)"
+            $helperCall = Get-Content -LiteralPath (@(& $calls)[-1].FullName) -Raw | ConvertFrom-Json
+            $helperRules = [string]$helperCall.args[[Array]::IndexOf(@($helperCall.args), '--append-system-prompt') + 1]
+            & $expect ($helperRules -match 'pwsh scripts/kb\.ps1 init -Role helper' -and $helperRules -notmatch 'init -Role executor') 'a Haiku helper was not told to start with kb init -Role helper'
+            $helperSettings = Get-Content -LiteralPath $state.runs[-1].permissions.settingsFile.path -Raw | ConvertFrom-Json
+            $helperArgs = @($helperCall.args)
+            & $expect ($helperArgs[[Array]::IndexOf($helperArgs, '--tools') + 1] -eq 'Read,Glob,Grep,Bash' -and $helperSettings.permissions.deny -contains 'Edit' -and $helperSettings.permissions.deny -contains 'Write' -and -not ($helperSettings.permissions.allow -contains 'Edit') -and -not ($helperSettings.permissions.allow -contains 'Write') -and -not ($helperSettings.permissions.allow -contains 'Bash(dotnet build:*)') -and -not ($helperSettings.permissions.allow -contains 'Bash(pwsh scripts/verify.ps1:*)') -and $helperSettings.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 read:*)') 'a Haiku helper still has Edit, Write or mutating shell rules'
+            & $expect ($helperSettings.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 check -NoFix)' -and $helperSettings.permissions.allow -contains 'Bash(pwsh -NoProfile -File scripts/kb.ps1 check -NoFix)' -and -not ($helperSettings.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 check:*)') -and -not ($helperSettings.permissions.allow -contains 'Bash(pwsh -NoProfile -File scripts/kb.ps1 check:*)') -and -not ($helperSettings.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 selftest:*)') -and $helperSettings.permissions.allow -contains 'Bash(pwsh scripts/kb.ps1 changed:*)') 'a helper can run kb.ps1 check without -NoFix'
+            $helperRuleMatches = {
+                param([string]$Command)
+                foreach ($rule in @($helperSettings.permissions.allow)) { if ($rule -match '^Bash\((.*)\)$' -and $Command -like ($Matches[1] -replace ':\*$', '*')) { return $true } }
+                $false
+            }
+            & $expect ((& $helperRuleMatches 'pwsh scripts/kb.ps1 check -NoFix') -and -not (& $helperRuleMatches 'pwsh scripts/kb.ps1 check') -and -not (& $helperRuleMatches 'pwsh scripts/kb.ps1 check -Json') -and -not (& $helperRuleMatches 'pwsh scripts/kb.ps1 check -NoFix; rm -rf x')) 'the helper check rule does not pin -NoFix exactly'
+            $r = & $pkg @('run', '-Id', 'hh', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-ignored'))
+            $state = & $stateFile 'hh'
+            & $expect ($r.Exit -eq 1 -and @($state.runs[-1].scopeViolations) -contains 'ignored-note.txt') "a helper that wrote an ignored file was not a scope failure: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'hh', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-write-in'))
+            $state = & $stateFile 'hh'
+            & $expect ($r.Exit -eq 1 -and $state.runs[-1].outcome -eq 'impl-failed' -and $state.runs[-1].reason -match '^scope:') "a helper that changed a file was not a scope failure: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'hh', '-Executor', 'claude-haiku', '-ClaudePath', (& $stub 'c-mutate'))
+            $state = & $stateFile 'hh'
+            & $expect ($r.Exit -eq 5 -and $state.guard.mainCheckoutMutated -and $state.stage -eq 'blocked-main-mutated') "a claude executor writing into the main checkout was not stopped: $($r.Text)"
+
+            # The real install is an npm shim: it is resolved from its own text to node plus the package script, never run through a shell.
+            $fakeNpm = Join-Path $root 'fake-npm'
+            $fakeScriptDir = Join-Path $fakeNpm 'node_modules/@anthropic-ai/claude-code'
+            New-Item -ItemType Directory -Path $fakeScriptDir -Force | Out-Null
+            $fakeShim = Join-Path $fakeNpm 'claude.cmd'
+            [IO.File]::WriteAllText($fakeShim, "@ECHO off`r`nSETLOCAL`r`nSET dp0=%~dp0`r`n`"%_prog%`"  `"%dp0%\node_modules\@anthropic-ai\claude-code\cli.js`" %*`r`n")
+            [IO.File]::WriteAllText((Join-Path $fakeScriptDir 'cli.js'), "// replaced below`r`n")
+            $oldClaudePath = $script:ClaudePath
+            try
+            {
+                $pwshExe = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
+                $script:ClaudePath = $pwshExe
                 $launcher = Resolve-ClaudeLauncher
-                & $expect ($launcher.File -eq $nodeCommand.Source -and (@($launcher.Prefix) -join ' ') -match 'claude-code\\cli\.js' -and $launcher.Display -match 'cli\.js') "an npm shim did not resolve to node plus cli.js: $($launcher | ConvertTo-Json -Compress)"
-                $script:ClaudePath = Join-Path $fakeNpm 'claude'
-                [IO.File]::WriteAllText($script:ClaudePath, "#!/bin/sh`n")
+                & $expect ($launcher.File -eq $pwshExe -and @($launcher.Prefix).Count -eq 0) 'an .exe path was not accepted as is'
+                $nodeCommand = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+                if (-not $nodeCommand) { Write-Host 'SKIP self-test: node is not installed, the npm shim cases cannot run.' }
+                else
+                {
+                    $script:ClaudePath = $fakeShim
+                    $launcher = Resolve-ClaudeLauncher
+                    & $expect ($launcher.File -eq $nodeCommand.Source -and (@($launcher.Prefix) -join ' ') -match 'claude-code\\cli\.js' -and $launcher.Display -match 'cli\.js') "an npm shim did not resolve to node plus cli.js: $($launcher | ConvertTo-Json -Compress)"
+                    $script:ClaudePath = Join-Path $fakeNpm 'claude'
+                    [IO.File]::WriteAllText($script:ClaudePath, "#!/bin/sh`n")
+                    $launcher = Resolve-ClaudeLauncher
+                    & $expect ($launcher.File -eq $nodeCommand.Source) 'the extensionless shim did not resolve through the .cmd beside it'
+                }
+                # The current npm package ships a native binary and its shim names it: resolved to that .exe, nothing started.
+                $nativeDir = Join-Path $fakeNpm 'native'
+                New-Item -ItemType Directory -Path (Join-Path $nativeDir 'node_modules/@anthropic-ai/claude-code/bin') -Force | Out-Null
+                [IO.File]::WriteAllText((Join-Path $nativeDir 'node_modules/@anthropic-ai/claude-code/bin/claude.exe'), 'not a real binary')
+                [IO.File]::WriteAllText((Join-Path $nativeDir 'claude.cmd'), "@ECHO off`r`n`"%dp0%\node_modules\@anthropic-ai\claude-code\bin\claude.exe`"   %*`r`n")
+                $script:ClaudePath = Join-Path $nativeDir 'claude.cmd'
                 $launcher = Resolve-ClaudeLauncher
-                & $expect ($launcher.File -eq $nodeCommand.Source) 'the extensionless shim did not resolve through the .cmd beside it'
+                & $expect ($launcher.File -like '*claude-code\bin\claude.exe' -and @($launcher.Prefix).Count -eq 0) "a shim that names the native claude.exe was not resolved to it: $($launcher | ConvertTo-Json -Compress)"
+                $brokenShim = Join-Path $fakeNpm 'broken.cmd'
+                [IO.File]::WriteAllText($brokenShim, "@ECHO off`r`necho nothing useful here`r`n")
+                $missingShim = Join-Path $fakeNpm 'missing.cmd'
+                [IO.File]::WriteAllText($missingShim, "@ECHO off`r`n`"%_prog%`" `"%dp0%\node_modules\@anthropic-ai\claude-code\bin\claude.exe`" %*`r`n")
+                New-Item -ItemType Directory -Path (Join-Path $fakeNpm 'node_modules/evil') -Force | Out-Null
+                [IO.File]::WriteAllText((Join-Path $fakeNpm 'node_modules/evil/tool.js'), "// not claude`r`n")
+                $evilShim = Join-Path $fakeNpm 'evil.cmd'
+                [IO.File]::WriteAllText($evilShim, "@ECHO off`r`n`"%_prog%`" `"%dp0%\node_modules\evil\tool.js`" %*`r`n")
+                $commentShim = Join-Path $fakeNpm 'comment.cmd'
+                [IO.File]::WriteAllText($commentShim, "@ECHO off`r`nREM `"%dp0%\node_modules\@anthropic-ai\claude-code\cli.js`"`r`n:: `"%dp0%\node_modules\@anthropic-ai\claude-code\cli.js`"`r`n`"%_prog%`" `"%dp0%\node_modules\evil\tool.js`" %*`r`n")
+                foreach ($case in @(@{ path = $evilShim; expect = 'names no node_modules' }, @{ path = $commentShim; expect = 'names no node_modules' }, @{ path = $brokenShim; expect = 'names no node_modules' }, @{ path = $missingShim; expect = 'does not exist' }, @{ path = (Join-Path $fakeNpm 'x.txt'); expect = 'neither an .exe nor an npm shim' }))
+                {
+                    $script:ClaudePath = $case.path
+                    if ($case.path -like '*.txt') { [IO.File]::WriteAllText($case.path, 'x') }
+                    $message = ''
+                    try { Resolve-ClaudeLauncher | Out-Null } catch { $message = $_.Exception.Message }
+                    & $expect ($message -match 'cannot resolve' -and $message -match [regex]::Escape($case.expect)) "an unresolvable shim ($($case.path)) was not refused clearly: '$message'"
+                }
             }
-            # The current npm package ships a native binary and its shim names it: resolved to that .exe, nothing started.
-            $nativeDir = Join-Path $fakeNpm 'native'
-            New-Item -ItemType Directory -Path (Join-Path $nativeDir 'node_modules/@anthropic-ai/claude-code/bin') -Force | Out-Null
-            [IO.File]::WriteAllText((Join-Path $nativeDir 'node_modules/@anthropic-ai/claude-code/bin/claude.exe'), 'not a real binary')
-            [IO.File]::WriteAllText((Join-Path $nativeDir 'claude.cmd'), "@ECHO off`r`n`"%dp0%\node_modules\@anthropic-ai\claude-code\bin\claude.exe`"   %*`r`n")
-            $script:ClaudePath = Join-Path $nativeDir 'claude.cmd'
-            $launcher = Resolve-ClaudeLauncher
-            & $expect ($launcher.File -like '*claude-code\bin\claude.exe' -and @($launcher.Prefix).Count -eq 0) "a shim that names the native claude.exe was not resolved to it: $($launcher | ConvertTo-Json -Compress)"
-            $brokenShim = Join-Path $fakeNpm 'broken.cmd'
-            [IO.File]::WriteAllText($brokenShim, "@ECHO off`r`necho nothing useful here`r`n")
-            $missingShim = Join-Path $fakeNpm 'missing.cmd'
-            [IO.File]::WriteAllText($missingShim, "@ECHO off`r`n`"%_prog%`" `"%dp0%\node_modules\@anthropic-ai\claude-code\bin\claude.exe`" %*`r`n")
-            New-Item -ItemType Directory -Path (Join-Path $fakeNpm 'node_modules/evil') -Force | Out-Null
-            [IO.File]::WriteAllText((Join-Path $fakeNpm 'node_modules/evil/tool.js'), "// not claude`r`n")
-            $evilShim = Join-Path $fakeNpm 'evil.cmd'
-            [IO.File]::WriteAllText($evilShim, "@ECHO off`r`n`"%_prog%`" `"%dp0%\node_modules\evil\tool.js`" %*`r`n")
-            $commentShim = Join-Path $fakeNpm 'comment.cmd'
-            [IO.File]::WriteAllText($commentShim, "@ECHO off`r`nREM `"%dp0%\node_modules\@anthropic-ai\claude-code\cli.js`"`r`n:: `"%dp0%\node_modules\@anthropic-ai\claude-code\cli.js`"`r`n`"%_prog%`" `"%dp0%\node_modules\evil\tool.js`" %*`r`n")
-            foreach ($case in @(@{ path = $evilShim; expect = 'names no node_modules' }, @{ path = $commentShim; expect = 'names no node_modules' }, @{ path = $brokenShim; expect = 'names no node_modules' }, @{ path = $missingShim; expect = 'does not exist' }, @{ path = (Join-Path $fakeNpm 'x.txt'); expect = 'neither an .exe nor an npm shim' }))
-            {
-                $script:ClaudePath = $case.path
-                if ($case.path -like '*.txt') { [IO.File]::WriteAllText($case.path, 'x') }
-                $message = ''
-                try { Resolve-ClaudeLauncher | Out-Null } catch { $message = $_.Exception.Message }
-                & $expect ($message -match 'cannot resolve' -and $message -match [regex]::Escape($case.expect)) "an unresolvable shim ($($case.path)) was not refused clearly: '$message'"
-            }
-        }
-        finally { $script:ClaudePath = $oldClaudePath }
+            finally { $script:ClaudePath = $oldClaudePath }
 
-        if ($nodeCommand)
-        {
-            [IO.File]::WriteAllText((Join-Path $fakeScriptDir 'cli.js'), @'
+            if ($nodeCommand)
+            {
+                [IO.File]::WriteAllText((Join-Path $fakeScriptDir 'cli.js'), @'
 const fs = require('fs');
 const a = process.argv.slice(2);
 if (a.includes('--version')) { console.log('9.9.9-npm-stub'); process.exit(0); }
@@ -6358,98 +7193,100 @@ if (process.env.AW_PKG_TEST_JS_TREE) {
   out({ type: 'result', subtype: 'success', is_error: false, result: 'npm stub done, stdin chars ' + stdin.length, session_id: sid, usage: { input_tokens: 5, output_tokens: 1 } });
 }
 '@)
-            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', $fakeShim)
-            $state = & $stateFile 'cl'
-            $run = $state.runs[-1]
-            $npmReport = if ($run.artifacts -and $run.artifacts.outMd -and (Test-Path -LiteralPath $run.artifacts.outMd.path -PathType Leaf)) { Get-Content -LiteralPath $run.artifacts.outMd.path -Raw } else { $null }
-            & $expect ($r.Exit -eq 0) "npm shim run: exit code is '$($r.Exit)', expected 0: $($r.Text)"
-            & $expect ($run.outcome -eq 'completed') "npm shim run: outcome is '$($run.outcome)', expected 'completed': $($r.Text)"
-            & $expect ($run.sessionId -eq 'npm-stub-session') "npm shim run: session id is '$($run.sessionId)', expected 'npm-stub-session'"
-            & $expect ($run.claudeCliVersion -eq '9.9.9-npm-stub') "npm shim run: claudeCliVersion is '$($run.claudeCliVersion)', expected '9.9.9-npm-stub' (probe problem: '$($run.claudeCliVersionProblem)')"
-            & $expect ($run.claudeExecutable -match 'cli\.js') "npm shim run: claudeExecutable is '$($run.claudeExecutable)', expected a path naming cli.js"
-            & $expect ($run.executor.pid -gt 0) "npm shim run: executor pid is '$($run.executor.pid)', expected > 0"
-            & $expect ($npmReport -match 'stdin chars [1-9]') "npm shim run: the report (out.md) is '$npmReport', expected 'stdin chars' followed by a non-zero count"
+                $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', $fakeShim)
+                $state = & $stateFile 'cl'
+                $run = $state.runs[-1]
+                $npmReport = if ($run.artifacts -and $run.artifacts.outMd -and (Test-Path -LiteralPath $run.artifacts.outMd.path -PathType Leaf)) { Get-Content -LiteralPath $run.artifacts.outMd.path -Raw } else { $null }
+                & $expect ($r.Exit -eq 0) "npm shim run: exit code is '$($r.Exit)', expected 0: $($r.Text)"
+                & $expect ($run.outcome -eq 'completed') "npm shim run: outcome is '$($run.outcome)', expected 'completed': $($r.Text)"
+                & $expect ($run.sessionId -eq 'npm-stub-session') "npm shim run: session id is '$($run.sessionId)', expected 'npm-stub-session'"
+                & $expect ($run.claudeCliVersion -eq '9.9.9-npm-stub') "npm shim run: claudeCliVersion is '$($run.claudeCliVersion)', expected '9.9.9-npm-stub' (probe problem: '$($run.claudeCliVersionProblem)')"
+                & $expect ($run.claudeExecutable -match 'cli\.js') "npm shim run: claudeExecutable is '$($run.claudeExecutable)', expected a path naming cli.js"
+                & $expect ($run.executor.pid -gt 0) "npm shim run: executor pid is '$($run.executor.pid)', expected > 0"
+                & $expect ($npmReport -match 'stdin chars [1-9]') "npm shim run: the report (out.md) is '$npmReport', expected 'stdin chars' followed by a non-zero count"
 
-            # node's own children are in the job: a grandchild of node does not survive the timeout.
-            $env:AW_PKG_TEST_JS_TREE = '1'
-            Remove-Item -LiteralPath $env:AW_PKG_TEST_PIDFILE -ErrorAction SilentlyContinue
-            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', $fakeShim, '-MaxMinutes', '0.15')
-            $state = & $stateFile 'cl'
-            $childPid = if (Test-Path $env:AW_PKG_TEST_PIDFILE) { [int](Get-Content $env:AW_PKG_TEST_PIDFILE -Raw).Trim() } else { 0 }
-            Start-Sleep -Milliseconds 500
-            & $expect ($childPid -gt 0 -and $state.runs[-1].termination -eq 'timeout' -and -not (Get-Process -Id $childPid -ErrorAction SilentlyContinue)) "a child of node survived the timeout (pid $childPid): $($r.Text)"
-            if ($childPid -gt 0) { Stop-Process -Id $childPid -Force -ErrorAction SilentlyContinue }
-            Remove-Item Env:AW_PKG_TEST_JS_TREE -ErrorAction SilentlyContinue
+                # node's own children are in the job: a grandchild of node does not survive the timeout.
+                $env:AW_PKG_TEST_JS_TREE = '1'
+                Remove-Item -LiteralPath $env:AW_PKG_TEST_PIDFILE -ErrorAction SilentlyContinue
+                $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', $fakeShim, '-MaxMinutes', '0.15')
+                $state = & $stateFile 'cl'
+                $childPid = if (Test-Path $env:AW_PKG_TEST_PIDFILE) { [int](Get-Content $env:AW_PKG_TEST_PIDFILE -Raw).Trim() } else { 0 }
+                Start-Sleep -Milliseconds 500
+                & $expect ($childPid -gt 0 -and $state.runs[-1].termination -eq 'timeout' -and -not (Get-Process -Id $childPid -ErrorAction SilentlyContinue)) "a child of node survived the timeout (pid $childPid): $($r.Text)"
+                if ($childPid -gt 0) { Stop-Process -Id $childPid -Force -ErrorAction SilentlyContinue }
+                Remove-Item Env:AW_PKG_TEST_JS_TREE -ErrorAction SilentlyContinue
+            }
+            # An interrupted Claude run keeps its place in the cumulative budget: rebuilt from its archived stream, or unknown and then blocking.
+            $r = & $pkg @('new', '-Id', 'rc', '-Brief', $briefFile)
+            & $expect ($r.Exit -eq 0) "accounting package could not be created: $($r.Text)"
+            $env:AW_PKG_TEST_TOKENS = '100'
+            $r = & $pkg @('run', '-Id', 'rc', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxInputTokens', '100000')
+            $state = & $stateFile 'rc'
+            $chainOfRc = [string]$state.runs[-1].chainId
+            $crashedDir = Join-Path $root 'crashed-claude'
+            New-Item -ItemType Directory -Path $crashedDir -Force | Out-Null
+            Copy-Item -LiteralPath (Join-Path $fixtureDir 'smoke-2-events.jsonl') -Destination (Join-Path $crashedDir 'events.jsonl')
+            (Get-Item -LiteralPath (Join-Path $crashedDir 'events.jsonl')).LastWriteTimeUtc = [DateTime]::UtcNow.AddSeconds(-295)
+            $crashClaude = {
+                param([string]$RunName, [string]$LogDir)
+                $fingerprint = Get-Fingerprint $main
+                $deadId = $deadWrapper.Id
+                Update-State $packagesRoot 'rc' 'test-crash-claude' {
+                    param($s)
+                    $s.stage = 'running'
+                    $s.currentRun = @{ runId = $RunName; pid = $deadId }
+                    $s.runs = @($s.runs) + @(@{ runId = $RunName; seq = 99; provider = 'claude'; executorKind = 'claude-sonnet'; chainId = $chainOfRc; maxMinutes = 30; startedUtc = [DateTime]::UtcNow.AddMinutes(-5).ToString('o'); termination = 'running'; outcome = 'running'
+                            sessionId = $null; tokens = $null; wrapper = @{ pid = $deadId; startUtc = '2000-01-01T00:00:00.0000000+00:00' }; executor = $null; logDirectory = $LogDir; mainCheckoutBefore = $fingerprint; mainCheckoutAfter = $null; mainCheckoutMutated = $false })
+                } | Out-Null
+            }
+            & $crashClaude 'crashed-claude' $crashedDir
+            $r = & $pkg @('run', '-Id', 'rc', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxInputTokens', '100000', '-Resume', '-PromptFile', $fixPrompt)
+            $state = & $stateFile 'rc'
+            $crashedRun = @($state.runs | Where-Object { $_.runId -eq 'crashed-claude' })[0]
+            & $expect ($r.Exit -eq 0 -and $crashedRun.tokens.input -eq 87489 -and $crashedRun.tokens.output -eq 1897 -and $crashedRun.sessionId -like '22222222*' -and $crashedRun.elapsedSeconds -ge 250 -and $crashedRun.elapsedSeconds -le 1800 -and $crashedRun.accounting.elapsedIsUpperBound -eq $true -and $crashedRun.accounting.known -eq $true -and $crashedRun.accounting.reconstructed -eq $true -and $crashedRun.termination -eq 'abandoned') "an interrupted run's accounting was not reconstructed: $($r.Text)"
+            & $expect ($state.runs[-1].budget.priorInputTokens -eq 87589 -and $state.runs[-1].resumedFrom.runId -eq 'crashed-claude' -and $state.runs[-1].outcome -eq 'completed') "the resume did not charge the interrupted run: $($state.runs[-1].budget | ConvertTo-Json -Compress) $($r.Text)"
+            & $crashClaude 'crashed-claude-2' (Join-Path $root 'no-such-archive')
+            $r = & $pkg @('run', '-Id', 'rc', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxInputTokens', '100000', '-Resume', '-PromptFile', $fixPrompt)
+            $state = & $stateFile 'rc'
+            $unknownRun = @($state.runs | Where-Object { $_.runId -eq 'crashed-claude-2' })[0]
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'accounting of run crashed-claude-2 is unknown' -and $r.Text -match 'events\.jsonl is missing' -and $unknownRun.accounting.known -eq $false) "a resume after an unrecoverable run was not refused: $($r.Text)"
+
+            # Session identity holds for every termination: a timed-out run is a resume candidate only with a consistent init id.
+            $r = & $pkg @('new', '-Id', 'ti', '-Brief', $briefFile)
+            & $expect ($r.Exit -eq 0) "identity package could not be created: $($r.Text)"
+            $env:AW_PKG_TEST_TOKENS = '100'
+            $env:AW_PKG_TEST_NOINIT = '1'
+            $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-usagesleep'), '-MaxMinutes', '0.05')
+            Remove-Item Env:AW_PKG_TEST_NOINIT -ErrorAction SilentlyContinue
+            $state = & $stateFile 'ti'
+            & $expect ($state.runs[-1].termination -eq 'timeout' -and $null -eq $state.runs[-1].sessionId -and $state.runs[-1].reason -match 'session identity') "a timed-out run without an init id kept a session id: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxMinutes', '10', '-Resume', '-PromptFile', $fixPrompt)
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'nothing to resume' -and $r.Text -match 'init event' -and $r.Text -match 'no init event') "a timed-out run without an init id was resumable: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-usagesleep'), '-MaxMinutes', '0.05')
+            $state = & $stateFile 'ti'
+            $timedOut = $state.runs[-1]
+            & $expect ($timedOut.termination -eq 'timeout' -and $timedOut.sessionId -eq 'stub-claude-session' -and -not $timedOut.sessionIdentityProblem) "a timed-out run with a valid init id lost its session: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxMinutes', '10', '-Resume', '-PromptFile', $fixPrompt)
+            $state = & $stateFile 'ti'
+            & $expect ($r.Exit -eq 0 -and $state.runs[-1].resumedFrom.runId -eq $timedOut.runId -and $state.runs[-1].outcome -eq 'completed') "a timed-out run with a matching id was not resumable: $($r.Text)"
+            $validRunId = [string]$state.runs[-1].runId
+            $env:AW_PKG_TEST_SID = 'mismatched-session'
+            $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-usagesleep'), '-MaxMinutes', '0.3', '-Resume', '-PromptFile', $fixPrompt)
+            Remove-Item Env:AW_PKG_TEST_SID -ErrorAction SilentlyContinue
+            $state = & $stateFile 'ti'
+            $mismatched = $state.runs[-1]
+            & $expect ($mismatched.termination -eq 'timeout' -and $null -eq $mismatched.sessionId -and $mismatched.sessionIdentityProblem -match 'resumed session answered' -and $mismatched.reason -match 'session identity') "a timed-out resumed run with a mismatched id kept its session id: $($r.Text)"
+            $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxMinutes', '10', '-Resume', '-PromptFile', $fixPrompt)
+            $state = & $stateFile 'ti'
+            & $expect ($r.Exit -eq 0 -and $state.runs[-1].resumedFrom.runId -eq $validRunId -and $state.runs[-1].resumedFrom.runId -ne $mismatched.runId) "the mismatched run became a resume candidate: $($r.Text)"
+
+            $runsBefore = @((& $stateFile 'cl').runs).Count
+            $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', $brokenShim)
+            & $expect ($r.Exit -ne 0 -and $r.Text -match 'cannot resolve the npm shim' -and @((& $stateFile 'cl').runs).Count -eq $runsBefore) "an unresolvable shim started a run: $($r.Text)"
+
+            Invoke-ReviewSelfTest
         }
-        # An interrupted Claude run keeps its place in the cumulative budget: rebuilt from its archived stream, or unknown and then blocking.
-        $r = & $pkg @('new', '-Id', 'rc', '-Brief', $briefFile)
-        & $expect ($r.Exit -eq 0) "accounting package could not be created: $($r.Text)"
-        $env:AW_PKG_TEST_TOKENS = '100'
-        $r = & $pkg @('run', '-Id', 'rc', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxInputTokens', '100000')
-        $state = & $stateFile 'rc'
-        $chainOfRc = [string]$state.runs[-1].chainId
-        $crashedDir = Join-Path $root 'crashed-claude'
-        New-Item -ItemType Directory -Path $crashedDir -Force | Out-Null
-        Copy-Item -LiteralPath (Join-Path $fixtureDir 'smoke-2-events.jsonl') -Destination (Join-Path $crashedDir 'events.jsonl')
-        (Get-Item -LiteralPath (Join-Path $crashedDir 'events.jsonl')).LastWriteTimeUtc = [DateTime]::UtcNow.AddSeconds(-295)
-        $crashClaude = {
-            param([string]$RunName, [string]$LogDir)
-            $fingerprint = Get-Fingerprint $main
-            $deadId = $deadWrapper.Id
-            Update-State $packagesRoot 'rc' 'test-crash-claude' {
-                param($s)
-                $s.stage = 'running'
-                $s.currentRun = @{ runId = $RunName; pid = $deadId }
-                $s.runs = @($s.runs) + @(@{ runId = $RunName; seq = 99; provider = 'claude'; executorKind = 'claude-sonnet'; chainId = $chainOfRc; maxMinutes = 30; startedUtc = [DateTime]::UtcNow.AddMinutes(-5).ToString('o'); termination = 'running'; outcome = 'running'
-                        sessionId = $null; tokens = $null; wrapper = @{ pid = $deadId; startUtc = '2000-01-01T00:00:00.0000000+00:00' }; executor = $null; logDirectory = $LogDir; mainCheckoutBefore = $fingerprint; mainCheckoutAfter = $null; mainCheckoutMutated = $false })
-            } | Out-Null
-        }
-        & $crashClaude 'crashed-claude' $crashedDir
-        $r = & $pkg @('run', '-Id', 'rc', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxInputTokens', '100000', '-Resume', '-PromptFile', $fixPrompt)
-        $state = & $stateFile 'rc'
-        $crashedRun = @($state.runs | Where-Object { $_.runId -eq 'crashed-claude' })[0]
-        & $expect ($r.Exit -eq 0 -and $crashedRun.tokens.input -eq 87489 -and $crashedRun.tokens.output -eq 1897 -and $crashedRun.sessionId -like '22222222*' -and $crashedRun.elapsedSeconds -ge 250 -and $crashedRun.elapsedSeconds -le 1800 -and $crashedRun.accounting.elapsedIsUpperBound -eq $true -and $crashedRun.accounting.known -eq $true -and $crashedRun.accounting.reconstructed -eq $true -and $crashedRun.termination -eq 'abandoned') "an interrupted run's accounting was not reconstructed: $($r.Text)"
-        & $expect ($state.runs[-1].budget.priorInputTokens -eq 87589 -and $state.runs[-1].resumedFrom.runId -eq 'crashed-claude' -and $state.runs[-1].outcome -eq 'completed') "the resume did not charge the interrupted run: $($state.runs[-1].budget | ConvertTo-Json -Compress) $($r.Text)"
-        & $crashClaude 'crashed-claude-2' (Join-Path $root 'no-such-archive')
-        $r = & $pkg @('run', '-Id', 'rc', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxInputTokens', '100000', '-Resume', '-PromptFile', $fixPrompt)
-        $state = & $stateFile 'rc'
-        $unknownRun = @($state.runs | Where-Object { $_.runId -eq 'crashed-claude-2' })[0]
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'accounting of run crashed-claude-2 is unknown' -and $r.Text -match 'events\.jsonl is missing' -and $unknownRun.accounting.known -eq $false) "a resume after an unrecoverable run was not refused: $($r.Text)"
-
-        # Session identity holds for every termination: a timed-out run is a resume candidate only with a consistent init id.
-        $r = & $pkg @('new', '-Id', 'ti', '-Brief', $briefFile)
-        & $expect ($r.Exit -eq 0) "identity package could not be created: $($r.Text)"
-        $env:AW_PKG_TEST_TOKENS = '100'
-        $env:AW_PKG_TEST_NOINIT = '1'
-        $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-usagesleep'), '-MaxMinutes', '0.05')
-        Remove-Item Env:AW_PKG_TEST_NOINIT -ErrorAction SilentlyContinue
-        $state = & $stateFile 'ti'
-        & $expect ($state.runs[-1].termination -eq 'timeout' -and $null -eq $state.runs[-1].sessionId -and $state.runs[-1].reason -match 'session identity') "a timed-out run without an init id kept a session id: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxMinutes', '10', '-Resume', '-PromptFile', $fixPrompt)
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'nothing to resume' -and $r.Text -match 'init event' -and $r.Text -match 'no init event') "a timed-out run without an init id was resumable: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-usagesleep'), '-MaxMinutes', '0.05')
-        $state = & $stateFile 'ti'
-        $timedOut = $state.runs[-1]
-        & $expect ($timedOut.termination -eq 'timeout' -and $timedOut.sessionId -eq 'stub-claude-session' -and -not $timedOut.sessionIdentityProblem) "a timed-out run with a valid init id lost its session: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxMinutes', '10', '-Resume', '-PromptFile', $fixPrompt)
-        $state = & $stateFile 'ti'
-        & $expect ($r.Exit -eq 0 -and $state.runs[-1].resumedFrom.runId -eq $timedOut.runId -and $state.runs[-1].outcome -eq 'completed') "a timed-out run with a matching id was not resumable: $($r.Text)"
-        $validRunId = [string]$state.runs[-1].runId
-        $env:AW_PKG_TEST_SID = 'mismatched-session'
-        $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-usagesleep'), '-MaxMinutes', '0.3', '-Resume', '-PromptFile', $fixPrompt)
-        Remove-Item Env:AW_PKG_TEST_SID -ErrorAction SilentlyContinue
-        $state = & $stateFile 'ti'
-        $mismatched = $state.runs[-1]
-        & $expect ($mismatched.termination -eq 'timeout' -and $null -eq $mismatched.sessionId -and $mismatched.sessionIdentityProblem -match 'resumed session answered' -and $mismatched.reason -match 'session identity') "a timed-out resumed run with a mismatched id kept its session id: $($r.Text)"
-        $r = & $pkg @('run', '-Id', 'ti', '-Executor', 'claude-sonnet', '-ClaudePath', (& $stub 'c-ok'), '-MaxMinutes', '10', '-Resume', '-PromptFile', $fixPrompt)
-        $state = & $stateFile 'ti'
-        & $expect ($r.Exit -eq 0 -and $state.runs[-1].resumedFrom.runId -eq $validRunId -and $state.runs[-1].resumedFrom.runId -ne $mismatched.runId) "the mismatched run became a resume candidate: $($r.Text)"
-
-        $runsBefore = @((& $stateFile 'cl').runs).Count
-        $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', $brokenShim)
-        & $expect ($r.Exit -ne 0 -and $r.Text -match 'cannot resolve the npm shim' -and @((& $stateFile 'cl').runs).Count -eq $runsBefore) "an unresolvable shim started a run: $($r.Text)"
-
-        Invoke-ReviewSelfTest
+        if ($Quick) { Invoke-QuickSelfTest } else { Invoke-SelfTestMain }
     }
     catch { $failures.Add("self-test crashed: $($_.Exception.Message) at line $($_.InvocationInfo.ScriptLineNumber)") }
     finally
@@ -6487,6 +7324,7 @@ try
         'disposition' { Invoke-Disposition }
         'accept' { Invoke-Accept }
         'ship' { Invoke-Ship }
+        'recover' { Invoke-Recover }
     }
 }
 catch

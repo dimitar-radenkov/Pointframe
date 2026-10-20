@@ -8,11 +8,15 @@ Review inputs prepared by the host (read them first): {{INPUT_DIR}}
   log.txt     the commit log from the base to the reviewed commit
   stat.txt    the stat of the reviewed commit
   diff.patch  the full diff from the base to the reviewed commit
+  check-summary.json  the gates the host ran on this content before the review (name, command, exit code), with the head and tree
+  executor-report.md  the executor's final report (its own account: evidence of what it says, not proof of what is true)
 Base commit: {{BASE}}
 Reviewed commit: {{COMMIT}}
 Reviewed tree: {{TREE}}
 
 Review exactly that commit. Read diff.patch and the files it changes in the snapshot. Use only what is in the snapshot and in the inputs directory; if you cannot inspect something, say so under omissions and do not claim anything about another commit.
+
+Rely on the coordinator's verify receipt, which is bound to the same head and tree (the host's own record of it is check-summary.json). Do not re-run the long suites. Run targeted risk checks instead where you have a shell: the refusals, the tamper cases, and a reproduction of each finding you report; without a shell, read the code paths and name under omissions what you could not reproduce. A criterion that can only be settled by running a command is settled by the check summary when it lists that command, and is not-checked otherwise.
 
 For every criterion below, decide pass, fail or not-checked and give evidence (what you read, with file:line). Never mark a criterion pass that you did not verify; use not-checked and say why. A finding is blocking when it breaks a criterion or behavior, and every finding needs a concrete scenario that shows it. Report what you did not inspect under omissions. The verdict is PASS only when every criterion is pass and no finding is blocking.
 

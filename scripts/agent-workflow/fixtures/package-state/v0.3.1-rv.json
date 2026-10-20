@@ -1,0 +1,1098 @@
+{
+  "slug": "rv",
+  "stage": "invalidated",
+  "repository": {
+    "commonDir": "C:\\selftest\\main\\.git",
+    "mainCheckout": "C:\\selftest\\main",
+    "top": "C:\\selftest\\main"
+  },
+  "brief": {
+    "source": "C:\\selftest\\brief-review.md",
+    "sha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+    "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\brief.md"
+  },
+  "history": [
+    {
+      "to": "creating",
+      "event": "new",
+      "from": "",
+      "utc": "2026-10-20T18:25:32.9342994+00:00"
+    },
+    {
+      "to": "ready",
+      "event": "preflight-passed",
+      "from": "creating",
+      "utc": "2026-10-20T18:25:33.7151891+00:00"
+    },
+    {
+      "from": "ready",
+      "utc": "2026-10-20T18:25:42.3095615+00:00",
+      "event": "run-started",
+      "to": "running"
+    },
+    {
+      "from": "running",
+      "utc": "2026-10-20T18:25:44.9272058+00:00",
+      "event": "executor-started",
+      "to": "running"
+    },
+    {
+      "from": "running",
+      "utc": "2026-10-20T18:25:47.0964539+00:00",
+      "event": "run-finished",
+      "to": "executor-completed"
+    },
+    {
+      "utc": "2026-10-20T18:26:12.9835066+00:00",
+      "from": "executor-completed",
+      "event": "checked",
+      "to": "checks-passed"
+    },
+    {
+      "to": "committed",
+      "event": "committed",
+      "utc": "2026-10-20T18:26:30.8236044+00:00",
+      "from": "checks-passed"
+    },
+    {
+      "from": "committed",
+      "utc": "2026-10-20T18:26:42.9656369+00:00",
+      "to": "checks-passed",
+      "event": "checked"
+    },
+    {
+      "event": "committed",
+      "to": "committed",
+      "utc": "2026-10-20T18:26:54.3287169+00:00",
+      "from": "checks-passed"
+    },
+    {
+      "event": "checked",
+      "to": "checks-passed",
+      "utc": "2026-10-20T18:26:58.0978368+00:00",
+      "from": "committed"
+    },
+    {
+      "event": "committed-after-recheck",
+      "to": "committed",
+      "utc": "2026-10-20T18:26:59.2190900+00:00",
+      "from": "checks-passed"
+    },
+    {
+      "to": "reviewing",
+      "utc": "2026-10-20T18:28:33.6475247+00:00",
+      "from": "committed",
+      "event": "review-started"
+    },
+    {
+      "to": "reviewing",
+      "utc": "2026-10-20T18:28:34.3270467+00:00",
+      "from": "reviewing",
+      "event": "review-inputs-bound"
+    },
+    {
+      "to": "review-failed",
+      "utc": "2026-10-20T18:28:37.5032096+00:00",
+      "from": "reviewing",
+      "event": "review-finished"
+    },
+    {
+      "utc": "2026-10-20T18:28:48.6340716+00:00",
+      "from": "review-failed",
+      "event": "disposition-reject",
+      "to": "review-failed"
+    },
+    {
+      "from": "review-failed",
+      "utc": "2026-10-20T18:28:52.4731344+00:00",
+      "event": "disposition-accept",
+      "to": "review-failed"
+    },
+    {
+      "utc": "2026-10-20T18:28:56.8398247+00:00",
+      "to": "review-failed",
+      "event": "fix-started",
+      "from": "review-failed"
+    },
+    {
+      "utc": "2026-10-20T18:28:57.5682323+00:00",
+      "to": "running",
+      "event": "run-started",
+      "from": "review-failed"
+    },
+    {
+      "utc": "2026-10-20T18:28:58.4340691+00:00",
+      "to": "running",
+      "event": "executor-started",
+      "from": "running"
+    },
+    {
+      "utc": "2026-10-20T18:28:59.1220198+00:00",
+      "to": "executor-completed",
+      "event": "run-finished",
+      "from": "running"
+    },
+    {
+      "utc": "2026-10-20T18:29:00.3522590+00:00",
+      "to": "checks-passed",
+      "event": "checked",
+      "from": "executor-completed"
+    },
+    {
+      "utc": "2026-10-20T18:29:01.9329011+00:00",
+      "to": "committed",
+      "event": "committed",
+      "from": "checks-passed"
+    },
+    {
+      "utc": "2026-10-20T18:29:02.9303595+00:00",
+      "to": "checks-passed",
+      "event": "checked",
+      "from": "committed"
+    },
+    {
+      "utc": "2026-10-20T18:29:03.1112288+00:00",
+      "to": "committed",
+      "event": "committed-after-recheck",
+      "from": "checks-passed"
+    },
+    {
+      "utc": "2026-10-20T18:29:04.4227983+00:00",
+      "to": "reviewing",
+      "event": "review-started",
+      "from": "committed"
+    },
+    {
+      "utc": "2026-10-20T18:29:05.0532918+00:00",
+      "to": "reviewing",
+      "event": "review-inputs-bound",
+      "from": "reviewing"
+    },
+    {
+      "utc": "2026-10-20T18:29:07.3510395+00:00",
+      "to": "review-passed",
+      "event": "review-finished",
+      "from": "reviewing"
+    },
+    {
+      "from": "review-passed",
+      "event": "accepted",
+      "to": "accepted",
+      "utc": "2026-10-20T18:29:13.9963192+00:00"
+    },
+    {
+      "event": "invalidated",
+      "to": "invalidated",
+      "from": "accepted",
+      "utc": "2026-10-20T18:29:27.8340346+00:00"
+    }
+  ],
+  "branch": "pkg/rv",
+  "pendingFix": null,
+  "commit": {
+    "runIds": [
+      "322e1f51d09c41ba904a1db79659208b",
+      "b10eed4763144db8a39464459ac12724"
+    ],
+    "rebaseChangedTree": true,
+    "utc": "2026-10-20T18:29:01.9222781+00:00",
+    "tree": "99515e313e3152697c727b8fa0815c8ba9322848",
+    "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+    "executors": [
+      {
+        "outcome": "completed",
+        "provider": "codex",
+        "executorKind": "codex",
+        "runId": "322e1f51d09c41ba904a1db79659208b",
+        "model": "gpt-6-luna"
+      },
+      {
+        "outcome": "completed",
+        "provider": "codex",
+        "executorKind": "codex",
+        "runId": "b10eed4763144db8a39464459ac12724",
+        "model": "gpt-6-luna"
+      }
+    ],
+    "contentTree": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+    "checkedAfterRebase": true,
+    "author": "SelfTest <selftest@example.invalid>",
+    "message": "Package rv",
+    "sha": "c1b577d57f1f32f321a406a1fd87f5a4c415b81c"
+  },
+  "baseRef": "origin/master",
+  "reviews": [
+    {
+      "mainCheckoutBefore": {
+        "unreadable": [],
+        "files": 7,
+        "seconds": 0.11,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "unknown": false,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2"
+      },
+      "invalidReasons": [],
+      "commit": "2bf1ac424e1f624d993144ee502daaf5a0eafb47",
+      "mainCheckoutAfter": {
+        "unreadable": [],
+        "files": 7,
+        "seconds": 0.1,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "unknown": false,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2"
+      },
+      "finalMessage": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\reviews\\cfc3a18d9dcd425fbe4db3ecd87ba352\\final.md",
+        "sha256": "a5275bdcaa4347c67a936bfd586352ab88ebe950269d5bb98bcc5d04ff7d4115"
+      },
+      "observedStart": {
+        "tree": "86c5cdd67d4b5979e84a61b3863d12bdd8601524",
+        "clean": true,
+        "contentTree": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9",
+        "head": "2bf1ac424e1f624d993144ee502daaf5a0eafb47"
+      },
+      "observedEnd": {
+        "tree": "86c5cdd67d4b5979e84a61b3863d12bdd8601524",
+        "clean": true,
+        "contentTree": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9",
+        "head": "2bf1ac424e1f624d993144ee502daaf5a0eafb47"
+      },
+      "contentTree": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9",
+      "startedUtc": "2026-10-20T18:28:33.5193565+00:00",
+      "checkId": "549758aa30bb47ecb4d44744cee49ee7",
+      "promptFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\reviews\\cfc3a18d9dcd425fbe4db3ecd87ba352\\prompt.md",
+        "sha256": "734c9e729713c067f92fec183e82485d4974d92151ee0ce37ceb2aef00ffe98e"
+      },
+      "omissions": [
+        "integration tests were not run"
+      ],
+      "baseObserved": "50e86d7a46f25c07a664045cab6c47d30bc80a71",
+      "round": 1,
+      "exitCode": 0,
+      "endedUtc": "2026-10-20T18:28:37.4733689+00:00",
+      "criteria": [
+        {
+          "id": "C1",
+          "text": "The feature file exists."
+        },
+        {
+          "id": "C2",
+          "text": "The feature file says v2, and the comment above it explains why."
+        },
+        {
+          "id": "C3",
+          "text": "Nothing else changes."
+        }
+      ],
+      "tree": "86c5cdd67d4b5979e84a61b3863d12bdd8601524",
+      "executor": {
+        "provider": "codex",
+        "session": "stub-session",
+        "runId": "322e1f51d09c41ba904a1db79659208b",
+        "model": "gpt-6-luna",
+        "kind": "codex"
+      },
+      "baseSha": "50e86d7a46f25c07a664045cab6c47d30bc80a71",
+      "startProblems": [],
+      "blockingFindings": 1,
+      "level": "light",
+      "seconds": 0.7,
+      "verdict": "FAIL",
+      "criteriaResults": [
+        {
+          "id": "C1",
+          "evidence": "read it (C1)",
+          "result": "fail"
+        },
+        {
+          "id": "C2",
+          "evidence": "read it (C2)",
+          "result": "pass"
+        },
+        {
+          "id": "C3",
+          "evidence": "read it (C3)",
+          "result": "pass"
+        }
+      ],
+      "snapshot": {
+        "endObservation": {
+          "tree": "86c5cdd67d4b5979e84a61b3863d12bdd8601524",
+          "contentTree": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9",
+          "clean": true,
+          "head": "2bf1ac424e1f624d993144ee502daaf5a0eafb47"
+        },
+        "created": true,
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\review-cfc3a18d9dcd425fbe4db3ecd87ba352-input",
+        "startObservation": {
+          "tree": "86c5cdd67d4b5979e84a61b3863d12bdd8601524",
+          "contentTree": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9",
+          "clean": true,
+          "head": "2bf1ac424e1f624d993144ee502daaf5a0eafb47"
+        },
+        "removeError": null,
+        "removed": true,
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\review-cfc3a18d9dcd425fbe4db3ecd87ba352"
+      },
+      "verdictFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\reviews\\cfc3a18d9dcd425fbe4db3ecd87ba352\\verdict.json",
+        "sha256": "a5275bdcaa4347c67a936bfd586352ab88ebe950269d5bb98bcc5d04ff7d4115"
+      },
+      "findings": [
+        {
+          "line": 1,
+          "summary": "feature.txt is wrong",
+          "file": "feature.txt",
+          "scenario": "open feature.txt: it says v1 and the brief wants v2",
+          "disposition": {
+            "reason": "the reviewer is right: v2 is required",
+            "decision": "accept",
+            "utc": "2026-10-20T18:28:52.4613073+00:00"
+          },
+          "id": "F1",
+          "severity": "blocking",
+          "dispositionHistory": [
+            {
+              "decision": "reject",
+              "reason": "disputed: the brief allows v1",
+              "utc": "2026-10-20T18:28:48.6215727+00:00"
+            },
+            {
+              "reason": "the reviewer is right: v2 is required",
+              "decision": "accept",
+              "utc": "2026-10-20T18:28:52.4613073+00:00"
+            }
+          ]
+        },
+        {
+          "line": 1,
+          "summary": "naming",
+          "file": "a.txt",
+          "scenario": "a.txt is named a",
+          "disposition": null,
+          "id": "F2",
+          "severity": "non-blocking"
+        }
+      ],
+      "containmentVerified": true,
+      "status": "valid",
+      "executors": [
+        {
+          "runId": "322e1f51d09c41ba904a1db79659208b",
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "outcome": "completed",
+          "executorKind": "codex"
+        }
+      ],
+      "fileHashes": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\reviews\\cfc3a18d9dcd425fbe4db3ecd87ba352\\files.json",
+        "sha256": "076c6c7b741601e8b5f547ac9c10d6b8d198d20f26ec8afc1306478702d2eddd"
+      },
+      "tokens": {
+        "cacheCreation": 0,
+        "costNote": "reported by the CLI, not an invoice",
+        "cached": 0,
+        "crossCheck": "differs: input per-message 0 vs reported 50; output per-message 0 vs reported 9",
+        "perMessage": {
+          "output": 0,
+          "input": 0
+        },
+        "freshInput": 50,
+        "reported": {
+          "output": 9,
+          "input": 50
+        },
+        "source": "terminal result usage",
+        "reportedCostUsd": null,
+        "input": 50,
+        "toolCalls": 0,
+        "output": 9
+      },
+      "termination": "exit",
+      "denials": [],
+      "manifestSha256": "c22e33ce95e1fbd390e6ea13386867fb4dd36bb39d1bcd56e222631afeecc4fd",
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "wrapper": {
+        "startUtc": "2026-10-20T18:28:30.2487625Z",
+        "pid": 47752
+      },
+      "reviewId": "cfc3a18d9dcd425fbe4db3ecd87ba352",
+      "reviewer": {
+        "resumedFrom": null,
+        "effort": null,
+        "cliVersion": "9.9.9-stub (Claude Code)",
+        "kind": "claude-sonnet",
+        "sessionId": "stub-claude-review",
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1",
+        "permissions": {
+          "shell": "none",
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\review-cfc3a18d9dcd425fbe4db3ecd87ba352-input",
+          "mode": "default",
+          "settingsFile": {
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\reviews\\cfc3a18d9dcd425fbe4db3ecd87ba352\\claude-settings.json",
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576"
+          },
+          "tools": "Read,Glob,Grep"
+        }
+      },
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "inputHashes": {
+        "diff.patch": "58a0a4ca58bfe71d81910e2d1490c8c690aa88870151e549266ef87baa11dbcf",
+        "log.txt": "cea153bf0b7a48a7d0567983653c24e2773be0fe21389e64e099921f35f86501",
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+        "prompt.md": "734c9e729713c067f92fec183e82485d4974d92151ee0ce37ceb2aef00ffe98e",
+        "stat.txt": "c83053023f5626bb1edc3bf2a5663a94fce62c5c6029f8a4cf2f7da7c201e8ec"
+      }
+    },
+    {
+      "status": "valid",
+      "executor": {
+        "provider": "codex",
+        "session": "stub-session",
+        "kind": "codex",
+        "runId": "b10eed4763144db8a39464459ac12724",
+        "model": "gpt-6-luna"
+      },
+      "seconds": 0.8,
+      "tokens": {
+        "cached": 0,
+        "output": 9,
+        "crossCheck": "differs: input per-message 0 vs reported 50; output per-message 0 vs reported 9",
+        "toolCalls": 0,
+        "reportedCostUsd": null,
+        "source": "terminal result usage",
+        "costNote": "reported by the CLI, not an invoice",
+        "input": 50,
+        "freshInput": 50,
+        "perMessage": {
+          "input": 0,
+          "output": 0
+        },
+        "reported": {
+          "input": 50,
+          "output": 9
+        },
+        "cacheCreation": 0
+      },
+      "round": 2,
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "checkId": "a33f3b255883438c815f3b92c3879843",
+      "invalidReasons": [],
+      "manifestSha256": "c22e33ce95e1fbd390e6ea13386867fb4dd36bb39d1bcd56e222631afeecc4fd",
+      "containmentVerified": true,
+      "omissions": [
+        "integration tests were not run"
+      ],
+      "contentTree": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+      "mainCheckoutAfter": {
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "files": 7,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "seconds": 0.11,
+        "unreadable": [],
+        "unknown": false
+      },
+      "reviewer": {
+        "effort": null,
+        "cliVersion": "9.9.9-stub (Claude Code)",
+        "model": "claude-sonnet-5-5",
+        "provider": "claude",
+        "kind": "claude-sonnet",
+        "sessionId": "stub-claude-review",
+        "resumedFrom": "stub-claude-review",
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1",
+        "permissions": {
+          "tools": "Read,Glob,Grep",
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\review-d0e5e510309f4138b094867bc7bb2098-input",
+          "mode": "default",
+          "shell": "none",
+          "settingsFile": {
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\reviews\\d0e5e510309f4138b094867bc7bb2098\\claude-settings.json",
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576"
+          }
+        }
+      },
+      "verdictFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\reviews\\d0e5e510309f4138b094867bc7bb2098\\verdict.json",
+        "sha256": "5c4ae639253948fdfd89ce30593cf33d36b46724ddcb3287e9b94bcdd4c1d710"
+      },
+      "level": "light",
+      "endedUtc": "2026-10-20T18:29:07.3301596+00:00",
+      "fileHashes": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\reviews\\d0e5e510309f4138b094867bc7bb2098\\files.json",
+        "sha256": "282a658e8c5c15b62f5868358f5702945efcae2bf8d5ec2de2fd7e52f78ede3f"
+      },
+      "blockingFindings": 0,
+      "snapshot": {
+        "removeError": null,
+        "endObservation": {
+          "clean": true,
+          "head": "c1b577d57f1f32f321a406a1fd87f5a4c415b81c",
+          "contentTree": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+          "tree": "99515e313e3152697c727b8fa0815c8ba9322848"
+        },
+        "startObservation": {
+          "clean": true,
+          "head": "c1b577d57f1f32f321a406a1fd87f5a4c415b81c",
+          "contentTree": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+          "tree": "99515e313e3152697c727b8fa0815c8ba9322848"
+        },
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\review-d0e5e510309f4138b094867bc7bb2098",
+        "created": true,
+        "removed": true,
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\review-d0e5e510309f4138b094867bc7bb2098-input"
+      },
+      "baseObserved": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "criteriaResults": [
+        {
+          "evidence": "read it (C1)",
+          "result": "pass",
+          "id": "C1"
+        },
+        {
+          "evidence": "read it (C2)",
+          "result": "pass",
+          "id": "C2"
+        },
+        {
+          "evidence": "read it (C3)",
+          "result": "pass",
+          "id": "C3"
+        }
+      ],
+      "startProblems": [],
+      "tree": "99515e313e3152697c727b8fa0815c8ba9322848",
+      "reviewId": "d0e5e510309f4138b094867bc7bb2098",
+      "executors": [
+        {
+          "outcome": "completed",
+          "provider": "codex",
+          "executorKind": "codex",
+          "runId": "322e1f51d09c41ba904a1db79659208b",
+          "model": "gpt-6-luna"
+        },
+        {
+          "outcome": "completed",
+          "provider": "codex",
+          "executorKind": "codex",
+          "runId": "b10eed4763144db8a39464459ac12724",
+          "model": "gpt-6-luna"
+        }
+      ],
+      "mainCheckoutBefore": {
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "files": 7,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "seconds": 0.1,
+        "unreadable": [],
+        "unknown": false
+      },
+      "startedUtc": "2026-10-20T18:29:04.3436915+00:00",
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "termination": "exit",
+      "exitCode": 0,
+      "promptFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\reviews\\d0e5e510309f4138b094867bc7bb2098\\prompt.md",
+        "sha256": "89222c4601019753b6516628eb5c9c674c0e71f9fa88dd3bdac66e90adc236e4"
+      },
+      "observedEnd": {
+        "clean": true,
+        "head": "c1b577d57f1f32f321a406a1fd87f5a4c415b81c",
+        "contentTree": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+        "tree": "99515e313e3152697c727b8fa0815c8ba9322848"
+      },
+      "verdict": "PASS",
+      "criteria": [
+        {
+          "id": "C1",
+          "text": "The feature file exists."
+        },
+        {
+          "id": "C2",
+          "text": "The feature file says v2, and the comment above it explains why."
+        },
+        {
+          "id": "C3",
+          "text": "Nothing else changes."
+        }
+      ],
+      "finalMessage": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\reviews\\d0e5e510309f4138b094867bc7bb2098\\final.md",
+        "sha256": "5c4ae639253948fdfd89ce30593cf33d36b46724ddcb3287e9b94bcdd4c1d710"
+      },
+      "denials": [],
+      "wrapper": {
+        "startUtc": "2026-10-20T18:28:54.8138441Z",
+        "pid": 44920
+      },
+      "findings": [],
+      "observedStart": {
+        "clean": true,
+        "head": "c1b577d57f1f32f321a406a1fd87f5a4c415b81c",
+        "contentTree": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+        "tree": "99515e313e3152697c727b8fa0815c8ba9322848"
+      },
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "commit": "c1b577d57f1f32f321a406a1fd87f5a4c415b81c",
+      "inputHashes": {
+        "log.txt": "7f8da044079ddb7818a9161397b81513c6d48de8664c36803e56c7ef0028a49f",
+        "prompt.md": "89222c4601019753b6516628eb5c9c674c0e71f9fa88dd3bdac66e90adc236e4",
+        "diff.patch": "0d88a00234c05d4725bb24250d8c2789c65eba30663e05a9c3443156a4d193f1",
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+        "stat.txt": "edacfec80241a2502c8ff6aa21b1a0cb08c3a92460d97b27a6dc773054b7c11f"
+      }
+    }
+  ],
+  "commits": [
+    {
+      "baseSha": "558ec35f300391fbef7041651ff3e093817d9def",
+      "rebaseChangedTree": false,
+      "checkedAfterRebase": true,
+      "sha": "d32c7fa11d2c7632adf5889af0fa2f715f4f903b",
+      "contentTree": "b7d3b378161df3c724396b16794cbe085a1c8c6c9c85788c32c6b8a6bf39a9c0",
+      "message": "Add the feature",
+      "author": "SelfTest <selftest@example.invalid>",
+      "tree": "c511d1cfa1679266852b0430a9db9fdc88879936",
+      "executors": [
+        {
+          "model": "gpt-6-luna",
+          "outcome": "completed",
+          "runId": "322e1f51d09c41ba904a1db79659208b",
+          "provider": "codex",
+          "executorKind": "codex"
+        }
+      ],
+      "runIds": [
+        "322e1f51d09c41ba904a1db79659208b"
+      ],
+      "utc": "2026-10-20T18:26:30.6669479+00:00"
+    },
+    {
+      "sha": "2bf1ac424e1f624d993144ee502daaf5a0eafb47",
+      "contentTree": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9",
+      "message": "More",
+      "rebaseChangedTree": true,
+      "executors": [
+        {
+          "runId": "322e1f51d09c41ba904a1db79659208b",
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "outcome": "completed",
+          "executorKind": "codex"
+        }
+      ],
+      "utc": "2026-10-20T18:26:54.2712994+00:00",
+      "baseSha": "50e86d7a46f25c07a664045cab6c47d30bc80a71",
+      "runIds": [
+        "322e1f51d09c41ba904a1db79659208b"
+      ],
+      "checkedAfterRebase": true,
+      "author": "SelfTest <selftest@example.invalid>",
+      "tree": "86c5cdd67d4b5979e84a61b3863d12bdd8601524"
+    },
+    {
+      "runIds": [
+        "322e1f51d09c41ba904a1db79659208b",
+        "b10eed4763144db8a39464459ac12724"
+      ],
+      "rebaseChangedTree": true,
+      "utc": "2026-10-20T18:29:01.9222781+00:00",
+      "tree": "99515e313e3152697c727b8fa0815c8ba9322848",
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "executors": [
+        {
+          "outcome": "completed",
+          "provider": "codex",
+          "executorKind": "codex",
+          "runId": "322e1f51d09c41ba904a1db79659208b",
+          "model": "gpt-6-luna"
+        },
+        {
+          "outcome": "completed",
+          "provider": "codex",
+          "executorKind": "codex",
+          "runId": "b10eed4763144db8a39464459ac12724",
+          "model": "gpt-6-luna"
+        }
+      ],
+      "contentTree": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+      "checkedAfterRebase": true,
+      "author": "SelfTest <selftest@example.invalid>",
+      "message": "Package rv",
+      "sha": "c1b577d57f1f32f321a406a1fd87f5a4c415b81c"
+    }
+  ],
+  "checks": [
+    {
+      "checkId": "e2a4fd8ce0c74233b0114089553b3032",
+      "ok": true,
+      "commands": [
+        {
+          "mutator": true,
+          "skipped": null,
+          "exitCode": 0,
+          "files": [],
+          "name": "crlf normalization",
+          "outputTree": "b7d3b378161df3c724396b16794cbe085a1c8c6c9c85788c32c6b8a6bf39a9c0",
+          "inputTree": "b7d3b378161df3c724396b16794cbe085a1c8c6c9c85788c32c6b8a6bf39a9c0",
+          "log": null,
+          "command": "normalize changed text files to CRLF",
+          "kind": "crlf"
+        },
+        {
+          "mutator": false,
+          "skipped": null,
+          "exitCode": 0,
+          "name": "passes",
+          "outputTree": "b7d3b378161df3c724396b16794cbe085a1c8c6c9c85788c32c6b8a6bf39a9c0",
+          "inputTree": "b7d3b378161df3c724396b16794cbe085a1c8c6c9c85788c32c6b8a6bf39a9c0",
+          "log": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\checks\\e2a4fd8ce0c74233b0114089553b3032\\2-extra.log",
+          "command": "pwsh -NoProfile -Command exit 0",
+          "kind": "extra"
+        }
+      ],
+      "treeBefore": "b7d3b378161df3c724396b16794cbe085a1c8c6c9c85788c32c6b8a6bf39a9c0",
+      "treeHash": "b7d3b378161df3c724396b16794cbe085a1c8c6c9c85788c32c6b8a6bf39a9c0",
+      "utc": "2026-10-20T18:26:12.8612932+00:00"
+    },
+    {
+      "treeBefore": "20ed43df29cdbf242dbd63b5feafacc79457a28e30ae5087800f7a35433dab89",
+      "utc": "2026-10-20T18:26:42.9156834+00:00",
+      "checkId": "4cc4319c1d004d0d9962cdea86e71683",
+      "commands": [
+        {
+          "log": null,
+          "outputTree": "20ed43df29cdbf242dbd63b5feafacc79457a28e30ae5087800f7a35433dab89",
+          "inputTree": "20ed43df29cdbf242dbd63b5feafacc79457a28e30ae5087800f7a35433dab89",
+          "name": "crlf normalization",
+          "skipped": null,
+          "exitCode": 0,
+          "command": "normalize changed text files to CRLF",
+          "files": [],
+          "mutator": true,
+          "kind": "crlf"
+        },
+        {
+          "log": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\checks\\4cc4319c1d004d0d9962cdea86e71683\\2-extra.log",
+          "outputTree": "20ed43df29cdbf242dbd63b5feafacc79457a28e30ae5087800f7a35433dab89",
+          "inputTree": "20ed43df29cdbf242dbd63b5feafacc79457a28e30ae5087800f7a35433dab89",
+          "name": "passes",
+          "skipped": null,
+          "exitCode": 0,
+          "command": "pwsh -NoProfile -Command exit 0",
+          "mutator": false,
+          "kind": "extra"
+        }
+      ],
+      "treeHash": "20ed43df29cdbf242dbd63b5feafacc79457a28e30ae5087800f7a35433dab89",
+      "ok": true
+    },
+    {
+      "utc": "2026-10-20T18:26:58.0772699+00:00",
+      "treeBefore": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9",
+      "ok": true,
+      "commands": [
+        {
+          "mutator": true,
+          "name": "crlf normalization",
+          "kind": "crlf",
+          "exitCode": 0,
+          "inputTree": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9",
+          "command": "normalize changed text files to CRLF",
+          "log": null,
+          "skipped": null,
+          "outputTree": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9",
+          "files": []
+        },
+        {
+          "mutator": false,
+          "name": "passes",
+          "kind": "extra",
+          "exitCode": 0,
+          "inputTree": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9",
+          "command": "pwsh -NoProfile -Command exit 0",
+          "log": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\checks\\549758aa30bb47ecb4d44744cee49ee7\\2-extra.log",
+          "skipped": null,
+          "outputTree": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9"
+        }
+      ],
+      "treeHash": "209061416fbf2c3435d399ea1b979b539aa1271c4d31f623a5c134d30b70d4c9",
+      "checkId": "549758aa30bb47ecb4d44744cee49ee7"
+    },
+    {
+      "utc": "2026-10-20T18:29:00.3459425+00:00",
+      "checkId": "3148acab87284fe5a8b940cafedf224f",
+      "commands": [
+        {
+          "name": "crlf normalization",
+          "log": null,
+          "kind": "crlf",
+          "skipped": null,
+          "mutator": true,
+          "outputTree": "76c22741cd3d7a9de93e1a76177716b7e7dbea5d1d4aaea6583c938baf2c9f25",
+          "command": "normalize changed text files to CRLF",
+          "inputTree": "76c22741cd3d7a9de93e1a76177716b7e7dbea5d1d4aaea6583c938baf2c9f25",
+          "files": [],
+          "exitCode": 0
+        },
+        {
+          "name": "passes",
+          "log": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\checks\\3148acab87284fe5a8b940cafedf224f\\2-extra.log",
+          "kind": "extra",
+          "skipped": null,
+          "mutator": false,
+          "outputTree": "76c22741cd3d7a9de93e1a76177716b7e7dbea5d1d4aaea6583c938baf2c9f25",
+          "command": "pwsh -NoProfile -Command exit 0",
+          "inputTree": "76c22741cd3d7a9de93e1a76177716b7e7dbea5d1d4aaea6583c938baf2c9f25",
+          "exitCode": 0
+        }
+      ],
+      "ok": true,
+      "treeHash": "76c22741cd3d7a9de93e1a76177716b7e7dbea5d1d4aaea6583c938baf2c9f25",
+      "treeBefore": "76c22741cd3d7a9de93e1a76177716b7e7dbea5d1d4aaea6583c938baf2c9f25"
+    },
+    {
+      "utc": "2026-10-20T18:29:02.9261153+00:00",
+      "checkId": "a33f3b255883438c815f3b92c3879843",
+      "commands": [
+        {
+          "name": "crlf normalization",
+          "log": null,
+          "kind": "crlf",
+          "skipped": null,
+          "mutator": true,
+          "outputTree": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+          "command": "normalize changed text files to CRLF",
+          "inputTree": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+          "files": [],
+          "exitCode": 0
+        },
+        {
+          "name": "passes",
+          "log": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\checks\\a33f3b255883438c815f3b92c3879843\\2-extra.log",
+          "kind": "extra",
+          "skipped": null,
+          "mutator": false,
+          "outputTree": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+          "command": "pwsh -NoProfile -Command exit 0",
+          "inputTree": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+          "exitCode": 0
+        }
+      ],
+      "ok": true,
+      "treeHash": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa",
+      "treeBefore": "a446ceff10b8136b65d1d31bbd0dbb42a4eacdaed82ba5147630c2c79866bcfa"
+    }
+  ],
+  "currentRun": null,
+  "manifest": {
+    "source": "C:\\selftest\\rv-checks.json",
+    "sha256": "c22e33ce95e1fbd390e6ea13386867fb4dd36bb39d1bcd56e222631afeecc4fd",
+    "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\checks.json"
+  },
+  "schemaVersion": 1,
+  "createdUtc": "2026-10-20T18:25:32.9004235+00:00",
+  "acceptance": {
+    "commit": "c1b577d57f1f32f321a406a1fd87f5a4c415b81c",
+    "head": "c1b577d57f1f32f321a406a1fd87f5a4c415b81c",
+    "recordSha256": "bd620a38e1498a2c3c5c4227ac44548ba8f7828b550fe0b60bd282ed842a993f",
+    "pinOnly": false,
+    "recordPath": "C:\\selftest\\main\\.git\\selftest\\reviews\\c1b577d57f1f32f321a406a1fd87f5a4c415b81c.json",
+    "reviewId": "d0e5e510309f4138b094867bc7bb2098",
+    "reason": "criteria verified against the diff",
+    "utc": "2026-10-20T18:29:13.9565396+00:00",
+    "tree": "99515e313e3152697c727b8fa0815c8ba9322848",
+    "invalidated": {
+      "reason": "the branch head changed (c1b577d57f1f32f321a406a1fd87f5a4c415b81c -> a0b9b9f426c6b13898cb8a223139ec66e0ccd3b7): A other.txt, A vendor/pin/lock.json, A vendor/pin/meta.json",
+      "utc": "2026-10-20T18:29:27.8280948+00:00"
+    }
+  },
+  "guard": {
+    "lastRunId": "b10eed4763144db8a39464459ac12724",
+    "before": {
+      "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+      "files": 7,
+      "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+      "seconds": 0.14,
+      "unreadable": [],
+      "unknown": false
+    },
+    "mainCheckoutMutated": false,
+    "after": {
+      "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+      "files": 7,
+      "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+      "seconds": 0.1,
+      "unreadable": [],
+      "unknown": false
+    }
+  },
+  "worktree": "C:\\selftest\\main.worktrees\\rv",
+  "repair": {
+    "resets": [],
+    "limit": 3,
+    "roundsUsed": 2
+  },
+  "packageId": "737cf938-046c-45c8-bcbc-a244fdf657c6",
+  "runs": [
+    {
+      "outcome": "completed",
+      "model": "gpt-6-luna",
+      "runId": "322e1f51d09c41ba904a1db79659208b",
+      "executor": {
+        "jobObject": true,
+        "startUtc": "2026-10-20T18:25:44.8397500Z",
+        "pid": 18772
+      },
+      "tokens": {
+        "cached": 1,
+        "output": 2,
+        "input": 3
+      },
+      "artifacts": {
+        "eventsJsonl": {
+          "sha256": "ae356074d36a9b524c2969514af3e791d96458b47a95e5e2b8ced33df4531b09",
+          "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\runs\\322e1f51d09c41ba904a1db79659208b\\events.jsonl"
+        },
+        "outMd": {
+          "sha256": "12e5cb1d6521d6a9f0369978cca6ec93c52582896608bf12882764ae21a0c6e4",
+          "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\runs\\322e1f51d09c41ba904a1db79659208b\\out.md"
+        }
+      },
+      "executorKind": "codex",
+      "chainId": "322e1f51d09c41ba904a1db79659208b",
+      "containmentVerified": true,
+      "exitCode": 0,
+      "wrapper": {
+        "pid": 32964,
+        "startUtc": "2026-10-20T18:25:35.1562897Z"
+      },
+      "escalationReason": "selftest",
+      "codexCliVersion": "9.9.9-test",
+      "startedUtc": "2026-10-20T18:25:42.1859479+00:00",
+      "sessionId": "stub-session",
+      "logDirectory": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\runs\\322e1f51d09c41ba904a1db79659208b",
+      "mainCheckoutBefore": {
+        "unknown": false,
+        "unreadable": [],
+        "seconds": 0.57,
+        "files": 7,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2"
+      },
+      "mainCheckoutMutated": false,
+      "maxMinutes": 30.0,
+      "mainCheckoutAfter": {
+        "unknown": false,
+        "unreadable": [],
+        "seconds": 0.2,
+        "files": 7,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2"
+      },
+      "endedUtc": "2026-10-20T18:25:47.0426843+00:00",
+      "envEvidence": null,
+      "reason": null,
+      "maxInputTokens": 20000000,
+      "effort": "high",
+      "seq": 1,
+      "containmentReason": null,
+      "permissions": {
+        "sandbox": "workspace-write",
+        "windowsSandbox": "unelevated",
+        "approval": "never"
+      },
+      "envBlocked": false,
+      "provider": "codex",
+      "termination": "exit",
+      "elapsedSeconds": 1.7,
+      "leftoverProcesses": 0
+    },
+    {
+      "mainCheckoutAfter": {
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "files": 7,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "seconds": 0.1,
+        "unreadable": [],
+        "unknown": false
+      },
+      "chainId": "b10eed4763144db8a39464459ac12724",
+      "executorKind": "codex",
+      "mainCheckoutBefore": {
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "files": 7,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "seconds": 0.14,
+        "unreadable": [],
+        "unknown": false
+      },
+      "exitCode": 0,
+      "termination": "exit",
+      "provider": "codex",
+      "containmentVerified": true,
+      "maxMinutes": 30.0,
+      "sessionId": "stub-session",
+      "effort": "high",
+      "mainCheckoutMutated": false,
+      "escalationReason": "selftest",
+      "permissions": {
+        "sandbox": "workspace-write",
+        "windowsSandbox": "unelevated",
+        "approval": "never"
+      },
+      "containmentReason": null,
+      "runId": "b10eed4763144db8a39464459ac12724",
+      "seq": 2,
+      "envBlocked": false,
+      "artifacts": {
+        "outMd": {
+          "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\runs\\b10eed4763144db8a39464459ac12724\\out.md",
+          "sha256": "f8bbc4e9d93681f3cd72651931bb095ca95073bedab90082929855b4e562a078"
+        },
+        "eventsJsonl": {
+          "path": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\runs\\b10eed4763144db8a39464459ac12724\\events.jsonl",
+          "sha256": "ae356074d36a9b524c2969514af3e791d96458b47a95e5e2b8ced33df4531b09"
+        }
+      },
+      "outcome": "completed",
+      "maxInputTokens": 20000000,
+      "endedUtc": "2026-10-20T18:28:59.0950473+00:00",
+      "codexCliVersion": "9.9.9-test",
+      "wrapper": {
+        "startUtc": "2026-10-20T18:28:54.8138441Z",
+        "pid": 44920
+      },
+      "model": "gpt-6-luna",
+      "tokens": {
+        "output": 2,
+        "input": 3,
+        "cached": 1
+      },
+      "envEvidence": null,
+      "logDirectory": "C:\\selftest\\main\\.git\\selftest\\packages\\rv\\runs\\b10eed4763144db8a39464459ac12724",
+      "reason": null,
+      "startedUtc": "2026-10-20T18:28:57.5486827+00:00",
+      "executor": {
+        "pid": 4236,
+        "startUtc": "2026-10-20T18:28:58.4110549Z",
+        "jobObject": true
+      },
+      "elapsedSeconds": 0.5,
+      "leftoverProcesses": 0
+    }
+  ],
+  "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+  "preflight": {
+    "ok": true,
+    "utc": "2026-10-20T18:25:33.7041854+00:00",
+    "builds": []
+  },
+  "ship": null,
+  "qualifications": [],
+  "pushes": []
+}

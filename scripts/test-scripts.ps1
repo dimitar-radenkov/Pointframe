@@ -5,12 +5,14 @@ ignored by git (the *.md ignore rule once dropped the fixtures of status.ps1 and
 passed only in the worktree that created them).
 
   pwsh scripts/test-scripts.ps1                      # exit 0 when every self-test passes and every fixture is tracked
-  pwsh scripts/test-scripts.ps1 -All                 # also run the heavy self-tests
+  pwsh scripts/test-scripts.ps1 -All                 # run the heavy self-tests in full (package.ps1 -SelfTest, about 25 minutes)
   pwsh scripts/test-scripts.ps1 -BaseRef origin/main # compare against another base (default origin/master)
 
-A heavy script ($HeavyScripts, package.ps1: ~16 minutes) runs only with -All, or when any path under scripts/ differs
-between the merge base of HEAD and -BaseRef and the working tree (committed, staged, unstaged, and untracked files that
-git does not ignore all count). Otherwise it is skipped and printed as SKIP; a skip never fails the run. When the merge
+A heavy script ($HeavyScripts, package.ps1) runs when any path under scripts/ differs between the merge base of HEAD
+and -BaseRef and the working tree (committed, staged, unstaged, and untracked files that git does not ignore all count),
+or with -All. By default it runs its quick self-test (-SelfTest -Quick, under three minutes: every command, the
+refusals and one ship path); with -All it runs the full -SelfTest (about 25 minutes). Otherwise it is skipped and
+printed as SKIP; a skip never fails the run. When the merge
 base cannot be computed (unknown ref, shallow clone, git error) everything runs. Every other self-test and the
 ignored-fixture check always run.
 
@@ -106,7 +108,8 @@ foreach ($name in $SelfTestScripts)
         continue
     }
 
-    $output = @(& pwsh -NoProfile -NonInteractive -File $path -SelfTest 2>&1 | ForEach-Object { "$_" })
+    $selfTestArgs = @(if (-not $All -and $HeavyScripts -contains $name) { '-SelfTest'; '-Quick' } else { '-SelfTest' })
+    $output = @(& pwsh -NoProfile -NonInteractive -File $path @selfTestArgs 2>&1 | ForEach-Object { "$_" })
     $last = $output | Where-Object { $_.Trim() } | Select-Object -Last 1
     if ($LASTEXITCODE -ne 0)
     {
