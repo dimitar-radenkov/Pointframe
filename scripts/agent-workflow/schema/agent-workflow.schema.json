@@ -434,6 +434,9 @@
         },
         "postMerge": {
           "$ref": "#/definitions/hook"
+        },
+        "channels": {
+          "$ref": "#/definitions/hook"
         }
       }
     },
@@ -490,6 +493,31 @@
         }
       }
     },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "format": {
+              "$ref": "#/definitions/packageCommand"
+            },
+            "build": {
+              "$ref": "#/definitions/packageCommand"
+            },
+            "test": {
+              "$ref": "#/definitions/packageCommand"
+            }
+          }
+        },
+        "testFilter": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "agentRuns": {
       "type": "object",
       "additionalProperties": false,
@@ -514,6 +542,27 @@
       "type": "string",
       "minLength": 1,
       "pattern": "^(?![/\\\\]|[A-Za-z]:)(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$"
+    },
+    "packageCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exe",
+        "args"
+      ],
+      "properties": {
+        "exe": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     },
     "hook": {
       "type": [

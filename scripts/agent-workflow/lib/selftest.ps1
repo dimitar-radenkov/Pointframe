@@ -9,7 +9,9 @@ function Get-AwSelfTestConfig {
         [string]$Namespace = 'selftest',
         [string]$BaseRef = 'origin/master',
         [string[]]$PinFiles = @(),
-        [string]$PinHook
+        [string]$PinHook,
+        [string]$QualifyHook,
+        [string]$ChannelsHook
     )
 
     $role = { param($provider, $model, $sandbox) [ordered]@{ provider = $provider; model = $model; effort = 'medium'; sandbox = $sandbox } }
@@ -33,7 +35,8 @@ function Get-AwSelfTestConfig {
         hooks = [ordered]@{
             environment = $null; kbCoverage = $null
             pin = $(if ($PinHook) { $PinHook } else { $null })
-            qualify = $null; postMerge = $null
+            qualify = $(if ($QualifyHook) { $QualifyHook } else { $null }); postMerge = $null
+            channels = $(if ($ChannelsHook) { $ChannelsHook } else { $null })
         }
         pinException = $(if ($PinFiles.Count -gt 0) { [ordered]@{ paths = @($PinFiles) } } else { $null })
     }

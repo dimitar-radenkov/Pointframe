@@ -270,14 +270,48 @@
     "environment": "docs/knowledge-base/hooks/environment.ps1",
     "kbCoverage": "docs/knowledge-base/hooks/coverage.ps1",
     "pin": "docs/knowledge-base/hooks/pin.ps1",
-    "qualify": null,
-    "postMerge": null
+    "qualify": "docs/knowledge-base/hooks/qualify.ps1",
+    "postMerge": null,
+    "channels": "docs/knowledge-base/hooks/channels.ps1"
   },
   "pinException": {
     "paths": [
       "plugin/pointframe/server.lock.json",
       "plugin/pointframe/.claude-plugin/plugin.json"
     ]
+  },
+  "package": {
+    "commands": {
+      "format": {
+        "exe": "dotnet",
+        "args": [
+          "format",
+          "{target}",
+          "--no-restore"
+        ]
+      },
+      "build": {
+        "exe": "dotnet",
+        "args": [
+          "build",
+          "{target}",
+          "--nologo",
+          "-v",
+          "q"
+        ]
+      },
+      "test": {
+        "exe": "dotnet",
+        "args": [
+          "test",
+          "{project}",
+          "--nologo",
+          "--filter",
+          "{filter}"
+        ]
+      }
+    },
+    "testFilter": "Category!=Integration"
   },
   "verify": {
     "outputDir": "artifacts/verify",
