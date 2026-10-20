@@ -1,0 +1,254 @@
+<!-- Local text for the kit's workflow and kb skill templates (kit/workflow, kit/skills). kb.ps1 render writes the generated files from it; edit this file, never the generated ones. -->
+<!-- Slot W-NN holds a rule the repository owns; rules added here use IDs W-800 to W-999. -->
+
+<!-- slot:intro-note -->
+ Decisions D1-D5 below are recorded with their rationale in [D-016](decisions.md#d-016-agents-follow-one-workflow-in-the-knowledge-base).
+<!-- /slot:intro-note -->
+
+<!-- slot:product -->
+Pointframe
+<!-- /slot:product -->
+
+<!-- slot:enforcement-planned -->
+ PR 3 moves run, status, and dialogue records to a shared store under git's common directory.
+<!-- /slot:enforcement-planned -->
+
+<!-- slot:W-01 -->
+| Charter class | Who decides | Examples |
+|---|---|---|
+| A | Coordinator alone, report afterwards | Review findings inside an approved plan; bugs; flaky tests (assertions preserved); factual docs and site corrections; compatible dependency updates; release tooling; closing resolved or duplicate issues with linked evidence; security fixes that keep existing access and data contracts |
+| B | Coordinator alone, notify before publishing | Routine releases through the approved channels (GitHub release, winget, MCP Registry); major dependency upgrades with demonstrated compatibility and a recovery path; compatible telemetry schema changes |
+| C | Owner only | New product direction or large new feature; new external accounts or spend beyond budget; posting in the owner's name; deleting durable user data; user-visible promise changes (pricing, privacy policy, license); expanding collected telemetry or retention |
+<!-- /slot:W-01 -->
+
+<!-- slot:guardrails -->
+At most 2 implementation tasks in parallel (separate worktrees), 1 release in flight, desktop takeover of at most 30 minutes at a time and announced first. Codex work stops at 80% of the weekly limit.
+<!-- /slot:guardrails -->
+
+<!-- slot:idea-to-package -->
+| Work | Brainstorm and approval |
+|---|---|
+| Charter A work (bugs, flaky tests, doc corrections, review fixes) and work inside an approved plan | Proceeds directly: no brainstorm, no approval (D3) |
+| A new product package | Codex debate, then one approval message from the owner |
+| Charter C | Owner only |
+
+- **Debate.** "Brainstorm with Codex" is a real debate on a strong model: Codex proposes, the coordinator critiques with evidence from code and data, Codex answers, and they iterate (usually 2-3 rounds) until they converge. A single Codex answer forwarded as-is is not a brainstorm. Substantial design debates get two independent assessments.
+- **One approval message.** The converged plan (scope, deliverables, non-goals); each open decision with options, pros and cons, and a recommendation; and what comes after. After approval the coordinator executes, reviews, opens the PR, and merges without asking again. Include the points of disagreement and how each was settled in the approval message.
+- **Still ask** for a decision the approved plan leaves open, a destructive or third-party action that neither the charter (A or B) nor an approved plan already authorizes, or a surprise that changes the plan. Routine releases through the approved channels are class B: notify, do not wait.
+- **Private dialogues, public rules.** Rules and decision rationale live in this knowledge base. Full Claude-Codex dialogues stay local (D2) and are never needed to understand a rule. **Planned (PR 3):** a shared local store for dialogue records.
+<!-- /slot:idea-to-package -->
+
+<!-- slot:role-executor -->
+Sonnet subagent or Codex (`gpt-6-luna`, workspace-write)
+<!-- /slot:role-executor -->
+
+<!-- slot:role-helper -->
+Haiku 5.5 subagent (trial)
+<!-- /slot:role-helper -->
+
+<!-- slot:fix-continuation -->
+for a Sonnet subagent, continue the same subagent. Returning a fix to the same Codex executor through the launcher is **planned**; until then a fix is a new launcher run whose brief includes the previous run's report and the review findings.
+<!-- /slot:fix-continuation -->
+
+<!-- slot:W-36 -->
+- **Allocation.** Aim for 40-60% of eligible packages to Codex as a rolling target, never a per-task quota. Capability and remaining capacity decide exceptions. Codex suits scripts and code without visual judgment; Sonnet suits visual, MCP, and cross-file work.
+<!-- /slot:W-36 -->
+
+<!-- slot:models-policy -->
+Cheapest model that can do the work: `gpt-6-luna` at `medium` effort by default, `high` effort for concurrency, lifecycle, and DPI work. Raise effort before raising the model. Only generation-6 models are used; the top tier needs owner approval. Brainstorm, retros, and heavy review use the strong tier (see Review). Set model and effort per run; never change persistent Codex configuration unless asked. Use only model names confirmed by Codex configuration or its model listing.
+<!-- /slot:models-policy -->
+
+<!-- slot:W-39 -->
+- **Haiku 5.5 trial.** Haiku 5.5 (`claude-haiku-5-5`, Agent model `haiku`) is allowed only for this scope until the 2026-11-02 retro; no automatic renewal. Through `package.ps1` a Haiku model needs a `Haiku-scope: helper|mechanical` brief line; helpers get no Edit or Write.
+  - **Mechanical executor:** only when all four small-fix conditions (W-08) hold, or for a generated or link fix with an explicit expected transformation and allowed paths. KB, index, and numbering edits stay with the coordinator (W-09): Haiku proposes the patch, the coordinator applies it.
+  - **Never Haiku:** reviewer (light or heavy), KB prose rewriting or compression, lifecycle, DPI, privacy, release, and verify-truthfulness work.
+  - **Review:** a Haiku executor's change gets an independent light review (Codex `gpt-6-luna`) and an ordinary review record; `-SmallFix` stays coordinator-only (W-20 unchanged).
+<!-- /slot:W-39 -->
+
+<!-- slot:helper-label -->
+Haiku helper
+<!-- /slot:helper-label -->
+
+<!-- slot:helper-scope -->
+Read-only, with bounded time and output: summarise verify and CI logs and long review files; code search; watchdog triage.
+<!-- /slot:helper-scope -->
+
+<!-- slot:small-fix-size -->
+about 10 changed non-generated lines in at most 2 files
+<!-- /slot:small-fix-size -->
+
+<!-- slot:small-fix-impact -->
+no privacy, security, lifecycle, packaging, persistence, or workflow-gate impact
+<!-- /slot:small-fix-impact -->
+
+<!-- slot:lifecycle-cases -->
+(focus, cancellation, legacy users, recording-only users, older clients)
+<!-- /slot:lifecycle-cases -->
+
+<!-- slot:exact-checks -->
+Sandbox-safe: `dotnet format Pointframe/Pointframe.csproj --no-restore`, and every `dotnet test --filter` adds `&Category!=Integration`
+<!-- /slot:exact-checks -->
+
+<!-- slot:brief-lessons -->
+- Lesson: An executor's relative path or default working directory can write into the main checkout
+- Lesson: A background command that reads stdin can hang an agent for hours
+<!-- /slot:brief-lessons -->
+
+<!-- slot:reassessment -->
+At 100 tool calls, 20M tokens, or 3 unsuccessful repair cycles
+<!-- /slot:reassessment -->
+
+<!-- slot:review-assignment -->
+Sonnet executes and Codex `gpt-6-luna` reviews, and the reverse (D4)
+<!-- /slot:review-assignment -->
+
+<!-- slot:heavy-triggers -->
+Collection, identifiers, consent, retention, or privacy promises; security boundaries, destructive operations, data migration; release, install, or update delivery; F-39 verify truthfulness, evidence freshness, or bypass resistance; authority, review, verification, or autonomy rules; hard concurrency, lifecycle, or DPI
+<!-- /slot:heavy-triggers -->
+
+<!-- slot:heavy-reviewer -->
+`gpt-6.1-sol` at high effort read-only, or an Opus subagent. One heavy review replaces the light one
+<!-- /slot:heavy-reviewer -->
+
+<!-- slot:consequences-examples -->
+An F-39 help typo or an ordinary File map row does not qualify. Privacy wording is never mechanical.
+<!-- /slot:consequences-examples -->
+
+<!-- slot:model-rule-note -->
+- **Model rule amended.** The strong Codex tier was reserved for brainstorm and retros; D4 also allows it, read-only, for heavy review.
+<!-- /slot:model-rule-note -->
+
+<!-- slot:pin-exception -->
+A record for an ancestor counts only when the later change is the plugin pin.
+<!-- /slot:pin-exception -->
+
+<!-- slot:done-gate-ref -->
+see [Local gates and merging](tooling.md#local-gates-and-merging)
+<!-- /slot:done-gate-ref -->
+
+<!-- slot:real-environment -->
+When runtime behavior changes, run the real app: `pwsh scripts/desktop-tests.ps1` for the regression selection, with `-Repeat N` for stress. The desktop is announced and kept to 30 minutes at a time; check the input desktop is not locked first.
+<!-- /slot:real-environment -->
+
+<!-- slot:W-25 -->
+- **Release qualification.** Run `pwsh scripts/release-impact.ps1` before merging; when it prints `desktop-qualification: required`, run `scripts/check-released-desktop.ps1 -BuildCandidate`. After each release run `scripts/check-release-channels.ps1 -Version <x> -Watch` and report a failed channel at once.
+<!-- /slot:W-25 -->
+
+<!-- slot:required-checks -->
+`unit-tests`, `package-checks`, `Analyze (csharp)`, CodeQL
+<!-- /slot:required-checks -->
+
+<!-- slot:serial-note -->
+ Every merge cuts a release.
+<!-- /slot:serial-note -->
+
+<!-- slot:pin-policy -->
+- **Plugin pin.** A stale pin is acceptable when only the two pin files changed and `check-agent-discovery.ps1` passes; `-Auto` commits the pin itself.
+<!-- /slot:pin-policy -->
+
+<!-- slot:closure-ref -->
+ (D5)
+<!-- /slot:closure-ref -->
+
+<!-- slot:closure-triggers -->
+At package end, end of day, the first context compaction, or a measured 150K context, whichever comes first
+<!-- /slot:closure-triggers -->
+
+<!-- slot:planned-store -->
+- **Planned (PR 3).** Run and status records join the review records in a shared store under git's common directory so every linked worktree sees them.
+<!-- /slot:planned-store -->
+
+<!-- slot:W-38 -->
+- **Weekly retro.** Every Monday, a dated document under `plan/retros/` with the work done, what went well and badly with causes, Claude and Codex token use, and next actions. Retros use strong models, with Codex challenging the draft.
+- **Metrics to watch.** Coordinator versus executor tokens, questions asked to the owner, activation (`scripts/usage-report.ps1`), and counted small-fix exceptions.
+- **Haiku measurement.** Every Haiku run, accepted or rejected, is a line in the local `agent-runs.jsonl` under `plan/`: model, task or run id, task kind, minutes, outcome (accepted, redone, rejected), raw artifact path and size, bytes the coordinator then read, review and rework minutes, failures and timeouts, and summary omissions or false verdicts found. Gross estimated input tokens avoided = unread raw bytes / 4. The coordinator spot-checks accepted summaries against raw evidence. The 2026-11-02 retro decides the trial; savings are assessed net of helper and review costs.
+<!-- /slot:W-38 -->
+
+<!-- slot:trap-ref -->
+ (D-016)
+<!-- /slot:trap-ref -->
+
+<!-- slot:files -->
+**Files.** `scripts/agent-run.ps1`, `scripts/codex-ask.ps1`, `scripts/merge-pr.ps1`, `scripts/record-review.ps1`, `scripts/status.ps1`, `scripts/verify.ps1`, `CLAUDE.md`, `AGENTS.md`.
+<!-- /slot:files -->
+
+<!-- slot:check-coverage -->
+telemetry and smoke-test coverage, 
+<!-- /slot:check-coverage -->
+
+<!-- slot:check-triggers -->
+, telemetry events, or smoke tests
+<!-- /slot:check-triggers -->
+
+<!-- slot:check-generated-skills -->
+the Codex copies of the `kb-*` skills in `.agents/skills/`
+<!-- /slot:check-generated-skills -->
+
+<!-- slot:check-skill-edit -->
+Never edit the rendered skills; change the kit templates or `docs/knowledge-base/kb-slots.txt`, then run `pwsh scripts/kb.ps1 render`.
+<!-- /slot:check-skill-edit -->
+
+<!-- slot:check-selftest -->
+synthetic fixtures shipped with the workflow kit (`scripts/verify.ps1` runs it first)
+<!-- /slot:check-selftest -->
+
+<!-- slot:check-coverage-rows -->
+| telemetry event belongs to no feature | Add the event to the `F-NN` row that emits it |
+| smoke test belongs to no feature | Add the test to the `F-NN` row it covers |
+<!-- /slot:check-coverage-rows -->
+
+<!-- slot:kb-script -->
+scripts/kb.ps1
+<!-- /slot:kb-script -->
+
+<!-- slot:done-format -->
+When C# changed, run `dotnet format Pointframe/Pointframe.csproj`.
+<!-- /slot:done-format -->
+
+<!-- slot:init-example-topic -->
+dpi
+<!-- /slot:init-example-topic -->
+
+<!-- slot:init-environment-facts -->
+(a running `Pointframe.Mcp.exe`, the desktop lock, hidden trial installs, the worktree count).
+<!-- /slot:init-environment-facts -->
+
+<!-- slot:read-example-path -->
+Pointframe/Views/OverlayWindow.Recording.cs
+<!-- /slot:read-example-path -->
+
+<!-- slot:read-example-area -->
+recording
+<!-- /slot:read-example-area -->
+
+<!-- slot:read-example-feature -->
+F-22
+<!-- /slot:read-example-feature -->
+
+<!-- slot:read-example-topic -->
+hotkey
+<!-- /slot:read-example-topic -->
+
+<!-- slot:read-sibling-files -->
+`file-map.md`, `composition.md`, `how-tos.md`, `maintenance.md`, `references.md`, `tooling.md`, `decisions.md`, and `workflow.md`
+<!-- /slot:read-sibling-files -->
+
+<!-- slot:write-composition -->
+host, DI, messaging
+<!-- /slot:write-composition -->
+
+<!-- slot:write-tooling -->
+installer and packaging rules
+<!-- /slot:write-tooling -->
+
+<!-- slot:write-plans -->
+`plan/` (local-only, not in git)
+<!-- /slot:write-plans -->
+
+<!-- slot:write-feature-triggers -->
+, telemetry event, or smoke test
+<!-- /slot:write-feature-triggers -->
+
+<!-- slot:kb-command -->
+pwsh scripts/kb.ps1
+<!-- /slot:kb-command -->

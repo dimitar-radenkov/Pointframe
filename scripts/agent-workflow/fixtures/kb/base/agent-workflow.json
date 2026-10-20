@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "repository": {"id": "fixture", "baseRef": "origin/main"},
+  "state": {"commonDirNamespace": "fixture"},
+  "kb": {
+    "root": "docs/knowledge-base",
+    "core": "docs/knowledge-base/knowledge-base.md",
+    "features": "docs/knowledge-base/features",
+    "lessons": "lessons.md",
+    "featurePrefix": "F-",
+    "decisionPrefix": "D-",
+    "baseline": "docs/knowledge-base/kb-baseline.json",
+    "tasks": "docs/knowledge-base/kb-tasks.json"
+  },
+  "status": {"store": "plan/status.json", "issue": null, "handoff": "plan/handoff.md"},
+  "merge": {"requiredChecks": []},
+  "gates": [],
+  "roles": {
+    "coordinator": {"provider": "claude", "model": "opus", "effort": "high", "sandbox": "read-only"},
+    "executor": {"provider": "claude", "model": "sonnet", "effort": "medium", "sandbox": "workspace-write"},
+    "lightReviewer": {"provider": "claude", "model": "sonnet", "effort": "medium", "sandbox": "read-only"},
+    "heavyReviewer": {"provider": "claude", "model": "opus", "effort": "high", "sandbox": "read-only"}
+  },
+  "hooks": {"environment": "hooks/environment.ps1", "kbCoverage": null, "pin": null, "qualify": null, "postMerge": null},
+  "pinException": null
+}

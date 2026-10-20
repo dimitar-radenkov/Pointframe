@@ -1,0 +1,428 @@
+{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "title": "Agent Workflow Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "repository",
+    "state",
+    "kb",
+    "status",
+    "merge",
+    "gates",
+    "roles",
+    "hooks",
+    "pinException"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "baseRef"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commonDirNamespace"
+      ],
+      "properties": {
+        "commonDirNamespace": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "kb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root",
+        "core",
+        "features",
+        "lessons",
+        "featurePrefix",
+        "decisionPrefix",
+        "baseline",
+        "tasks"
+      ],
+      "properties": {
+        "root": {
+          "$ref": "#/definitions/path"
+        },
+        "core": {
+          "$ref": "#/definitions/path"
+        },
+        "features": {
+          "$ref": "#/definitions/path"
+        },
+        "lessons": {
+          "$ref": "#/definitions/path"
+        },
+        "featurePrefix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionPrefix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseline": {
+          "$ref": "#/definitions/path"
+        },
+        "tasks": {
+          "$ref": "#/definitions/path"
+        },
+        "render": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "workflow",
+            "slots",
+            "skills"
+          ],
+          "properties": {
+            "workflow": {
+              "$ref": "#/definitions/path"
+            },
+            "slots": {
+              "$ref": "#/definitions/path"
+            },
+            "skills": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "claude",
+                "agents"
+              ],
+              "properties": {
+                "claude": {
+                  "$ref": "#/definitions/path"
+                },
+                "agents": {
+                  "$ref": "#/definitions/path"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "store",
+        "issue",
+        "handoff"
+      ],
+      "properties": {
+        "store": {
+          "$ref": "#/definitions/path"
+        },
+        "issue": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "handoff": {
+          "$ref": "#/definitions/path"
+        }
+      }
+    },
+    "merge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredChecks"
+      ],
+      "properties": {
+        "requiredChecks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "exe",
+          "args",
+          "cwd",
+          "timeoutMinutes",
+          "dependsOn"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exe": {
+            "type": "string",
+            "minLength": 1
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cwd": {
+            "$ref": "#/definitions/path"
+          },
+          "timeoutMinutes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "roles": {
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "lightReviewer": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "provider",
+            "model",
+            "effort",
+            "sandbox"
+          ],
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "effort": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "helper": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "provider",
+            "model",
+            "effort",
+            "sandbox"
+          ],
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "effort": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "heavyReviewer": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "provider",
+            "model",
+            "effort",
+            "sandbox"
+          ],
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "effort": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "executor": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "provider",
+            "model",
+            "effort",
+            "sandbox"
+          ],
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "effort": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "coordinator": {
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "provider",
+            "model",
+            "effort",
+            "sandbox"
+          ],
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "effort": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "required": [
+        "coordinator",
+        "executor",
+        "lightReviewer",
+        "heavyReviewer"
+      ]
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment",
+        "kbCoverage",
+        "pin",
+        "qualify",
+        "postMerge"
+      ],
+      "properties": {
+        "environment": {
+          "$ref": "#/definitions/hook"
+        },
+        "kbCoverage": {
+          "$ref": "#/definitions/hook"
+        },
+        "pin": {
+          "$ref": "#/definitions/hook"
+        },
+        "qualify": {
+          "$ref": "#/definitions/hook"
+        },
+        "postMerge": {
+          "$ref": "#/definitions/hook"
+        }
+      }
+    },
+    "pinException": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "paths"
+      ],
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/path"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![/\\\\]|[A-Za-z]:)(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$"
+    },
+    "hook": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "pattern": "^(?![/\\\\]|[A-Za-z]:)(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$"
+    }
+  }
+}
