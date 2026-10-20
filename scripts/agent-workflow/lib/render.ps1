@@ -186,8 +186,12 @@ function Test-AwSlotRules {
     )
 
     foreach ($name in $Slots.Keys) {
-        foreach ($m in [regex]::Matches([string]$Slots[$name], '<!--\s*rule:[^\r\n]*')) {
-            $marker = [regex]::Match($m.Value, '^<!--\s*rule:W-(\d{2,3})\s+roles=\S+\s*-->\s*$')
+        # The knowledge base parser reads these markers case-insensitively, so this check does too.
+        foreach ($m in [regex]::Matches([string]$Slots[$name], '<!--\s*rule-section\b[^\r\n]*', 'IgnoreCase')) {
+            $Errors.Add("slot '$name' has a rule-section marker, which only the kit templates may create: $($m.Value.Trim())")
+        }
+        foreach ($m in [regex]::Matches([string]$Slots[$name], '<!--\s*rule:[^\r\n]*', 'IgnoreCase')) {
+            $marker = [regex]::Match($m.Value, '^<!--\s*rule:W-(\d{2,3})\s+roles=\S+\s*-->\s*$', 'IgnoreCase')
             if (-not $marker.Success) {
                 $Errors.Add("slot '$name' has a malformed rule marker: $($m.Value.Trim())")
                 continue

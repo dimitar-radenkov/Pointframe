@@ -11,7 +11,7 @@ pwsh scripts/kb.ps1 check          # refresh the generated parts, then check eve
 pwsh scripts/kb.ps1 check -NoFix   # check only, write nothing (what CI runs)
 ```
 
-`check` rewrites generated things, so never edit them by hand: the table of contents, Feature index, and decision index in `docs/knowledge-base/knowledge-base.md`, the Codex copies of the `kb-*` skills in `.agents/skills/`, and `docs/knowledge-base/kb-baseline.json` (it only lowers entries). Never edit the rendered skills; change the kit templates or `docs/knowledge-base/kb-slots.txt`, then run `pwsh scripts/kb.ps1 render`.
+`check` rewrites generated things, so never edit them by hand: the table of contents, Feature index, and decision index in `docs/knowledge-base/knowledge-base.md`, the Codex copies of the `kb-*` skills in `.agents/skills/`, and `docs/knowledge-base/kb-baseline.json` (it only lowers entries). Never edit the rendered skills or the vendored kit; change `docs/knowledge-base/kb-slots.txt`, then run `pwsh scripts/kb.ps1 render` (template changes come only with a kit release).
 
 `pwsh scripts/kb.ps1 selftest` runs the tool against synthetic fixtures shipped with the workflow kit (`scripts/verify.ps1` runs it first), and `pwsh scripts/kb.ps1 stats` prints bytes and estimated tokens per file, section, and task-suite task.
 

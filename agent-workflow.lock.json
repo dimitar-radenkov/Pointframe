@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "source": "10252afdf58cd0d6b986537df115bde3e4945c2b",
-  "tag": "v0.1.0",
-  "commit": "61d5ff6503e8f33f9052898c3a9a918e9b57fc34",
-  "manifestSha256": "1a165ba765bc8a2d350c5a75594341c3b2e7a9837932c221bd8b79332702fc4c",
+  "tag": "v0.1.1",
+  "commit": "a9205ce2238c6d13dffce8b5e10d94779b160567",
+  "manifestSha256": "c5fd3f573634bdb390703bfddba8194012f34667b0483c3d8f6ca3ac231b0069",
   "files": {
     "fixtures/kb/base/agent-workflow.json": "19e4c4e84423a0da397a00a3a286eb5715a7d491874e2ed53a1aa136867d363f",
     "fixtures/kb/base/docs/knowledge-base/features/alpha.md": "fa8a771fc426f001180ef123111610b5eb3f7c33549d8acac13e225f8b0995c1",
@@ -21,7 +21,7 @@
     "fixtures/kb/base/tracked.txt": "2c48869c8af7d865db2678939e9e0af9c848810854d5fe2190c1220a6b4b0f7d",
     "lib/config.ps1": "6fed913720d3afef0fe09c06869c11d74a27047492170080d6d57b00656293d5",
     "lib/manifest.ps1": "c7d9306e813cd22bfb3f6c25838f4865b1124a02e2cf28696c63389f06695a55",
-    "lib/render.ps1": "c2f32dc1eb70d4a7c6ff3d48141213776b3b0bea556e98f97a1c6dea0c7f854f",
+    "lib/render.ps1": "a5c0426501a84ea5e983694154850d4fda51a76be2877cdd1eca14f1ea4527d0",
     "lib/root.ps1": "21cbd0588e6878a64512f254c377aa213820f4fc63ac0717bc86eba020e03821",
     "schema/agent-workflow.schema.json": "f37265a8be8d05268e44d69e2bfb30dcaba70a9aa24265a83d582388fc169b8a",
     "skills/kb-check/SKILL.md": "43b6f36b0784cc0f173474bef12cc4ef165d7e3aff77fd476a68664c0ae53c8f",
