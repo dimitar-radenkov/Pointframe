@@ -1,0 +1,2296 @@
+{
+  "commits": [
+    {
+      "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+      "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "runIds": [
+        "50944ef5fc574ffa9e78ee3706ba803a"
+      ],
+      "author": "SelfTest <selftest@example.invalid>",
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "sha": "7db4b4a205596de05be46e207b76b717f3976a53",
+      "utc": "2026-10-20T18:31:08.9635297+00:00",
+      "message": "Package vd",
+      "rebaseChangedTree": false,
+      "executors": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "executorKind": "codex",
+          "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+          "outcome": "completed"
+        }
+      ],
+      "checkedAfterRebase": true
+    }
+  ],
+  "slug": "vd",
+  "repair": {
+    "limit": 3,
+    "roundsUsed": 1,
+    "resets": [
+      {
+        "utc": "2026-10-20T18:32:53.4099058+00:00",
+        "roundsUsedBefore": 3,
+        "reason": "coordinator reassessed the findings"
+      },
+      {
+        "roundsUsedBefore": 3,
+        "reason": "second reset",
+        "utc": "2026-10-20T18:34:05.6424027+00:00"
+      },
+      {
+        "utc": "2026-10-20T18:35:16.1597318+00:00",
+        "roundsUsedBefore": 3,
+        "reason": "third reset"
+      }
+    ]
+  },
+  "currentRun": null,
+  "branch": "pkg/vd",
+  "runs": [
+    {
+      "wrapper": {
+        "startUtc": "2026-10-20T18:30:36.1953309Z",
+        "pid": 43344
+      },
+      "envBlocked": false,
+      "logDirectory": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\runs\\50944ef5fc574ffa9e78ee3706ba803a",
+      "sessionId": "stub-session",
+      "termination": "exit",
+      "escalationReason": null,
+      "provider": "codex",
+      "reason": null,
+      "exitCode": 0,
+      "mainCheckoutAfter": {
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "unknown": false,
+        "unreadable": [],
+        "files": 7,
+        "seconds": 0.32
+      },
+      "model": "gpt-6-luna",
+      "envEvidence": null,
+      "permissions": {
+        "approval": "never",
+        "windowsSandbox": "unelevated",
+        "sandbox": "workspace-write"
+      },
+      "containmentVerified": true,
+      "maxMinutes": 30.0,
+      "chainId": "50944ef5fc574ffa9e78ee3706ba803a",
+      "mainCheckoutMutated": false,
+      "artifacts": {
+        "outMd": {
+          "sha256": "12e5cb1d6521d6a9f0369978cca6ec93c52582896608bf12882764ae21a0c6e4",
+          "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\runs\\50944ef5fc574ffa9e78ee3706ba803a\\out.md"
+        },
+        "eventsJsonl": {
+          "sha256": "ae356074d36a9b524c2969514af3e791d96458b47a95e5e2b8ced33df4531b09",
+          "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\runs\\50944ef5fc574ffa9e78ee3706ba803a\\events.jsonl"
+        }
+      },
+      "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+      "endedUtc": "2026-10-20T18:30:48.5473332+00:00",
+      "executorKind": "codex",
+      "seq": 1,
+      "outcome": "completed",
+      "tokens": {
+        "cached": 1,
+        "input": 3,
+        "output": 2
+      },
+      "containmentReason": null,
+      "maxInputTokens": 20000000,
+      "mainCheckoutBefore": {
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "unknown": false,
+        "unreadable": [],
+        "files": 7,
+        "seconds": 0.49
+      },
+      "effort": "medium",
+      "codexCliVersion": "9.9.9-test",
+      "startedUtc": "2026-10-20T18:30:43.2886767+00:00",
+      "executor": {
+        "startUtc": "2026-10-20T18:30:46.3091113Z",
+        "pid": 6752,
+        "jobObject": true
+      },
+      "elapsedSeconds": 1.7,
+      "leftoverProcesses": 0
+    }
+  ],
+  "acceptance": null,
+  "schemaVersion": 1,
+  "commit": {
+    "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+    "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+    "runIds": [
+      "50944ef5fc574ffa9e78ee3706ba803a"
+    ],
+    "author": "SelfTest <selftest@example.invalid>",
+    "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+    "sha": "7db4b4a205596de05be46e207b76b717f3976a53",
+    "utc": "2026-10-20T18:31:08.9635297+00:00",
+    "message": "Package vd",
+    "rebaseChangedTree": false,
+    "executors": [
+      {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "executorKind": "codex",
+        "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+        "outcome": "completed"
+      }
+    ],
+    "checkedAfterRebase": true
+  },
+  "brief": {
+    "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\brief.md",
+    "source": "C:\\selftest\\brief-review.md",
+    "sha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2"
+  },
+  "packageId": "4b5237cb-b742-415b-881d-69cfde6585ba",
+  "pendingFix": null,
+  "preflight": {
+    "ok": true,
+    "builds": [],
+    "utc": "2026-10-20T18:30:34.2940950+00:00"
+  },
+  "stage": "review-passed",
+  "checks": [
+    {
+      "checkId": "bfd266ec32b5426e92adc74fb84b0ee6",
+      "commands": [
+        {
+          "files": [],
+          "inputTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "skipped": null,
+          "mutator": true,
+          "name": "crlf normalization",
+          "exitCode": 0,
+          "outputTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "kind": "crlf",
+          "command": "normalize changed text files to CRLF",
+          "log": null
+        },
+        {
+          "inputTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "skipped": null,
+          "mutator": false,
+          "name": "passes",
+          "exitCode": 0,
+          "outputTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "kind": "extra",
+          "command": "pwsh -NoProfile -Command exit 0",
+          "log": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\checks\\bfd266ec32b5426e92adc74fb84b0ee6\\2-extra.log"
+        }
+      ],
+      "ok": true,
+      "utc": "2026-10-20T18:30:58.1387558+00:00",
+      "treeBefore": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "treeHash": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6"
+    }
+  ],
+  "repository": {
+    "mainCheckout": "C:\\selftest\\main",
+    "top": "C:\\selftest\\main",
+    "commonDir": "C:\\selftest\\main\\.git"
+  },
+  "worktree": "C:\\selftest\\main.worktrees\\vd",
+  "history": [
+    {
+      "from": "",
+      "event": "new",
+      "to": "creating",
+      "utc": "2026-10-20T18:30:33.6682738+00:00"
+    },
+    {
+      "from": "creating",
+      "event": "preflight-passed",
+      "to": "ready",
+      "utc": "2026-10-20T18:30:34.2984483+00:00"
+    },
+    {
+      "event": "run-started",
+      "utc": "2026-10-20T18:30:43.5078375+00:00",
+      "from": "ready",
+      "to": "running"
+    },
+    {
+      "event": "executor-started",
+      "utc": "2026-10-20T18:30:46.3837080+00:00",
+      "from": "running",
+      "to": "running"
+    },
+    {
+      "event": "run-finished",
+      "utc": "2026-10-20T18:30:48.7576346+00:00",
+      "from": "running",
+      "to": "executor-completed"
+    },
+    {
+      "utc": "2026-10-20T18:30:58.1828442+00:00",
+      "from": "executor-completed",
+      "event": "checked",
+      "to": "checks-passed"
+    },
+    {
+      "event": "committed",
+      "utc": "2026-10-20T18:31:09.0349791+00:00",
+      "to": "committed",
+      "from": "checks-passed"
+    },
+    {
+      "to": "reviewing",
+      "from": "committed",
+      "utc": "2026-10-20T18:31:19.3576942+00:00",
+      "event": "review-started"
+    },
+    {
+      "to": "reviewing",
+      "from": "reviewing",
+      "utc": "2026-10-20T18:31:21.5727982+00:00",
+      "event": "review-inputs-bound"
+    },
+    {
+      "to": "review-invalid",
+      "from": "reviewing",
+      "utc": "2026-10-20T18:31:31.9442135+00:00",
+      "event": "review-finished"
+    },
+    {
+      "to": "reviewing",
+      "from": "review-invalid",
+      "event": "review-started",
+      "utc": "2026-10-20T18:31:42.0907710+00:00"
+    },
+    {
+      "to": "reviewing",
+      "from": "reviewing",
+      "event": "review-inputs-bound",
+      "utc": "2026-10-20T18:31:44.6737673+00:00"
+    },
+    {
+      "to": "review-invalid",
+      "from": "reviewing",
+      "event": "review-finished",
+      "utc": "2026-10-20T18:31:55.8856611+00:00"
+    },
+    {
+      "from": "review-invalid",
+      "to": "reviewing",
+      "utc": "2026-10-20T18:32:06.0832620+00:00",
+      "event": "review-started"
+    },
+    {
+      "from": "reviewing",
+      "to": "reviewing",
+      "utc": "2026-10-20T18:32:08.7564668+00:00",
+      "event": "review-inputs-bound"
+    },
+    {
+      "from": "reviewing",
+      "to": "needs-coordinator",
+      "utc": "2026-10-20T18:32:19.9410235+00:00",
+      "event": "review-finished"
+    },
+    {
+      "to": "needs-coordinator",
+      "utc": "2026-10-20T18:32:28.4820255+00:00",
+      "event": "needs-coordinator",
+      "from": "needs-coordinator"
+    },
+    {
+      "from": "needs-coordinator",
+      "utc": "2026-10-20T18:32:53.4346859+00:00",
+      "to": "review-invalid",
+      "event": "budget-reset"
+    },
+    {
+      "from": "review-invalid",
+      "utc": "2026-10-20T18:32:55.5364659+00:00",
+      "to": "reviewing",
+      "event": "review-started"
+    },
+    {
+      "from": "reviewing",
+      "utc": "2026-10-20T18:32:57.7506987+00:00",
+      "to": "reviewing",
+      "event": "review-inputs-bound"
+    },
+    {
+      "from": "reviewing",
+      "utc": "2026-10-20T18:33:08.1631914+00:00",
+      "to": "review-invalid",
+      "event": "review-finished"
+    },
+    {
+      "event": "review-started",
+      "from": "review-invalid",
+      "to": "reviewing",
+      "utc": "2026-10-20T18:33:19.4732622+00:00"
+    },
+    {
+      "event": "review-inputs-bound",
+      "from": "reviewing",
+      "to": "reviewing",
+      "utc": "2026-10-20T18:33:21.9914545+00:00"
+    },
+    {
+      "event": "review-finished",
+      "from": "reviewing",
+      "to": "review-invalid",
+      "utc": "2026-10-20T18:33:32.7644579+00:00"
+    },
+    {
+      "to": "reviewing",
+      "utc": "2026-10-20T18:33:44.0015191+00:00",
+      "event": "review-started",
+      "from": "review-invalid"
+    },
+    {
+      "to": "reviewing",
+      "utc": "2026-10-20T18:33:46.6838532+00:00",
+      "event": "review-inputs-bound",
+      "from": "reviewing"
+    },
+    {
+      "to": "needs-coordinator",
+      "utc": "2026-10-20T18:33:56.5315390+00:00",
+      "event": "review-finished",
+      "from": "reviewing"
+    },
+    {
+      "from": "needs-coordinator",
+      "to": "review-invalid",
+      "event": "budget-reset",
+      "utc": "2026-10-20T18:34:05.6780594+00:00"
+    },
+    {
+      "from": "review-invalid",
+      "to": "reviewing",
+      "event": "review-started",
+      "utc": "2026-10-20T18:34:07.5770974+00:00"
+    },
+    {
+      "from": "reviewing",
+      "to": "reviewing",
+      "event": "review-inputs-bound",
+      "utc": "2026-10-20T18:34:09.8407135+00:00"
+    },
+    {
+      "from": "reviewing",
+      "to": "review-invalid",
+      "event": "review-finished",
+      "utc": "2026-10-20T18:34:20.3564889+00:00"
+    },
+    {
+      "from": "review-invalid",
+      "utc": "2026-10-20T18:34:31.5498583+00:00",
+      "to": "reviewing",
+      "event": "review-started"
+    },
+    {
+      "from": "reviewing",
+      "utc": "2026-10-20T18:34:33.8913878+00:00",
+      "to": "reviewing",
+      "event": "review-inputs-bound"
+    },
+    {
+      "from": "reviewing",
+      "utc": "2026-10-20T18:34:43.7755979+00:00",
+      "to": "review-invalid",
+      "event": "review-finished"
+    },
+    {
+      "from": "review-invalid",
+      "event": "review-started",
+      "utc": "2026-10-20T18:34:54.3339204+00:00",
+      "to": "reviewing"
+    },
+    {
+      "from": "reviewing",
+      "event": "review-inputs-bound",
+      "utc": "2026-10-20T18:34:57.0435168+00:00",
+      "to": "reviewing"
+    },
+    {
+      "from": "reviewing",
+      "event": "review-finished",
+      "utc": "2026-10-20T18:35:06.5445937+00:00",
+      "to": "needs-coordinator"
+    },
+    {
+      "from": "needs-coordinator",
+      "utc": "2026-10-20T18:35:06.9873277+00:00",
+      "to": "reviewing",
+      "event": "test-crash-review"
+    },
+    {
+      "utc": "2026-10-20T18:35:13.3723138+00:00",
+      "from": "reviewing",
+      "event": "review-recovered",
+      "to": "needs-coordinator"
+    },
+    {
+      "utc": "2026-10-20T18:35:16.1633596+00:00",
+      "from": "needs-coordinator",
+      "event": "budget-reset",
+      "to": "review-invalid"
+    },
+    {
+      "utc": "2026-10-20T18:35:18.6487487+00:00",
+      "from": "review-invalid",
+      "event": "review-started",
+      "to": "reviewing"
+    },
+    {
+      "utc": "2026-10-20T18:35:21.2454752+00:00",
+      "from": "reviewing",
+      "event": "review-inputs-bound",
+      "to": "reviewing"
+    },
+    {
+      "utc": "2026-10-20T18:35:30.9549673+00:00",
+      "from": "reviewing",
+      "event": "review-finished",
+      "to": "review-passed"
+    }
+  ],
+  "baseRef": "origin/master",
+  "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+  "reviews": [
+    {
+      "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+      "observedStart": {
+        "clean": true,
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53"
+      },
+      "commit": "7db4b4a205596de05be46e207b76b717f3976a53",
+      "status": "invalid",
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "promptFile": {
+        "sha256": "a4a62212a387ecad2207fe3f635ae14a33f39e0b94f64331ba79051cb82a6268",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\bda1830325ba4ffc9aa5a5a5720cfc9f\\prompt.md"
+      },
+      "exitCode": 0,
+      "denials": [],
+      "startedUtc": "2026-10-20T18:31:19.1129274+00:00",
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "termination": "exit",
+      "verdict": null,
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "level": "light",
+      "blockingFindings": 0,
+      "seconds": 2.4,
+      "verdictFile": {
+        "sha256": "2b44aea93a08502edf95291eba348844731c16aeb015e819ffb3540fd63c1720",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\bda1830325ba4ffc9aa5a5a5720cfc9f\\verdict.json"
+      },
+      "fileHashes": {
+        "sha256": "7e27528d844be7b851d63b6adb1461fca2972635f46121bd5f838953655d8042",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\bda1830325ba4ffc9aa5a5a5720cfc9f\\files.json"
+      },
+      "mainCheckoutBefore": {
+        "unknown": false,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "seconds": 0.29,
+        "files": 7,
+        "unreadable": [],
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c"
+      },
+      "finalMessage": {
+        "sha256": "2b44aea93a08502edf95291eba348844731c16aeb015e819ffb3540fd63c1720",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\bda1830325ba4ffc9aa5a5a5720cfc9f\\final.md"
+      },
+      "executors": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "executorKind": "codex",
+          "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+          "outcome": "completed"
+        }
+      ],
+      "criteria": [
+        {
+          "id": "C1",
+          "text": "The feature file exists."
+        },
+        {
+          "id": "C2",
+          "text": "The feature file says v2, and the comment above it explains why."
+        },
+        {
+          "id": "C3",
+          "text": "Nothing else changes."
+        }
+      ],
+      "findings": [],
+      "containmentVerified": true,
+      "criteriaResults": [],
+      "mainCheckoutAfter": {
+        "unknown": false,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "seconds": 0.35,
+        "files": 7,
+        "unreadable": [],
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c"
+      },
+      "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "checkId": "bfd266ec32b5426e92adc74fb84b0ee6",
+      "baseObserved": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "reviewer": {
+        "kind": "claude-sonnet",
+        "effort": null,
+        "resumedFrom": null,
+        "sessionId": "stub-claude-review",
+        "model": "claude-sonnet-5-5",
+        "provider": "claude",
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1",
+        "permissions": {
+          "mode": "default",
+          "shell": "none",
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-bda1830325ba4ffc9aa5a5a5720cfc9f-input",
+          "tools": "Read,Glob,Grep",
+          "settingsFile": {
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576",
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\bda1830325ba4ffc9aa5a5a5720cfc9f\\claude-settings.json"
+          }
+        },
+        "cliVersion": "9.9.9-stub (Claude Code)"
+      },
+      "omissions": [],
+      "observedEnd": {
+        "clean": true,
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53"
+      },
+      "snapshot": {
+        "removed": true,
+        "removeError": null,
+        "endObservation": {
+          "clean": true,
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53"
+        },
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-bda1830325ba4ffc9aa5a5a5720cfc9f-input",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-bda1830325ba4ffc9aa5a5a5720cfc9f",
+        "created": true,
+        "startObservation": {
+          "clean": true,
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53"
+        }
+      },
+      "invalidReasons": [
+        "reviewedCommit 0000000000000000000000000000000000000000 is not the host-observed head 7db4b4a205596de05be46e207b76b717f3976a53"
+      ],
+      "executor": {
+        "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+        "session": "stub-session",
+        "model": "gpt-6-luna",
+        "provider": "codex",
+        "kind": "codex"
+      },
+      "manifestSha256": "0632349715c6c9c1be88997847be1f6f381148e9be8ba59deeead7e664bbaeae",
+      "reviewId": "bda1830325ba4ffc9aa5a5a5720cfc9f",
+      "round": 1,
+      "startProblems": [],
+      "tokens": {
+        "freshInput": 50,
+        "cacheCreation": 0,
+        "output": 9,
+        "cached": 0,
+        "costNote": "reported by the CLI, not an invoice",
+        "input": 50,
+        "perMessage": {
+          "input": 0,
+          "output": 0
+        },
+        "toolCalls": 0,
+        "crossCheck": "differs: input per-message 0 vs reported 50; output per-message 0 vs reported 9",
+        "reportedCostUsd": null,
+        "source": "terminal result usage",
+        "reported": {
+          "input": 50,
+          "output": 9
+        }
+      },
+      "wrapper": {
+        "startUtc": "2026-10-20T18:31:09.7612867Z",
+        "pid": 43416
+      },
+      "endedUtc": "2026-10-20T18:31:31.8764783+00:00",
+      "inputHashes": {
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+        "diff.patch": "cb418366bd1bd8c9ecaf193e758273affb523ea1b4e406fc5e3bb1218ec57cc9",
+        "stat.txt": "89fd0978b3a390b9a3691931ae777e0da5e17189b9e3fa46933c793e1d7e17be",
+        "prompt.md": "a4a62212a387ecad2207fe3f635ae14a33f39e0b94f64331ba79051cb82a6268",
+        "log.txt": "2b279157e445e8aeb118ee4d2437e098591f9215c0bb051acaa4a98f0ada642e"
+      }
+    },
+    {
+      "verdict": null,
+      "round": 2,
+      "manifestSha256": "0632349715c6c9c1be88997847be1f6f381148e9be8ba59deeead7e664bbaeae",
+      "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+      "mainCheckoutAfter": {
+        "unknown": false,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "files": 7,
+        "seconds": 0.27,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "unreadable": []
+      },
+      "observedEnd": {
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "clean": true,
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6"
+      },
+      "baseObserved": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "omissions": [],
+      "endedUtc": "2026-10-20T18:31:55.8525317+00:00",
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "status": "invalid",
+      "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "startedUtc": "2026-10-20T18:31:41.7993068+00:00",
+      "blockingFindings": 0,
+      "tokens": {
+        "cached": 0,
+        "source": "terminal result usage",
+        "reportedCostUsd": null,
+        "output": 9,
+        "reported": {
+          "input": 50,
+          "output": 9
+        },
+        "costNote": "reported by the CLI, not an invoice",
+        "cacheCreation": 0,
+        "crossCheck": "differs: input per-message 0 vs reported 50; output per-message 0 vs reported 9",
+        "toolCalls": 0,
+        "perMessage": {
+          "input": 0,
+          "output": 0
+        },
+        "input": 50,
+        "freshInput": 50
+      },
+      "criteria": [
+        {
+          "id": "C1",
+          "text": "The feature file exists."
+        },
+        {
+          "id": "C2",
+          "text": "The feature file says v2, and the comment above it explains why."
+        },
+        {
+          "id": "C3",
+          "text": "Nothing else changes."
+        }
+      ],
+      "finalMessage": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\ef888634ae6f48d584b2349194346b97\\final.md",
+        "sha256": "b85f2e44ed05c72d63f71ce8db2583951f5a55f6f21411f7ac3c37dfb4068118"
+      },
+      "denials": [],
+      "reviewId": "ef888634ae6f48d584b2349194346b97",
+      "executors": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "executorKind": "codex",
+          "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+          "outcome": "completed"
+        }
+      ],
+      "commit": "7db4b4a205596de05be46e207b76b717f3976a53",
+      "termination": "exit",
+      "seconds": 2.8,
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "startProblems": [],
+      "exitCode": 0,
+      "findings": [],
+      "fileHashes": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\ef888634ae6f48d584b2349194346b97\\files.json",
+        "sha256": "d02ef7154f9cc560bc1a4d3263890e43b045bf8af25f53e0623f5efb4ecfec23"
+      },
+      "wrapper": {
+        "pid": 39480,
+        "startUtc": "2026-10-20T18:31:32.1330740Z"
+      },
+      "promptFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\ef888634ae6f48d584b2349194346b97\\prompt.md",
+        "sha256": "c09fb4050042447acf272b5bb5f91d9e449d8d4fdb14240213fad0692b88504c"
+      },
+      "containmentVerified": true,
+      "invalidReasons": [
+        "criterion C3 of the brief is missing from the verdict"
+      ],
+      "checkId": "bfd266ec32b5426e92adc74fb84b0ee6",
+      "level": "light",
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "snapshot": {
+        "endObservation": {
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "clean": true,
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6"
+        },
+        "removeError": null,
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-ef888634ae6f48d584b2349194346b97",
+        "removed": true,
+        "created": true,
+        "startObservation": {
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "clean": true,
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6"
+        },
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-ef888634ae6f48d584b2349194346b97-input"
+      },
+      "executor": {
+        "kind": "codex",
+        "model": "gpt-6-luna",
+        "session": "stub-session",
+        "provider": "codex",
+        "runId": "50944ef5fc574ffa9e78ee3706ba803a"
+      },
+      "observedStart": {
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "clean": true,
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6"
+      },
+      "criteriaResults": [],
+      "reviewer": {
+        "cliVersion": "9.9.9-stub (Claude Code)",
+        "permissions": {
+          "mode": "default",
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-ef888634ae6f48d584b2349194346b97-input",
+          "tools": "Read,Glob,Grep",
+          "settingsFile": {
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\ef888634ae6f48d584b2349194346b97\\claude-settings.json",
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576"
+          },
+          "shell": "none"
+        },
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "sessionId": "stub-claude-review",
+        "effort": null,
+        "resumedFrom": "stub-claude-review",
+        "kind": "claude-sonnet",
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1"
+      },
+      "verdictFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\ef888634ae6f48d584b2349194346b97\\verdict.json",
+        "sha256": "b85f2e44ed05c72d63f71ce8db2583951f5a55f6f21411f7ac3c37dfb4068118"
+      },
+      "mainCheckoutBefore": {
+        "unknown": false,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "files": 7,
+        "seconds": 0.34,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "unreadable": []
+      },
+      "inputHashes": {
+        "stat.txt": "89fd0978b3a390b9a3691931ae777e0da5e17189b9e3fa46933c793e1d7e17be",
+        "log.txt": "2b279157e445e8aeb118ee4d2437e098591f9215c0bb051acaa4a98f0ada642e",
+        "prompt.md": "c09fb4050042447acf272b5bb5f91d9e449d8d4fdb14240213fad0692b88504c",
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+        "diff.patch": "cb418366bd1bd8c9ecaf193e758273affb523ea1b4e406fc5e3bb1218ec57cc9"
+      }
+    },
+    {
+      "startProblems": [],
+      "commit": "7db4b4a205596de05be46e207b76b717f3976a53",
+      "blockingFindings": 0,
+      "reviewer": {
+        "permissions": {
+          "shell": "none",
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-f387db8b27d847dda6838f88b2cbde64-input",
+          "settingsFile": {
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\f387db8b27d847dda6838f88b2cbde64\\claude-settings.json",
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576"
+          },
+          "mode": "default",
+          "tools": "Read,Glob,Grep"
+        },
+        "provider": "claude",
+        "effort": null,
+        "resumedFrom": "stub-claude-review",
+        "kind": "claude-sonnet",
+        "model": "claude-sonnet-5-5",
+        "cliVersion": "9.9.9-stub (Claude Code)",
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1",
+        "sessionId": "stub-claude-review"
+      },
+      "observedStart": {
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "clean": true
+      },
+      "round": 3,
+      "mainCheckoutAfter": {
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "files": 7,
+        "seconds": 0.29,
+        "unreadable": [],
+        "unknown": false
+      },
+      "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "status": "invalid",
+      "observedEnd": {
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "clean": true
+      },
+      "verdict": null,
+      "reviewId": "f387db8b27d847dda6838f88b2cbde64",
+      "endedUtc": "2026-10-20T18:32:19.7652174+00:00",
+      "containmentVerified": true,
+      "omissions": [],
+      "tokens": {
+        "reportedCostUsd": null,
+        "input": 50,
+        "toolCalls": 0,
+        "reported": {
+          "input": 50,
+          "output": 9
+        },
+        "output": 9,
+        "costNote": "reported by the CLI, not an invoice",
+        "crossCheck": "differs: input per-message 0 vs reported 50; output per-message 0 vs reported 9",
+        "cached": 0,
+        "cacheCreation": 0,
+        "freshInput": 50,
+        "source": "terminal result usage",
+        "perMessage": {
+          "input": 0,
+          "output": 0
+        }
+      },
+      "findings": [],
+      "invalidReasons": [
+        "contradiction: verdict PASS with 1 blocking finding(s)"
+      ],
+      "executor": {
+        "kind": "codex",
+        "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+        "session": "stub-session",
+        "model": "gpt-6-luna",
+        "provider": "codex"
+      },
+      "level": "light",
+      "startedUtc": "2026-10-20T18:32:05.6988645+00:00",
+      "finalMessage": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\f387db8b27d847dda6838f88b2cbde64\\final.md",
+        "sha256": "a359daf9f0d04ccf38cfb35f662e89d4bbe8be1e2c77c6ea22b7b1f40c3e0545"
+      },
+      "verdictFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\f387db8b27d847dda6838f88b2cbde64\\verdict.json",
+        "sha256": "a359daf9f0d04ccf38cfb35f662e89d4bbe8be1e2c77c6ea22b7b1f40c3e0545"
+      },
+      "criteriaResults": [],
+      "fileHashes": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\f387db8b27d847dda6838f88b2cbde64\\files.json",
+        "sha256": "cfb97ed8d625349e9aec06f74a93ba6f9921b23adefc6f168e9525b38823b4cf"
+      },
+      "criteria": [
+        {
+          "id": "C1",
+          "text": "The feature file exists."
+        },
+        {
+          "id": "C2",
+          "text": "The feature file says v2, and the comment above it explains why."
+        },
+        {
+          "id": "C3",
+          "text": "Nothing else changes."
+        }
+      ],
+      "snapshot": {
+        "created": true,
+        "removed": true,
+        "startObservation": {
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "clean": true
+        },
+        "endObservation": {
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "clean": true
+        },
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-f387db8b27d847dda6838f88b2cbde64-input",
+        "removeError": null,
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-f387db8b27d847dda6838f88b2cbde64"
+      },
+      "checkId": "bfd266ec32b5426e92adc74fb84b0ee6",
+      "seconds": 2.7,
+      "denials": [],
+      "wrapper": {
+        "pid": 13168,
+        "startUtc": "2026-10-20T18:31:56.0333288Z"
+      },
+      "executors": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "executorKind": "codex",
+          "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+          "outcome": "completed"
+        }
+      ],
+      "promptFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\f387db8b27d847dda6838f88b2cbde64\\prompt.md",
+        "sha256": "36202925b89e95a346a6eab9bbe1b983a357822d27ddefbc1675eb25f5f75652"
+      },
+      "exitCode": 0,
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "manifestSha256": "0632349715c6c9c1be88997847be1f6f381148e9be8ba59deeead7e664bbaeae",
+      "baseObserved": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "mainCheckoutBefore": {
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "files": 7,
+        "seconds": 0.28,
+        "unreadable": [],
+        "unknown": false
+      },
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+      "termination": "exit",
+      "inputHashes": {
+        "stat.txt": "89fd0978b3a390b9a3691931ae777e0da5e17189b9e3fa46933c793e1d7e17be",
+        "prompt.md": "36202925b89e95a346a6eab9bbe1b983a357822d27ddefbc1675eb25f5f75652",
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+        "log.txt": "2b279157e445e8aeb118ee4d2437e098591f9215c0bb051acaa4a98f0ada642e",
+        "diff.patch": "cb418366bd1bd8c9ecaf193e758273affb523ea1b4e406fc5e3bb1218ec57cc9"
+      }
+    },
+    {
+      "criteriaResults": [],
+      "exitCode": 0,
+      "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+      "omissions": [],
+      "finalMessage": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\0e3837ce9303439d9e5e04d699f79e55\\final.md",
+        "sha256": "2ac12a837b050ce4f58188785c1657e8f0b5f56ce46b02649359181886909f6e"
+      },
+      "commit": "7db4b4a205596de05be46e207b76b717f3976a53",
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "round": 1,
+      "observedStart": {
+        "clean": true,
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e"
+      },
+      "startedUtc": "2026-10-20T18:32:55.1523903+00:00",
+      "invalidReasons": [
+        "the verdict is not a JSON document (missing, truncated, free text, or not strict JSON: comments and trailing commas are refused): Expected depth to be zero at the end of the JSON payload. There is an open JSON object or array that should be closed. LineNumber: 9 | BytePositionInLine: 32."
+      ],
+      "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "checkId": "bfd266ec32b5426e92adc74fb84b0ee6",
+      "startProblems": [],
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "seconds": 2.4,
+      "baseObserved": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "reviewId": "0e3837ce9303439d9e5e04d699f79e55",
+      "level": "light",
+      "wrapper": {
+        "startUtc": "2026-10-20T18:32:45.2656665Z",
+        "pid": 41072
+      },
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "observedEnd": {
+        "clean": true,
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e"
+      },
+      "denials": [],
+      "endedUtc": "2026-10-20T18:33:08.0979006+00:00",
+      "criteria": [
+        {
+          "id": "C1",
+          "text": "The feature file exists."
+        },
+        {
+          "id": "C2",
+          "text": "The feature file says v2, and the comment above it explains why."
+        },
+        {
+          "id": "C3",
+          "text": "Nothing else changes."
+        }
+      ],
+      "blockingFindings": 0,
+      "tokens": {
+        "crossCheck": "differs: input per-message 0 vs reported 50; output per-message 0 vs reported 9",
+        "freshInput": 50,
+        "input": 50,
+        "output": 9,
+        "reported": {
+          "input": 50,
+          "output": 9
+        },
+        "costNote": "reported by the CLI, not an invoice",
+        "toolCalls": 0,
+        "cacheCreation": 0,
+        "source": "terminal result usage",
+        "reportedCostUsd": null,
+        "cached": 0,
+        "perMessage": {
+          "input": 0,
+          "output": 0
+        }
+      },
+      "containmentVerified": true,
+      "manifestSha256": "0632349715c6c9c1be88997847be1f6f381148e9be8ba59deeead7e664bbaeae",
+      "termination": "exit",
+      "findings": [],
+      "executors": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "executorKind": "codex",
+          "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+          "outcome": "completed"
+        }
+      ],
+      "verdictFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\0e3837ce9303439d9e5e04d699f79e55\\verdict.json",
+        "sha256": "b3aaea29c7a66318d58f55034cea85ec839fbd70fc7c0f94d36da556052bccb9"
+      },
+      "status": "invalid",
+      "mainCheckoutAfter": {
+        "seconds": 0.26,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "files": 7,
+        "unreadable": [],
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "unknown": false
+      },
+      "verdict": null,
+      "fileHashes": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\0e3837ce9303439d9e5e04d699f79e55\\files.json",
+        "sha256": "5d8def78b7736bb75fe275c092ce86d5fce8e11e9b282f9a1441be75cff05c7a"
+      },
+      "mainCheckoutBefore": {
+        "seconds": 0.38,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "files": 7,
+        "unreadable": [],
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "unknown": false
+      },
+      "promptFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\0e3837ce9303439d9e5e04d699f79e55\\prompt.md",
+        "sha256": "34959951d20eb17a08074097a443beb150657fd5a475b4acffe58039a2882697"
+      },
+      "snapshot": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-0e3837ce9303439d9e5e04d699f79e55",
+        "startObservation": {
+          "clean": true,
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e"
+        },
+        "removeError": null,
+        "created": true,
+        "removed": true,
+        "endObservation": {
+          "clean": true,
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e"
+        },
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-0e3837ce9303439d9e5e04d699f79e55-input"
+      },
+      "reviewer": {
+        "model": "claude-sonnet-5-5",
+        "provider": "claude",
+        "sessionId": "stub-claude-review",
+        "effort": null,
+        "permissions": {
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-0e3837ce9303439d9e5e04d699f79e55-input",
+          "mode": "default",
+          "shell": "none",
+          "settingsFile": {
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\0e3837ce9303439d9e5e04d699f79e55\\claude-settings.json",
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576"
+          },
+          "tools": "Read,Glob,Grep"
+        },
+        "resumedFrom": "stub-claude-review",
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1",
+        "kind": "claude-sonnet",
+        "cliVersion": "9.9.9-stub (Claude Code)"
+      },
+      "executor": {
+        "provider": "codex",
+        "session": "stub-session",
+        "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+        "model": "gpt-6-luna",
+        "kind": "codex"
+      },
+      "inputHashes": {
+        "prompt.md": "34959951d20eb17a08074097a443beb150657fd5a475b4acffe58039a2882697",
+        "diff.patch": "cb418366bd1bd8c9ecaf193e758273affb523ea1b4e406fc5e3bb1218ec57cc9",
+        "stat.txt": "89fd0978b3a390b9a3691931ae777e0da5e17189b9e3fa46933c793e1d7e17be",
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+        "log.txt": "2b279157e445e8aeb118ee4d2437e098591f9215c0bb051acaa4a98f0ada642e"
+      }
+    },
+    {
+      "invalidReasons": [
+        "the verdict is not a JSON document (missing, truncated, free text, or not strict JSON: comments and trailing commas are refused): 'V' is an invalid start of a value. LineNumber: 0 | BytePositionInLine: 0."
+      ],
+      "criteriaResults": [],
+      "level": "light",
+      "findings": [],
+      "executor": {
+        "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "session": "stub-session",
+        "kind": "codex"
+      },
+      "containmentVerified": true,
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "verdictFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\32d849f8b5c1423baf8c03ad223b776d\\verdict.json",
+        "sha256": "7bf8ea7f7ac331429e63fe74565eed01c5e82b9563dc81d23d8e9559ddc2c3c0"
+      },
+      "startedUtc": "2026-10-20T18:33:19.1070582+00:00",
+      "exitCode": 0,
+      "promptFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\32d849f8b5c1423baf8c03ad223b776d\\prompt.md",
+        "sha256": "4456dfbaddff9c010113bf324dbc78492a7b1025a2a18d64ea59e6284252b796"
+      },
+      "executors": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "executorKind": "codex",
+          "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+          "outcome": "completed"
+        }
+      ],
+      "seconds": 2.4,
+      "manifestSha256": "0632349715c6c9c1be88997847be1f6f381148e9be8ba59deeead7e664bbaeae",
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "observedEnd": {
+        "clean": true,
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6"
+      },
+      "tokens": {
+        "crossCheck": "differs: input per-message 0 vs reported 50; output per-message 0 vs reported 9",
+        "input": 50,
+        "cacheCreation": 0,
+        "costNote": "reported by the CLI, not an invoice",
+        "reportedCostUsd": null,
+        "toolCalls": 0,
+        "freshInput": 50,
+        "cached": 0,
+        "output": 9,
+        "source": "terminal result usage",
+        "perMessage": {
+          "input": 0,
+          "output": 0
+        },
+        "reported": {
+          "input": 50,
+          "output": 9
+        }
+      },
+      "mainCheckoutAfter": {
+        "unreadable": [],
+        "files": 7,
+        "unknown": false,
+        "seconds": 0.28,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c"
+      },
+      "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "round": 2,
+      "commit": "7db4b4a205596de05be46e207b76b717f3976a53",
+      "termination": "exit",
+      "fileHashes": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\32d849f8b5c1423baf8c03ad223b776d\\files.json",
+        "sha256": "882329e7a53b78c07ae5b16d6c82598ec90669964af1e758a91858e5edbcb91b"
+      },
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "verdict": null,
+      "wrapper": {
+        "startUtc": "2026-10-20T18:33:08.4973690Z",
+        "pid": 47368
+      },
+      "reviewer": {
+        "effort": null,
+        "permissions": {
+          "shell": "none",
+          "tools": "Read,Glob,Grep",
+          "mode": "default",
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-32d849f8b5c1423baf8c03ad223b776d-input",
+          "settingsFile": {
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\32d849f8b5c1423baf8c03ad223b776d\\claude-settings.json",
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576"
+          }
+        },
+        "model": "claude-sonnet-5-5",
+        "provider": "claude",
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1",
+        "kind": "claude-sonnet",
+        "cliVersion": "9.9.9-stub (Claude Code)",
+        "resumedFrom": "stub-claude-review",
+        "sessionId": "stub-claude-review"
+      },
+      "omissions": [],
+      "status": "invalid",
+      "finalMessage": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\32d849f8b5c1423baf8c03ad223b776d\\final.md",
+        "sha256": "7bf8ea7f7ac331429e63fe74565eed01c5e82b9563dc81d23d8e9559ddc2c3c0"
+      },
+      "mainCheckoutBefore": {
+        "unreadable": [],
+        "files": 7,
+        "unknown": false,
+        "seconds": 0.4,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c"
+      },
+      "observedStart": {
+        "clean": true,
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6"
+      },
+      "endedUtc": "2026-10-20T18:33:32.7077816+00:00",
+      "blockingFindings": 0,
+      "reviewId": "32d849f8b5c1423baf8c03ad223b776d",
+      "denials": [],
+      "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+      "startProblems": [],
+      "snapshot": {
+        "removeError": null,
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-32d849f8b5c1423baf8c03ad223b776d-input",
+        "removed": true,
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-32d849f8b5c1423baf8c03ad223b776d",
+        "created": true,
+        "startObservation": {
+          "clean": true,
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6"
+        },
+        "endObservation": {
+          "clean": true,
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6"
+        }
+      },
+      "criteria": [
+        {
+          "id": "C1",
+          "text": "The feature file exists."
+        },
+        {
+          "id": "C2",
+          "text": "The feature file says v2, and the comment above it explains why."
+        },
+        {
+          "id": "C3",
+          "text": "Nothing else changes."
+        }
+      ],
+      "baseObserved": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "checkId": "bfd266ec32b5426e92adc74fb84b0ee6",
+      "inputHashes": {
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+        "diff.patch": "cb418366bd1bd8c9ecaf193e758273affb523ea1b4e406fc5e3bb1218ec57cc9",
+        "stat.txt": "89fd0978b3a390b9a3691931ae777e0da5e17189b9e3fa46933c793e1d7e17be",
+        "prompt.md": "4456dfbaddff9c010113bf324dbc78492a7b1025a2a18d64ea59e6284252b796",
+        "log.txt": "2b279157e445e8aeb118ee4d2437e098591f9215c0bb051acaa4a98f0ada642e"
+      }
+    },
+    {
+      "reviewId": "f30cc4b665744e8695f6f26d656c609c",
+      "manifestSha256": "0632349715c6c9c1be88997847be1f6f381148e9be8ba59deeead7e664bbaeae",
+      "tokens": {
+        "reported": {
+          "output": 9,
+          "input": 50
+        },
+        "toolCalls": 0,
+        "reportedCostUsd": null,
+        "crossCheck": "differs: input per-message 0 vs reported 50; output per-message 0 vs reported 9",
+        "freshInput": 50,
+        "output": 9,
+        "cached": 0,
+        "costNote": "reported by the CLI, not an invoice",
+        "perMessage": {
+          "output": 0,
+          "input": 0
+        },
+        "cacheCreation": 0,
+        "source": "terminal result usage",
+        "input": 50
+      },
+      "omissions": [],
+      "executor": {
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+        "kind": "codex",
+        "session": "stub-session"
+      },
+      "finalMessage": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\f30cc4b665744e8695f6f26d656c609c\\final.md",
+        "sha256": "76b1d5ad6a0305717d67423103b4e9431d6c8c592d11a2efdf97dc67151549d4"
+      },
+      "wrapper": {
+        "startUtc": "2026-10-20T18:33:33.1396893Z",
+        "pid": 6232
+      },
+      "fileHashes": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\f30cc4b665744e8695f6f26d656c609c\\files.json",
+        "sha256": "eff082d5a11cddbcb070d95fab34a79246eac508262f20abb0822c16cb7c41fa"
+      },
+      "startProblems": [],
+      "startedUtc": "2026-10-20T18:33:43.7458935+00:00",
+      "mainCheckoutAfter": {
+        "files": 7,
+        "unreadable": [],
+        "seconds": 0.28,
+        "unknown": false,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c"
+      },
+      "criteriaResults": [],
+      "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "verdictFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\f30cc4b665744e8695f6f26d656c609c\\verdict.json",
+        "sha256": "76b1d5ad6a0305717d67423103b4e9431d6c8c592d11a2efdf97dc67151549d4"
+      },
+      "checkId": "bfd266ec32b5426e92adc74fb84b0ee6",
+      "denials": [],
+      "promptFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\f30cc4b665744e8695f6f26d656c609c\\prompt.md",
+        "sha256": "c3866dd8ffa9f041e67065f55232ff4dcf7f9afab682e13e7f23db6f43244d14"
+      },
+      "round": 3,
+      "containmentVerified": true,
+      "termination": "exit",
+      "exitCode": 0,
+      "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+      "endedUtc": "2026-10-20T18:33:56.4447152+00:00",
+      "level": "light",
+      "executors": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "executorKind": "codex",
+          "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+          "outcome": "completed"
+        }
+      ],
+      "observedStart": {
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "clean": true
+      },
+      "status": "invalid",
+      "commit": "7db4b4a205596de05be46e207b76b717f3976a53",
+      "observedEnd": {
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "clean": true
+      },
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "invalidReasons": [
+        "the review snapshot changed during the review (head, tree, content or cleanliness)"
+      ],
+      "reviewer": {
+        "provider": "claude",
+        "sessionId": "stub-claude-review",
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1",
+        "kind": "claude-sonnet",
+        "model": "claude-sonnet-5-5",
+        "permissions": {
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-f30cc4b665744e8695f6f26d656c609c-input",
+          "shell": "none",
+          "tools": "Read,Glob,Grep",
+          "mode": "default",
+          "settingsFile": {
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\f30cc4b665744e8695f6f26d656c609c\\claude-settings.json",
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576"
+          }
+        },
+        "effort": null,
+        "cliVersion": "9.9.9-stub (Claude Code)",
+        "resumedFrom": "stub-claude-review"
+      },
+      "mainCheckoutBefore": {
+        "files": 7,
+        "unreadable": [],
+        "seconds": 0.34,
+        "unknown": false,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c"
+      },
+      "findings": [],
+      "seconds": 2.1,
+      "blockingFindings": 0,
+      "criteria": [
+        {
+          "text": "The feature file exists.",
+          "id": "C1"
+        },
+        {
+          "text": "The feature file says v2, and the comment above it explains why.",
+          "id": "C2"
+        },
+        {
+          "text": "Nothing else changes.",
+          "id": "C3"
+        }
+      ],
+      "snapshot": {
+        "removeError": null,
+        "created": true,
+        "removed": true,
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-f30cc4b665744e8695f6f26d656c609c-input",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-f30cc4b665744e8695f6f26d656c609c",
+        "endObservation": {
+          "contentTree": "dd7882efbdd8cadb515934e475bd709f06df32fc1d338fa646db34b1b2e95084",
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "clean": false
+        },
+        "startObservation": {
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "clean": true
+        }
+      },
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "verdict": null,
+      "baseObserved": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "inputHashes": {
+        "stat.txt": "89fd0978b3a390b9a3691931ae777e0da5e17189b9e3fa46933c793e1d7e17be",
+        "diff.patch": "cb418366bd1bd8c9ecaf193e758273affb523ea1b4e406fc5e3bb1218ec57cc9",
+        "log.txt": "2b279157e445e8aeb118ee4d2437e098591f9215c0bb051acaa4a98f0ada642e",
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+        "prompt.md": "c3866dd8ffa9f041e67065f55232ff4dcf7f9afab682e13e7f23db6f43244d14"
+      }
+    },
+    {
+      "reviewId": "ff541d093a524ad4995a033612507043",
+      "reviewer": {
+        "effort": null,
+        "cliVersion": "9.9.9-stub (Claude Code)",
+        "resumedFrom": "stub-claude-review",
+        "model": "claude-sonnet-5-5",
+        "provider": "claude",
+        "permissions": {
+          "shell": "none",
+          "settingsFile": {
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576",
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\ff541d093a524ad4995a033612507043\\claude-settings.json"
+          },
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-ff541d093a524ad4995a033612507043-input",
+          "tools": "Read,Glob,Grep",
+          "mode": "default"
+        },
+        "kind": "claude-sonnet",
+        "sessionId": null,
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1"
+      },
+      "checkId": "bfd266ec32b5426e92adc74fb84b0ee6",
+      "invalidReasons": [
+        "the reviewer did not finish cleanly: timeout",
+        "session identity: the stream has no init event with a session id",
+        "the reviewer produced no final message, so there is no verdict file"
+      ],
+      "baseObserved": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "findings": [],
+      "verdictFile": {
+        "sha256": null,
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\ff541d093a524ad4995a033612507043\\verdict.json"
+      },
+      "verdict": null,
+      "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+      "blockingFindings": 0,
+      "criteriaResults": [],
+      "snapshot": {
+        "removed": true,
+        "removeError": null,
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-ff541d093a524ad4995a033612507043",
+        "endObservation": {
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "clean": true
+        },
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-ff541d093a524ad4995a033612507043-input",
+        "created": true,
+        "startObservation": {
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "clean": true
+        }
+      },
+      "criteria": [
+        {
+          "id": "C1",
+          "text": "The feature file exists."
+        },
+        {
+          "id": "C2",
+          "text": "The feature file says v2, and the comment above it explains why."
+        },
+        {
+          "id": "C3",
+          "text": "Nothing else changes."
+        }
+      ],
+      "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "startProblems": [],
+      "mainCheckoutAfter": {
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "seconds": 0.34,
+        "unknown": false,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "files": 7,
+        "unreadable": []
+      },
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "commit": "7db4b4a205596de05be46e207b76b717f3976a53",
+      "promptFile": {
+        "sha256": "d9e74c1ecce8f047440aa6f0f5536c026ed8bb3b201aea4c2651bbe5bff8263f",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\ff541d093a524ad4995a033612507043\\prompt.md"
+      },
+      "exitCode": null,
+      "mainCheckoutBefore": {
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "seconds": 0.36,
+        "unknown": false,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "files": 7,
+        "unreadable": []
+      },
+      "containmentVerified": true,
+      "wrapper": {
+        "pid": 49192,
+        "startUtc": "2026-10-20T18:33:56.7514852Z"
+      },
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "termination": "timeout",
+      "finalMessage": {
+        "sha256": null,
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\ff541d093a524ad4995a033612507043\\final.md"
+      },
+      "round": 1,
+      "executor": {
+        "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+        "model": "gpt-6-luna",
+        "session": "stub-session",
+        "kind": "codex",
+        "provider": "codex"
+      },
+      "manifestSha256": "0632349715c6c9c1be88997847be1f6f381148e9be8ba59deeead7e664bbaeae",
+      "observedStart": {
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "clean": true
+      },
+      "denials": [],
+      "endedUtc": "2026-10-20T18:34:20.3194717+00:00",
+      "tokens": {
+        "costNote": "reported by the CLI, not an invoice",
+        "toolCalls": 0,
+        "reported": null,
+        "reportedCostUsd": null,
+        "perMessage": {
+          "input": 0,
+          "output": 0
+        },
+        "cacheCreation": 0,
+        "crossCheck": "no terminal result usage: per-message sums used",
+        "cached": 0,
+        "freshInput": 0,
+        "output": 0,
+        "source": "per-message sums",
+        "input": 0
+      },
+      "startedUtc": "2026-10-20T18:34:07.4154116+00:00",
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "seconds": 3.2,
+      "omissions": [],
+      "fileHashes": {
+        "sha256": "01a022337939777b6204333dcca2a10ed32255d43b2a56fd8b5eff61d5537510",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\ff541d093a524ad4995a033612507043\\files.json"
+      },
+      "executors": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "executorKind": "codex",
+          "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+          "outcome": "completed"
+        }
+      ],
+      "observedEnd": {
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "clean": true
+      },
+      "status": "invalid",
+      "level": "light",
+      "inputHashes": {
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+        "diff.patch": "cb418366bd1bd8c9ecaf193e758273affb523ea1b4e406fc5e3bb1218ec57cc9",
+        "prompt.md": "d9e74c1ecce8f047440aa6f0f5536c026ed8bb3b201aea4c2651bbe5bff8263f",
+        "log.txt": "2b279157e445e8aeb118ee4d2437e098591f9215c0bb051acaa4a98f0ada642e",
+        "stat.txt": "89fd0978b3a390b9a3691931ae777e0da5e17189b9e3fa46933c793e1d7e17be"
+      }
+    },
+    {
+      "denials": [
+        {
+          "toolUseId": "m1-t",
+          "reason": "Permission to use Bash has been denied.",
+          "tool": "Bash"
+        }
+      ],
+      "finalMessage": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\e067ab15d02a4ded871cdd57bcbfad67\\final.md",
+        "sha256": "76b1d5ad6a0305717d67423103b4e9431d6c8c592d11a2efdf97dc67151549d4"
+      },
+      "verdictFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\e067ab15d02a4ded871cdd57bcbfad67\\verdict.json",
+        "sha256": "76b1d5ad6a0305717d67423103b4e9431d6c8c592d11a2efdf97dc67151549d4"
+      },
+      "mainCheckoutAfter": {
+        "unknown": false,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "files": 7,
+        "unreadable": [],
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "seconds": 0.29
+      },
+      "tokens": {
+        "freshInput": 50,
+        "cached": 0,
+        "reportedCostUsd": null,
+        "cacheCreation": 0,
+        "input": 50,
+        "crossCheck": "match",
+        "perMessage": {
+          "input": 50,
+          "output": 9
+        },
+        "reported": {
+          "input": 50,
+          "output": 9
+        },
+        "output": 9,
+        "costNote": "reported by the CLI, not an invoice",
+        "toolCalls": 1,
+        "source": "terminal result usage"
+      },
+      "blockingFindings": 0,
+      "endedUtc": "2026-10-20T18:34:43.7353966+00:00",
+      "baseObserved": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "verdict": null,
+      "round": 2,
+      "startedUtc": "2026-10-20T18:34:31.2067885+00:00",
+      "findings": [],
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+      "manifestSha256": "0632349715c6c9c1be88997847be1f6f381148e9be8ba59deeead7e664bbaeae",
+      "reviewId": "e067ab15d02a4ded871cdd57bcbfad67",
+      "checkId": "bfd266ec32b5426e92adc74fb84b0ee6",
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "omissions": [],
+      "invalidReasons": [
+        "the reviewer was denied 1 tool call(s), so it may not have inspected everything"
+      ],
+      "criteria": [
+        {
+          "text": "The feature file exists.",
+          "id": "C1"
+        },
+        {
+          "text": "The feature file says v2, and the comment above it explains why.",
+          "id": "C2"
+        },
+        {
+          "text": "Nothing else changes.",
+          "id": "C3"
+        }
+      ],
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "containmentVerified": true,
+      "promptFile": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\e067ab15d02a4ded871cdd57bcbfad67\\prompt.md",
+        "sha256": "f1175dc2003186a7a656b1294ba93ad59bbb240dbce25baa1af126437af10c63"
+      },
+      "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "executor": {
+        "session": "stub-session",
+        "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+        "kind": "codex",
+        "model": "gpt-6-luna",
+        "provider": "codex"
+      },
+      "observedStart": {
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "clean": true
+      },
+      "exitCode": 0,
+      "termination": "exit",
+      "commit": "7db4b4a205596de05be46e207b76b717f3976a53",
+      "mainCheckoutBefore": {
+        "unknown": false,
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "files": 7,
+        "unreadable": [],
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "seconds": 0.33
+      },
+      "executors": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "executorKind": "codex",
+          "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+          "outcome": "completed"
+        }
+      ],
+      "observedEnd": {
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "clean": true
+      },
+      "status": "invalid",
+      "reviewer": {
+        "cliVersion": "9.9.9-stub (Claude Code)",
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1",
+        "permissions": {
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-e067ab15d02a4ded871cdd57bcbfad67-input",
+          "tools": "Read,Glob,Grep",
+          "shell": "none",
+          "mode": "default",
+          "settingsFile": {
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\e067ab15d02a4ded871cdd57bcbfad67\\claude-settings.json",
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576"
+          }
+        },
+        "kind": "claude-sonnet",
+        "provider": "claude",
+        "sessionId": "stub-claude-review",
+        "model": "claude-sonnet-5-5",
+        "resumedFrom": "stub-claude-review",
+        "effort": null
+      },
+      "fileHashes": {
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\e067ab15d02a4ded871cdd57bcbfad67\\files.json",
+        "sha256": "b075c0f948c7bbbb26516d0172c25e3b4e90f2a77ed3bab59ec5e970e2480c94"
+      },
+      "startProblems": [],
+      "seconds": 2.4,
+      "snapshot": {
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-e067ab15d02a4ded871cdd57bcbfad67-input",
+        "startObservation": {
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "clean": true
+        },
+        "endObservation": {
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "clean": true
+        },
+        "removed": true,
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-e067ab15d02a4ded871cdd57bcbfad67",
+        "removeError": null,
+        "created": true
+      },
+      "criteriaResults": [],
+      "wrapper": {
+        "startUtc": "2026-10-20T18:34:20.5873885Z",
+        "pid": 49552
+      },
+      "level": "light",
+      "inputHashes": {
+        "stat.txt": "89fd0978b3a390b9a3691931ae777e0da5e17189b9e3fa46933c793e1d7e17be",
+        "diff.patch": "cb418366bd1bd8c9ecaf193e758273affb523ea1b4e406fc5e3bb1218ec57cc9",
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+        "prompt.md": "f1175dc2003186a7a656b1294ba93ad59bbb240dbce25baa1af126437af10c63",
+        "log.txt": "2b279157e445e8aeb118ee4d2437e098591f9215c0bb051acaa4a98f0ada642e"
+      }
+    },
+    {
+      "tokens": {
+        "cacheCreation": 0,
+        "costNote": "reported by the CLI, not an invoice",
+        "output": 9,
+        "source": "terminal result usage",
+        "reported": {
+          "input": 50,
+          "output": 9
+        },
+        "crossCheck": "differs: input per-message 0 vs reported 50; output per-message 0 vs reported 9",
+        "perMessage": {
+          "input": 0,
+          "output": 0
+        },
+        "input": 50,
+        "freshInput": 50,
+        "toolCalls": 0,
+        "cached": 0,
+        "reportedCostUsd": null
+      },
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "mainCheckoutBefore": {
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "seconds": 0.26,
+        "unknown": false,
+        "files": 7,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "unreadable": []
+      },
+      "executor": {
+        "kind": "codex",
+        "provider": "codex",
+        "model": "gpt-6-luna",
+        "session": "stub-session",
+        "runId": "50944ef5fc574ffa9e78ee3706ba803a"
+      },
+      "seconds": 2.5,
+      "baseObserved": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "reviewId": "44fcb7db15fa44dcabdc7ac7f24085d6",
+      "verdictFile": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\44fcb7db15fa44dcabdc7ac7f24085d6\\verdict.json"
+      },
+      "checkId": "bfd266ec32b5426e92adc74fb84b0ee6",
+      "observedStart": {
+        "clean": true,
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53"
+      },
+      "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+      "denials": [],
+      "status": "invalid",
+      "executors": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "executorKind": "codex",
+          "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+          "outcome": "completed"
+        }
+      ],
+      "blockingFindings": 0,
+      "fileHashes": {
+        "sha256": "a8cf7433921c99e11099efbe3e2a39747d2e55748f3afc31331caa1fca4be592",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\44fcb7db15fa44dcabdc7ac7f24085d6\\files.json"
+      },
+      "reviewer": {
+        "resumedFrom": "stub-claude-review",
+        "provider": "claude",
+        "permissions": {
+          "settingsFile": {
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576",
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\44fcb7db15fa44dcabdc7ac7f24085d6\\claude-settings.json"
+          },
+          "tools": "Read,Glob,Grep",
+          "shell": "none",
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-44fcb7db15fa44dcabdc7ac7f24085d6-input",
+          "mode": "default"
+        },
+        "sessionId": "stub-claude-review",
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1",
+        "kind": "claude-sonnet",
+        "effort": null,
+        "model": "claude-sonnet-5-5",
+        "cliVersion": "9.9.9-stub (Claude Code)"
+      },
+      "level": "light",
+      "finalMessage": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\44fcb7db15fa44dcabdc7ac7f24085d6\\final.md"
+      },
+      "promptFile": {
+        "sha256": "6ddcc7e97947c951c68cb84fedc8a8637b35c0ecc52fcd1742f037f2f43db07f",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\44fcb7db15fa44dcabdc7ac7f24085d6\\prompt.md"
+      },
+      "manifestSha256": "0632349715c6c9c1be88997847be1f6f381148e9be8ba59deeead7e664bbaeae",
+      "exitCode": 0,
+      "commit": "7db4b4a205596de05be46e207b76b717f3976a53",
+      "findings": [],
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "omissions": [],
+      "startProblems": [],
+      "termination": "exit",
+      "wrapper": {
+        "startUtc": "2026-10-20T18:34:44.0474172Z",
+        "pid": 1740
+      },
+      "invalidReasons": [
+        "the verdict is empty"
+      ],
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "mainCheckoutAfter": {
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "seconds": 0.3,
+        "unknown": false,
+        "files": 7,
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "unreadable": []
+      },
+      "startedUtc": "2026-10-20T18:34:54.0706636+00:00",
+      "criteriaResults": [],
+      "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "verdict": null,
+      "criteria": [
+        {
+          "text": "The feature file exists.",
+          "id": "C1"
+        },
+        {
+          "text": "The feature file says v2, and the comment above it explains why.",
+          "id": "C2"
+        },
+        {
+          "text": "Nothing else changes.",
+          "id": "C3"
+        }
+      ],
+      "snapshot": {
+        "created": true,
+        "removed": true,
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-44fcb7db15fa44dcabdc7ac7f24085d6-input",
+        "startObservation": {
+          "clean": true,
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53"
+        },
+        "removeError": null,
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-44fcb7db15fa44dcabdc7ac7f24085d6",
+        "endObservation": {
+          "clean": true,
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53"
+        }
+      },
+      "round": 3,
+      "observedEnd": {
+        "clean": true,
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53"
+      },
+      "containmentVerified": true,
+      "endedUtc": "2026-10-20T18:35:06.4747107+00:00",
+      "inputHashes": {
+        "log.txt": "2b279157e445e8aeb118ee4d2437e098591f9215c0bb051acaa4a98f0ada642e",
+        "stat.txt": "89fd0978b3a390b9a3691931ae777e0da5e17189b9e3fa46933c793e1d7e17be",
+        "diff.patch": "cb418366bd1bd8c9ecaf193e758273affb523ea1b4e406fc5e3bb1218ec57cc9",
+        "prompt.md": "6ddcc7e97947c951c68cb84fedc8a8637b35c0ecc52fcd1742f037f2f43db07f",
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2"
+      }
+    },
+    {
+      "verdictFile": {
+        "path": null
+      },
+      "verdict": null,
+      "reviewer": {
+        "sessionId": null,
+        "kind": "claude-sonnet",
+        "model": "x",
+        "resumedFrom": null
+      },
+      "findings": [],
+      "invalidReasons": [
+        "the review was interrupted before it finished (the wrapper died)"
+      ],
+      "round": 9,
+      "level": "light",
+      "blockingFindings": 0,
+      "status": "invalid",
+      "reviewId": "abandoned",
+      "commit": "x",
+      "termination": "abandoned",
+      "wrapper": {
+        "startUtc": "2000-01-01T00:00:00.0000000+00:00",
+        "pid": 11628
+      },
+      "endedUtc": "2026-10-20T18:35:13.3492693+00:00"
+    },
+    {
+      "observedStart": {
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "clean": true,
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e"
+      },
+      "denials": [],
+      "baseObserved": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "findings": [],
+      "endedUtc": "2026-10-20T18:35:30.8937567+00:00",
+      "containmentVerified": true,
+      "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e",
+      "criteriaResults": [
+        {
+          "id": "C1",
+          "evidence": "read it (C1)",
+          "result": "pass"
+        },
+        {
+          "id": "C2",
+          "evidence": "read it (C2)",
+          "result": "pass"
+        },
+        {
+          "id": "C3",
+          "evidence": "read it (C3)",
+          "result": "pass"
+        }
+      ],
+      "baseSha": "97291e1f74c86cfd03ef93639b11c22915b1e8dc",
+      "wrapper": {
+        "startUtc": "2026-10-20T18:35:07.0538590Z",
+        "pid": 4540
+      },
+      "omissions": [
+        "integration tests were not run"
+      ],
+      "reviewer": {
+        "permissions": {
+          "mode": "default",
+          "shell": "none",
+          "tools": "Read,Glob,Grep",
+          "addDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-02b3bb8c42fa4023a167987f9d86c62d-input",
+          "settingsFile": {
+            "sha256": "487c90c94c6b7ea4956096a0a0782eeb145c2558666dbe607ab5a3bfb5ffa576",
+            "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\02b3bb8c42fa4023a167987f9d86c62d\\claude-settings.json"
+          }
+        },
+        "resumedFrom": "stub-claude-review",
+        "sessionId": "stub-claude-review",
+        "model": "claude-sonnet-5-5",
+        "cliVersion": "9.9.9-stub (Claude Code)",
+        "provider": "claude",
+        "kind": "claude-sonnet",
+        "executable": "C:\\selftest\\stubs\\rv-claude.ps1",
+        "effort": null
+      },
+      "round": 1,
+      "invalidReasons": [],
+      "manifestSha256": "0632349715c6c9c1be88997847be1f6f381148e9be8ba59deeead7e664bbaeae",
+      "briefSha256": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+      "termination": "exit",
+      "commit": "7db4b4a205596de05be46e207b76b717f3976a53",
+      "exitCode": 0,
+      "startProblems": [],
+      "seconds": 2.0,
+      "observedEnd": {
+        "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+        "clean": true,
+        "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+        "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e"
+      },
+      "executors": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-luna",
+          "executorKind": "codex",
+          "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+          "outcome": "completed"
+        }
+      ],
+      "criteria": [
+        {
+          "text": "The feature file exists.",
+          "id": "C1"
+        },
+        {
+          "text": "The feature file says v2, and the comment above it explains why.",
+          "id": "C2"
+        },
+        {
+          "text": "Nothing else changes.",
+          "id": "C3"
+        }
+      ],
+      "fileHashes": {
+        "sha256": "d1b774dfdc4eed442574b9428da4c0515ccc8cb377a07c740f2571b16cffc9b3",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\02b3bb8c42fa4023a167987f9d86c62d\\files.json"
+      },
+      "blockingFindings": 0,
+      "reviewId": "02b3bb8c42fa4023a167987f9d86c62d",
+      "checkId": "bfd266ec32b5426e92adc74fb84b0ee6",
+      "executor": {
+        "runId": "50944ef5fc574ffa9e78ee3706ba803a",
+        "kind": "codex",
+        "provider": "codex",
+        "session": "stub-session",
+        "model": "gpt-6-luna"
+      },
+      "startedUtc": "2026-10-20T18:35:18.2405227+00:00",
+      "snapshot": {
+        "removeError": null,
+        "created": true,
+        "inputDir": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-02b3bb8c42fa4023a167987f9d86c62d-input",
+        "endObservation": {
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "clean": true,
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e"
+        },
+        "startObservation": {
+          "head": "7db4b4a205596de05be46e207b76b717f3976a53",
+          "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+          "clean": true,
+          "tree": "6bd0676295cb2458a0ae2d276432a3c8beecf89e"
+        },
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\review-02b3bb8c42fa4023a167987f9d86c62d",
+        "removed": true
+      },
+      "criteriaSha256": "bdab9742390543893f7c1acf774c78f8460aa0ddd205f965b8d3364a1e02f097",
+      "mainCheckoutBefore": {
+        "files": 7,
+        "unreadable": [],
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "seconds": 0.46,
+        "unknown": false
+      },
+      "promptFile": {
+        "sha256": "62b826bdddac53a6491e3307c0794489037421484df8b419c6080b455e00e1c2",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\02b3bb8c42fa4023a167987f9d86c62d\\prompt.md"
+      },
+      "verdictFile": {
+        "sha256": "76b1d5ad6a0305717d67423103b4e9431d6c8c592d11a2efdf97dc67151549d4",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\02b3bb8c42fa4023a167987f9d86c62d\\verdict.json"
+      },
+      "tokens": {
+        "costNote": "reported by the CLI, not an invoice",
+        "freshInput": 50,
+        "reported": {
+          "output": 9,
+          "input": 50
+        },
+        "cacheCreation": 0,
+        "toolCalls": 0,
+        "input": 50,
+        "perMessage": {
+          "output": 0,
+          "input": 0
+        },
+        "cached": 0,
+        "output": 9,
+        "source": "terminal result usage",
+        "reportedCostUsd": null,
+        "crossCheck": "differs: input per-message 0 vs reported 50; output per-message 0 vs reported 9"
+      },
+      "mainCheckoutAfter": {
+        "files": 7,
+        "unreadable": [],
+        "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+        "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+        "seconds": 0.6,
+        "unknown": false
+      },
+      "contentTree": "1d4832a5c76c7a0e3b03d4b1e323fb3a6d79558afd6e6b536a1aeb8bdddca1e6",
+      "verdict": "PASS",
+      "level": "light",
+      "status": "valid",
+      "finalMessage": {
+        "sha256": "bcf89f2868a82cc738c8efebf702f3b99d73d007aca59b9efea891b5417a418b",
+        "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\reviews\\02b3bb8c42fa4023a167987f9d86c62d\\final.md"
+      },
+      "inputHashes": {
+        "log.txt": "2b279157e445e8aeb118ee4d2437e098591f9215c0bb051acaa4a98f0ada642e",
+        "diff.patch": "cb418366bd1bd8c9ecaf193e758273affb523ea1b4e406fc5e3bb1218ec57cc9",
+        "stat.txt": "89fd0978b3a390b9a3691931ae777e0da5e17189b9e3fa46933c793e1d7e17be",
+        "brief.md": "ad5641751839ee920bc2905c716f752be8adf0650fb62178b26e21b9083b53b2",
+        "prompt.md": "62b826bdddac53a6491e3307c0794489037421484df8b419c6080b455e00e1c2"
+      }
+    }
+  ],
+  "createdUtc": "2026-10-20T18:30:33.6064989+00:00",
+  "guard": {
+    "after": {
+      "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+      "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+      "unknown": false,
+      "unreadable": [],
+      "files": 7,
+      "seconds": 0.32
+    },
+    "before": {
+      "head": "7bd6080714d248a95be97877bdb0ec93184c81d2",
+      "treeHash": "94526ab3013f0b3ea7f8f83c2f27ad1486197800f9cf5d2f994992bdbee51e8c",
+      "unknown": false,
+      "unreadable": [],
+      "files": 7,
+      "seconds": 0.49
+    },
+    "lastRunId": "50944ef5fc574ffa9e78ee3706ba803a",
+    "mainCheckoutMutated": false
+  },
+  "manifest": {
+    "path": "C:\\selftest\\main\\.git\\selftest\\packages\\vd\\checks.json",
+    "source": "C:\\selftest\\rv-checks.json",
+    "sha256": "0632349715c6c9c1be88997847be1f6f381148e9be8ba59deeead7e664bbaeae"
+  },
+  "ship": null,
+  "qualifications": [],
+  "pushes": []
+}

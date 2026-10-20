@@ -515,6 +515,13 @@
         "testFilter": {
           "type": "string",
           "minLength": 1
+        },
+        "minCliVersions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+$"
+          }
         }
       }
     },

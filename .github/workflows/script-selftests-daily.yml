@@ -1,7 +1,7 @@
 name: Script self-tests (daily)
 
-# The full script self-test set, including the 16-minute package.ps1 one that pull requests skip when scripts/ is
-# untouched. Deliberately not named "CI": cd.yml follows workflow_run of "CI" and would cut a release for this run.
+# The full script self-test set, including the full (about 25 minutes) package.ps1 one; pull requests run its quick
+# variant, and only when scripts/ is touched. Deliberately not named "CI": cd.yml follows workflow_run of "CI" and would cut a release for this run.
 on:
   schedule:
     - cron: '17 3 * * *'

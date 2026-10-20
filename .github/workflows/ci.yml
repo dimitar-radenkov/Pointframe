@@ -185,9 +185,9 @@ jobs:
 
       - name: Script self-tests
         # Every coordinator and release script's offline -SelfTest on a clean checkout, so a fixture that git
-        # ignores (and only exists in the worktree that wrote it) fails here. The 16-minute package.ps1 self-test runs on
-        # a pull request only when it changes something under scripts/ (against the base branch), and always on a
-        # master push; script-selftests-daily.yml runs the full set once a day.
+        # ignores (and only exists in the worktree that wrote it) fails here. The package.ps1 quick self-test (under three
+        # minutes) runs on a pull request only when it changes something under scripts/ (against the base branch); a
+        # master push runs the full self-test (about 25 minutes); script-selftests-daily.yml runs the full set once a day.
         shell: pwsh
         env:
           EVENT_NAME: ${{ github.event_name }}
