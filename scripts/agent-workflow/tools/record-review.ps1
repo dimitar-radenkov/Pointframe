@@ -130,7 +130,8 @@ if ($LASTEXITCODE -ne 0 -or $tree -notmatch '^[0-9a-fA-F]{40,64}$') { Refuse 'Co
 $files = @(); $lines = 0
 if ($SmallFix)
 {
-    $base = (& git -C $worktreeRoot merge-base $resolved $baseRef 2>$null).Trim()
+    # A failed git command prints nothing, and a cast of that to [string] is $null: join the lines instead.
+    $base = (@(& git -C $worktreeRoot merge-base $resolved $baseRef 2>$null) -join '').Trim()
     if ($LASTEXITCODE -ne 0 -or -not $base) { Refuse "Could not resolve $baseRef merge-base for small-fix count." }
     $changeCount = Get-ReviewChangeCount $worktreeRoot $base $resolved $Context.PinFiles
     $files = $changeCount.Files; $lines = $changeCount.Lines
@@ -138,7 +139,7 @@ if ($SmallFix)
 }
 else
 {
-    $base = (& git -C $worktreeRoot merge-base $resolved $baseRef 2>$null).Trim()
+    $base = (@(& git -C $worktreeRoot merge-base $resolved $baseRef 2>$null) -join '').Trim()
     if ($LASTEXITCODE -ne 0 -or -not $base) { Refuse "Could not resolve $baseRef merge-base for review change counts." }
     $changeCount = Get-ReviewChangeCount $worktreeRoot $base $resolved $Context.PinFiles
     $files = $changeCount.Files; $lines = $changeCount.Lines

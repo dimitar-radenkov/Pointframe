@@ -217,6 +217,24 @@ try {
         }
     }
 
+    # -WriteWrappers also creates the wrappers that are missing, for every tool of the vendored kit. Without the switch a missing wrapper is not an
+    # issue (a repository may leave a tool out), so nothing is reported. A new file takes the line ending of the wrappers already there.
+    if ($WriteWrappers) {
+        $eol = "`r`n"
+        foreach ($existing in @(Get-ChildItem -LiteralPath (Join-Path $resolved.WorkTree 'scripts') -Filter '*.ps1' -File -ErrorAction SilentlyContinue)) {
+            $text = [IO.File]::ReadAllText($existing.FullName)
+            if ($text -match "'agent-workflow'\s+'tools'") {
+                $eol = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+                break
+            }
+        }
+        foreach ($missing in (Get-AwMissingWrappers -KitDir $resolved.KitDir -Root $resolved.WorkTree)) {
+            New-Item -ItemType Directory -Path (Split-Path $missing.Path -Parent) -Force | Out-Null
+            [IO.File]::WriteAllText($missing.Path, $missing.Expected.Replace("`n", $eol), [Text.UTF8Encoding]::new($false))
+            $written.Add($missing.Relative)
+        }
+    }
+
     try {
         $null = Read-AwConfig -Root $resolved.WorkTree
     }

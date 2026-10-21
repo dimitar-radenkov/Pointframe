@@ -112,9 +112,17 @@ Every behavior change gets an independent review from a different agent than its
 <!-- rule:W-20 roles=coordinator -->
 - **Review record (in force).** `pwsh scripts/record-review.ps1` writes one record per head SHA under git's common directory (`{{state.commonDirNamespace}}/reviews/<sha>.json`): head and tree, brief hash or requirement, executor and reviewer with sessions, light or heavy, verdict, open blocking findings, and evidence path. Sonnet reviewers stay read-only; the coordinator runs the command and is named as recorder. It refuses a reviewer equal to the executor (same model counts as the same reviewer) unless `-SmallFix`, which only the coordinator as executor may use and which is limited to 2 files and 12 changed lines.
 <!-- rule:W-21 roles=coordinator -->
+{{if:remote}}
 - **Merge gate (in force).** `scripts/merge-pr.ps1` refuses to merge (waiting mode and `-Auto`) without `-Worktree`, a matching verify receipt, and a passing record for the PR head; a stale head or tree, a FAIL verdict, an open blocking finding, or a missing evidence file is refused. {{slot:pin-exception}} Direct `gh pr merge` remains a bypass; a required GitHub check is the next step if bypasses occur.
+{{else}}
+- **Merge gate (in force).** There is no remote, so no pull request: `scripts/merge-pr.ps1 -Pr` and `-SyncMain` refuse. `scripts/merge-pr.ps1 -LocalMerge -Worktree <path>` fast-forwards `{{repository.baseBranch}}` to the head and refuses without a matching verify receipt and a passing record for it; a stale head or tree, a FAIL verdict, an open blocking finding, a missing evidence file, a main checkout that is not clean or not on `{{repository.baseBranch}}`, or an active package run is refused. {{slot:pin-exception}} A direct `git merge` or commit on `{{repository.baseBranch}}` in the main checkout remains a bypass.
+{{endif}}
 <!-- rule:W-22 roles=coordinator -->
+{{if:codex}}
 - **Codex consultations.** Brainstorm and review calls go through `pwsh scripts/codex-ask.ps1` with `-Model` and `-Effort` on every call, including a resume by `-SessionId`; it rejects failed, missing, or stale output.
+{{else}}
+- **Consultations.** No role of this repository runs on Codex, so there are no Codex consultations.
+{{endif}}
 
 ## Verification and desktop checks
 
@@ -134,6 +142,7 @@ Every behavior change gets an independent review from a different agent than its
 The coordinator commits, opens PRs, and merges. Executors never commit or push. This overrides the generic "leave changes for user review" default for this repository.
 
 <!-- rule:W-28 roles=coordinator -->
+{{if:remote}}
 1. Work on a feature branch, never on `{{repository.baseBranch}}`.
 2. Commit, then `pwsh scripts/merge-pr.ps1 -PinOnly -Worktree <path>`, then `pwsh scripts/verify.ps1` on the committed tree. The executor's earlier run does not satisfy the merge: a receipt from before the commit is refused.
 3. Record the independent review for the committed head: `pwsh scripts/record-review.ps1 -Worktree <path> ...`.
@@ -141,9 +150,21 @@ The coordinator commits, opens PRs, and merges. Executors never commit or push. 
 5. `pwsh scripts/merge-pr.ps1 -Pr <n> -Worktree <path> -Auto -WaitMerged` under a watcher. It needs the receipt and the review record to match the PR head and tree. "AUTO-MERGE ENABLED" is not merged.
 
 For a package run through `scripts/package.ps1`, `accept` covers step 3 and `ship -Id <slug>` runs steps 2, 4 and 5 bound to the accepted head.
+{{else}}
+1. Work on a feature branch, never on `{{repository.baseBranch}}`.
+2. Commit, then `pwsh scripts/verify.ps1` on the committed tree (a plugin pin, when `hooks.pin` is configured, is moved first with `pwsh scripts/merge-pr.ps1 -PinOnly -Worktree <path>`). The executor's earlier run does not satisfy the merge: a receipt from before the commit is refused.
+3. Record the independent review for the committed head: `pwsh scripts/record-review.ps1 -Worktree <path> ...`.
+4. `pwsh scripts/merge-pr.ps1 -LocalMerge -Worktree <path>` fast-forwards `{{repository.baseBranch}}` to the head. There is no remote: nothing is pushed and no pull request exists.
+
+For a package run through `scripts/package.ps1`, `accept` covers step 3 and `ship -Id <slug> -LocalMerge` runs steps 2 and 4 bound to the accepted head. Without `-LocalMerge`, `ship` stops at the stage `no-remote` and merges nothing.
+{{endif}}
 
 <!-- rule:W-29 roles=coordinator -->
+{{if:remote}}
 - **Checks.** Every required check ({{slot:required-checks}}) must be present. Every check on the PR head, required or otherwise, must have completed without failure or cancellation; skipped checks are allowed. Never delete the branch or worktree until GitHub says MERGED.
+{{else}}
+- **Checks.** No GitHub check exists; the required check ({{slot:required-checks}}) is the verify receipt here: the receipt of the head must hold every configured gate, passed. Never delete the branch or worktree before `{{repository.baseBranch}}` contains the head.
+{{endif}}
 <!-- rule:W-30 roles=coordinator -->
 - **Serial.** Merge PRs one at a time; KB edits conflict.{{slot:serial-note?}}
 {{slot:pin-policy?}}

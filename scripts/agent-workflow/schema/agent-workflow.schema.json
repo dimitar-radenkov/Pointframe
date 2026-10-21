@@ -34,6 +34,12 @@
         "baseRef": {
           "type": "string",
           "minLength": 1
+        },
+        "remote": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     },
@@ -490,6 +496,15 @@
         },
         "doctor": {
           "type": "boolean"
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     },

@@ -19,7 +19,34 @@ function Get-AwWrapperTable {
         'status' = @{ Summary = 'the status store'; Selectors = @('Root') }
         'check-workflow-scripts' = @{ Summary = 'the workflow script checker'; Selectors = @('Root') }
         'package' = @{ Summary = 'the work package runner'; Selectors = @('Root'); MainRoot = $true }
+        # Every tool of the vendored kit has a wrapper except install.ps1, which installs from a source clone and is never run from the vendored copy.
+        'doctor' = @{ Summary = 'the vendored kit checker'; Selectors = @('Root') }
     }
+}
+
+function Get-AwMissingWrappers {
+    # The tools of the vendored kit (scripts/agent-workflow/tools/<tool>.ps1) that have no scripts/<tool>.ps1 yet. Only for a vendored kit: a kit
+    # folder anywhere else (the source clone) has no consumer scripts folder next to it, and nothing is reported.
+    param(
+        [Parameter(Mandatory)]
+        [string]$KitDir,
+        [Parameter(Mandatory)]
+        [string]$Root
+    )
+
+    $vendored = [IO.Path]::GetFullPath((Join-Path $Root 'scripts\agent-workflow')).TrimEnd('\', '/')
+    if (-not [string]::Equals([IO.Path]::GetFullPath($KitDir).TrimEnd('\', '/'), $vendored, [StringComparison]::OrdinalIgnoreCase)) {
+        return @()
+    }
+    $missing = [Collections.Generic.List[object]]::new()
+    foreach ($tool in (Get-AwWrapperTable).Keys) {
+        $path = Join-Path $Root "scripts\$tool.ps1"
+        if ((Test-Path -LiteralPath $path) -or -not (Test-Path -LiteralPath (Join-Path $KitDir "tools\$tool.ps1") -PathType Leaf)) {
+            continue
+        }
+        $missing.Add([pscustomobject]@{ Tool = $tool; Path = $path; Relative = "scripts/$tool.ps1"; Expected = (Get-AwWrapperText -KitDir $KitDir -Tool $tool) })
+    }
+    return @($missing)
 }
 
 function Get-AwWrapperText {
