@@ -23,6 +23,8 @@ Every decision by date, whichever file holds it. The sections themselves are in 
 | 2026-10-05 | [D-014](features/verify.md#d-014-interactive-desktop-testing-reuses-verify-trust) | Interactive desktop testing reuses verify trust |
 | 2026-10-15 | [D-015](features/telemetry.md#d-015-agent-telemetry-carries-a-random-install-id) | Agent telemetry carries a random install ID |
 | 2026-10-15 | [D-016](#d-016-agents-follow-one-workflow-in-the-knowledge-base) | Agents follow one workflow in the knowledge base |
+| 2026-10-15 | [D-017](features/telemetry.md#d-017-agent-outcomes-separate-failing-verdicts-and-invalid-input) | Agent outcomes separate failing verdicts and invalid input |
+| 2026-10-21 | [D-018](#d-018-one-repository-with-two-release-trains-screen-explainer-separate) | One repository with two release trains; Screen Explainer separate |
 
 ## D-001 MVVM plus DI is the composition model
 
@@ -112,3 +114,22 @@ Decided 2026-10-15, by the owner, after a three-round Claude-Codex debate. The p
 **Alternatives rejected.** A separate agent-workflow document outside the knowledge base: not retrieved by `kb.ps1 read`. A second decision log beside this file: two overlapping histories; this file keeps the global D-NNN IDs and gains the chronology above. Copying another repository's rule that knowledge changes only after owner approval: it would undermine the charter's autonomy. Review by the coordinator for every change: the failure this decision answers. Brainstorm for every package: conflicts with charter A. Immediate stop at the context threshold: it can strand a desktop run or merge watcher. Required GitHub enforcement immediately: wait for the local gate pilot to show whether bypasses persist.
 
 **Files.** `docs/knowledge-base/workflow.md`, `CLAUDE.md`, `AGENTS.md`, `scripts/merge-pr.ps1`.
+
+## D-018 One repository with two release trains; Screen Explainer separate
+
+Decided 2026-10-21, by the owner, after a Claude-Codex consultation on repository structure.
+
+**Context.** Pointframe ships the desktop app, the CLI, and the MCP server from one repository and one release per merge. The question was whether to split the CLI and MCP into their own repository, and where Screen Explainer (the Anna App, later a standalone product) should live. Usage data (30 days to 2026-10-19) shows very little external CLI/MCP use, which bears on investment, not on repository boundaries. Screen Explainer's own slim capture and OCR is about 11 MB; the probe that reused `Pointframe.Engine` was 151 MB, and `DirectCaptureService` writes captures to disk, against Screen Explainer's in-memory promise.
+
+**Decision.**
+
+- Pointframe stays one repository. The CLI and MCP stay in it and stay paired. No folder moves: `Pointframe.slnx` already groups the projects.
+- Pointframe gets two release trains, desktop and agent (CLI plus MCP). A design for per-product release discovery and backward compatibility comes first and needs the owner's approval, because the desktop updater (`GitHubUpdateService`) and every agent download link read the repository-wide `releases/latest`.
+- Screen Explainer stays a separate repository at least through its standalone beta, with its own capture and OCR. A shared library, if one is ever made, grows from Screen Explainer's code, not from `Pointframe.Engine`.
+- Inside Pointframe: move the CLI and MCP tests out of `Pointframe.Tests` into a project that does not reference the desktop app, and split the largest area files ([cli-mcp.md](features/cli-mcp.md), [verify.md](features/verify.md)).
+
+**Consequences.** A fix to capture or OCR may have to be made twice; Screen Explainer keeps a list of such duplicated fixes. Shared Engine or Data changes keep validating both trains. Reconsider a split of Pointframe on a real ownership, access, or licensing boundary, on release delays that persist after the trains are separate, or when changes are largely independent over several weeks with stable shared APIs. Reconsider a shared capture and OCR library when two consumers need substantially the same tested behavior, with a size and startup comparison; it would exclude persistence, telemetry, recording, automation, and product-specific window filtering.
+
+**Alternatives rejected.** A separate CLI/MCP repository: it would turn Engine and Data project references into packages, replace atomic changes with coordinated releases, and move release URLs, plugin pins, and registry publication, with no operational benefit the release trains do not already bring. Screen Explainer as a folder in Pointframe: a third release train, scoped privacy rules, and an import of history that must first be cleaned of private window titles. A shared NuGet package of `Pointframe.Engine`: it keeps the broad dependencies and adds API compatibility and publishing obligations.
+
+**Files.** `.github/workflows/cd.yml`, `Pointframe/Services/Update/GitHubUpdateService.cs`, `Pointframe.Tests/Pointframe.Tests.csproj`, `Pointframe.slnx`, `docs/knowledge-base/features/cli-mcp.md`, `docs/knowledge-base/features/verify.md`.

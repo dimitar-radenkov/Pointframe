@@ -100,5 +100,6 @@ A decision lives with what it governs (see [Structure and conventions](maintenan
 - [D-015 Agent telemetry carries a random install ID](features/telemetry.md#d-015-agent-telemetry-carries-a-random-install-id)
 - [D-016 Agents follow one workflow in the knowledge base](decisions.md#d-016-agents-follow-one-workflow-in-the-knowledge-base)
 - [D-017 Agent outcomes separate failing verdicts and invalid input](features/telemetry.md#d-017-agent-outcomes-separate-failing-verdicts-and-invalid-input)
+- [D-018 One repository with two release trains; Screen Explainer separate](decisions.md#d-018-one-repository-with-two-release-trains-screen-explainer-separate)
 
 <!-- /decisions -->
