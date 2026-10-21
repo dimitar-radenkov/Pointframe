@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "source": "10252afdf58cd0d6b986537df115bde3e4945c2b",
-  "tag": null,
+  "tag": "v1.0.0",
   "commit": "3575e56b3af3530a4138cfcd5e92283e34916f55",
   "manifestSha256": "8b8d273164833d3c8c39f1ed4e86322a17dbce1b3010ff4615ae79269c96773d",
   "files": {
@@ -110,6 +110,5 @@
     "tools/status.ps1": "8dd892f33e2cea5b9fef7768d5f93aa3cc00fb83f1d6bc0e5e515d8552895ef4",
     "tools/verify.ps1": "3e7eb6c3794eadbd105b10fdc166fc6278abbfa80a7de6c3d04214cb9e9bdd37",
     "workflow/workflow.template.md": "00c83055707354f24a32e47712f250f0ada79c142ba95cf66839dd15821a36e2"
-  },
-  "candidate": true
+  }
 }
