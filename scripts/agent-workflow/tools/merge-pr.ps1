@@ -79,6 +79,7 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot '..' 'lib' 'selftest.ps1')
 . (Join-Path $PSScriptRoot '..' 'lib' 'tree-hash.ps1')
 . (Join-Path $PSScriptRoot '..' 'lib' 'review-record.ps1')
+. (Join-Path $PSScriptRoot '..' 'lib' 'verify-cache.ps1')
 
 # Settings of the repository this run works on, set from the configuration (or by the self-test for a temporary one).
 $script:Remote = 'origin'
@@ -87,6 +88,7 @@ $script:Namespace = 'selftest'
 $script:MainCheckout = ''
 $script:ReviewSettings = $null
 $script:Ctx = $null
+$script:ToolPath = $PSCommandPath
 $WorktreeFull = if ($Worktree) { ConvertTo-AwFullPath $Worktree } else { '' }
 
 # ------------------------------------------------------------- pure decision logic
@@ -116,7 +118,7 @@ function Get-MergeDecision
     }
     if ($Pr.mergeable -eq 'CONFLICTING' -or $Pr.mergeStateStatus -eq 'DIRTY')
     {
-        return & $result 'Conflict' 'the pull request has merge conflicts, so GitHub will never run its pull_request checks; rebase or merge master into the branch, push, and run this again'
+        return & $result 'Conflict' "the pull request has merge conflicts, so GitHub will never run its pull_request checks; rebase or merge $($script:BaseBranchName) into the branch, push, and run this again"
     }
     if ($failed.Count -gt 0)
     {
@@ -257,6 +259,22 @@ function Get-MainTree
     $script:MainCheckout
 }
 
+function Get-SyncMainCommand
+{
+    # The command a person types to bring the main checkout up to date: the consumer's own wrapper (scripts/merge-pr.ps1)
+    # when it has one, otherwise this tool addressed by its full path and the repository it works on.
+    $wrapper = Join-Path $script:MainCheckout 'scripts\merge-pr.ps1'
+    if ($script:MainCheckout -and (Test-Path -LiteralPath $wrapper -PathType Leaf))
+    {
+        return 'pwsh scripts/merge-pr.ps1 -SyncMain'
+    }
+    if ($script:MainCheckout)
+    {
+        return "pwsh -NoProfile -File `"$($script:ToolPath)`" -SyncMain -Root `"$($script:MainCheckout)`""
+    }
+    return 'pwsh scripts/merge-pr.ps1 -SyncMain'
+}
+
 function Get-BaseBranch([string]$MainTree)
 {
     # The base branch is the one in repository.baseRef; the remote's HEAD is not consulted.
@@ -293,14 +311,14 @@ function Invoke-MergedCleanup([string]$Branch, [string]$MainTree = (Get-MainTree
         Write-Host "WARNING git fetch $remote --prune failed in ${MainTree}: $fetch"
         Write-Host 'The merge and the branch cleanup are done. Recover by hand:'
         Write-Host "  git -C `"$MainTree`" fetch $remote --prune"
-        Write-Host '  pwsh scripts/merge-pr.ps1 -SyncMain'
+        Write-Host "  $(Get-SyncMainCommand)"
         Write-Host "  If fetch reports a bad or empty ref, delete that empty file under .git/refs/remotes/$remote and fetch again."
         return
     }
     $base = Get-BaseBranch $MainTree
     $head = [string](& git -C $MainTree rev-parse --short=10 HEAD 2>$null)
     $remoteHead = [string](& git -C $MainTree rev-parse --short=10 "refs/remotes/$remote/$base" 2>$null)
-    Write-Host "Main checkout left at $($head.Trim()); $remote/$base is at $($remoteHead.Trim()). When no package is running, bring it up to date with: pwsh scripts/merge-pr.ps1 -SyncMain"
+    Write-Host "Main checkout left at $($head.Trim()); $remote/$base is at $($remoteHead.Trim()). When no package is running, bring it up to date with: $(Get-SyncMainCommand)"
 }
 
 function Get-SyncMainBlockers([string]$MainTree, [string]$Base)
@@ -499,7 +517,14 @@ function Test-MainCheckoutBehavior([Collections.Generic.List[string]]$Failures)
         & $git $main @('remote', 'set-url', 'origin', $origin) | Out-Null
 
         # -SyncMain, run as a child process from a folder outside the checkout, with -Root naming it.
-        $selfPath = $PSCommandPath
+        # The children run a copy of the tool placed outside any configured repository: the gate context refuses a repository other than the one
+        # that holds the tool, and there is no switch, parameter or variable to skip that.
+        $toolCopy = Join-Path $root 'tool-copy'
+        New-Item -ItemType Directory -Path (Join-Path $toolCopy 'tools') -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..' 'lib') -Destination (Join-Path $toolCopy 'lib') -Recurse
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..' 'schema') -Destination (Join-Path $toolCopy 'schema') -Recurse
+        Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $toolCopy 'tools' 'merge-pr.ps1')
+        $selfPath = Join-Path $toolCopy 'tools' 'merge-pr.ps1'
         $sync = {
             param([switch]$Preview)
             Push-Location $root
@@ -901,6 +926,23 @@ function Test-MergeReceiptCore([string]$WorktreePath, [string]$PrHead)
         return $exact
     }
 
+    # Content, not commit: a receipt for the committed tree of the head is as good as one made at the head itself when it was made under the
+    # configuration and kit of the main checkout and by this verify tool (the same tree under another commit SHA: an amend, a rebase onto
+    # an unchanged tree, a reused receipt). Anything it cannot prove falls through to the pin-only rule below.
+    if ($exact.Reason -match '^head mismatch')
+    {
+        $headTreeNow = ([string](& git -C $root rev-parse "$PrHead^{tree}" 2>$null)).Trim()
+        $verifyTool = Join-Path $PSScriptRoot 'verify.ps1'
+        if ($headTreeNow -and (Test-Path -LiteralPath $verifyTool -PathType Leaf))
+        {
+            $content = Test-AwReceiptContent $receipt $headTreeNow $currentTree $script:Ctx.Config $script:Ctx.Root $verifyTool
+            if ($content.Ok)
+            {
+                return $content
+            }
+        }
+    }
+
     $verified = [string]$receipt.head
     $verifiedTree = [string](& git -C $root rev-parse "$verified^{tree}" 2>$null)
     & git -C $root merge-base --is-ancestor $verified $PrHead 2>$null
@@ -929,6 +971,9 @@ function Test-MergeReceiptCore([string]$WorktreePath, [string]$PrHead)
 
 function Test-MergeReceipt([string]$WorktreePath, [string]$PrHead)
 {
+    # What the pull request would put on the base branch includes the vendored kit and its lock: a candidate install never merges.
+    $candidate = Get-AwCandidateLockRefusal (Resolve-Path -LiteralPath $WorktreePath).Path -Revision $PrHead
+    if ($candidate) { return [pscustomobject]@{ Ok = $false; Reason = $candidate } }
     $core = Test-MergeReceiptCore $WorktreePath $PrHead
     if (-not $core.Ok) { return $core }
     $root = (Resolve-Path -LiteralPath $WorktreePath).Path
@@ -1095,14 +1140,14 @@ if ($Auto)
         }
         else
         {
-            Write-Host "Worktree '$Worktree' was NOT removed; clean it up after the merge (git worktree remove, git branch -D). Then bring the main checkout up to date with: pwsh scripts/merge-pr.ps1 -SyncMain"
+            Write-Host "Worktree '$Worktree' was NOT removed; clean it up after the merge (git worktree remove, git branch -D). Then bring the main checkout up to date with: $(Get-SyncMainCommand)"
         }
         exit 0
     }
     Update-Status "auto-merge enabled #$($prInfo.number)" ([string]$decision.Head) ''
     if ($Worktree)
     {
-        Write-Host "Worktree '$Worktree' was NOT removed; clean it up after the merge (git worktree remove, git branch -D). Then bring the main checkout up to date with: pwsh scripts/merge-pr.ps1 -SyncMain"
+        Write-Host "Worktree '$Worktree' was NOT removed; clean it up after the merge (git worktree remove, git branch -D). Then bring the main checkout up to date with: $(Get-SyncMainCommand)"
     }
     if ($WaitMerged)
     {

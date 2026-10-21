@@ -97,7 +97,9 @@ public static class AwProcessJob
         processId = 0; process = IntPtr.Zero; thread = IntPtr.Zero; error = null;
         IntPtr hIn = OpenInheritable(string.IsNullOrEmpty(stdin) ? "NUL" : stdin, false);
         IntPtr hOut = OpenInheritable(stdout, true);
-        IntPtr hErr = OpenInheritable(stderr, true);
+        // The same path for both streams is one handle (like 2>&1): the two streams interleave in arrival order.
+        bool sameStream = string.Equals(stdout, stderr, StringComparison.OrdinalIgnoreCase);
+        IntPtr hErr = sameStream ? hOut : OpenInheritable(stderr, true);
         try
         {
             if (hIn == new IntPtr(-1) || hOut == new IntPtr(-1) || hErr == new IntPtr(-1)) { error = "cannot open the redirected streams (error " + Marshal.GetLastWin32Error() + ")"; return false; }
@@ -128,7 +130,7 @@ public static class AwProcessJob
         {
             if (hIn != IntPtr.Zero && hIn != new IntPtr(-1)) { CloseHandle(hIn); }
             if (hOut != IntPtr.Zero && hOut != new IntPtr(-1)) { CloseHandle(hOut); }
-            if (hErr != IntPtr.Zero && hErr != new IntPtr(-1)) { CloseHandle(hErr); }
+            if (!sameStream && hErr != IntPtr.Zero && hErr != new IntPtr(-1)) { CloseHandle(hErr); }
         }
     }
     public static bool Wait(IntPtr process, long milliseconds)

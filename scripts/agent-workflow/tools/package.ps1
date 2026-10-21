@@ -47,7 +47,8 @@ review  runs a read-only reviewer of the other provider (Codex through codex-ask
         starts fresh every round, with the previous verdict and findings in the prompt; both must return a full verdict. A Claude CLI older
         than the minimum its model needs (package.minCliVersions of the configuration over the kit table) refuses the round before it is
         spent. A round that is invalid because of a host-detected environment failure (the reviewer could not be started or crashed before
-        any verdict, an interrupted wrapper) is refunded; the refund and its reason are recorded and shown.
+        any verdict, an interrupted wrapper) is refunded; the refund and its reason are recorded and shown. Refunds are capped at two per
+        package: a third refundable failure is charged, with the reason recorded (REFUND DENIED), and show prints "n refund(s) of 2 allowed".
 disposition  the coordinator's accept or reject (with a reason) of one finding of the latest review.
 fix     builds a fix request from the accepted findings, resumes the same executor (Claude -Resume; Codex: a new run with the
         previous report appended), then runs check, commit and review again. A FAIL verdict that carries no finding at all has nothing to
@@ -55,12 +56,17 @@ fix     builds a fix request from the accepted findings, resumes the same execut
         hashed and used as the findings of that fix.
 recover the audited way out of blocked-main-mutated: -Reason is required. It records the reason, the main checkout as it is now and the
         guard it clears, invalidates every check, review PASS and the acceptance, and returns the package to the stage after its last run
-        (check, commit and review start again). It never clears the guard silently and reverts nothing.
+        (check, commit and review start again). It also moves every review record written for the package's commits to
+        <git common dir>/<namespace>/reviews/invalidated/ (where merge-pr.ps1 does not look) and records the moves in the recovery entry.
+        It never clears the guard silently and reverts nothing.
 accept  the coordinator's recorded acceptance: only for a valid PASS bound to the current head and tree; writes the review record
         through record-review.ps1 from values in the state. A later change to the head invalidates it (the plugin pin files excepted).
 ship    resumable, one repository-wide ship lock (git common dir <namespace>/ship.lock; a dead ship's leftover ship.json is reported
         and only the same package may resume it). Needs stage accepted with the acceptance bound to the current head, tree and a
-        clean worktree. Steps, each recorded in state before the next starts (stages shipping, ship-failed, desktop-required,
+        clean worktree, and a main checkout that is at the base ref after ship's fetch (the gate configuration is read from it; a stale one is
+        refused and the refusal names merge-pr.ps1 -SyncMain). Ship runs the kit tools of the runner itself (verify, merge-pr, record-review),
+        not the ones of the package worktree: a package that upgrades the vendored kit is verified by the new kit at its next run, after that
+        kit is installed. Steps, each recorded in state before the next starts (stages shipping, ship-failed, desktop-required,
         auto-merge-enabled, merged, needs-review): base (fetch, rebase onto the base ref; a proven no-op keeps the acceptance, any
         other change invalidates the PASS and the acceptance, re-checks and stops at needs-review: never restamped), pin
         (merge-pr.ps1 -PinOnly; a commit touching only the two pin files keeps the acceptance, anything else returns to review),
@@ -175,12 +181,15 @@ $script:KitDir = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 
 $SchemaVersion = 1
 $script:RepairLimit = 3
+# A review round lost to an environment failure is given back (refunded) at most this often per package; the next such failure is charged.
+$script:RefundLimit = 2
 $script:BriefOverride = $null
 $script:ExitCode = 0
 $script:JsonDate = if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) { @{ DateKind = 'String' } } else { @{} }
 
 # Set by Initialize-PackageContext from the configuration of the repository this run is about.
 $script:Ctx = $null
+$script:ContextScriptRoot = $PSScriptRoot
 $script:Repo = $null
 $script:Namespace = 'selftest'
 $script:PinFiles = @()
@@ -189,7 +198,10 @@ function Initialize-PackageContext([string]$Target)
 {
     # The repository is -Root, else the repository that holds this script. The configuration (namespace, base, pin files, hooks, commands)
     # is read from its main checkout only, never from a package branch, which could loosen the gates it is judged by.
-    $script:Ctx = if ($Target) { Get-AwGateContext -Worktree $Target -ScriptRoot $PSScriptRoot } else { Get-AwGateContext -ScriptRoot $PSScriptRoot }
+    # The gate context also checks that the repository named by -Root/-Repo is the repository that holds this tool (the wrapper passes the main
+    # checkout of its own), so a standalone clone or another repository is refused, with -Root as with -Worktree. ContextScriptRoot is this
+    # folder; only the self-test replaces it, with a copy of the kit outside every configured repository (see Invoke-SelfTest).
+    $script:Ctx = if ($Target) { Get-AwGateContext -Root (Resolve-AwRoot -Explicit (ConvertTo-AwFullPath $Target) -ScriptRoot $script:ContextScriptRoot).MainCheckout -Worktree $Target -ScriptRoot $script:ContextScriptRoot } else { Get-AwGateContext -ScriptRoot $script:ContextScriptRoot }
     $script:Repo = [string]$script:Ctx.Worktree
     $script:Namespace = [string]$script:Ctx.Config.state.commonDirNamespace
     $script:PinFiles = @($script:Ctx.PinFiles)
@@ -2095,7 +2107,7 @@ function Invoke-Show
     $reviews = @(Get-List $state.reviews | ForEach-Object {
             [ordered]@{ reviewId = $_.reviewId; round = $_.round; level = $_.level; reviewer = $_.reviewer.kind; model = $_.reviewer.model; sessionId = $_.reviewer.sessionId; resumedFrom = $_.reviewer.resumedFrom; status = $_.status; verdict = $_.verdict
                 commit = $_.commit; tree = (Get-Field $_ 'tree'); blockingFindings = $_.blockingFindings; invalidReasons = @($_.invalidReasons); verdictFile = $_.verdictFile.path; termination = $_.termination
-                refunded = $(if (Get-Field $_ 'refunded') { Get-Field (Get-Field $_ 'refunded') 'reason' } else { $null }); invalidated = $(if (Get-Field $_ 'invalidated') { Get-Field (Get-Field $_ 'invalidated') 'reason' } else { $null })
+                refunded = $(if (Get-Field $_ 'refunded') { Get-Field (Get-Field $_ 'refunded') 'reason' } else { $null }); refundDenied = $(if (Get-Field $_ 'refundDenied') { Get-Field (Get-Field $_ 'refundDenied') 'reason' } else { $null }); invalidated = $(if (Get-Field $_ 'invalidated') { Get-Field (Get-Field $_ 'invalidated') 'reason' } else { $null })
                 findings = @(Get-List $_.findings | ForEach-Object { [ordered]@{ id = $_.id; severity = $_.severity; file = $_.file; line = $_.line; summary = $_.summary; disposition = $(if ($_.disposition) { "$($_.disposition.decision): $($_.disposition.reason)" } else { $null }) } }) }
         })
     $acceptance = $null
@@ -2106,8 +2118,8 @@ function Invoke-Show
     }
     $view = [ordered]@{
         slug = $state.slug; packageId = $state.packageId; stage = $state.stage; worktree = $wt; branch = $state.branch; baseSha = $state.baseSha
-        commit = $state.commit; repair = [ordered]@{ roundsUsed = $state.repair.roundsUsed; limit = $script:RepairLimit; resets = @(Get-List $state.repair.resets); refunds = @(Get-List $state.repair.refunds) }; reviews = $reviews; acceptance = $acceptance
-        recoveries = @(Get-List $state.recoveries | ForEach-Object { [ordered]@{ utc = $_.utc; reason = $_.reason; fromStage = $_.fromStage; toStage = $_.toStage; mainCheckout = $_.mainCheckout; mainStatus = @($_.mainStatus); invalidated = $_.invalidated } })
+        commit = $state.commit; repair = [ordered]@{ roundsUsed = $state.repair.roundsUsed; limit = $script:RepairLimit; resets = @(Get-List $state.repair.resets); refunds = @(Get-List $state.repair.refunds); refundLimit = $script:RefundLimit }; reviews = $reviews; acceptance = $acceptance
+        recoveries = @(Get-List $state.recoveries | ForEach-Object { [ordered]@{ utc = $_.utc; reason = $_.reason; fromStage = $_.fromStage; toStage = $_.toStage; mainCheckout = $_.mainCheckout; mainStatus = @($_.mainStatus); invalidated = $_.invalidated; reviewRecords = @(Get-List (Get-Field $_ 'reviewRecords')) } })
         coordinatorFindings = @(Get-List $state.coordinatorFindings | ForEach-Object { [ordered]@{ utc = $_.utc; reviewId = $_.reviewId; path = $_.path; sha256 = $_.sha256; findings = @($_.findings) } })
         ship = (Get-ShipView $state)
         integrityProblems = $integrity; snapshotProblems = $snapshotProblems; runs = $runs; checks = $checks
@@ -2128,12 +2140,12 @@ function Invoke-Show
         Write-Host "    $($check.utc) $(if ($check.ok) { 'passed' } else { 'FAILED' }) $freshness$(if ($check.rawBytesProblems.Count) { " RAW BYTES: $(($check.rawBytesProblems | Select-Object -First 10) -join ', ')" })"
     }
     if ($state.commit) { Write-Host "  commit: $($state.commit.sha) tree $($state.commit.tree) ($($state.commit.message))" }
-    Write-Host "  reviews: $($reviews.Count), repair rounds used $($view.repair.roundsUsed) of $script:RepairLimit$(if ($view.repair.resets.Count) { ", $($view.repair.resets.Count) reset(s)" })$(if ($view.repair.refunds.Count) { ", $($view.repair.refunds.Count) refund(s)" })"
+    Write-Host "  reviews: $($reviews.Count), repair rounds used $($view.repair.roundsUsed) of $script:RepairLimit$(if ($view.repair.resets.Count) { ", $($view.repair.resets.Count) reset(s)" }), $($view.repair.refunds.Count) refund(s) of $($view.repair.refundLimit) allowed"
     foreach ($refund in $view.repair.refunds) { Write-Host "    refunded round $($refund.round) ($($refund.utc)): $($refund.reason)" }
-    foreach ($recovery in $view.recoveries) { Write-Host "  recovered $($recovery.utc): $($recovery.reason) (main checkout: $(if ($recovery.mainCheckout.unknown) { 'unreadable' } else { "HEAD $($recovery.mainCheckout.head)" }), $(@($recovery.mainStatus).Count) changed path(s))" }
+    foreach ($recovery in $view.recoveries) { Write-Host "  recovered $($recovery.utc): $($recovery.reason) (main checkout: $(if ($recovery.mainCheckout.unknown) { 'unreadable' } else { "HEAD $($recovery.mainCheckout.head)" }), $(@($recovery.mainStatus).Count) changed path(s))$(if (@($recovery.reviewRecords).Count) { ", $(@($recovery.reviewRecords).Count) review record(s) moved to reviews/invalidated" })" }
     foreach ($review in $reviews)
     {
-        Write-Host "    round $($review.round) $($review.level) $($review.reviewer) $($review.status) $($review.verdict) blocking=$($review.blockingFindings) commit=$($review.commit)$(if ($review.invalidReasons.Count) { ' INVALID: ' + ($review.invalidReasons -join '; ') })$(if ($review.refunded) { ' REFUNDED: ' + $review.refunded })$(if ($review.invalidated) { ' INVALIDATED: ' + $review.invalidated })"
+        Write-Host "    round $($review.round) $($review.level) $($review.reviewer) $($review.status) $($review.verdict) blocking=$($review.blockingFindings) commit=$($review.commit)$(if ($review.invalidReasons.Count) { ' INVALID: ' + ($review.invalidReasons -join '; ') })$(if ($review.refunded) { ' REFUNDED: ' + $review.refunded })$(if ($review.refundDenied) { ' REFUND DENIED: ' + $review.refundDenied })$(if ($review.invalidated) { ' INVALIDATED: ' + $review.invalidated })"
         foreach ($f in $review.findings) { Write-Host "      $($f.id) [$($f.severity)] $($f.file):$($f.line) $($f.summary)$(if ($f.disposition) { " => $($f.disposition)" })" }
     }
     if ($acceptance) { Write-Host "  acceptance: $($acceptance.status) ($($acceptance.reason))" }
@@ -2975,6 +2987,16 @@ function Get-ReviewerOutputObservation([string]$ReviewDir)
     'none'
 }
 
+function Get-RefundDecision($State, [bool]$Eligible)
+{
+    # Refund: the round is given back. Denied: why an eligible round is charged anyway (the package used up its refunds), else $null.
+    # Without a cap an observer of the intermediate events could kill every reviewer before its verdict and re-roll for free.
+    if (-not $Eligible) { return @{ Refund = $false; Denied = $null } }
+    $used = @(Get-List $State.repair.refunds).Count
+    if ($used -ge $script:RefundLimit) { return @{ Refund = $false; Denied = "this package has already had $used refunded review round(s), which is the cap ($script:RefundLimit), so the round is charged" } }
+    @{ Refund = $true; Denied = $null }
+}
+
 function Resolve-AbandonedReview($Info, [string]$Slug)
 {
     # A package left in 'reviewing' (its wrapper died): the review is recorded as invalid and its round is given back.
@@ -2992,10 +3014,12 @@ function Resolve-AbandonedReview($Info, [string]$Slug)
         # in the review folder. Killing the wrapper while a verdict is forming must not buy a free round: with output present it stays charged.
         $reviewDir = if ($reviewId) { Join-Path (Get-PackagePaths $Info.StateRoot $Slug).Dir "reviews/$reviewId" } else { $null }
         $observation = if ($reviewDir) { Get-ReviewerOutputObservation $reviewDir } else { 'the review folder cannot be observed' }
-        $refund = [bool]$review -and ($observation -eq 'none')
+        $decision = Get-RefundDecision $state ([bool]$review -and ($observation -eq 'none'))
+        $refund = $decision.Refund
         $roundsAfter = [int]$state.repair.roundsUsed - $(if ($refund) { 1 } else { 0 })
         $exhausted = $roundsAfter -ge $script:RepairLimit
         $abandonedReason = if ($refund) { 'the review was interrupted before it finished (the wrapper died) and the reviewer had produced no output' }
+        elseif ($decision.Denied) { "the review was interrupted before it finished (the wrapper died) and the reviewer had produced no output, but $($decision.Denied)" }
         elseif ($observation -eq 'none' -or $observation -like 'the review folder*') { "the review was interrupted before it finished (the wrapper died); $observation, so the round stays charged" }
         else { "abandoned after output existed ($observation); the round stays charged" }
         Update-State $Info.StateRoot $Slug 'review-recovered' {
@@ -3005,6 +3029,7 @@ function Resolve-AbandonedReview($Info, [string]$Slug)
                     {
                         $_.status = 'invalid'; $_.verdict = $null; $_.invalidReasons = @($abandonedReason); $_.termination = 'abandoned'; $_.endedUtc = (Get-Now)
                         if ($refund) { $_.refunded = @{ utc = (Get-Now); reason = $abandonedReason } }
+                        if ($decision.Denied) { $_.refundDenied = @{ utc = (Get-Now); reason = $decision.Denied } }
                     }
                     $_
                 })
@@ -3195,7 +3220,9 @@ function Complete-Review($Info, $Context, $Proc)
         # A round lost to a host-detected environment failure (the reviewer could not be started, or crashed before any verdict) is given
         # back, with the reason on record. What the reviewer itself got wrong (schema, criteria, an unclean snapshot, a timeout) still costs it.
         $infraReason = [string](Get-Field $Proc 'InfraFailure')
-        $refund = [bool]($infraReason -and -not $valid -and -not $mainMutated)
+        $decision = Get-RefundDecision $state ([bool]($infraReason -and -not $valid -and -not $mainMutated))
+        $refund = $decision.Refund
+        if ($decision.Denied) { $reasons.Add("the environment failure ($infraReason) would have been refunded, but $($decision.Denied)") }
         $roundsAfter = [int]$state.repair.roundsUsed - $(if ($refund) { 1 } else { 0 })
         $exhausted = $roundsAfter -ge $script:RepairLimit
         $stage = if ($mainMutated) { 'blocked-main-mutated' } elseif ($valid -and $verdict -eq 'PASS') { 'review-passed' } elseif ($exhausted) { 'needs-coordinator' } elseif ($valid) { 'review-failed' } else { 'review-invalid' }
@@ -3213,6 +3240,7 @@ function Complete-Review($Info, $Context, $Proc)
                         $_.tokens = $Proc.Tokens; $_.denials = @($Proc.Denials); $_.seconds = $Proc.Seconds
                         if ($valid) { $_.findings = @($validation.findings); $_.criteriaResults = @($validation.criteria); $_.omissions = @($validation.omissions); $_.blockingFindings = $validation.blocking }
                         if ($refund) { $_.refunded = @{ utc = (Get-Now); reason = $infraReason } }
+                        if ($decision.Denied) { $_.refundDenied = @{ utc = (Get-Now); reason = $decision.Denied } }
                     }
                     $_
                 })
@@ -3555,7 +3583,7 @@ function Invoke-Accept
         if (-not $reviewerSession) { throw 'the reviewer session is unknown, so the review record cannot name it' }
         $ex = $review.executor
         $executorSession = if ($ex.session) { [string]$ex.session } else { [string]$ex.runId }
-        $recordArgs = @('-NoProfile', '-File', $RecordReviewScript, '-Worktree', $wt, '-Head', [string]$review.commit,
+        $recordArgs = @('-NoProfile', '-File', $RecordReviewScript, '-Root', [string]$info.MainCheckout, '-Worktree', $wt, '-Head', [string]$review.commit,
             '-Executor', "$($ex.provider):$($ex.model)", '-ExecutorSession', $executorSession,
             '-Reviewer', "$($review.reviewer.provider):$($review.reviewer.model)", '-ReviewerSession', $reviewerSession,
             '-Verdict', 'PASS', '-BlockingFindings', '0', '-Evidence', $verdictPath, '-Brief', [string]$state.brief.path, '-Review', [string]$review.level)
@@ -3609,17 +3637,49 @@ function Invoke-Recover
             mainStatus = @($mainStatus); invalidated = $counts
         }
         $mark = @{ utc = $when; reason = "recover: $why" }
-        Update-State $info.StateRoot $Id 'recovered' {
-            param($s)
-            $s.recoveries = @(Get-List $s.recoveries) + @($entry)
-            $s.checks = @(Get-List $s.checks | ForEach-Object { if (-not (Get-Field $_ 'invalidated')) { $_['invalidated'] = $mark }; $_ })
-            $s.reviews = @(Get-List $s.reviews | ForEach-Object { if ($_.status -eq 'valid' -and $_.verdict -eq 'PASS' -and -not (Get-Field $_ 'invalidated')) { $_['invalidated'] = $mark }; $_ })
-            if ($s.acceptance -and -not $s.acceptance.invalidated) { $s.acceptance.invalidated = $mark }
-            # The guard is cleared here, in the open: the flag goes down, what it saw stays, and the recovery entry holds the reason.
-            $s.guard = @{ mainCheckoutMutated = $false; lastRunId = (Get-Field $guardBefore 'lastRunId'); before = (Get-Field $guardBefore 'before'); after = (Get-Field $guardBefore 'after'); recoveredUtc = $when }
-            $s.stage = $toStage
-        } -Locked | Out-Null
-        Write-Host "recovered: the main-checkout guard is cleared on your word ($why). Recorded: the main checkout now ($(if ($entry.mainCheckout.unknown) { 'cannot be fingerprinted' } else { "HEAD $($entry.mainCheckout.head), tree $($entry.mainCheckout.treeHash)" }), $($mainStatus.Count) changed path(s) in git status), and $($counts.checks) check(s), $($counts.reviewPasses) review PASS(es)$(if ($counts.acceptance) { ' and the acceptance' }) invalidated."
+        # A review record that merge-pr.ps1 would read for one of the package's commits must not outlive the acceptance it was written for: it is moved
+        # to <common dir>/<namespace>/reviews/invalidated/, where merge-pr.ps1 never looks, and the move is recorded in the recovery entry.
+        $reviewsDir = Join-Path $info.CommonDir "$($script:Namespace)/reviews"
+        $invalidatedDir = Join-Path $reviewsDir 'invalidated'
+        $shas = [Collections.Generic.List[string]]::new()
+        foreach ($candidate in @((Get-Field $state.commit 'sha'), (Get-Field $state.acceptance 'commit'), (Get-Field $state.acceptance 'head')) + @(Get-List $state.commits | ForEach-Object { Get-Field $_ 'sha' }) + @(Get-List $state.reviews | ForEach-Object { Get-Field $_ 'commit' }))
+        {
+            $text = ([string]$candidate).Trim().ToLowerInvariant()
+            if ($text -match '^[0-9a-f]{40,64}$' -and -not $shas.Contains($text)) { $shas.Add($text) }
+        }
+        $movedRecords = [Collections.Generic.List[object]]::new()
+        try
+        {
+            foreach ($sha in $shas)
+            {
+                $source = Join-Path $reviewsDir "$sha.json"
+                if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { continue }
+                New-Item -ItemType Directory -Path $invalidatedDir -Force | Out-Null
+                $target = Join-Path $invalidatedDir "$sha.json"
+                if (Test-Path -LiteralPath $target) { $target = Join-Path $invalidatedDir "$sha.$([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfff')).json" }
+                $recordSha256 = Get-Sha256 $source
+                Move-Item -LiteralPath $source -Destination $target
+                $movedRecords.Add(@{ commit = $sha; from = $source; to = $target; sha256 = $recordSha256 })
+            }
+            $entry.reviewRecords = @($movedRecords)
+            Update-State $info.StateRoot $Id 'recovered' {
+                param($s)
+                $s.recoveries = @(Get-List $s.recoveries) + @($entry)
+                $s.checks = @(Get-List $s.checks | ForEach-Object { if (-not (Get-Field $_ 'invalidated')) { $_['invalidated'] = $mark }; $_ })
+                $s.reviews = @(Get-List $s.reviews | ForEach-Object { if ($_.status -eq 'valid' -and $_.verdict -eq 'PASS' -and -not (Get-Field $_ 'invalidated')) { $_['invalidated'] = $mark }; $_ })
+                if ($s.acceptance -and -not $s.acceptance.invalidated) { $s.acceptance.invalidated = $mark }
+                # The guard is cleared here, in the open: the flag goes down, what it saw stays, and the recovery entry holds the reason.
+                $s.guard = @{ mainCheckoutMutated = $false; lastRunId = (Get-Field $guardBefore 'lastRunId'); before = (Get-Field $guardBefore 'before'); after = (Get-Field $guardBefore 'after'); recoveredUtc = $when }
+                $s.stage = $toStage
+            } -Locked | Out-Null
+        }
+        catch
+        {
+            # The state was not written: put the records back, so that nothing was half done.
+            foreach ($moved in $movedRecords) { if (Test-Path -LiteralPath $moved.to) { Move-Item -LiteralPath $moved.to -Destination $moved.from -Force -ErrorAction SilentlyContinue } }
+            throw
+        }
+        Write-Host "recovered: the main-checkout guard is cleared on your word ($why). Recorded: the main checkout now ($(if ($entry.mainCheckout.unknown) { 'cannot be fingerprinted' } else { "HEAD $($entry.mainCheckout.head), tree $($entry.mainCheckout.treeHash)" }), $($mainStatus.Count) changed path(s) in git status), and $($counts.checks) check(s), $($counts.reviewPasses) review PASS(es)$(if ($counts.acceptance) { ' and the acceptance' }) invalidated$(if ($movedRecords.Count) { "; $($movedRecords.Count) review record(s) moved to $invalidatedDir" })."
         Write-Host "stage is now $toStage; nothing was reverted. Next: $((Get-NextTransitions (Read-State $info.StateRoot $Id)) -join ', ')"
     }
     finally { $stateLock.Dispose() }
@@ -4051,6 +4111,29 @@ function Move-ShipToReview($Info, [string]$Why)
 
 # ---- ship: the steps ---------------------------------------------------------------------------------------------
 
+function Get-PackageSyncMainCommand($Info)
+{
+    # What a person types to bring the main checkout up to date: the consumer's wrapper of merge-pr.ps1 when it has one, else the kit tool.
+    $wrapper = Join-Path $Info.MainCheckout 'scripts\merge-pr.ps1'
+    if (Test-Path -LiteralPath $wrapper -PathType Leaf) { return 'pwsh scripts/merge-pr.ps1 -SyncMain' }
+    $tool = if ($MergePrScript) { $MergePrScript } else { Join-Path $PSScriptRoot 'merge-pr.ps1' }
+    "pwsh -NoProfile -File `"$tool`" -SyncMain -Root `"$($Info.MainCheckout)`""
+}
+
+function Get-ShipMainCheckoutProblem($Info, $State, [string]$Wt, [string]$BaseRefName)
+{
+    # $null when the main checkout is at the base ref, or when this ship has already begun its merge: once the merge-pr call ran, origin/<base>
+    # may legitimately contain the merge commit while the main checkout still lags, and that never blocks a resume. Otherwise the step record and the text.
+    $mergeStep = Get-ShipStep $State 'merge'
+    if ($mergeStep -and [string](Get-Field $mergeStep 'status') -in @('running', 'done')) { return $null }
+    $mainHead = ([string](& git -C $Info.MainCheckout rev-parse --verify 'HEAD^{commit}' 2>$null)).Trim()
+    $baseTip = ([string](& git -C $Wt rev-parse --verify "$BaseRefName^{commit}" 2>$null)).Trim()
+    if ($mainHead -and $baseTip -and $mainHead -eq $baseTip) { return $null }
+    $record = @{ status = 'failed'; cause = 'main-checkout-not-at-base'; mainCheckout = [string]$Info.MainCheckout; mainHead = $mainHead; baseRef = $BaseRefName; baseTip = $baseTip }
+    $text = "ERROR the main checkout $($Info.MainCheckout) is at $(if ($mainHead) { $mainHead.Substring(0, [Math]::Min(10, $mainHead.Length)) } else { 'an unknown commit' }) but $BaseRefName is at $(if ($baseTip) { $baseTip.Substring(0, [Math]::Min(10, $baseTip.Length)) } else { 'an unknown commit' }): the agent-workflow.json that ship and the merge gate read lives there and may be stale. Bring it up to date first (when no package is running): $(Get-PackageSyncMainCommand $Info)"
+    @{ Record = $record; Text = $text }
+}
+
 function Step-ShipBase($Info)
 {
     $state = Read-State $Info.StateRoot $Id
@@ -4060,6 +4143,13 @@ function Step-ShipBase($Info)
     if (-not $remote) { return (Stop-Ship $Info 'ship-failed' 'base' @{ status = 'failed' } "ERROR ship needs a remote base ref such as origin/master, not '$baseRefName'") }
     try { Assert-ShipRemote $wt $remote | Out-Null; Invoke-Git $wt @('fetch', $remote) | Out-Null }
     catch { return (Stop-Ship $Info 'ship-failed' 'base' @{ status = 'failed' } "ERROR cannot fetch ${remote}: $($_.Exception.Message)") }
+    # The gate configuration (hooks, required checks, pin files) is read from the main checkout. A main checkout that is not at the base ref
+    # may hold a stale one, for example a hook that was null before the last merge: ship would record that and merge-pr would accept it.
+    $mainProblem = Get-ShipMainCheckoutProblem $Info $state $wt $baseRefName
+    if ($mainProblem)
+    {
+        return (Stop-Ship $Info 'ship-failed' 'base' $mainProblem.Record $mainProblem.Text)
+    }
     # The rebase always runs: git leaves a branch that already contains the base alone, and that is the proven no-op. Anything else that
     # moves the head, the tree, the content or the review inputs returns the package to review.
     $head = Get-GitHead $wt
@@ -4100,7 +4190,7 @@ function Step-ShipPin($Info)
     $paths = Get-ShipPaths $Info
     $log = Join-Path $paths.Dir "pin-$([guid]::NewGuid().ToString('N')).log"
     Write-Host 'ship: merge-pr.ps1 -PinOnly (the plugin pin is moved before verify)'
-    $code = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $mergePr, '-PinOnly', '-Worktree', $wt) $Info.MainCheckout $log -Live
+    $code = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $mergePr, '-PinOnly', '-Worktree', $wt, '-Root', [string]$Info.MainCheckout) $Info.MainCheckout $log -Live
     if ($code -ne 0) { return (Stop-Ship $Info 'ship-failed' 'pin' @{ status = 'failed'; head = $head; exitCode = $code; log = $log } "ERROR merge-pr.ps1 -PinOnly failed (exit $code); see $log") }
     $after = Get-GitHead $wt
     $review = Get-ShipReview $state
@@ -4440,6 +4530,7 @@ function Step-ShipMerge($Info)
     # -NoPluginPin: merge-pr.ps1 must not commit and push a pin on its own, or the merged head would no longer be the verified one.
     $mergeArgs = @('-NoProfile', '-File', $mergePr, '-Pr', $number, '-Worktree', $wt, '-Auto', '-NoPluginPin')
     if (-not $NoWait) { $mergeArgs += @('-WaitMerged', '-TimeoutMinutes', [string]$MergeTimeoutMinutes) }
+    $mergeArgs += @('-Root', [string]$Info.MainCheckout)
     Set-ShipStep $Info 'merge' @{ status = 'running'; number = $number; calls = ($calls + 1); noWait = [bool]$NoWait; enabledHead = $localHead }
     Write-Host "ship: merge-pr.ps1 -Pr $number -Auto -NoPluginPin$(if (-not $NoWait) { ' -WaitMerged' })"
     $code = Invoke-Logged 'pwsh' $mergeArgs $Info.MainCheckout $log -Live
@@ -4470,7 +4561,7 @@ function Complete-ShipMerged($Info, [string]$Wt, [string]$Number, $View, [int]$C
     {
         $mergePr = Resolve-ShipScript 'merge-pr' $MergePrScript (Join-Path $PSScriptRoot 'merge-pr.ps1')
         $log = Join-Path (Get-ShipPaths $Info).Dir "cleanup-$([guid]::NewGuid().ToString('N')).log"
-        $cleanupExit = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $mergePr, '-Pr', $Number, '-Worktree', $Wt) $Info.MainCheckout $log -Live
+        $cleanupExit = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $mergePr, '-Pr', $Number, '-Worktree', $Wt, '-Root', [string]$Info.MainCheckout) $Info.MainCheckout $log -Live
     }
     Set-ShipStep $Info 'merge' @{ status = 'done'; number = $Number; mergeCommit = $View.MergeCommit; headRefOid = $View.Head; calls = $Calls; cleanupExit = $cleanupExit } 'merged'
     Write-Host "ship: GitHub reports pull request #$Number MERGED ($($View.MergeCommit))"
@@ -4577,6 +4668,12 @@ function Invoke-ShipLocked($Info)
 {
     $state = Read-State $Info.StateRoot $Id
     $stage = [string]$state.stage
+    # A candidate kit (install.ps1 -Candidate) must never reach the base branch: refuse before anything is rebased, verified, pushed or merged.
+    if ([string]$state.worktree -and (Test-Path -LiteralPath ([string]$state.worktree) -PathType Container))
+    {
+        $candidate = Get-AwCandidateLockRefusal ([string]$state.worktree) -Revision 'HEAD'
+        if ($candidate) { throw "ship refused: $candidate" }
+    }
     if ($stage -in @('review-passed', 'accepted'))
     {
         $guard = Enter-StateLock $Info.StateRoot $Id
@@ -5398,6 +5495,14 @@ function Invoke-ShipSelfTest
     $env:AW_PKG_TEST_GH_DIR = $ghDir
     $env:AW_PKG_TEST_LIBDIR = Join-Path $script:KitDir 'lib'
     Add-Content -LiteralPath (Join-Path $main '.git/info/exclude') -Value 'artifacts/'
+    # ship refuses a main checkout that is not at the base ref (its configuration may be stale). The seed pushed commits to origin after the
+    # main checkout was cloned, so it sits behind; it is brought up to date here, and again whenever a case moves origin/master.
+    $syncMain = {
+        & git -C $main fetch -q origin 2>&1 | Out-Null
+        & git -C $main -c user.name=SelfTest -c user.email=selftest@example.invalid merge --ff-only -q origin/master 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'self-test: the main checkout could not be fast-forwarded to origin/master' }
+    }
+    & $syncMain
 
     $stubBodies = [ordered]@{}
     $stubBodies['gh'] = @'
@@ -5588,9 +5693,62 @@ exit 1
         & $expect ($r.Exit -eq 0 -and (& $stateFile $slug).stage -eq 'accepted') "ship test package $slug : accept failed: $($r.Text)"
     }
 
+    # item 17: a main checkout that is behind origin/master may hold a stale configuration. ship refuses it before anything is rebased, pushed or
+    # merged, and names -SyncMain; the main checkout is then put back where it was. The caller runs the ship again with an up to date main checkout.
+    $assertStaleMainRefused = {
+        param([string]$Slug)
+        & $setEnv @{}
+        & $resetLog
+        $mainTip = ([string](& git -C $main rev-parse HEAD)).Trim()
+        & git -C $main reset -q --hard "$mainTip~1" 2>&1 | Out-Null
+        $res = & $ship $Slug
+        $state = & $stateFile $Slug
+        # The refusal belongs to the base step before the push. Once this ship's merge call has run (or is running), origin/<base> may hold the
+        # merge commit while the main checkout lags, and a resume must not be refused for that.
+        $unitInfo = Get-RepoInfo $main
+        $unitWt = [string]$state.worktree
+        $unitBase = [string]$state.baseRef
+        $resumeState = @{ ship = @{ steps = @{ merge = @{ status = 'done' } } } }
+        $runningState = @{ ship = @{ steps = @{ merge = @{ status = 'running' } } } }
+        $pendingState = @{ ship = @{ steps = @{ merge = @{ status = 'pending' } } } }
+        $stillRefused = Get-ShipMainCheckoutProblem $unitInfo $pendingState $unitWt $unitBase
+        $notRefusedDone = Get-ShipMainCheckoutProblem $unitInfo $resumeState $unitWt $unitBase
+        $notRefusedRunning = Get-ShipMainCheckoutProblem $unitInfo $runningState $unitWt $unitBase
+        & git -C $main reset -q --hard $mainTip 2>&1 | Out-Null
+        & $kitCase ($null -ne $stillRefused -and $null -eq $notRefusedDone -and $null -eq $notRefusedRunning) 'item 17: a ship that has begun its merge is never refused for a lagging main checkout, only the base step before the push is' "refused before merge: $($null -ne $stillRefused); after merge done: $($null -ne $notRefusedDone); running: $($null -ne $notRefusedRunning)"
+        & $kitCase ($res.Exit -ne 0 -and $state.stage -eq 'ship-failed' -and $state.ship.steps.base.status -eq 'failed' -and $state.ship.steps.base.cause -eq 'main-checkout-not-at-base' -and $res.Text -match 'main checkout .* is at [0-9a-f]{10} but origin/master is at [0-9a-f]{10}' -and $res.Text -match '-SyncMain' -and (& $calls '.') -eq 0 -and -not $state.ship.steps.Contains('verify') -and ([string](& git -C $main rev-parse HEAD)).Trim() -eq $mainTip) 'item 17: ship refuses a main checkout that is not at origin/master and names -SyncMain' "exit $($res.Exit) stage $($state.stage) $($res.Text)"
+    }
+
+    # A candidate kit (install.ps1 -Candidate) never ships: with such a lock in the package worktree ship refuses before it does anything.
+    $assertCandidateRefused = {
+        param([string]$Slug)
+        & $setEnv @{}
+        & $resetLog
+        $candidateWt = [string](& $stateFile $Slug).worktree
+        $candidateLock = Join-Path $candidateWt 'agent-workflow.lock.json'
+        $stageBefore = [string](& $stateFile $Slug).stage
+        # The lock that counts is the committed one: the candidate lock is committed on the package head, and removed again afterwards.
+        $headBefore = ([string](& git -C $candidateWt rev-parse HEAD)).Trim()
+        [IO.File]::WriteAllText($candidateLock, '{ "schemaVersion": 1, "source": "x", "tag": null, "candidate": true, "commit": "0123456789012345678901234567890123456789", "manifestSha256": "x", "files": {} }')
+        & git -C $candidateWt add -- agent-workflow.lock.json 2>&1 | Out-Null
+        & git -C $candidateWt -c user.name=SelfTest -c user.email=selftest@example.invalid commit -q -m 'candidate lock' 2>&1 | Out-Null
+        try { $res = & $ship $Slug }
+        finally
+        {
+            & git -C $candidateWt reset -q --hard $headBefore 2>&1 | Out-Null
+            Remove-Item -LiteralPath $candidateLock -Force -ErrorAction SilentlyContinue
+        }
+        $after = & $stateFile $Slug
+        & $kitCase ($res.Exit -ne 0 -and $res.Text -match 'ship refused' -and $res.Text -match 'candidate install' -and $res.Text -match 'install a tagged release first' -and [string]$after.stage -eq $stageBefore -and (& $calls '.') -eq 0) 'candidate: package ship refuses a worktree whose vendored kit lock is a candidate' "exit $($res.Exit) stage $($after.stage) $($res.Text)"
+    }
+
     if ($Quick)
     {
         # -Quick: one ship, of the package bx that Invoke-PackageBSelfTest left accepted: base, pin, verify, record, qualify, push, pr and merge, each recorded.
+        & $setEnv @{}
+        & $resetLog
+        & $assertCandidateRefused 'bx'
+        & $assertStaleMainRefused 'bx'
         & $setEnv @{}
         & $resetLog
         $res = & $ship 'bx'
@@ -5647,12 +5805,16 @@ exit 1
         $nullShow = (& $pkg @('show', '-Id', 'sn')).Text
         & $kitCase ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $nq -and $nq.status -eq 'not-configured' -and $nq.configured -eq $false -and $nq.required -eq $false -and $nq.status -notin @('done', 'passed') -and -not $nq.ContainsKey('result') -and $r.Text -match 'desktop qualification is not configured' -and $nullBody -match 'desktop qualification: not configured' -and $nullBody -notmatch 'desktop qualification: not required' -and $nullBody -match 'No desktop qualification: hooks\.qualify is not configured' -and $nullShow -match 'qualify\s+not-configured' -and (& $calls '^impact') -eq 0 -and (& $calls '^desktop') -eq 0) 'hook contract: qualify null' "exit $($r.Exit) stage $($state.stage) qualify $($nq | ConvertTo-Json -Compress) $($r.Text)"
         & $kitCase ($nc -and $nc.status -eq 'not-configured' -and $nc.configured -eq $false -and $nc.status -ne 'done' -and $r.Text -match 'release channels are not configured' -and (& $calls '^channels') -eq 0 -and (& $calls '^gh release') -eq 0 -and @(((& $pkg @('show', '-Id', 'sn', '-Json')).Text | ConvertFrom-Json).nextTransitions).Count -eq 0) 'hook contract: channels null' "exit $($r.Exit) channels $($nc | ConvertTo-Json -Compress) $($r.Text)"
+        & $kitCase ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $nq.status -eq 'not-configured' -and $nq.configured -eq $false -and $state.ship.steps.base.status -eq 'done' -and ([string](& git -C $main rev-parse HEAD)).Trim() -eq ([string](& git -C $main rev-parse origin/master)).Trim()) 'item 17: with the main checkout at origin/master and hooks.qualify null in its current configuration, ship still records qualify as not-configured' "exit $($r.Exit) stage $($state.stage) qualify $($nq | ConvertTo-Json -Compress)"
     }
     finally { [IO.File]::WriteAllText($configPath, $configText) }
     & $setEnv @{}
     & $resetLog
 
-    # ---- guards, refusals: no acceptance, no stubs, a later non-pin commit ----
+    # ---- guards, refusals: a stale main checkout, no acceptance, no stubs, a later non-pin commit ----
+    & $assertCandidateRefused 'sa'
+    & $assertStaleMainRefused 'sa'
+    & $restoreA
     & $setEnv @{}
     & $resetLog
     $r = & $pkg @('ship', '-Id', 'sa')
@@ -5847,7 +6009,7 @@ exit 1
     & $setEnv @{ MERGEMODE = 'merged'; CHANNELMODE = 'failed'; MERGE_AFTER = '1' }
     $r = & $ship 'sa'
     $state = & $stateFile 'sa'
-    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.status -eq 'done' -and $state.ship.steps.merge.mergeCommit -match '^[0-9a-f]{40}$' -and -not (Test-Path $aWt) -and $r.Text -match 'waiting for GitHub to merge' -and $state.ship.steps.channels.final -eq 'failed' -and $r.Text -match 'channel store:example\.app failed' -and (& $calls 'pr create') -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 3 -and (& $calls '^mergepr -Pr \d+ -Worktree \S+$') -eq 1 -and (& $calls '^channels .*-Version 9\.9\.1') -eq 1) "the merge or the channel failure was not recorded (waited without a call, worktree removed, merge commit, failed channel, no new PR): exit $($r.Exit) $($r.Text)"
+    & $expect ($r.Exit -eq 1 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.status -eq 'done' -and $state.ship.steps.merge.mergeCommit -match '^[0-9a-f]{40}$' -and -not (Test-Path $aWt) -and $r.Text -match 'waiting for GitHub to merge' -and $state.ship.steps.channels.final -eq 'failed' -and $r.Text -match 'channel store:example\.app failed' -and (& $calls 'pr create') -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 3 -and (& $calls '^mergepr -Pr \d+ -Worktree \S+ -Root \S+$') -eq 1 -and (& $calls '^channels .*-Version 9\.9\.1') -eq 1) "the merge or the channel failure was not recorded (waited without a call, worktree removed, merge commit, failed channel, no new PR): exit $($r.Exit) $($r.Text)"
     $r = & $pkg @('show', '-Id', 'sa')
     & $expect ($r.Exit -eq 0 -and $r.Text -match 'stage=merged' -and $r.Text -notmatch 'INCONSISTENT' -and $r.Text -match 'channels\s+reported') "show failed on a merged package whose worktree is gone: $($r.Text)"
     & $setEnv @{ CHANNELMODE = 'stalepin' }
@@ -5867,6 +6029,7 @@ exit 1
     $cWt = & $wtOf 'sc'
     $cHead = & $headOf 'sc'
     & $git $cWt @('push', 'origin', "${cHead}:refs/heads/master")
+    & $syncMain
     # GitHub merges at once, while -NoWait is on: the package still stops at auto-merge-enabled and does not poll for the release.
     & $setEnv @{ MERGEMODE = 'instant' }
     $r = & $ship 'sc' @('-NoWait')
@@ -5882,7 +6045,7 @@ exit 1
     # A plain ship reports the channels.
     $r = & $ship 'sc'
     $state = & $stateFile 'sc'
-    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.cleanupExit -eq 0 -and $state.ship.steps.merge.calls -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 1 -and (& $calls '^mergepr -Pr \d+ -Worktree \S+$') -eq 1 -and -not (Test-Path $cWt) -and $state.ship.steps.channels.status -eq 'done') "a pull request merged by GitHub was not recorded, cleaned up and reported: exit $($r.Exit) $($r.Text)"
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $state.ship.steps.merge.cleanupExit -eq 0 -and $state.ship.steps.merge.calls -eq 1 -and (& $calls '^mergepr .*-Auto') -eq 1 -and (& $calls '^mergepr -Pr \d+ -Worktree \S+ -Root \S+$') -eq 1 -and -not (Test-Path $cWt) -and $state.ship.steps.channels.status -eq 'done') "a pull request merged by GitHub was not recorded, cleaned up and reported: exit $($r.Exit) $($r.Text)"
 
     # ---- base moved, real rebase: back to review, then review, accept and ship again ----
     & $resetLog
@@ -6119,6 +6282,20 @@ function Invoke-PackageBSelfTest
         else { $holds = $holds -and $state.repair.roundsUsed -eq 1 -and @($state.repair.refunds).Count -eq 0 -and -not (Get-Field $abandoned 'refunded') -and ($abandoned.invalidReasons -join ' ') -match 'abandoned after output existed' }
         & $expect $holds "item 4 (refund) an abandoned review with $($case.name) should be $(if ($case.refund) { 'refunded' } else { 'charged' }): rounds $($state.repair.roundsUsed), reasons $($abandoned.invalidReasons -join '; ')"
     }
+    # item 22: an abandoned review whose round would be refunded is charged once the package has had two refunds
+    $capDir = Join-Path $packagesRoot 'bx/reviews/abandoned-capped'
+    New-Item -ItemType Directory -Path $capDir -Force | Out-Null
+    Update-State $packagesRoot 'bx' 'test-abandon-capped' {
+        param($s)
+        $s.stage = 'reviewing'
+        $s.repair.roundsUsed = 3
+        $s.repair.refunds = @(@{ utc = (Get-Now); reviewId = 'earlier-1'; round = 1; reason = 'earlier'; roundsUsedBefore = 1 }, @{ utc = (Get-Now); reviewId = 'earlier-2'; round = 2; reason = 'earlier'; roundsUsedBefore = 2 })
+        $s.reviews = @(@{ reviewId = 'abandoned-capped'; round = 3; level = 'light'; status = 'running'; verdict = $null; reviewer = @{ kind = 'claude-sonnet'; model = 'x'; sessionId = $null; resumedFrom = $null }; findings = @(); invalidReasons = @(); verdictFile = @{ path = (Join-Path $capDir 'verdict.json') }; termination = 'running'; blockingFindings = 0; commit = 'x'; wrapper = @{ pid = 999999; startUtc = $deadStart } })
+    } | Out-Null
+    Resolve-AbandonedReview $info 'bx'
+    $state = & $stateFile 'bx'
+    $cappedAbandoned = Get-LatestReview $state
+    & $kitCase ($cappedAbandoned.status -eq 'invalid' -and -not (Get-Field $cappedAbandoned 'refunded') -and (Get-Field $cappedAbandoned 'refundDenied') -and $state.repair.roundsUsed -eq 3 -and @($state.repair.refunds).Count -eq 2 -and ($cappedAbandoned.invalidReasons -join ' ') -match 'cap \(2\)' -and $state.stage -eq 'needs-coordinator') 'item 22: an abandoned review is charged when the package has used its two refunds' "rounds $($state.repair.roundsUsed) stage $($state.stage) reasons $($cappedAbandoned.invalidReasons -join '; ')"
     Update-State $packagesRoot 'bx' 'test-abandon-reset' { param($s) $s.stage = 'committed'; $s.repair.roundsUsed = 0; $s.repair.refunds = @(); $s.reviews = @() } | Out-Null
 
     # item 1 (executor report): out.md has to be the file the run recorded; if not, review refuses before any round is spent
@@ -6231,9 +6408,14 @@ function Invoke-PackageBSelfTest
     $res = & $pkg @('run', '-Id', 'bx', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
     & $expect ($res.Exit -ne 0 -and $res.Text -match 'recover -Id <slug> -Reason' -and (& $stateFile 'bx').stage -eq 'blocked-main-mutated') "item 6 (recover) a blocked package was not pointed at recover: $($res.Text)"
     $mainNow = Get-Fingerprint $main
+    $bxRecord = [string](& $stateFile 'bx').acceptance.recordPath
+    $bxRecordHash = if (Test-Path -LiteralPath $bxRecord -PathType Leaf) { Get-Sha256 $bxRecord } else { $null }
     $res = & $pkg @('recover', '-Id', 'bx', '-Reason', $blockedFor)
     $state = & $stateFile 'bx'
     $entry = if (@($state.recoveries).Count) { $state.recoveries[0] } else { $null }
+    $bxMoved = Join-Path (Join-Path (Split-Path -Parent $bxRecord) 'invalidated') (Split-Path -Leaf $bxRecord)
+    $bxView = (& $pkg @('show', '-Id', 'bx', '-Json')).Text | ConvertFrom-Json
+    & $kitCase ($bxRecordHash -and -not (Test-Path -LiteralPath $bxRecord) -and (Test-Path -LiteralPath $bxMoved -PathType Leaf) -and (Get-Sha256 $bxMoved) -eq $bxRecordHash -and @($entry.reviewRecords).Count -eq 1 -and $entry.reviewRecords[0].from -eq $bxRecord -and $entry.reviewRecords[0].to -eq $bxMoved -and $entry.reviewRecords[0].sha256 -eq $bxRecordHash -and @($bxView.recoveries[0].reviewRecords).Count -eq 1 -and $res.Text -match 'review record\(s\) moved to') 'item 20: recover moves the review record of the package''s commit to reviews/invalidated and records that it did' "record $bxRecord moved to $bxMoved; hash $bxRecordHash; entry $($entry | ConvertTo-Json -Compress -Depth 5); $($res.Text)"
     & $expect ($res.Exit -eq 0 -and $state.stage -ne 'blocked-main-mutated' -and $state.stage -eq 'executor-completed' -and $entry -and $entry.reason -eq $blockedFor -and $entry.fromStage -eq 'blocked-main-mutated' -and $entry.mainCheckout.head -eq $mainNow.head -and $entry.mainCheckout.treeHash -eq $mainNow.treeHash -and $null -ne $entry.mainStatus -and -not $state.guard.mainCheckoutMutated -and $state.guard.recoveredUtc -and @($state.history | Where-Object { $_.event -eq 'recovered' }).Count -eq 1) "item 6 (recover) recover with -Reason did not record the reason and the main checkout, clear the guard and return to the stage after the last run: $($res.Text)"
     $passes = @($state.reviews | Where-Object { $_.status -eq 'valid' -and $_.verdict -eq 'PASS' })
     & $expect ($state.acceptance.invalidated.reason -match 'recover' -and $passes.Count -ge 1 -and @($passes | Where-Object { -not $_.invalidated }).Count -eq 0 -and @($state.checks | Where-Object { -not $_.invalidated }).Count -eq 0 -and $entry.invalidated.acceptance -eq $true) 'item 6 (recover) recover left a check, a review PASS or the acceptance valid'
@@ -6327,6 +6509,15 @@ function Invoke-PackageBSelfTest
     $state = & $stateFile 'bc'
     $codexEmpty = Get-LatestReview $state
     & $expect ($res.Exit -eq 1 -and $codexEmpty.status -eq 'invalid' -and -not (Get-Field $codexEmpty 'refunded') -and $state.repair.roundsUsed -eq $usedBefore + 1 -and @($state.repair.refunds).Count -eq 2) "item 4 (refund) a Codex that exited 0 with an empty final message was refunded (it is the reviewer's own output): $($res.Text)"
+
+    # item 22: refunds are capped at two per package. bc has had two; after a budget reset a third refundable failure is charged, with the reason on record.
+    $env:AW_PKG_TEST_VMODE = 'crash'
+    $res = & $pkg @('review', '-Id', 'bc', '-Level', 'heavy', '-Reviewer', 'codex-sol', '-CodexTestScript', $rvCodex, '-ResetBudget', '-Reason', 'item 22: try a third refundable failure')
+    $state = & $stateFile 'bc'
+    $codexCapped = Get-LatestReview $state
+    $cappedShown = (& $pkg @('show', '-Id', 'bc')).Text
+    $cappedJson = (& $pkg @('show', '-Id', 'bc', '-Json')).Text | ConvertFrom-Json
+    & $kitCase ($res.Exit -eq 1 -and $codexCapped.status -eq 'invalid' -and -not (Get-Field $codexCapped 'refunded') -and (Get-Field $codexCapped 'refundDenied') -and $state.repair.roundsUsed -eq 1 -and @($state.repair.refunds).Count -eq 2 -and ($codexCapped.invalidReasons -join ' ') -match 'cap \(2\)' -and $res.Text -notmatch 'the round was refunded' -and $cappedShown -match '2 refund\(s\) of 2 allowed' -and $cappedShown -match 'REFUND DENIED' -and $cappedJson.repair.refundLimit -eq 2 -and ($cappedJson.reviews[-1].refundDenied -match 'cap')) 'item 22: a third refundable failure in one package is charged with the reason recorded, and show displays the cap' "exit $($res.Exit) rounds $($state.repair.roundsUsed) refunds $(@($state.repair.refunds).Count) denied $(Get-Field $codexCapped 'refundDenied') | $cappedShown | $($res.Text)"
 
     if ($only) { return }
 
@@ -6508,6 +6699,13 @@ function Invoke-SelfTest
     $kitCase = { param([bool]$Condition, [string]$Name, [string]$Detail = '') Write-Host ('KITCASE {0} {1}' -f $(if ($Condition) { 'PASS' } else { 'FAIL' }), $Name); if (-not $Condition) { $failures.Add("$Name : $Detail") } }
     $root = Join-Path ([IO.Path]::GetTempPath()) "package-selftest-$([guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Path $root | Out-Null
+    # The self-test runs a copy of the kit from a folder outside any configured repository. The gate context compares the repository a tool judges
+    # with the repository that holds the tool, and the temporary repositories built here are not the one a vendored copy lives in; a copy placed
+    # outside every configured repository has nothing to compare, and no switch, parameter or variable exists that a caller could use to skip it.
+    $selfKit = Join-Path $root 'kit'
+    Copy-Item -LiteralPath $script:KitDir -Destination $selfKit -Recurse
+    $selfScript = Join-Path $selfKit 'tools' 'package.ps1'
+    $script:ContextScriptRoot = Join-Path $selfKit 'tools'
     $oldMain = $env:AW_PKG_TEST_MAIN
     # Exported to every child: the real-binary guards (Get-CodexCliVersion, Assert-SelfTestLauncher, the Codex reviewer) key on these.
     $env:AW_PKG_SELFTEST = '1'
@@ -6578,7 +6776,7 @@ Set-Content -LiteralPath (Join-Path $log 'events.jsonl') @('{"type":"thread.star
         $pkg = {
             param([string[]]$PackageArgs)
             if ($PackageArgs -notcontains '-CodexVersion') { $PackageArgs = @($PackageArgs) + @('-CodexVersion', '9.9.9-test') }
-            $output = & pwsh -NoProfile -File $PSCommandPath @PackageArgs -Repo $main -StatusScript $statusStub -LockTimeoutSeconds 1 -GraceSeconds 0 2>&1
+            $output = & pwsh -NoProfile -File $selfScript @PackageArgs -Repo $main -StatusScript $statusStub -LockTimeoutSeconds 1 -GraceSeconds 0 2>&1
             [pscustomobject]@{ Exit = $LASTEXITCODE; Text = (($output | ForEach-Object { "$_" }) -join "`n") }
         }
         $stateFile = { param($slug) Get-Content -LiteralPath (Join-Path $main ".git/selftest/packages/$slug.json") -Raw | ConvertFrom-Json -AsHashtable @script:JsonDate }
@@ -6856,7 +7054,7 @@ Start-Sleep -Seconds 60
             {
                 $raceOutputs += @(Join-Path $root "race$n.out")
                 Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $root "race$n.out") `
-                    -ArgumentList @('-NoProfile', '-File', "`"$PSCommandPath`"", 'new', '-Id', 'race', '-Brief', "`"$briefFile`"", '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-LockTimeoutSeconds', '120')
+                    -ArgumentList @('-NoProfile', '-File', "`"$selfScript`"", 'new', '-Id', 'race', '-Brief', "`"$briefFile`"", '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-LockTimeoutSeconds', '120')
             }
             foreach ($p in $raceProcesses) { if (-not $p.WaitForExit(180000)) { $p.Kill($true) } }
             $codes = @($raceProcesses | ForEach-Object { $_.ExitCode } | Sort-Object)
@@ -6905,7 +7103,7 @@ Start-Sleep -Seconds 60
             $recoverers = foreach ($n in 1..2)
             {
                 Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $root "recover$n.out") `
-                    -ArgumentList @('-NoProfile', '-File', "`"$PSCommandPath`"", 'run', '-Id', 'rec2', '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-AgentRunScript', "`"$(Join-Path $stubDir 'ok.ps1')`"", '-CodexVersion', '9.9.9-test', '-LockTimeoutSeconds', '120', '-GraceSeconds', '0')
+                    -ArgumentList @('-NoProfile', '-File', "`"$selfScript`"", 'run', '-Id', 'rec2', '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-AgentRunScript', "`"$(Join-Path $stubDir 'ok.ps1')`"", '-CodexVersion', '9.9.9-test', '-LockTimeoutSeconds', '120', '-GraceSeconds', '0')
             }
             foreach ($p in $recoverers) { if (-not $p.WaitForExit(240000)) { $p.Kill($true) } }
             $sleeper.WaitForExit(5000) | Out-Null

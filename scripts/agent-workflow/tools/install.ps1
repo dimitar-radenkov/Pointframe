@@ -5,8 +5,12 @@ param(
     [string]$Tag,
     [string]$Commit,
     [string]$Target,
+    [string]$Candidate,
     [switch]$DryRun
 )
+# -Candidate <full commit sha> installs kit/ from that exact commit of the source without a release tag (the commit must exist in the
+# source). The lock then records candidate = true, tag = null and the commit. A candidate is for trying a kit change in a consumer: doctor
+# reports it, and merge-pr and package ship refuse to merge it. Install a tagged release (-Tag, -Commit) over it to switch back.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -64,17 +68,24 @@ function Invoke-GitRaw {
         [string[]]$Arguments
     )
 
+    # Only standard output is the data: a warning on standard error must never end up inside NUL-separated fields, so stderr
+    # goes to a file that is read only to explain a failure.
     $previous = [Console]::OutputEncoding
+    $errorFile = Join-Path ([IO.Path]::GetTempPath()) ('.aw-git-' + [guid]::NewGuid().ToString('N') + '.err')
     try {
         [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-        $output = & git -C $Directory @Arguments 2>&1
+        $output = & git -C $Directory @Arguments 2>$errorFile
         if ($LASTEXITCODE -ne 0) {
-            throw "git $($Arguments -join ' ') failed: $($output -join ' ')"
+            $detail = if (Test-Path -LiteralPath $errorFile) { [IO.File]::ReadAllText($errorFile).Trim() } else { '' }
+            throw "git $($Arguments -join ' ') failed: $detail"
         }
         return ($output -join "`n")
     }
     finally {
         [Console]::OutputEncoding = $previous
+        if (Test-Path -LiteralPath $errorFile) {
+            Remove-Item -LiteralPath $errorFile -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 # Failure injection exists for the kit's own tests only. It is honored when the script runs from the kit
@@ -260,12 +271,19 @@ function Restore-InstallState {
 $tempBase = $null
 $archive = $null
 try {
-    if (-not $Source -or -not $Target -or -not $Tag -or -not $Commit -or
+    $shaPattern = '^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$'
+    $isCandidate = [bool]$Candidate
+    $badArguments = -not $Source -or -not $Target -or
         -not [IO.Path]::IsPathFullyQualified($Source) -or
-        -not [IO.Path]::IsPathFullyQualified($Target) -or
-        $Tag -cnotmatch '^v\d+\.\d+\.\d+$' -or
-        $Commit -cnotmatch '^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$') {
-        [Console]::Error.WriteLine('Bad arguments: provide absolute Source and Target, Tag vX.Y.Z, and full Commit SHA.')
+        -not [IO.Path]::IsPathFullyQualified($Target)
+    if ($isCandidate) {
+        $badArguments = $badArguments -or $Tag -or $Commit -or $Candidate -cnotmatch $shaPattern
+    }
+    else {
+        $badArguments = $badArguments -or -not $Tag -or -not $Commit -or $Tag -cnotmatch '^v\d+\.\d+\.\d+$' -or $Commit -cnotmatch $shaPattern
+    }
+    if ($badArguments) {
+        [Console]::Error.WriteLine('Bad arguments: provide absolute Source and Target, and either Tag vX.Y.Z with its full Commit SHA, or -Candidate with a full commit SHA (and no Tag or Commit).')
         exit 2
     }
 
@@ -275,12 +293,23 @@ try {
         throw "Target directory does not exist: $targetRoot"
     }
 
-    $tagRef = "refs/tags/$Tag"
-    $tagCommit = (Invoke-GitChecked -Directory $sourceRoot -Arguments @(
-        'rev-parse', '--verify', "$tagRef`^{commit}"
-    ) | Select-Object -First 1).Trim()
-    if ($tagCommit -cne $Commit.ToLowerInvariant()) {
-        throw "Tag '$Tag' resolves to '$tagCommit', not expected commit '$Commit'."
+    if ($isCandidate) {
+        $tagCommit = (Invoke-GitChecked -Directory $sourceRoot -Arguments @(
+            'rev-parse', '--verify', "$($Candidate.ToLowerInvariant())`^{commit}"
+        ) | Select-Object -First 1).Trim()
+        if ($tagCommit -cne $Candidate.ToLowerInvariant()) {
+            throw "Candidate '$Candidate' is not a commit of the source."
+        }
+        $Tag = $null
+    }
+    else {
+        $tagRef = "refs/tags/$Tag"
+        $tagCommit = (Invoke-GitChecked -Directory $sourceRoot -Arguments @(
+            'rev-parse', '--verify', "$tagRef`^{commit}"
+        ) | Select-Object -First 1).Trim()
+        if ($tagCommit -cne $Commit.ToLowerInvariant()) {
+            throw "Tag '$Tag' resolves to '$tagCommit', not expected commit '$Commit'."
+        }
     }
     $targetCheck = (Invoke-GitChecked -Directory $targetRoot -Arguments @(
         'rev-parse', '--is-inside-work-tree'
@@ -327,17 +356,20 @@ try {
     }
     $files = Get-AwManifest -Root $newContent
     if ($DryRun) {
-        Write-Output "DRY RUN: $($files.Count) managed files from $Tag ($tagCommit)."
+        Write-Output "DRY RUN: $($files.Count) managed files from $(if ($isCandidate) { 'candidate' } else { $Tag }) ($tagCommit)."
         exit 0
     }
 
     $lock = [ordered]@{
         schemaVersion = 1
         source = Get-LockSource -SourceRoot $sourceRoot -ReleaseCommit $tagCommit
-        tag = $Tag
+        tag = $(if ($isCandidate) { $null } else { $Tag })
         commit = $tagCommit.ToLowerInvariant()
         manifestSha256 = Get-AwManifestHash -Files $files
         files = $files
+    }
+    if ($isCandidate) {
+        $lock.candidate = $true
     }
     $scriptsRoot = Join-Path $targetRoot 'scripts'
     $attributesPath = Join-Path $targetRoot '.gitattributes'
@@ -366,7 +398,9 @@ try {
         Test-InjectedFailure -Step 'stage'
         Copy-Item -LiteralPath $newContent -Destination $stage -Recurse -Force
         $lock | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath $lockTemp -Encoding utf8NoBOM
-        [IO.File]::WriteAllText($attributesTemp, (Get-UpdatedAttributes -Path $attributesPath), [Text.UTF8Encoding]::new($false))
+        # A UTF-8 byte order mark the consumer's file carried is kept; a file without one stays without one.
+        [IO.File]::WriteAllText($attributesTemp, (Get-UpdatedAttributes -Path $attributesPath),
+            [Text.UTF8Encoding]::new((Test-AwFileHasBom -Path $attributesPath)))
 
         if ($hadManaged) {
             Test-InjectedFailure -Step 'first-rename'
@@ -412,17 +446,40 @@ try {
     if ($success) {
         foreach ($backupPath in @($backup, $lockBackup, $attributesBackup)) {
             if (Test-Path -LiteralPath $backupPath) {
-                try {
-                    Test-InjectedFailure -Step 'cleanup'
-                    Remove-Item -LiteralPath $backupPath -Recurse -Force
+                # Removal is retried once (a scanner or an indexer may hold a file for a moment). A backup that stays is
+                # named, because `git add -A` would commit it; doctor reports it as a leftover until it is deleted.
+                $removed = $false
+                $lastError = ''
+                foreach ($attempt in 1..2) {
+                    try {
+                        Test-InjectedFailure -Step 'cleanup'
+                        if ($attempt -eq 1) {
+                            Test-InjectedFailure -Step 'cleanup-once'
+                        }
+                        Remove-Item -LiteralPath $backupPath -Recurse -Force
+                        $removed = $true
+                        break
+                    }
+                    catch {
+                        $lastError = $_.Exception.Message
+                        if ($attempt -eq 1) {
+                            Start-Sleep -Milliseconds 300
+                        }
+                    }
                 }
-                catch {
-                    $warning = "installed successfully but could not remove backup '$backupPath': $($_.Exception.Message)"
+                if (-not $removed) {
+                    $warning = "installed successfully but could not remove backup '$backupPath' ($lastError). " +
+                        'Delete it before committing; doctor reports it as a leftover.'
                     [Console]::Error.WriteLine("install: warning: $warning")
                 }
             }
         }
-        Write-Output "Installed $Tag ($tagCommit), $($files.Count) files."
+        if ($isCandidate) {
+            Write-Output "Installed CANDIDATE $tagCommit, $($files.Count) files. It cannot be merged: merge-pr and package ship refuse a candidate lock; install a tagged release (-Tag, -Commit) before merging."
+        }
+        else {
+            Write-Output "Installed $Tag ($tagCommit), $($files.Count) files."
+        }
     }
 }
 catch {
