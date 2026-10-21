@@ -11,6 +11,8 @@ Waits for a pull request's checks, squash-merges the exact head that was checked
   merge-pr.ps1 -Pr 190 -Required unit-tests,CodeQL -TimeoutMinutes 20 -PollSeconds 15
   merge-pr.ps1 -SyncMain                        # fast-forward the main checkout to <remote>/<base> when nothing is running
   merge-pr.ps1 -SyncMain -DryRun                # print that decision; change nothing
+  merge-pr.ps1 -LocalMerge -Worktree <path>     # no remote only (repository.remote is null): fast-forward the base branch to the worktree's head
+  merge-pr.ps1 -LocalMerge -Worktree <path> -DryRun   # run every check and report; change nothing
   merge-pr.ps1 -SelfTest                        # offline: decision logic on the kit's merge-pr fixtures
   merge-pr.ps1 ... -Root <main checkout>         # must be the main checkout of the repository of -Worktree (default: that main checkout)
 
@@ -44,6 +46,15 @@ Rules, each from a past incident:
     change is the pin files (then the pin adapter, hooks.pin -Action Validate, must pass). If a release lands after verify, -Auto commits and
     pushes the pin itself, so no second verify.ps1 is needed. Merging always requires -Worktree and a review record.
 
+A repository without a remote ("repository": { "remote": null }, baseRef a local branch) has no pull request and no GitHub check: -Pr and -SyncMain
+refuse at once (exit 2, "no remote is configured"), gh is not needed, and -PinOnly still works. -LocalMerge is the merge there, and it refuses
+with exit 2 when a remote is configured. It runs the very receipt and review checks of -Auto on the worktree's head (a complete passing verify
+receipt for exactly this head and tree, or for an ancestor whose only later change is the pin files; a passing review record; a candidate kit
+install never merges), checks that the base branch can be fast-forwarded to the head (exit 3 when it cannot), takes the exclusive main-sync lock,
+refuses (exit 3, blockers named) unless the main checkout is on the base branch, clean, and no package run or review is active, then runs
+`git merge --ff-only` in the main checkout, removes the worktree and deletes the work branch. The merge commit is the head itself: nothing is
+squashed. A failed fast-forward exits 4. -FromShip says the caller (package.ps1 ship) holds the ship lock, which then does not count as a blocker.
+
 The pin adapter (hooks.pin) is a repository script run with -Action Behind|Update|Validate -Root <worktree>. Behind: exit 0 not
 behind, 10 behind. Update: exit 0 already current, 10 updated and committed, 1 failed (it printed why). Validate: exit 0 valid;
 otherwise its last line says why. Any other exit code is an error whose message is the hook's last line. A null hook means no
@@ -65,6 +76,8 @@ param(
     [switch]$PinOnly,
     [switch]$WaitMerged,
     [switch]$SyncMain,
+    [switch]$LocalMerge,
+    [switch]$FromShip,
     [string]$StatusId,
     [string]$Root,
     [switch]$SelfTest
@@ -191,7 +204,7 @@ function Update-Status([string]$Stage, [string]$Artifact, [string]$Blocker)
         $statusArguments += @('-Artifact', $Artifact)
     }
     $statusArguments += @('-Root', $script:Ctx.Root)
-    & pwsh @statusArguments
+    & pwsh @statusArguments | Out-Host
 }
 
 function Test-MergeReview([string]$WorktreePath, [string]$PrHead, $Settings = $script:ReviewSettings)
@@ -321,7 +334,7 @@ function Invoke-MergedCleanup([string]$Branch, [string]$MainTree = (Get-MainTree
     Write-Host "Main checkout left at $($head.Trim()); $remote/$base is at $($remoteHead.Trim()). When no package is running, bring it up to date with: $(Get-SyncMainCommand)"
 }
 
-function Get-SyncMainBlockers([string]$MainTree, [string]$Base)
+function Get-SyncMainBlockers([string]$MainTree, [string]$Base, [switch]$IgnoreShipLock)
 {
     $blockers = [Collections.Generic.List[string]]::new()
 
@@ -369,6 +382,8 @@ function Get-SyncMainBlockers([string]$MainTree, [string]$Base)
 
     # The work package runner keeps this file open with no sharing while a ship runs; a file nobody holds is a dead ship's leftover.
     $shipLock = Join-Path $common "$($script:Namespace)/ship.lock"
+    # -IgnoreShipLock (-LocalMerge -FromShip): the caller is that ship, so the held lock is expected; a lock nobody holds means no ship called.
+    $shipHeld = $false
     if (Test-Path -LiteralPath $shipLock -PathType Leaf)
     {
         try
@@ -378,9 +393,11 @@ function Get-SyncMainBlockers([string]$MainTree, [string]$Base)
         }
         catch [IO.IOException]
         {
-            $blockers.Add("a ship is in flight (the ship lock $shipLock is held)")
+            $shipHeld = $true
         }
     }
+    if ($IgnoreShipLock -and -not $shipHeld) { $blockers.Add("-FromShip was given but no ship holds the ship lock $shipLock") }
+    elseif (-not $IgnoreShipLock -and $shipHeld) { $blockers.Add("a ship is in flight (the ship lock $shipLock is held)") }
     $blockers.ToArray()
 }
 
@@ -814,6 +831,26 @@ if (-not $PSBoundParameters.ContainsKey('Required'))
 # gh and every other child process start in the main checkout, which the cleanup never removes; never in the caller's folder.
 Set-Location -LiteralPath $Context.MainCheckout
 
+# A repository without a remote has no pull request, no GitHub check and nothing to sync: say so before anything else.
+if (-not $Context.HasRemote)
+{
+    if ($SyncMain)
+    {
+        Write-Host 'ERROR no remote is configured (repository.remote is null in agent-workflow.json), so there is nothing to sync the main checkout from.'
+        exit 2
+    }
+    if (-not $LocalMerge -and -not $PinOnly)
+    {
+        Write-Host 'ERROR no remote is configured (repository.remote is null in agent-workflow.json): there is no pull request to merge or to wait for. Merge a reviewed head with -LocalMerge -Worktree <path>.'
+        exit 2
+    }
+}
+elseif ($LocalMerge)
+{
+    Write-Host "ERROR -LocalMerge is for a repository without a remote; this one has the remote '$($Context.BaseRemote)'. Merge through a pull request: -Pr <n> -Worktree <path> -Auto."
+    exit 2
+}
+
 if ($SyncMain)
 {
     exit (Invoke-SyncMain $script:MainCheckout -Preview:$DryRun)
@@ -827,21 +864,25 @@ if (-not $DryRun -and -not $PinOnly -and -not $Worktree)
 
 # ----------------------------------------------------------------------------- main
 
-if (-not $Pr -and -not $PinOnly)
+if (-not $Pr -and -not $PinOnly -and -not $LocalMerge)
 {
     Write-Host 'ERROR -Pr is required (a pull request number or branch name).'
     exit 2
 }
-if (-not (Get-Command gh -ErrorAction SilentlyContinue))
+# gh is needed for everything that talks to GitHub; -LocalMerge and a pin without a remote never do.
+if (-not $LocalMerge -and -not ($PinOnly -and -not $Context.HasRemote))
 {
-    Write-Host 'gh CLI not found. Install it from https://cli.github.com, then run: gh auth login'
-    exit 2
-}
-$null = & gh auth status 2>&1
-if ($LASTEXITCODE -ne 0)
-{
-    Write-Host 'gh is not authenticated. Run: gh auth login'
-    exit 2
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue))
+    {
+        Write-Host 'gh CLI not found. Install it from https://cli.github.com, then run: gh auth login'
+        exit 2
+    }
+    $null = & gh auth status 2>&1
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Host 'gh is not authenticated. Run: gh auth login'
+        exit 2
+    }
 }
 
 function Invoke-PinHook([string]$Action, [string]$WorktreePath)
@@ -1035,6 +1076,87 @@ function Get-ChecksJson
     {
         @()
     }
+}
+
+function Invoke-LocalMerge([string]$WorktreePath, [switch]$Preview)
+{
+    # The merge of a repository without a remote: the same receipt and review checks as -Auto on the head of the worktree, then a
+    # fast-forward of the base branch in the main checkout. Returns the exit code. Nothing is changed before every check has passed.
+    $prefix = if ($Preview) { 'DRY RUN: ' } else { '' }
+    $refuse = { param([int]$Code, [string]$Label, [string]$Reason) Write-Host "${prefix}${Label}: $Reason"; Update-Status 'local merge refused' '' $Reason; $Code }
+    $main = [IO.Path]::GetFullPath($script:MainCheckout).TrimEnd('\', '/')
+    if (-not (Test-Path -LiteralPath $WorktreePath -PathType Container)) { return (& $refuse 2 'ERROR' "the worktree $WorktreePath does not exist") }
+    $wt = (Resolve-Path -LiteralPath $WorktreePath).Path
+    if ([string]::Equals([IO.Path]::GetFullPath($wt).TrimEnd('\', '/'), $main, [StringComparison]::OrdinalIgnoreCase)) { return (& $refuse 2 'ERROR' 'the worktree is the main checkout; -Worktree names the work branch worktree') }
+    $base = $script:BaseBranchName
+    # A git command that fails prints nothing, and a [string] cast of that is $null (no .Trim()): the lines are joined instead.
+    $branch = (@(& git -C $wt symbolic-ref -q --short HEAD 2>$null) -join '').Trim()
+    if (-not $branch) { return (& $refuse 2 'ERROR' 'the worktree is on a detached HEAD; it has to be on its work branch') }
+    if ($branch -eq $base) { return (& $refuse 2 'ERROR' "the worktree is on the base branch '$base'; it has to be on a work branch") }
+    $head = (@(& git -C $wt rev-parse --verify 'HEAD^{commit}' 2>$null) -join '').Trim()
+    if (-not $head) { return (& $refuse 2 'ERROR' 'the head of the worktree cannot be read') }
+    Write-Host "Local merge of $branch @ $head into $base"
+
+    try { $receiptCheck = Test-MergeReceipt $wt $head }
+    catch { return (& $refuse 1 'RECEIPT REFUSED' "receipt check failed: $_") }
+    if (-not $receiptCheck.Ok) { return (& $refuse 1 'RECEIPT REFUSED' $receiptCheck.Reason) }
+    Write-Host "Receipt: $($receiptCheck.Reason)"
+    try { $reviewCheck = Test-MergeReview $wt $head }
+    catch { $reviewCheck = [pscustomobject]@{ Ok = $false; Reason = "review check failed: $_" } }
+    if (-not $reviewCheck.Ok) { return (& $refuse 1 'REVIEW REFUSED' $reviewCheck.Reason) }
+    Write-Host "Review: $($reviewCheck.Reason)"
+    Write-Host 'Checks: no remote is configured, so there are no GitHub checks; the verify receipt above is the check.'
+
+    & git -C $wt merge-base --is-ancestor $script:Ctx.BaseRef $head 2>$null
+    if ($LASTEXITCODE -ne 0)
+    {
+        return (& $refuse 3 'NOT FAST-FORWARD' "$($script:Ctx.BaseRef) is not an ancestor of ${head}: rebase $branch onto $($script:Ctx.BaseRef), verify and review it again")
+    }
+
+    try { $lock = Enter-MainSyncExclusiveLock $main }
+    catch { return (& $refuse 3 'LOCAL MERGE REFUSED' $_.Exception.Message) }
+    try
+    {
+        $blockers = @(Get-SyncMainBlockers $main $base -IgnoreShipLock:$FromShip)
+        if ($blockers.Count -gt 0)
+        {
+            Write-Host "${prefix}LOCAL MERGE REFUSED: the main checkout $main was not changed; $($blockers.Count) blocker(s):"
+            $blockers | ForEach-Object { Write-Host "  - $_" }
+            Update-Status 'local merge refused' '' $blockers[0]
+            return 3
+        }
+        $mainHead = ([string](& git -C $main rev-parse HEAD)).Trim()
+        & git -C $main merge-base --is-ancestor $mainHead $head 2>$null
+        if ($LASTEXITCODE -ne 0) { return (& $refuse 3 'NOT FAST-FORWARD' "the main checkout is at $($mainHead.Substring(0, 10)), which is not an ancestor of $head") }
+        if ($Preview)
+        {
+            Write-Host "DRY RUN: would fast-forward $base $($mainHead.Substring(0, 10)) -> $($head.Substring(0, 10)), remove the worktree and delete $branch."
+            return 0
+        }
+        $merge = & git -C $main merge --ff-only $head 2>&1
+        if ($LASTEXITCODE -ne 0)
+        {
+            Write-Host "ERROR git merge --ff-only failed in ${main}: $(($merge | ForEach-Object { "$_" }) -join ' ')"
+            Update-Status 'local merge failed' '' 'git merge --ff-only failed'
+            return 4
+        }
+        $now = ([string](& git -C $main rev-parse HEAD)).Trim()
+        if ($now -ne $head) { Write-Host "ERROR the main checkout is at $now after the fast-forward, not at $head."; return 4 }
+        Write-Host "MERGED $head"
+        Update-Status "merged $branch" $head ''
+        $removed = & git -C $main worktree remove $wt 2>&1
+        if ($LASTEXITCODE -ne 0) { Write-Host "WARNING worktree not removed (uncommitted changes? still in use?): $removed" }
+        & git -C $main branch -D $branch 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
+        Write-Host "Main checkout is at $base ($($now.Substring(0, 10)))."
+        return 0
+    }
+    finally { $lock.Dispose() }
+}
+
+if ($LocalMerge)
+{
+    if (-not $Worktree) { Write-Host 'ERROR merging requires -Worktree.'; exit 2 }
+    exit (Invoke-LocalMerge $WorktreeFull -Preview:$DryRun)
 }
 
 if ($Auto)

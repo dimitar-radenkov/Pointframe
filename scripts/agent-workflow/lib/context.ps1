@@ -37,7 +37,7 @@ function Get-AwToolContext {
 
     $config = Read-AwConfig -Root $resolved.WorkTree
     $baseRef = [string]$config.repository.baseRef
-    $slash = $baseRef.IndexOf('/')
+    $base = Get-AwBase -Config $config
     $pinFiles = @()
     if ($null -ne $config.pinException) {
         $pinFiles = @($config.pinException.paths | ForEach-Object { [string]$_ })
@@ -51,8 +51,9 @@ function Get-AwToolContext {
         Config = $config
         StateDir = [IO.Path]::GetFullPath((Join-Path $resolved.CommonDir ([string]$config.state.commonDirNamespace)))
         BaseRef = $baseRef
-        BaseRemote = $(if ($slash -gt 0) { $baseRef.Substring(0, $slash) } else { 'origin' })
-        BaseBranch = $(if ($slash -gt 0) { $baseRef.Substring($slash + 1) } else { $baseRef })
+        BaseRemote = $base.Remote
+        HasRemote = $base.HasRemote
+        BaseBranch = $base.Branch
         PinFiles = $pinFiles
     }
 }
@@ -192,7 +193,7 @@ function Get-AwGateContext {
     $main = Resolve-AwRoot -Explicit $target.MainCheckout -ScriptRoot $ScriptRoot
     $config = Read-AwConfig -Root $main.WorkTree
     $baseRef = [string]$config.repository.baseRef
-    $slash = $baseRef.IndexOf('/')
+    $base = Get-AwBase -Config $config
     $pinFiles = @()
     if ($null -ne $config.pinException) {
         $pinFiles = @($config.pinException.paths | ForEach-Object { [string]$_ })
@@ -207,8 +208,9 @@ function Get-AwGateContext {
         Config = $config
         StateDir = [IO.Path]::GetFullPath((Join-Path $main.CommonDir ([string]$config.state.commonDirNamespace)))
         BaseRef = $baseRef
-        BaseRemote = $(if ($slash -gt 0) { $baseRef.Substring(0, $slash) } else { 'origin' })
-        BaseBranch = $(if ($slash -gt 0) { $baseRef.Substring($slash + 1) } else { $baseRef })
+        BaseRemote = $base.Remote
+        HasRemote = $base.HasRemote
+        BaseBranch = $base.Branch
         PinFiles = $pinFiles
     }
 }

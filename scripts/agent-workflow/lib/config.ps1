@@ -2,6 +2,31 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Get-AwBase {
+    # The base of the repository: the remote that holds it (or $null) and the branch name on it. A repository without a remote
+    # says so with `"repository": { "remote": null }` and names a local branch in baseRef (for example "main", or "release/1").
+    # Without the key the remote is read from baseRef ("origin/main" is remote origin, branch main); a baseRef without a slash
+    # keeps its old reading, remote origin.
+    param(
+        [Parameter(Mandatory)]
+        [Collections.IDictionary]$Config
+    )
+
+    $baseRef = [string]$Config.repository.baseRef
+    $slash = $baseRef.IndexOf('/')
+    $remote = $null
+    if ($Config.repository.Contains('remote')) {
+        $declared = $Config.repository['remote']
+        if ($null -ne $declared -and -not [string]::IsNullOrWhiteSpace([string]$declared)) { $remote = [string]$declared }
+    }
+    elseif ($slash -gt 0) { $remote = $baseRef.Substring(0, $slash) }
+    else { $remote = 'origin' }
+
+    $branch = $baseRef
+    if ($remote -and $baseRef.StartsWith("$remote/", [StringComparison]::Ordinal)) { $branch = $baseRef.Substring($remote.Length + 1) }
+    return [pscustomobject][ordered]@{ BaseRef = $baseRef; Remote = $remote; HasRemote = [bool]$remote; Branch = $branch }
+}
+
 function Read-AwConfig {
     param(
         [Parameter(Mandatory)]

@@ -68,6 +68,23 @@ $OutDir = [IO.Path]::GetFullPath((Join-Path $RepoRoot ([string](Get-AwSetting $S
 $VerdictPath = Join-Path $OutDir 'verdict.json'
 $MaxDetails = [int](Get-AwSetting $Settings 'maxDetails' 20)
 
+# Build servers. dotnet leaves MSBuild worker nodes (node reuse) and the Roslyn compiler server running after a build on purpose, so a gate that
+# ran `dotnet build` ended with a handful of live processes in its job object, and the containment below stopped them every time ("left 8
+# process(es)") and the next build started them again. The gates run with node reuse and the shared compiler off, so a clean gate leaves nothing
+# behind and anything that is left is a real stray, which stays contained. Set in this process, before any gate, so every child inherits them.
+# A variable the caller already set is respected; verify.environment of the configuration sets (a string) or leaves unset (null) any variable.
+$GateEnvironment = [ordered]@{ MSBUILDDISABLENODEREUSE = '1'; UseSharedCompilation = 'false' }
+foreach ($name in @($GateEnvironment.Keys))
+{
+    if (-not [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name))) { $GateEnvironment.Remove($name) }
+}
+$configured = Get-AwSetting $Settings 'environment' @{}
+foreach ($name in @($configured.Keys))
+{
+    if ($null -eq $configured[$name]) { $GateEnvironment.Remove($name) } else { $GateEnvironment[$name] = [string]$configured[$name] }
+}
+foreach ($name in $GateEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, [string]$GateEnvironment[$name]) }
+
 # --------------------------------------------------------------------- gate model
 
 # Records that share a gate name run together as one gate of the verdict, in configuration order.

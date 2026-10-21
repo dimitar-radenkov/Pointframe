@@ -1,9 +1,11 @@
 #Requires -Version 7.0
 <#
 Mechanics of one work package for a Codex or Claude executor, with durable state, the runner's commit and a reviewed,
-host-checked acceptance, and `ship`, which takes an accepted head to a merged pull request. merge-pr.ps1 keeps the merge gate.
+host-checked acceptance, and `ship`, which takes an accepted head to a merged pull request (or, in a repository without a remote, to a
+fast-forward of the base branch). merge-pr.ps1 keeps the merge gate.
 
-  pwsh scripts/package.ps1 ship -Id <slug> [-Title <text>] [-AllowDesktop] [-NoWait]
+  pwsh scripts/package.ps1 help
+  pwsh scripts/package.ps1 ship -Id <slug> [-Title <text>] [-AllowDesktop] [-NoWait] [-LocalMerge]
   pwsh scripts/package.ps1 commit -Id <slug> [-Message <text>]
   pwsh scripts/package.ps1 review -Id <slug> -Level light|heavy [-Reviewer codex-sol|codex-luna|claude-opus|claude-sonnet] [-ResetBudget -Reason <text>]
   pwsh scripts/package.ps1 disposition -Id <slug> -Finding <id> -Accept|-Reject -Reason <text>
@@ -17,8 +19,10 @@ host-checked acceptance, and `ship`, which takes an accepted head to a merged pu
   pwsh scripts/package.ps1 recover -Id <slug> -Reason <text>
   pwsh scripts/package.ps1 -SelfTest [-Quick]
 
+help    (and a bare call without a command) prints these lines and exits 0; a command without -Id prints them after the error, exit 2.
 new     snapshots the brief and the check manifest (SHA-256, read-only), creates branch pkg/<slug> and its worktree from
-        the fetched origin/master, preflight-builds the check targets, validates the brief with agent-run.ps1. It warns (and never refuses) about an
+        the fetched origin/master (a repository without a remote, "repository": { "remote": null }, branches from the local base branch of
+        repository.baseRef and fetches nothing), preflight-builds the check targets, validates the brief with agent-run.ps1. It warns (and never refuses) about an
         acceptance case that names only a command run ("tests pass") or the executor's report ("stated in the report"): a reviewer cannot run
         commands and cannot trust a report, so such a case needs something it can observe (a file, the diff, a gate of the check summary).
 run     launches the Codex executor through agent-run.ps1 under a hard wall-clock bound, and fingerprints the main checkout
@@ -80,6 +84,11 @@ ship    resumable, one repository-wide ship lock (git common dir <namespace>/shi
         auto-merge-enabled; merged only when GitHub reports MERGED), channels (hooks.channels for the release cut for the merge commit, a bounded wait; a null hook is recorded as not configured;
         failed channels and a stale plugin pin are reported, no pin PR is ever opened). merge-pr.ps1 removes the worktree on merge,
         so no step after it uses it.
+        Without a remote ("repository": { "remote": null }) there is no fetch, no push, no pull request and no channels: base, pin, verify,
+        record and qualify run as above (the rebase is onto the local base branch), then ship stops at the stage no-remote (exit 3, "no remote
+        is configured", nothing merged). `ship -LocalMerge` instead runs merge-pr.ps1 -LocalMerge -FromShip: the same receipt and review
+        checks as a merge through GitHub, the base branch fast-forwarded to the shipped head in the main checkout, the worktree and branch
+        removed; stage merged, channels recorded as not configured.
 
 The check manifest is JSON: { "build": ["<project path>"], "tests": [{ "project": "<test project path>", "filter":
 "<filter expression>" }], "format": ["<project path>"], "extra": [{ "name": "x", "exe": "pwsh", "args": ["-File", "x.ps1"],
@@ -98,7 +107,7 @@ State lives in <git common dir>/<namespace>/packages/<slug>.json. Exit codes: 0 
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('new', 'run', 'check', 'show', 'commit', 'review', 'fix', 'disposition', 'accept', 'ship', 'recover')]
+    [ValidateSet('new', 'run', 'check', 'show', 'commit', 'review', 'fix', 'disposition', 'accept', 'ship', 'recover', 'help')]
     [string]$Command,
     [string]$Id,
     [string]$Brief,
@@ -131,6 +140,7 @@ param(
     [string]$Title,
     [switch]$AllowDesktop,
     [switch]$NoWait,
+    [switch]$LocalMerge,
     [string]$MergePrScript,
     [string]$VerifyScript,
     [string]$GhScript,
@@ -206,6 +216,17 @@ function Initialize-PackageContext([string]$Target)
     $script:Namespace = [string]$script:Ctx.Config.state.commonDirNamespace
     $script:PinFiles = @($script:Ctx.PinFiles)
     if (-not $BaseRef) { $script:BaseRef = [string]$script:Ctx.BaseRef }
+}
+
+function Get-PackageRemote([string]$Ref)
+{
+    # The remote a base ref lives on, or $null: a repository without a remote (repository.remote is null) has none, whatever the ref looks
+    # like, and so has a ref without a remote prefix. With a remote, the configured one is recognised first, then any "<name>/<branch>" prefix.
+    if ($script:Ctx -and -not $script:Ctx.HasRemote) { return $null }
+    $configured = if ($script:Ctx) { [string]$script:Ctx.BaseRemote } else { '' }
+    if ($configured -and $Ref.StartsWith("$configured/", [StringComparison]::Ordinal)) { return $configured }
+    if ($Ref.Contains('/')) { return $Ref.Split('/')[0] }
+    $null
 }
 
 function Resolve-PackageHook([string]$Name)
@@ -1492,6 +1513,7 @@ function Get-NextTransitions($State, [bool]$SnapshotsOk = $true)
         'needs-review' { @('review -Level light|heavy') }
         'ship-failed' { @('ship (resumes at the failed step)') }
         'desktop-required' { @('ship -AllowDesktop') }
+        'no-remote' { @('ship -LocalMerge') }
         'auto-merge-enabled' { @('ship (waits for the merge, then reports the channels)') }
         'merged' { if ($State.ship -and (Get-Field (Get-Field $State.ship 'steps') 'channels') -and (Get-Field (Get-Field (Get-Field $State.ship 'steps') 'channels') 'status') -in @('done', 'not-configured')) { @() } else { @('ship (reports the release channels)') } }
         default { @('run', 'check') }
@@ -1541,14 +1563,14 @@ function Invoke-New
     $validation = @(& pwsh -NoProfile -File (Join-Path $PSScriptRoot 'agent-run.ps1') -Brief $briefSource -Worktree $wt -ValidateOnly -Root $script:Repo 2>&1 | ForEach-Object { "$_" })
     if ($LASTEXITCODE -ne 0) { throw "brief validation failed: $($validation -join ' ')" }
 
-    $remote = if ($BaseRef.Contains('/')) { $BaseRef.Split('/')[0] } else { $null }
+    $remote = Get-PackageRemote $BaseRef
     Write-Host "package $Id"
     Write-Host "  repository   $($info.MainCheckout)"
     Write-Host "  state        $($paths.State)"
     Write-Host "  brief        $briefSource (snapshot with SHA-256, read-only)"
     Write-Host "  manifest     $(if ($Checks) { $Checks } else { '(none: empty manifest)' }): build=$($manifest.build.Count) tests=$($manifest.tests.Count) format=$($manifest.format.Count) extra=$($manifest.extra.Count)"
     Write-Host "  worktree     $wt"
-    Write-Host "  branch       $branch from $BaseRef$(if ($remote) { " after 'git fetch $remote'" })"
+    Write-Host "  branch       $branch from $BaseRef$(if ($remote) { " after 'git fetch $remote'" } else { ' (no remote: the local branch, no fetch)' })"
     Write-Host "  preflight    $((Get-PackageCommand 'build').exe) build of: $((@($manifest.build) + @($manifest.tests | ForEach-Object { $_.project }) | Select-Object -Unique) -join ', ')"
     # Warned about, never refused: a brief without acceptance cases is refused by 'review', not here.
     $briefCriteria = @(try { Get-ReviewCriteria $briefSource } catch { })
@@ -1752,7 +1774,7 @@ function Invoke-RunCore
     $problems = @(Test-SnapshotsIntact $state)
     if ($problems.Count) { throw ($problems -join '; ') }
     if ($state.stage -eq 'blocked-main-mutated') { throw 'the main checkout was mutated by an earlier run; resolve it by hand, then record that with: recover -Id <slug> -Reason <text>. Until then this package stays stopped' }
-    if ($state.stage -in @('shipping', 'desktop-required', 'ship-failed', 'auto-merge-enabled', 'merged')) { throw "run is not allowed in stage '$($state.stage)': the package is being shipped" }
+    if ($state.stage -in @('shipping', 'desktop-required', 'no-remote', 'ship-failed', 'auto-merge-enabled', 'merged')) { throw "run is not allowed in stage '$($state.stage)': the package is being shipped" }
     if ($state.stage -in @('running', 'executor-kill-failed'))
     {
         Resolve-PriorRun $info $Id
@@ -2393,7 +2415,7 @@ function Invoke-Commit
             Invoke-Git $wt @('add', '-A') | Out-Null
             Invoke-Git $wt @('commit', '-F', $messageFile) | Out-Null
         }
-        $remote = if ([string]$state.baseRef -like '*/*') { ([string]$state.baseRef).Split('/')[0] } else { $null }
+        $remote = Get-PackageRemote ([string]$state.baseRef)
         if ($remote) { Invoke-Git $wt @('fetch', $remote) | Out-Null }
         $rebased = Invoke-BaseRebase $info $Id $wt ([string]$state.baseRef) 'commit-rebase-failed'
         $preTree = $rebased.preTree
@@ -3113,7 +3135,7 @@ function Start-Review($Info)
     $verdictPath = Join-Path $dir 'verdict.json'
     # The base the host observes itself (after a fetch), not the one the state says; a mismatch makes the review invalid.
     $startProblems = [Collections.Generic.List[string]]::new()
-    $remote = if ([string]$state.baseRef -like '*/*') { ([string]$state.baseRef).Split('/')[0] } else { $null }
+    $remote = Get-PackageRemote ([string]$state.baseRef)
     if ($remote) { try { Invoke-Git $wt @('fetch', $remote) | Out-Null } catch { $startProblems.Add("cannot fetch $remote to observe the base: $($_.Exception.Message)") } }
     $observedBase = ([string](& git -C $wt merge-base HEAD ([string]$state.baseRef) 2>$null)).Trim()
     if (-not $observedBase) { $startProblems.Add("the base cannot be observed (git merge-base HEAD $($state.baseRef))") }
@@ -3687,7 +3709,7 @@ function Invoke-Recover
 
 # ---- ship: from an accepted head to a merged pull request ---------------------------------------------------------
 
-$script:ShipStageList = @('accepted', 'shipping', 'ship-failed', 'desktop-required', 'auto-merge-enabled', 'merged')
+$script:ShipStageList = @('accepted', 'shipping', 'ship-failed', 'desktop-required', 'no-remote', 'auto-merge-enabled', 'merged')
 
 function Add-ShipTrace([string]$Text)
 {
@@ -4139,10 +4161,14 @@ function Step-ShipBase($Info)
     $state = Read-State $Info.StateRoot $Id
     $wt = [string]$state.worktree
     $baseRefName = [string]$state.baseRef
-    $remote = if ($baseRefName -like '*/*') { $baseRefName.Split('/')[0] } else { $null }
-    if (-not $remote) { return (Stop-Ship $Info 'ship-failed' 'base' @{ status = 'failed' } "ERROR ship needs a remote base ref such as origin/master, not '$baseRefName'") }
-    try { Assert-ShipRemote $wt $remote | Out-Null; Invoke-Git $wt @('fetch', $remote) | Out-Null }
-    catch { return (Stop-Ship $Info 'ship-failed' 'base' @{ status = 'failed' } "ERROR cannot fetch ${remote}: $($_.Exception.Message)") }
+    $remote = Get-PackageRemote $baseRefName
+    if (-not $remote -and $script:Ctx.HasRemote) { return (Stop-Ship $Info 'ship-failed' 'base' @{ status = 'failed' } "ERROR ship needs a remote base ref such as origin/master, not '$baseRefName'") }
+    # Without a remote there is nothing to fetch: the base is the local branch, and the rebase below is onto it as it is.
+    if ($remote)
+    {
+        try { Assert-ShipRemote $wt $remote | Out-Null; Invoke-Git $wt @('fetch', $remote) | Out-Null }
+        catch { return (Stop-Ship $Info 'ship-failed' 'base' @{ status = 'failed' } "ERROR cannot fetch ${remote}: $($_.Exception.Message)") }
+    }
     # The gate configuration (hooks, required checks, pin files) is read from the main checkout. A main checkout that is not at the base ref
     # may hold a stale one, for example a hook that was null before the last merge: ship would record that and merge-pr would accept it.
     $mainProblem = Get-ShipMainCheckoutProblem $Info $state $wt $baseRefName
@@ -4648,6 +4674,52 @@ function Step-ShipChannels($Info)
     if ($failed.Count -or $code -eq 1) { $script:ExitCode = 1 }
     $final -eq 'ok'
 }
+function Set-ShipLocalMerged($Info, [string]$Head, [hashtable]$Extra)
+{
+    $record = @{ status = 'done'; local = $true; mergeCommit = $Head; headRefOid = $Head; baseRef = [string]$script:Ctx.BaseRef }
+    foreach ($key in $Extra.Keys) { $record[$key] = $Extra[$key] }
+    Set-ShipStep $Info 'merge' $record 'merged'
+    Set-ShipStep $Info 'channels' @{ status = 'not-configured'; configured = $false; reason = 'no remote is configured: there is no release to find and no channel to report' }
+    Write-Host "ship: $($script:Ctx.BaseRef) now contains $Head (fast-forward, no remote)"
+}
+
+function Step-ShipLocalMerge($Info)
+{
+    # The merge of a repository without a remote. The evidence is bound to the head exactly as for a pull request, then merge-pr.ps1 -LocalMerge
+    # repeats the receipt and review checks itself and fast-forwards the base branch in the main checkout. It removes the worktree.
+    $state = Read-State $Info.StateRoot $Id
+    $wt = [string]$state.worktree
+    $localHead = Get-GitHead $wt
+    $mergeStep = Get-ShipStep $state 'merge'
+    $calls = if ($mergeStep) { [int](Get-Field $mergeStep 'calls') } else { 0 }
+    $evidence = @(Get-ShipEvidenceProblems $state $localHead $wt)
+    if ($evidence.Count) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; head = $localHead; calls = $calls } "ERROR the evidence does not cover the head to be merged: $($evidence -join '; ')") }
+    $mergePr = Resolve-ShipScript 'merge-pr' $MergePrScript (Join-Path $PSScriptRoot 'merge-pr.ps1')
+    $log = Join-Path (Get-ShipPaths $Info).Dir "merge-$([guid]::NewGuid().ToString('N')).log"
+    $mergeArgs = @('-NoProfile', '-File', $mergePr, '-LocalMerge', '-FromShip', '-Worktree', $wt, '-Root', [string]$Info.MainCheckout)
+    Set-ShipStep $Info 'merge' @{ status = 'running'; local = $true; head = $localHead; calls = ($calls + 1) }
+    Write-Host "ship: merge-pr.ps1 -LocalMerge (fast-forward $($script:Ctx.BaseRef) to $localHead)"
+    $code = Invoke-Logged 'pwsh' $mergeArgs $Info.MainCheckout $log -Live
+    Test-ShipCrash 'merge-before-record'
+    if ($code -ne 0) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; local = $true; head = $localHead; calls = ($calls + 1); exitCode = $code; log = $log } "ERROR merge-pr.ps1 -LocalMerge exited with $code (receipt, review or fast-forward refusal, or a blocked main checkout); see $log") }
+    # Trust the repository, not the exit code: the base branch has to contain the head now.
+    & git -C $Info.MainCheckout merge-base --is-ancestor $localHead ([string]$script:Ctx.BaseRef) 2>$null
+    if ($LASTEXITCODE -ne 0) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; local = $true; head = $localHead; calls = ($calls + 1); exitCode = $code; log = $log } "ERROR merge-pr.ps1 -LocalMerge exited 0 but $($script:Ctx.BaseRef) does not contain $localHead") }
+    Set-ShipLocalMerged $Info $localHead @{ calls = ($calls + 1); exitCode = $code; log = $log }
+    $true
+}
+
+function Complete-LocalMergeAfterWorktreeLoss($Info, $State)
+{
+    # merge-pr.ps1 -LocalMerge removed the worktree and the process died before the merge was recorded: the base branch decides.
+    $mergeStep = Get-ShipStep $State 'merge'
+    $head = [string](Get-Field $mergeStep 'head')
+    if (-not $head) { throw "the worktree $($State.worktree) is missing and no local merge was started for it; nothing can be shipped from here" }
+    & git -C $Info.MainCheckout merge-base --is-ancestor $head ([string]$script:Ctx.BaseRef) 2>$null
+    if ($LASTEXITCODE -ne 0) { throw "the worktree $($State.worktree) is gone but $($script:Ctx.BaseRef) does not contain the head $head of the local merge; nothing can be shipped from here" }
+    Set-ShipLocalMerged $Info $head @{ recoveredAfterWorktreeLoss = $true }
+}
+
 function Complete-ShipAfterWorktreeLoss($Info, $State)
 {
     # merge-pr.ps1 removed the worktree and the process died before the merge was recorded: GitHub decides.
@@ -4699,10 +4771,16 @@ function Invoke-ShipLocked($Info)
         }
         throw "ship is not allowed in stage '$stage': $hint"
     }
-    if ($stage -eq 'merged') { Step-ShipChannels $Info | Out-Null; return }
+    if ($stage -eq 'merged')
+    {
+        if (-not $script:Ctx.HasRemote) { Write-Host "ship: $Id is already merged into the base branch; there is no remote and no release channel to report"; return }
+        Step-ShipChannels $Info | Out-Null
+        return
+    }
     $wt = [string]$state.worktree
     if (-not (Test-Path -LiteralPath $wt -PathType Container))
     {
+        if (-not $script:Ctx.HasRemote) { Complete-LocalMergeAfterWorktreeLoss $Info $state; return }
         $prStep = Get-ShipStep $state 'pr'
         if ($prStep -and $prStep.status -eq 'done') { Complete-ShipAfterWorktreeLoss $Info $state; return }
         throw "the worktree $wt is missing"
@@ -4740,6 +4818,18 @@ function Invoke-ShipLocked($Info)
         if (-not (Test-ShipStepOk (Step-ShipVerify $Info))) { return }
         if (-not (Test-ShipStepOk (Step-ShipRecord $Info))) { return }
         if (-not (Test-ShipStepOk (Step-ShipQualify $Info))) { return }
+    }
+    if (-not $script:Ctx.HasRemote)
+    {
+        # No remote: nothing is pushed and no pull request exists. The evidence is complete here; the merge is the local fast-forward, and only on request.
+        if (-not $LocalMerge)
+        {
+            $head = Get-GitHead $wt
+            Stop-Ship $Info 'no-remote' 'push' @{ status = 'no-remote'; head = $head } "STOP no remote is configured (repository.remote is null), so nothing is pushed and no pull request is opened. The evidence for head $head is complete. To fast-forward $($script:Ctx.BaseRef) to it, run: pwsh scripts/package.ps1 ship -Id $Id -LocalMerge" 3 | Out-Null
+            return
+        }
+        Step-ShipLocalMerge $Info | Out-Null
+        return
     }
     if (-not (Test-ShipStepOk (Step-ShipPush $Info))) { return }
     if (-not (Test-ShipStepOk (Step-ShipPr $Info))) { return }
@@ -4964,6 +5054,10 @@ exit 0
     & $expect ((Get-VerdictJsonText "Here is my verdict:`n{}") -ne '{}') 'prose around a verdict was stripped instead of refused'
     $reviewerParams = (Get-Command $PSCommandPath).Parameters.Keys
     & $expect (@(@('Head', 'Verdict', 'Evidence', 'BlockingFindings', 'ReviewerSession', 'ExecutorSession', 'ReviewerIdentity') | Where-Object { $_ -in $reviewerParams }).Count -eq 0) 'accept takes record values from the caller'
+
+    # item 30: a whole package in a repository without a remote. AW_PKG_SELFTEST_ONLY=remoteless runs only this and the pure cases above.
+    Invoke-RemotelessSelfTest
+    if ($env:AW_PKG_SELFTEST_ONLY -eq 'remoteless') { Write-Host 'remoteless self-test finished.'; return }
 
     if ($Quick)
     {
@@ -5479,6 +5573,134 @@ exit 0
     Write-Host 'ship self-test: cases finished.'
     Invoke-PackageBSelfTest
     Write-Host 'package B self-test: cases finished.'
+}
+
+function Invoke-RemotelessSelfTest
+{
+    # item 30. Runs inside Invoke-ReviewSelfTest (dynamic scope): $root, $selfKit, $selfScript, $git, $stubDir, $statusStub, $briefRv, $rvManifest,
+    # $rvClaude, $resetR, $expect and $failures are the caller's. A repository that has no remote at all ("remote": null, baseRef master) takes one
+    # package through new, run, check, commit, review, accept and ship -LocalMerge. The executor and the reviewer are marked stubs; verify.ps1,
+    # merge-pr.ps1 and record-review.ps1 are the real ones (the marked stubs of the ship cases only forward to them), so the evidence checks of
+    # the local merge are the kit's own. gh is a marked stub that must never be called.
+    Write-Host 'PHASE remoteless'
+    $rl = Join-Path $root 'rl-main'
+    New-Item -ItemType Directory -Path $rl | Out-Null
+    & git init -q -b master $rl
+    [IO.File]::WriteAllText((Join-Path $rl 'a.txt'), "a`r`n")
+    $rlConfig = Get-AwSelfTestConfig -BaseRef 'master'
+    $rlConfig.repository.remote = $null
+    Write-AwSelfTestConfig $rl $rlConfig
+    & $git $rl @('add', '-A'); & $git $rl @('commit', '-qm', 'one')
+    & git -C $rl config user.name SelfTest
+    & git -C $rl config user.email selftest@example.invalid
+    Add-Content -LiteralPath (Join-Path $rl '.git/info/exclude') -Value 'artifacts/'
+    $rlTip = { ([string](& git -C $rl rev-parse refs/heads/master)).Trim() }
+    $rlStubs = Join-Path $root 'rl-stubs'
+    New-Item -ItemType Directory -Path $rlStubs | Out-Null
+    $mergeTool = Join-Path $selfKit 'tools/merge-pr.ps1'
+    $forward = { param($tool) "# aw-selftest-stub`r`n& pwsh -NoProfile -File '$(Join-Path $selfKit "tools/$tool.ps1")' `$args`r`nexit `$LASTEXITCODE`r`n" }
+    $rlGh = Join-Path $rlStubs 'gh.ps1'
+    $rlMergePr = Join-Path $rlStubs 'merge-pr.ps1'
+    $rlVerify = Join-Path $rlStubs 'verify.ps1'
+    [IO.File]::WriteAllText($rlGh, "# aw-selftest-stub`r`nWrite-Host 'gh must never be called without a remote'; exit 99`r`n")
+    [IO.File]::WriteAllText($rlMergePr, (& $forward 'merge-pr'))
+    [IO.File]::WriteAllText($rlVerify, (& $forward 'verify'))
+    $rlShipArgs = @('-GhScript', $rlGh, '-MergePrScript', $rlMergePr, '-VerifyScript', $rlVerify, '-ChannelMinutes', '0')
+    $rlPkg = {
+        param([string[]]$PackageArgs)
+        if ($PackageArgs -notcontains '-CodexVersion') { $PackageArgs = @($PackageArgs) + @('-CodexVersion', '9.9.9-test') }
+        $output = & pwsh -NoProfile -File $selfScript @PackageArgs -Repo $rl -StatusScript $statusStub -LockTimeoutSeconds 1 -GraceSeconds 0 2>&1
+        [pscustomobject]@{ Exit = $LASTEXITCODE; Text = (($output | ForEach-Object { "$_" }) -join "`n") }
+    }
+    $rlState = { param($slug) Get-Content -LiteralPath (Join-Path $rl ".git/selftest/packages/$slug.json") -Raw | ConvertFrom-Json -AsHashtable @script:JsonDate }
+    $rlMerge = {
+        param([string]$Worktree, [string[]]$More = @())
+        $output = & pwsh -NoProfile -File $mergeTool -LocalMerge -Worktree $Worktree -Root $rl @More 2>&1
+        [pscustomobject]@{ Exit = $LASTEXITCODE; Text = (($output | ForEach-Object { "$_" }) -join "`n") }
+    }
+    $baseTip = & $rlTip
+
+    $r = & $rlPkg @('new', '-Id', 'rlx', '-Brief', $briefRv, '-Checks', $rvManifest, '-DryRun')
+    & $expect ($r.Exit -eq 0 -and $r.Text -match 'branch\s+pkg/rlx from master \(no remote: the local branch, no fetch\)' -and $r.Text -notmatch "after 'git fetch") "item 30: new plans a branch from the local base without a fetch: $($r.Text)"
+    $r = & $rlPkg @('new', '-Id', 'rlx', '-Brief', $briefRv, '-Checks', $rvManifest)
+    $state = & $rlState 'rlx'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'ready' -and $state.baseRef -eq 'master' -and $state.baseSha -eq $baseTip -and $state.branch -eq 'pkg/rlx') "item 30: new did not branch pkg/rlx from the local master: $($r.Text)"
+    $wt = [string]$state.worktree
+    $r = & $rlPkg @('run', '-Id', 'rlx', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+    & $expect ($r.Exit -eq 0 -and (& $rlState 'rlx').stage -eq 'executor-completed') "item 30: run failed: $($r.Text)"
+    [IO.File]::WriteAllText((Join-Path $wt 'feature-rlx.txt'), "v2 rlx`r`n")
+    $r = & $rlPkg @('check', '-Id', 'rlx')
+    & $expect ($r.Exit -eq 0 -and (& $rlState 'rlx').stage -eq 'checks-passed') "item 30: check failed: $($r.Text)"
+    $r = & $rlPkg @('commit', '-Id', 'rlx', '-Message', 'Remoteless package')
+    $state = & $rlState 'rlx'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'committed' -and $r.Text -notmatch 'fetch') "item 30: commit failed or fetched a remote: $($r.Text)"
+    & $resetR
+    $env:AW_PKG_TEST_VMODE = 'pass'
+    $r = & $rlPkg @('review', '-Id', 'rlx', '-Level', 'light', '-ClaudePath', $rvClaude)
+    & $expect ($r.Exit -eq 0 -and (& $rlState 'rlx').stage -eq 'review-passed') "item 30: review failed: $($r.Text)"
+    $r = & $rlPkg @('accept', '-Id', 'rlx', '-Reason', 'remoteless test')
+    $state = & $rlState 'rlx'
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'accepted' -and (Test-Path -LiteralPath $state.acceptance.recordPath)) "item 30: accept failed (the review record is written without a remote): $($r.Text)"
+
+    # ship without -LocalMerge: everything is prepared and checked, and it stops before a push that cannot happen.
+    $r = & $rlPkg (@('ship', '-Id', 'rlx') + $rlShipArgs)
+    $state = & $rlState 'rlx'
+    $steps = $state.ship.steps
+    $head = ([string](& git -C $wt rev-parse HEAD)).Trim()
+    & $expect ($r.Exit -eq 3 -and $state.stage -eq 'no-remote' -and $r.Text -match 'no remote is configured' -and $r.Text -match 'ship -Id rlx -LocalMerge' -and $steps.base.status -eq 'done' -and $steps.verify.status -eq 'done' -and $steps.record.status -eq 'done' -and $steps.qualify.status -eq 'not-configured' -and $steps.push.status -eq 'no-remote' -and -not $steps.ContainsKey('pr') -and -not $steps.ContainsKey('merge')) "item 30: ship without -LocalMerge did not stop at the stage no-remote: $($r.Text)"
+    & $expect ((& $rlTip) -eq $baseTip -and -not (Test-Path -LiteralPath (Join-Path $rl 'feature-rlx.txt'))) 'item 30: ship without -LocalMerge changed the base branch'
+    $r = & $rlPkg @('show', '-Id', 'rlx', '-Json')
+    $view = $r.Text | ConvertFrom-Json
+    & $expect ($r.Exit -eq 0 -and $view.stage -eq 'no-remote' -and $view.nextTransitions -contains 'ship -LocalMerge') "item 30: show does not name the next command at the stage no-remote: $($r.Text)"
+    $r = & $rlPkg @('run', '-Id', 'rlx', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'))
+    & $expect ($r.Exit -ne 0 -and $r.Text -match 'run is not allowed in stage .no-remote.') "item 30: run was allowed at the stage no-remote: $($r.Text)"
+
+    # The evidence checks of the local merge itself (merge-pr.ps1 -LocalMerge, the real one): a stale receipt, a missing review, a FAIL review.
+    $recordPath = Join-Path $rl ".git/selftest/reviews/$head.json"
+    $recordBytes = [IO.File]::ReadAllBytes($recordPath)
+    $featurePath = Join-Path $wt 'feature-rlx.txt'
+    $featureBytes = [IO.File]::ReadAllBytes($featurePath)
+    try
+    {
+        # A receipt is a fact about content: a tree that changed after verify (here an uncommitted edit) is not covered by it.
+        [IO.File]::WriteAllText($featurePath, "v3 edited after verify`r`n")
+        $r = & $rlMerge $wt
+        & $expect ($r.Exit -eq 1 -and $r.Text -match 'RECEIPT REFUSED' -and (& $rlTip) -eq $baseTip) "item 30: a stale receipt was not refused at the local merge: $($r.Text)"
+    }
+    finally { [IO.File]::WriteAllBytes($featurePath, $featureBytes) }
+    try
+    {
+        Remove-Item -LiteralPath $recordPath -Force
+        $r = & $rlMerge $wt
+        & $expect ($r.Exit -eq 1 -and $r.Text -match 'REVIEW REFUSED' -and $r.Text -match 'Receipt:' -and (& $rlTip) -eq $baseTip) "item 30: a missing review record was not refused at the local merge: $($r.Text)"
+    }
+    finally { [IO.File]::WriteAllBytes($recordPath, $recordBytes) }
+    try
+    {
+        [IO.File]::WriteAllText($recordPath, ([IO.File]::ReadAllText($recordPath) -replace '"verdict":\s*"PASS"', '"verdict": "FAIL"'))
+        $r = & $rlMerge $wt
+        & $expect ($r.Exit -eq 1 -and $r.Text -match 'REVIEW REFUSED' -and (& $rlTip) -eq $baseTip) "item 30: a FAIL review record was not refused at the local merge: $($r.Text)"
+    }
+    finally { [IO.File]::WriteAllBytes($recordPath, $recordBytes) }
+    $r = & $rlMerge $wt @('-DryRun')
+    & $expect ($r.Exit -eq 0 -and $r.Text -match 'DRY RUN: would fast-forward' -and (& $rlTip) -eq $baseTip -and (Test-Path -LiteralPath $wt)) "item 30: the untouched evidence did not pass a local dry run: $($r.Text)"
+
+    # The merge: base branch fast-forwarded to the shipped head, worktree and branch gone, no channels, no second merge.
+    $r = & $rlPkg (@('ship', '-Id', 'rlx', '-LocalMerge') + $rlShipArgs)
+    $state = & $rlState 'rlx'
+    $steps = $state.ship.steps
+    & $expect ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $steps.merge.status -eq 'done' -and $steps.merge.local -eq $true -and $steps.merge.mergeCommit -eq $head -and $steps.channels.status -eq 'not-configured') "item 30: ship -LocalMerge did not merge: $($r.Text)"
+    & $expect ((& $rlTip) -eq $head -and ([string](& git -C $rl rev-parse HEAD)).Trim() -eq $head -and (Test-Path -LiteralPath (Join-Path $rl 'feature-rlx.txt'))) 'item 30: the base branch and the main checkout are not at the shipped head'
+    & $expect (-not (Test-Path -LiteralPath $wt) -and @(& git -C $rl branch --list 'pkg/rlx').Count -eq 0) 'item 30: the worktree or the work branch is still there after the local merge'
+    $r = & $rlPkg @('show', '-Id', 'rlx', '-Json')
+    $view = $r.Text | ConvertFrom-Json
+    & $expect ($r.Exit -eq 0 -and $view.stage -eq 'merged' -and @($view.nextTransitions).Count -eq 0) "item 30: show lists a next step for a merged package: $($r.Text)"
+    $r = & $rlPkg (@('ship', '-Id', 'rlx', '-LocalMerge') + $rlShipArgs)
+    & $expect ($r.Exit -eq 0 -and $r.Text -match 'already merged' -and (& $rlTip) -eq $head) "item 30: ship after the merge did not say so: $($r.Text)"
+
+    # The same package id cannot ship through a remote flow it does not have, and the other commands stay usable for a new package.
+    $r = & $rlPkg @('new', '-Id', 'rly', '-Brief', $briefRv, '-Checks', $rvManifest)
+    & $expect ($r.Exit -eq 0 -and (& $rlState 'rly').baseSha -eq $head) "item 30: a second package did not branch from the merged base: $($r.Text)"
 }
 
 function Invoke-ShipSelfTest
@@ -7642,9 +7864,20 @@ if (process.env.AW_PKG_TEST_JS_TREE) {
     exit 0
 }
 
+function Show-PackageUsage
+{
+    # The command lines at the top of this script's header comment, up to the first command description.
+    $header = [regex]::Match([IO.File]::ReadAllText($PSCommandPath), '(?s)<#\r?\n(.*?)\r?\n#>').Groups[1].Value
+    $cut = [regex]::Match($header, '(?m)^new  ')
+    $usage = if ($cut.Success) { $header.Substring(0, $cut.Index) } else { $header }
+    Write-Host ($usage.TrimEnd() -replace '\r', '')
+    Write-Host ''
+    Write-Host "Every command except 'help' and -SelfTest needs -Id <slug>. The header of $PSCommandPath describes each command."
+}
+
 if ($SelfTest) { Invoke-SelfTest }
-if (-not $Command) { Write-Host 'ERROR a command is required: new, run, check, show, commit, review, fix, disposition, accept or ship'; exit 2 }
-if (-not $Id) { Write-Host 'ERROR -Id is required'; exit 2 }
+if (-not $Command -or $Command -eq 'help') { Show-PackageUsage; exit 0 }
+if (-not $Id) { Write-Host "ERROR -Id is required for '$Command'"; Show-PackageUsage; exit 2 }
 try
 {
     Initialize-PackageContext $Root

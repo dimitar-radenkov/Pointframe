@@ -10,6 +10,8 @@ $ErrorActionPreference = 'Stop'
 #   {{kb.root}}      a value from agent-workflow.json (see Get-AwConfigTokens)
 # A token that is alone on its line may expand to several lines; an optional token alone on its line with
 # no value removes the line. Slot text is never expanded again.
+# A block between {{if:NAME}} (or {{if:!NAME}}), an optional {{else}} and {{endif}}, each alone on its line, is kept or dropped by a
+# condition of the configuration: remote (repository.remote is not null) and codex (a role runs on the openai provider). Blocks do not nest.
 #
 # The slots file holds blocks:
 #   <!-- slot:NAME -->
@@ -86,7 +88,7 @@ function Get-AwConfigTokens {
     )
 
     $baseRef = [string]$Config.repository.baseRef
-    $slash = $baseRef.IndexOf('/')
+    $base = Get-AwBase -Config $Config
     $tokens = [ordered]@{
         'kb.root' = ([string]$Config.kb.root).Replace('\', '/')
         'kb.core' = ([string]$Config.kb.core).Replace('\', '/')
@@ -96,7 +98,7 @@ function Get-AwConfigTokens {
         'kb.tasks' = ([string]$Config.kb.tasks).Replace('\', '/')
         'repository.id' = [string]$Config.repository.id
         'repository.baseRef' = $baseRef
-        'repository.baseBranch' = $(if ($slash -ge 0) { $baseRef.Substring($slash + 1) } else { $baseRef })
+        'repository.baseBranch' = $base.Branch
         'state.commonDirNamespace' = [string]$Config.state.commonDirNamespace
         'status.store' = ([string]$Config.status.store).Replace('\', '/')
     }
@@ -106,6 +108,23 @@ function Get-AwConfigTokens {
     }
     $tokens['kb.workflow'] = $workflow
     return $tokens
+}
+
+function Get-AwConfigConditions {
+    # The conditions a template block may test: remote (the repository has a remote, so push, pull request and GitHub checks exist) and
+    # codex (some role runs on the openai provider, so Codex consultations and the Codex launcher exist).
+    param(
+        [Parameter(Mandatory)]
+        [Collections.IDictionary]$Config
+    )
+
+    $codex = $false
+    if ($Config.Contains('roles') -and $null -ne $Config.roles) {
+        foreach ($role in $Config.roles.Values) {
+            if ($role -is [Collections.IDictionary] -and $role.Contains('provider') -and [string]$role.provider -eq 'openai') { $codex = $true }
+        }
+    }
+    return [ordered]@{ remote = (Get-AwBase -Config $Config).HasRemote; codex = $codex }
 }
 
 function Expand-AwTemplate {
@@ -124,7 +143,8 @@ function Expand-AwTemplate {
         [Collections.Generic.HashSet[string]]$Used,
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
-        [Collections.Generic.List[string]]$Errors
+        [Collections.Generic.List[string]]$Errors,
+        [Collections.IDictionary]$Conditions = @{}
     )
 
     $resolve = {
@@ -154,8 +174,41 @@ function Expand-AwTemplate {
         return [pscustomobject]@{ Ok = $false; Value = ''; Optional = $false }
     }
 
+    # Conditional blocks, each marker alone on its line: {{if:NAME}} ... {{else}} ... {{endif}} (NAME may be written !NAME). Blocks do not nest.
+    # The slots named inside a block that is dropped still count as used, so a consumer may keep defining them.
+    $lines = [Collections.Generic.List[string]]::new()
+    $blockOpen = $false
+    $dropping = $false
+    foreach ($line in $Template.Split("`n")) {
+        $open = [regex]::Match($line, '^\{\{if:(!?)([A-Za-z][A-Za-z0-9-]*)\}\}\s*$')
+        if ($open.Success) {
+            if ($blockOpen) { $Errors.Add("${Name}: conditional blocks do not nest ({{if:$($open.Groups[2].Value)}})") }
+            $condition = $open.Groups[2].Value
+            if (-not $Conditions.Contains($condition)) {
+                $Errors.Add("${Name}: unknown condition '$condition'")
+                $holds = $true
+            }
+            else { $holds = [bool]$Conditions[$condition] }
+            if ($open.Groups[1].Value -eq '!') { $holds = -not $holds }
+            $blockOpen = $true
+            $dropping = -not $holds
+            continue
+        }
+        if ($line -match '^\{\{else\}\}\s*$' -and $blockOpen) { $dropping = -not $dropping; continue }
+        if ($line -match '^\{\{endif\}\}\s*$' -and $blockOpen) { $blockOpen = $false; $dropping = $false; continue }
+        if ($dropping) {
+            foreach ($m in [regex]::Matches($line, $script:AwTokenPattern)) {
+                $body = $m.Groups[1].Value.TrimEnd('?')
+                if ($body.StartsWith('slot:')) { [void]$Used.Add($body.Substring(5)) }
+                elseif ($body.StartsWith('local:')) { [void]$Used.Add($body.Substring(6)) }
+            }
+            continue
+        }
+        $lines.Add($line)
+    }
+    if ($blockOpen) { $Errors.Add("${Name}: a conditional block is not closed with {{endif}}") }
+
     $out = [Collections.Generic.List[string]]::new()
-    $lines = $Template.Split("`n")
     foreach ($line in $lines) {
         $alone = [regex]::Match($line, "^$($script:AwTokenPattern)$")
         if ($alone.Success) {
@@ -244,12 +297,13 @@ function Get-AwRenderPlan {
     $slots = $read.Slots
     Test-AwSlotRules -Slots $slots -Errors $errors
     $tokens = Get-AwConfigTokens -Config $Config
+    $conditions = Get-AwConfigConditions -Config $Config
     $used = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 
     $workflowTemplate = Join-Path $KitDir 'workflow\workflow.template.md'
     $workflowText = [IO.File]::ReadAllText($workflowTemplate) -replace "`r`n", "`n"
     $expanded = Expand-AwTemplate -Template $workflowText -Name 'workflow template' -Slots $slots -Tokens $tokens `
-        -Used $used -Errors $errors
+        -Used $used -Errors $errors -Conditions $conditions
     $files.Add([pscustomobject]@{ Kind = 'workflow'; Rel = ([string]$render.workflow).Replace('\', '/'); Text = $expanded })
 
     $skillsDir = Join-Path $KitDir 'skills'
@@ -258,7 +312,7 @@ function Get-AwRenderPlan {
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { continue }
         $template = [IO.File]::ReadAllText($source) -replace "`r`n", "`n"
         $claude = Expand-AwTemplate -Template $template -Name "skill template $($dir.Name)" -Slots $slots -Tokens $tokens `
-            -Used $used -Errors $errors
+            -Used $used -Errors $errors -Conditions $conditions
         $claudeRel = ([string]$render.skills.claude).Replace('\', '/').TrimEnd('/') + "/$($dir.Name)/SKILL.md"
         $agentsRel = ([string]$render.skills.agents).Replace('\', '/').TrimEnd('/') + "/$($dir.Name)/SKILL.md"
         $files.Add([pscustomobject]@{ Kind = 'skill'; Rel = $claudeRel; Text = $claude })
