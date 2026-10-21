@@ -54,6 +54,14 @@ function Invoke-SelfTest
     }
     $tempRepo = Join-Path ([IO.Path]::GetTempPath()) "record-review-e2e-$([guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Path $tempRepo | Out-Null
+    # The repository check of the gate context compares the temporary repository with the repository that holds the tool, so the children run a
+    # copy of the tool in a folder outside any configured repository (where there is nothing to compare), never a switch a caller could set.
+    $toolCopy = "$tempRepo-tool"
+    New-Item -ItemType Directory -Path (Join-Path $toolCopy 'tools') -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..' 'lib') -Destination (Join-Path $toolCopy 'lib') -Recurse
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..' 'schema') -Destination (Join-Path $toolCopy 'schema') -Recurse
+    Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $toolCopy 'tools' 'record-review.ps1')
+    $selfTool = Join-Path $toolCopy 'tools' 'record-review.ps1'
     try
     {
         & git -C $tempRepo init -q
@@ -63,12 +71,12 @@ function Invoke-SelfTest
         Write-AwSelfTestConfig $tempRepo (Get-AwSelfTestConfig -Namespace 'selftest')
         $evidenceFile = Join-Path $tempRepo 'evidence.md'; [IO.File]::WriteAllText($evidenceFile, 'offline evidence')
         $briefFile = Join-Path $tempRepo 'brief.md'; [IO.File]::WriteAllText($briefFile, 'requirement: self test')
-        $invoke = @('-NoProfile','-File',$PSCommandPath,'-Root',$tempRepo,'-Worktree',$tempRepo,'-Executor','claude:coordinator','-ExecutorSession','e2e','-Reviewer','codex:gpt-6-luna','-ReviewerSession','review','-Verdict','PASS','-Evidence',$evidenceFile,'-Requirement','offline e2e','-Review','light')
+        $invoke = @('-NoProfile','-File',$selfTool,'-Root',$tempRepo,'-Worktree',$tempRepo,'-Executor','claude:coordinator','-ExecutorSession','e2e','-Reviewer','codex:gpt-6-luna','-ReviewerSession','review','-Verdict','PASS','-Evidence',$evidenceFile,'-Requirement','offline e2e','-Review','light')
         & pwsh @invoke | Out-Null
         if ($LASTEXITCODE -ne 0) { $failures.Add('end-to-end record creation command failed') }
-        $badHeadOutput = & pwsh -NoProfile -File $PSCommandPath -Root $tempRepo -Worktree $tempRepo -Head does-not-exist -Executor claude:coordinator -ExecutorSession e2e -Reviewer codex:gpt-6-luna -ReviewerSession review -Verdict PASS -Evidence $evidenceFile -Requirement 'bad head check' -Review light 2>&1
+        $badHeadOutput = & pwsh -NoProfile -File $selfTool -Root $tempRepo -Worktree $tempRepo -Head does-not-exist -Executor claude:coordinator -ExecutorSession e2e -Reviewer codex:gpt-6-luna -ReviewerSession review -Verdict PASS -Evidence $evidenceFile -Requirement 'bad head check' -Review light 2>&1
         if ($LASTEXITCODE -ne 2 -or ($badHeadOutput -join "`n") -notmatch 'Head.*does-not-exist.*does not resolve') { $failures.Add("bad head did not exit 2 with a clear refusal (exit=$LASTEXITCODE output=$($badHeadOutput -join ' | '))") }
-        $sameModelOutput = & pwsh -NoProfile -File $PSCommandPath -Root $tempRepo -Worktree $tempRepo -Executor codex:gpt-6-luna -ExecutorSession e2e -Reviewer claude:gpt-6-luna -ReviewerSession review -Verdict PASS -Evidence $evidenceFile -Requirement 'same model check' -Review light 2>&1
+        $sameModelOutput = & pwsh -NoProfile -File $selfTool -Root $tempRepo -Worktree $tempRepo -Executor codex:gpt-6-luna -ExecutorSession e2e -Reviewer claude:gpt-6-luna -ReviewerSession review -Verdict PASS -Evidence $evidenceFile -Requirement 'same model check' -Review light 2>&1
         if ($LASTEXITCODE -ne 2 -or ($sameModelOutput -join "`n") -notmatch 'different models') { $failures.Add('cross-provider same-model review was accepted') }
         $head = (& git -C $tempRepo rev-parse HEAD).Trim()
         $recordFile = Join-Path $tempRepo '.git' "selftest/reviews/$head.json"
@@ -80,7 +88,7 @@ function Invoke-SelfTest
         }
     }
     catch { $failures.Add("end-to-end repository test failed: $($_.Exception.Message)") }
-    finally { Remove-Item -LiteralPath $tempRepo -Recurse -Force -ErrorAction SilentlyContinue }
+    finally { Remove-Item -LiteralPath $tempRepo, $toolCopy -Recurse -Force -ErrorAction SilentlyContinue }
     if ($failures.Count) { $failures | ForEach-Object { Write-Host "ERROR self-test: $_" }; exit 1 }
 Write-Host 'record-review self-test passed.'
     exit 0

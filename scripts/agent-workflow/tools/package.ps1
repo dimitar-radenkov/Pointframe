@@ -189,6 +189,7 @@ $script:JsonDate = if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('Da
 
 # Set by Initialize-PackageContext from the configuration of the repository this run is about.
 $script:Ctx = $null
+$script:ContextScriptRoot = $PSScriptRoot
 $script:Repo = $null
 $script:Namespace = 'selftest'
 $script:PinFiles = @()
@@ -197,10 +198,10 @@ function Initialize-PackageContext([string]$Target)
 {
     # The repository is -Root, else the repository that holds this script. The configuration (namespace, base, pin files, hooks, commands)
     # is read from its main checkout only, never from a package branch, which could loosen the gates it is judged by.
-    # An explicit -Root/-Repo is the caller's statement of which repository this is (the wrapper passes the main checkout of its own), so the
-    # gate context gets the main checkout of that repository as -Root; a worktree of a different repository than the one holding this script
-    # is only refused when no repository was named.
-    $script:Ctx = if ($Target) { Get-AwGateContext -Root (Resolve-AwRoot -Explicit (ConvertTo-AwFullPath $Target) -ScriptRoot $PSScriptRoot).MainCheckout -Worktree $Target -ScriptRoot $PSScriptRoot } else { Get-AwGateContext -ScriptRoot $PSScriptRoot }
+    # The gate context also checks that the repository named by -Root/-Repo is the repository that holds this tool (the wrapper passes the main
+    # checkout of its own), so a standalone clone or another repository is refused, with -Root as with -Worktree. ContextScriptRoot is this
+    # folder; only the self-test replaces it, with a copy of the kit outside every configured repository (see Invoke-SelfTest).
+    $script:Ctx = if ($Target) { Get-AwGateContext -Root (Resolve-AwRoot -Explicit (ConvertTo-AwFullPath $Target) -ScriptRoot $script:ContextScriptRoot).MainCheckout -Worktree $Target -ScriptRoot $script:ContextScriptRoot } else { Get-AwGateContext -ScriptRoot $script:ContextScriptRoot }
     $script:Repo = [string]$script:Ctx.Worktree
     $script:Namespace = [string]$script:Ctx.Config.state.commonDirNamespace
     $script:PinFiles = @($script:Ctx.PinFiles)
@@ -4670,7 +4671,7 @@ function Invoke-ShipLocked($Info)
     # A candidate kit (install.ps1 -Candidate) must never reach the base branch: refuse before anything is rebased, verified, pushed or merged.
     if ([string]$state.worktree -and (Test-Path -LiteralPath ([string]$state.worktree) -PathType Container))
     {
-        $candidate = Get-AwCandidateLockRefusal ([string]$state.worktree)
+        $candidate = Get-AwCandidateLockRefusal ([string]$state.worktree) -Revision 'HEAD'
         if ($candidate) { throw "ship refused: $candidate" }
     }
     if ($stage -in @('review-passed', 'accepted'))
@@ -5726,8 +5727,17 @@ exit 1
         $candidateWt = [string](& $stateFile $Slug).worktree
         $candidateLock = Join-Path $candidateWt 'agent-workflow.lock.json'
         $stageBefore = [string](& $stateFile $Slug).stage
+        # The lock that counts is the committed one: the candidate lock is committed on the package head, and removed again afterwards.
+        $headBefore = ([string](& git -C $candidateWt rev-parse HEAD)).Trim()
         [IO.File]::WriteAllText($candidateLock, '{ "schemaVersion": 1, "source": "x", "tag": null, "candidate": true, "commit": "0123456789012345678901234567890123456789", "manifestSha256": "x", "files": {} }')
-        try { $res = & $ship $Slug } finally { Remove-Item -LiteralPath $candidateLock -Force -ErrorAction SilentlyContinue }
+        & git -C $candidateWt add -- agent-workflow.lock.json 2>&1 | Out-Null
+        & git -C $candidateWt -c user.name=SelfTest -c user.email=selftest@example.invalid commit -q -m 'candidate lock' 2>&1 | Out-Null
+        try { $res = & $ship $Slug }
+        finally
+        {
+            & git -C $candidateWt reset -q --hard $headBefore 2>&1 | Out-Null
+            Remove-Item -LiteralPath $candidateLock -Force -ErrorAction SilentlyContinue
+        }
         $after = & $stateFile $Slug
         & $kitCase ($res.Exit -ne 0 -and $res.Text -match 'ship refused' -and $res.Text -match 'candidate install' -and $res.Text -match 'install a tagged release first' -and [string]$after.stage -eq $stageBefore -and (& $calls '.') -eq 0) 'candidate: package ship refuses a worktree whose vendored kit lock is a candidate' "exit $($res.Exit) stage $($after.stage) $($res.Text)"
     }
@@ -6689,6 +6699,13 @@ function Invoke-SelfTest
     $kitCase = { param([bool]$Condition, [string]$Name, [string]$Detail = '') Write-Host ('KITCASE {0} {1}' -f $(if ($Condition) { 'PASS' } else { 'FAIL' }), $Name); if (-not $Condition) { $failures.Add("$Name : $Detail") } }
     $root = Join-Path ([IO.Path]::GetTempPath()) "package-selftest-$([guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Path $root | Out-Null
+    # The self-test runs a copy of the kit from a folder outside any configured repository. The gate context compares the repository a tool judges
+    # with the repository that holds the tool, and the temporary repositories built here are not the one a vendored copy lives in; a copy placed
+    # outside every configured repository has nothing to compare, and no switch, parameter or variable exists that a caller could use to skip it.
+    $selfKit = Join-Path $root 'kit'
+    Copy-Item -LiteralPath $script:KitDir -Destination $selfKit -Recurse
+    $selfScript = Join-Path $selfKit 'tools' 'package.ps1'
+    $script:ContextScriptRoot = Join-Path $selfKit 'tools'
     $oldMain = $env:AW_PKG_TEST_MAIN
     # Exported to every child: the real-binary guards (Get-CodexCliVersion, Assert-SelfTestLauncher, the Codex reviewer) key on these.
     $env:AW_PKG_SELFTEST = '1'
@@ -6759,7 +6776,7 @@ Set-Content -LiteralPath (Join-Path $log 'events.jsonl') @('{"type":"thread.star
         $pkg = {
             param([string[]]$PackageArgs)
             if ($PackageArgs -notcontains '-CodexVersion') { $PackageArgs = @($PackageArgs) + @('-CodexVersion', '9.9.9-test') }
-            $output = & pwsh -NoProfile -File $PSCommandPath @PackageArgs -Repo $main -StatusScript $statusStub -LockTimeoutSeconds 1 -GraceSeconds 0 2>&1
+            $output = & pwsh -NoProfile -File $selfScript @PackageArgs -Repo $main -StatusScript $statusStub -LockTimeoutSeconds 1 -GraceSeconds 0 2>&1
             [pscustomobject]@{ Exit = $LASTEXITCODE; Text = (($output | ForEach-Object { "$_" }) -join "`n") }
         }
         $stateFile = { param($slug) Get-Content -LiteralPath (Join-Path $main ".git/selftest/packages/$slug.json") -Raw | ConvertFrom-Json -AsHashtable @script:JsonDate }
@@ -7037,7 +7054,7 @@ Start-Sleep -Seconds 60
             {
                 $raceOutputs += @(Join-Path $root "race$n.out")
                 Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $root "race$n.out") `
-                    -ArgumentList @('-NoProfile', '-File', "`"$PSCommandPath`"", 'new', '-Id', 'race', '-Brief', "`"$briefFile`"", '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-LockTimeoutSeconds', '120')
+                    -ArgumentList @('-NoProfile', '-File', "`"$selfScript`"", 'new', '-Id', 'race', '-Brief', "`"$briefFile`"", '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-LockTimeoutSeconds', '120')
             }
             foreach ($p in $raceProcesses) { if (-not $p.WaitForExit(180000)) { $p.Kill($true) } }
             $codes = @($raceProcesses | ForEach-Object { $_.ExitCode } | Sort-Object)
@@ -7086,7 +7103,7 @@ Start-Sleep -Seconds 60
             $recoverers = foreach ($n in 1..2)
             {
                 Start-Process -FilePath (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $root "recover$n.out") `
-                    -ArgumentList @('-NoProfile', '-File', "`"$PSCommandPath`"", 'run', '-Id', 'rec2', '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-AgentRunScript', "`"$(Join-Path $stubDir 'ok.ps1')`"", '-CodexVersion', '9.9.9-test', '-LockTimeoutSeconds', '120', '-GraceSeconds', '0')
+                    -ArgumentList @('-NoProfile', '-File', "`"$selfScript`"", 'run', '-Id', 'rec2', '-Repo', "`"$main`"", '-StatusScript', "`"$statusStub`"", '-AgentRunScript', "`"$(Join-Path $stubDir 'ok.ps1')`"", '-CodexVersion', '9.9.9-test', '-LockTimeoutSeconds', '120', '-GraceSeconds', '0')
             }
             foreach ($p in $recoverers) { if (-not $p.WaitForExit(240000)) { $p.Kill($true) } }
             $sleeper.WaitForExit(5000) | Out-Null

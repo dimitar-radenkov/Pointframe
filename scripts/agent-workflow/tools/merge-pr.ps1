@@ -517,7 +517,14 @@ function Test-MainCheckoutBehavior([Collections.Generic.List[string]]$Failures)
         & $git $main @('remote', 'set-url', 'origin', $origin) | Out-Null
 
         # -SyncMain, run as a child process from a folder outside the checkout, with -Root naming it.
-        $selfPath = $PSCommandPath
+        # The children run a copy of the tool placed outside any configured repository: the gate context refuses a repository other than the one
+        # that holds the tool, and there is no switch, parameter or variable to skip that.
+        $toolCopy = Join-Path $root 'tool-copy'
+        New-Item -ItemType Directory -Path (Join-Path $toolCopy 'tools') -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..' 'lib') -Destination (Join-Path $toolCopy 'lib') -Recurse
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..' 'schema') -Destination (Join-Path $toolCopy 'schema') -Recurse
+        Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $toolCopy 'tools' 'merge-pr.ps1')
+        $selfPath = Join-Path $toolCopy 'tools' 'merge-pr.ps1'
         $sync = {
             param([switch]$Preview)
             Push-Location $root
@@ -928,7 +935,7 @@ function Test-MergeReceiptCore([string]$WorktreePath, [string]$PrHead)
         $verifyTool = Join-Path $PSScriptRoot 'verify.ps1'
         if ($headTreeNow -and (Test-Path -LiteralPath $verifyTool -PathType Leaf))
         {
-            $content = Test-AwReceiptContent $receipt $headTreeNow $currentTree $script:Ctx.Config $script:Ctx.Root (Get-FileHash -LiteralPath $verifyTool -Algorithm SHA256).Hash.ToLowerInvariant()
+            $content = Test-AwReceiptContent $receipt $headTreeNow $currentTree $script:Ctx.Config $script:Ctx.Root $verifyTool
             if ($content.Ok)
             {
                 return $content
@@ -965,7 +972,7 @@ function Test-MergeReceiptCore([string]$WorktreePath, [string]$PrHead)
 function Test-MergeReceipt([string]$WorktreePath, [string]$PrHead)
 {
     # What the pull request would put on the base branch includes the vendored kit and its lock: a candidate install never merges.
-    $candidate = Get-AwCandidateLockRefusal (Resolve-Path -LiteralPath $WorktreePath).Path
+    $candidate = Get-AwCandidateLockRefusal (Resolve-Path -LiteralPath $WorktreePath).Path -Revision $PrHead
     if ($candidate) { return [pscustomobject]@{ Ok = $false; Reason = $candidate } }
     $core = Test-MergeReceiptCore $WorktreePath $PrHead
     if (-not $core.Ok) { return $core }

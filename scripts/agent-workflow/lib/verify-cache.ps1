@@ -85,15 +85,51 @@ function Get-AwVerifyInputs {
         [Parameter(Mandatory)]
         [string]$TreeHash,
         [Parameter(Mandatory)]
-        [string]$VerifySha256
+        [string]$VerifyToolSha256,
+        [AllowEmptyString()]
+        [string]$DotnetVersion = '',
+        [string]$PwshVersion = $PSVersionTable.PSVersion.ToString()
     )
 
     return [ordered]@{
         treeHash = $TreeHash
         configSha256 = Get-AwVerifyConfigHash -Config $Config
         kitManifestSha256 = Get-AwKitManifestHash -Root $Root
-        verifySha256 = $VerifySha256
+        verifyToolSha256 = $VerifyToolSha256
+        dotnetVersion = $DotnetVersion
+        pwshVersion = $PwshVersion
     }
+}
+
+$script:AwVerifyInputNames = @('treeHash', 'configSha256', 'kitManifestSha256', 'verifyToolSha256', 'dotnetVersion', 'pwshVersion')
+
+function Get-AwVerifyToolSha256 {
+    # The verify tool as the key sees it: verify.ps1 and every library it dot-sources (kit/lib/<name>.ps1), each by SHA-256, so that a change in
+    # any code that decides the verdict is a different key.
+    param(
+        [Parameter(Mandatory)]
+        [string]$ToolPath
+    )
+
+    $text = [IO.File]::ReadAllText($ToolPath)
+    $libDirectory = Join-Path (Split-Path -Parent (Split-Path -Parent $ToolPath)) 'lib'
+    $lines = [Collections.Generic.List[string]]::new()
+    $lines.Add('tool=' + (Get-FileHash -LiteralPath $ToolPath -Algorithm SHA256).Hash.ToLowerInvariant())
+    $names = @([regex]::Matches($text, "\.\s+\(Join-Path \`$PSScriptRoot '\.\.' 'lib' '([A-Za-z0-9._-]+\.ps1)'\)") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique -CaseSensitive)
+    foreach ($name in $names) {
+        $path = Join-Path $libDirectory $name
+        $hash = if (Test-Path -LiteralPath $path -PathType Leaf) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() } else { 'missing' }
+        $lines.Add("lib/$name=$hash")
+    }
+    return Get-AwTextSha256 ($lines -join "`n")
+}
+
+function Get-AwDotnetVersion {
+    # The dotnet SDK version as verify.ps1 -ReuseIfFresh reads it; empty when there is no dotnet.
+    if (Get-Command dotnet -CommandType Application -ErrorAction SilentlyContinue) {
+        return ([string](& dotnet --version 2>$null | Select-Object -First 1)).Trim()
+    }
+    return ''
 }
 
 function Get-AwVerifyKey {
@@ -102,7 +138,45 @@ function Get-AwVerifyKey {
         $Inputs
     )
 
-    return Get-AwTextSha256 ((@('treeHash', 'configSha256', 'kitManifestSha256', 'verifySha256') | ForEach-Object { "$_=$($Inputs.$_)" }) -join "`n")
+    return Get-AwTextSha256 (($script:AwVerifyInputNames | ForEach-Object { "$_=$($Inputs.$_)" }) -join "`n")
+}
+
+function ConvertFrom-AwJsonText {
+    # JSON with dates kept as the text they were written as: a timestamp with an offset must come back with its offset.
+    param(
+        [Parameter(Mandatory)]
+        [string]$Text
+    )
+
+    if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) {
+        return $Text | ConvertFrom-Json -DateKind String
+    }
+    return $Text | ConvertFrom-Json
+}
+
+function ConvertTo-AwIsoString {
+    param($Value)
+
+    if ($Value -is [DateTimeOffset]) { return $Value.ToString('o') }
+    if ($Value -is [DateTime]) { return ([DateTimeOffset]$Value).ToString('o') }
+    return [string]$Value
+}
+
+function Remove-AwVerifyCache {
+    # A run of these inputs that did not pass: a stored pass for the same key is no longer true and is deleted.
+    param(
+        [Parameter(Mandatory)]
+        [string]$Directory,
+        [Parameter(Mandatory)]
+        $Inputs
+    )
+
+    $path = Join-Path $Directory ((Get-AwVerifyKey -Inputs $Inputs) + '.json')
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        Remove-Item -LiteralPath $path -Force
+        return $true
+    }
+    return $false
 }
 
 function Get-AwVerifyCacheDirectory {
@@ -165,11 +239,11 @@ function Read-AwVerifyCache {
     try {
         $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
         if ([string]$record.key -cne $key) { return & $refuse 'the record names another key' }
-        foreach ($name in @('treeHash', 'configSha256', 'kitManifestSha256', 'verifySha256')) {
+        foreach ($name in $script:AwVerifyInputNames) {
             if ([string]$record.inputs.$name -cne [string]$Inputs.$name) { return & $refuse "the recorded input $name differs" }
         }
         if ((Get-AwTextSha256 ([string]$record.receiptJson)) -cne [string]$record.receiptSha256) { return & $refuse 'the receipt text does not match its recorded SHA-256 (the file was edited)' }
-        $receipt = [string]$record.receiptJson | ConvertFrom-Json
+        $receipt = ConvertFrom-AwJsonText ([string]$record.receiptJson)
         if ([string]$receipt.status -cne 'pass' -or -not $receipt.complete -or $receipt.filter) { return & $refuse 'the receipt is not a complete pass' }
         if ([string]$receipt.treeHash -cne [string]$Inputs.treeHash) { return & $refuse 'the receipt is for another tree' }
         if ((Get-AwVerifyKey -Inputs $receipt.inputs) -cne $key) { return & $refuse 'the inputs inside the receipt do not give this key' }
@@ -195,7 +269,7 @@ function Test-AwReceiptContent {
         [Parameter(Mandatory)]
         [string]$MainRoot,
         [Parameter(Mandatory)]
-        [string]$VerifySha256
+        [string]$VerifyToolPath
     )
 
     $result = { param($ok, $reason) [pscustomobject]@{ Ok = $ok; Reason = $reason } }
@@ -205,9 +279,9 @@ function Test-AwReceiptContent {
     if ($status -ne 'pass') { return & $result $false "not pass (status '$status')" }
     if (-not $Receipt.PSObject.Properties['complete'] -or -not $Receipt.complete -or ($Receipt.PSObject.Properties['filter'] -and $Receipt.filter)) { return & $result $false 'partial receipt' }
     if ([string]$Receipt.treeHash -cne $HeadTree -or $CurrentTree -cne $HeadTree) { return & $result $false 'tree mismatch (the receipt, the worktree and the committed tree of the head must be one tree)' }
-    $expected = Get-AwVerifyInputs -Config $Config -Root $MainRoot -TreeHash $HeadTree -VerifySha256 $VerifySha256
-    foreach ($name in @('treeHash', 'configSha256', 'kitManifestSha256', 'verifySha256')) {
-        if ([string]$Receipt.inputs.$name -cne [string]$expected[$name]) { return & $result $false "head mismatch (the receipt was made under another $name than the main checkout's)" }
+    $expected = Get-AwVerifyInputs -Config $Config -Root $MainRoot -TreeHash $HeadTree -VerifyToolSha256 (Get-AwVerifyToolSha256 -ToolPath $VerifyToolPath) -DotnetVersion (Get-AwDotnetVersion)
+    foreach ($name in $script:AwVerifyInputNames) {
+        if (-not $Receipt.inputs.PSObject.Properties[$name] -or [string]$Receipt.inputs.$name -cne [string]$expected[$name]) { return & $result $false "head mismatch (the receipt was made under another $name than the main checkout's)" }
     }
     if ((Get-AwVerifyKey -Inputs $Receipt.inputs) -cne [string]$Receipt.cacheKey) { return & $result $false 'head mismatch (the receipt key does not match its inputs)' }
     return & $result $true 'receipt matches the content of the head tree (configuration, kit and verify tool of the main checkout)'

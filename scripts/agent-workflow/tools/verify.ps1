@@ -171,7 +171,7 @@ if ($ReuseIfFresh -and (Test-Path -LiteralPath $VerdictPath))
 }
 
 # Content-addressed reuse: only a run of every gate, unfiltered, is stored or reused.
-$CacheInputs = Get-AwVerifyInputs -Config $Context.Config -Root $RepoRoot -TreeHash $treeHash -VerifySha256 $environment.verifySha256
+$CacheInputs = Get-AwVerifyInputs -Config $Context.Config -Root $RepoRoot -TreeHash $treeHash -VerifyToolSha256 (Get-AwVerifyToolSha256 -ToolPath $PSCommandPath) -DotnetVersion $dotnetVersion
 $CacheKey = Get-AwVerifyKey -Inputs $CacheInputs
 $CacheDir = Get-AwVerifyCacheDirectory -Context $Context
 $Cacheable = (-not $Filter) -and ($Skip.Count -eq 0)
@@ -183,10 +183,18 @@ if ($Cacheable -and -not $NoReuse)
     if ($hit.Receipt)
     {
         $hostName = if ($hit.Receipt.PSObject.Properties['reusedFrom'] -and $hit.Receipt.reusedFrom.PSObject.Properties['host']) { [string]$hit.Receipt.reusedFrom.host } elseif ($hit.Receipt.PSObject.Properties['host']) { [string]$hit.Receipt.host } else { '' }
-        $originalStarted = if ($hit.Receipt.PSObject.Properties['reusedFrom']) { [string]$hit.Receipt.reusedFrom.startedAt } else { [string]$hit.Receipt.startedAt }
-        $originalHead = if ($hit.Receipt.PSObject.Properties['reusedFrom']) { [string]$hit.Receipt.reusedFrom.head } else { [string]$hit.Receipt.head }
-        $reusedFrom = [ordered]@{ startedAt = $originalStarted; head = $originalHead; host = $hostName }
-        $cachedGates = @($hit.Receipt.gates)
+        $originalStarted = ConvertTo-AwIsoString $hit.Receipt.startedAt
+        $originalHead = [string]$hit.Receipt.head
+        # The reused verdict says whose it is: the original start (ISO 8601 with its offset), head, host and environment. Its environment is the
+        # original one, which -ReuseIfFresh then compares; the gate logs are not copied, so they are null here.
+        $reusedFrom = [ordered]@{
+            startedAt = $originalStarted
+            head = $originalHead
+            host = $hostName
+            environment = $hit.Receipt.environment
+            note = 'The gates did not run in this verify. Their logs belong to the original run on that host and are not available here (log is null).'
+        }
+        $cachedGates = @($hit.Receipt.gates | ForEach-Object { $_.log = $null; $_ })
     }
     elseif ($hit.Reason -ne 'missing')
     {
@@ -532,7 +540,7 @@ $verdict = [ordered]@{
     seconds = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
     head = (git -C $RepoRoot rev-parse HEAD).Trim()
     treeHash = $treeHash
-    environment = $environment
+    environment = $(if ($reusedFrom) { $reusedFrom.environment } else { $environment })
     filter = $Filter
     gates = $gates
 }
@@ -550,6 +558,16 @@ if ($status -eq 'pass' -and $Cacheable -and -not $reusedFrom)
 {
     try { Save-AwVerifyCache -Directory $CacheDir -Inputs $CacheInputs -ReceiptJson $verdictJson }
     catch { Write-Host "verify: the receipt could not be stored for reuse: $($_.Exception.Message)" }
+}
+elseif ($Cacheable -and -not $reusedFrom -and $status -ne 'pass')
+{
+    # This content was just run and did not pass, so a stored pass for the same key is not true any more (a gate depends on something the key
+    # does not cover, for example an environment variable). It is deleted, and the next default run runs the gates instead of reusing it.
+    try
+    {
+        if (Remove-AwVerifyCache -Directory $CacheDir -Inputs $CacheInputs) { Write-Host 'verify: the stored pass for this content was deleted because this run did not pass.' }
+    }
+    catch { Write-Host "verify: the stored pass for this content could not be deleted: $($_.Exception.Message)" }
 }
 
 Write-Host ''

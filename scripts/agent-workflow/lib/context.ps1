@@ -172,20 +172,21 @@ function Get-AwGateContext {
         }
     }
 
-    if (-not $Root -and $Worktree) {
-        # Without -Root the repository is the one that holds the script (a consumer's wrapper reaches its vendored copy). A
-        # -Worktree must belong to it: a standalone clone has itself as its main checkout and would be judged by its own,
-        # changeable configuration. A script outside any configured repository (the kit source) has no repository to compare.
-        $holder = $null
-        try {
-            $holder = Resolve-AwRoot -ScriptRoot $ScriptRoot
-        }
-        catch {
-            if ($_.Exception.Message -notmatch 'No agent-workflow\.json found') { throw }
-        }
-        if ($holder -and -not [string]::Equals($holder.CommonDir, $target.CommonDir, [StringComparison]::OrdinalIgnoreCase)) {
-            throw "-Worktree '$($target.WorkTree)' is neither the main checkout nor a linked worktree of the repository that holds this tool ($($holder.MainCheckout)); a standalone clone is refused because it would be judged by its own configuration."
-        }
+    # Whenever the tool itself lives in a configured repository (a consumer's vendored copy), the repository it judges, whether named by -Root,
+    # by -Worktree or by neither, must be that repository: its main checkout or one of its linked worktrees. A standalone clone is its own main
+    # checkout and would be judged by its own, changeable configuration; naming it with -Root changes nothing about that. A tool outside any
+    # configured repository (the kit source, or a copy of it that a self-test places outside the temporary repositories it builds) has no
+    # repository to compare, and there is deliberately no switch, parameter or variable that skips the comparison.
+    $holder = $null
+    try {
+        $holder = Resolve-AwRoot -ScriptRoot $ScriptRoot
+    }
+    catch {
+        if ($_.Exception.Message -notmatch 'No agent-workflow\.json found') { throw }
+    }
+    if ($holder -and -not [string]::Equals($holder.CommonDir, $target.CommonDir, [StringComparison]::OrdinalIgnoreCase)) {
+        $named = if ($Worktree) { "-Worktree '$($target.WorkTree)'" } elseif ($Root) { "-Root '$Root'" } else { "'$($target.WorkTree)'" }
+        throw "$named is neither the main checkout nor a linked worktree of the repository that holds this tool ($($holder.MainCheckout)); a standalone clone or another repository is refused because it would be judged by its own configuration."
     }
 
     $main = Resolve-AwRoot -Explicit $target.MainCheckout -ScriptRoot $ScriptRoot
@@ -215,17 +216,29 @@ function Get-AwGateContext {
 function Get-AwCandidateLockRefusal {
     # The reason a merge is refused when the vendored kit of Root was installed as a candidate (install.ps1 -Candidate: a commit without a release
     # tag), else $null. A candidate is for trying a kit change in a consumer; it must never reach the base branch.
+    # With -Revision the lock is the one COMMITTED at that revision (git show), which is what a merge puts on the base branch; a lock edited in the
+    # worktree without a commit changes nothing. Without it the file in Root is read.
     param(
         [Parameter(Mandatory)]
-        [string]$Root
+        [string]$Root,
+        [string]$Revision
     )
 
-    $path = Join-Path $Root 'agent-workflow.lock.json'
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        return $null
-    }
     try {
-        $lock = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -AsHashtable
+        if ($Revision) {
+            $shown = & git -C $Root show "${Revision}:agent-workflow.lock.json" 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                return $null
+            }
+            $lock = ($shown -join "`n") | ConvertFrom-Json -AsHashtable
+        }
+        else {
+            $path = Join-Path $Root 'agent-workflow.lock.json'
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                return $null
+            }
+            $lock = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -AsHashtable
+        }
     }
     catch {
         return $null
