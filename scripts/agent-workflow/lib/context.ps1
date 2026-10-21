@@ -172,6 +172,22 @@ function Get-AwGateContext {
         }
     }
 
+    if (-not $Root -and $Worktree) {
+        # Without -Root the repository is the one that holds the script (a consumer's wrapper reaches its vendored copy). A
+        # -Worktree must belong to it: a standalone clone has itself as its main checkout and would be judged by its own,
+        # changeable configuration. A script outside any configured repository (the kit source) has no repository to compare.
+        $holder = $null
+        try {
+            $holder = Resolve-AwRoot -ScriptRoot $ScriptRoot
+        }
+        catch {
+            if ($_.Exception.Message -notmatch 'No agent-workflow\.json found') { throw }
+        }
+        if ($holder -and -not [string]::Equals($holder.CommonDir, $target.CommonDir, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "-Worktree '$($target.WorkTree)' is neither the main checkout nor a linked worktree of the repository that holds this tool ($($holder.MainCheckout)); a standalone clone is refused because it would be judged by its own configuration."
+        }
+    }
+
     $main = Resolve-AwRoot -Explicit $target.MainCheckout -ScriptRoot $ScriptRoot
     $config = Read-AwConfig -Root $main.WorkTree
     $baseRef = [string]$config.repository.baseRef
@@ -194,6 +210,30 @@ function Get-AwGateContext {
         BaseBranch = $(if ($slash -gt 0) { $baseRef.Substring($slash + 1) } else { $baseRef })
         PinFiles = $pinFiles
     }
+}
+
+function Get-AwCandidateLockRefusal {
+    # The reason a merge is refused when the vendored kit of Root was installed as a candidate (install.ps1 -Candidate: a commit without a release
+    # tag), else $null. A candidate is for trying a kit change in a consumer; it must never reach the base branch.
+    param(
+        [Parameter(Mandatory)]
+        [string]$Root
+    )
+
+    $path = Join-Path $Root 'agent-workflow.lock.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return $null
+    }
+    try {
+        $lock = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -AsHashtable
+    }
+    catch {
+        return $null
+    }
+    if ($lock -is [Collections.IDictionary] -and $lock.Contains('candidate') -and $lock['candidate'] -eq $true) {
+        return "the vendored kit is a candidate install (commit $($lock['commit']), no release tag): install a tagged release first (install.ps1 -Tag vX.Y.Z -Commit <sha>), then merge"
+    }
+    return $null
 }
 
 function Get-AwConfiguredGateNames {

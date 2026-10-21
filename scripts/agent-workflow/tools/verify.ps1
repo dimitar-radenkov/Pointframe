@@ -6,7 +6,8 @@ agent can act on them. Run it before saying a task is done; a task is done when 
   verify.ps1                                    # every gate; exit 0 only when all pass
   verify.ps1 -Filter "FullyQualifiedName~Foo"   # narrow the gate that declares filterFlag while iterating
   verify.ps1 -Skip kb                           # leave gates out while iterating (never for the final run)
-  verify.ps1 -ReuseIfFresh                      # reuse an identical complete receipt when environment and tree match
+  verify.ps1 -ReuseIfFresh                      # reuse the receipt in the output folder when environment, head and tree match
+  verify.ps1 -NoReuse                           # run every gate even when a receipt for identical content is stored
   verify.ps1 -Root <repository>                 # the repository to verify (default: the repository that holds this script)
 
 The gates come from the configuration. Records of "gates" that share a "gate" name form one gate of the verdict and run in
@@ -16,13 +17,19 @@ other gate always runs, so one pass reports every problem.
 
 Writes <verify.outputDir>/verdict.json (status, gates, failure details, working-tree hash, and environment fingerprint)
 and a log per gate next to it. -ReuseIfFresh skips gates only when the complete passing receipt matches head, tree,
-dotnet SDK version, pwsh version, and this script's SHA-256. Exit 0 when every gate passed, 1 when any failed, 2 on bad arguments.
+dotnet SDK version, pwsh version, and this script's SHA-256.
+A complete passing run is also stored in <git common dir>/<namespace>/verify-cache/<key>.json, where the key is the SHA-256 of the working-tree
+hash (uncommitted changes included), the normalized gates and verify.* configuration, the manifestSha256 of the vendored kit's lock and this
+script's SHA-256. The next run with the same key is REUSED: verdict.json is written from the stored receipt (with reusedFrom: its original
+startedAt, head and host) and no gate runs. Partial, failing and filtered runs (-Skip, -Filter) are never stored or reused; -NoReuse runs the
+gates; a stored file that was edited is refused. Exit 0 when every gate passed, 1 when any failed, 2 on bad arguments.
 #>
 [CmdletBinding()]
 param(
     [string]$Filter,
     [string[]]$Skip = @(),
     [switch]$ReuseIfFresh,
+    [switch]$NoReuse,
     [string]$Root
 )
 
@@ -33,6 +40,18 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot '..' 'lib' 'config.ps1')
 . (Join-Path $PSScriptRoot '..' 'lib' 'context.ps1')
 . (Join-Path $PSScriptRoot '..' 'lib' 'tree-hash.ps1')
+. (Join-Path $PSScriptRoot '..' 'lib' 'process-tree.ps1')
+. (Join-Path $PSScriptRoot '..' 'lib' 'verify-cache.ps1')
+
+function ConvertTo-ProcessArgument([string]$Value)
+{
+    # One argument of a Windows command line, quoted so that CommandLineToArgvW (and so every .NET and PowerShell child)
+    # reads it back unchanged: quotes are escaped, backslashes before a quote are doubled.
+    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
+    $escaped = [regex]::Replace($Value, '(\\*)"', '$1$1\"')
+    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    return '"' + $escaped + '"'
+}
 
 try
 {
@@ -151,6 +170,30 @@ if ($ReuseIfFresh -and (Test-Path -LiteralPath $VerdictPath))
     }
 }
 
+# Content-addressed reuse: only a run of every gate, unfiltered, is stored or reused.
+$CacheInputs = Get-AwVerifyInputs -Config $Context.Config -Root $RepoRoot -TreeHash $treeHash -VerifySha256 $environment.verifySha256
+$CacheKey = Get-AwVerifyKey -Inputs $CacheInputs
+$CacheDir = Get-AwVerifyCacheDirectory -Context $Context
+$Cacheable = (-not $Filter) -and ($Skip.Count -eq 0)
+$reusedFrom = $null
+$cachedGates = $null
+if ($Cacheable -and -not $NoReuse)
+{
+    $hit = Read-AwVerifyCache -Directory $CacheDir -Inputs $CacheInputs
+    if ($hit.Receipt)
+    {
+        $hostName = if ($hit.Receipt.PSObject.Properties['reusedFrom'] -and $hit.Receipt.reusedFrom.PSObject.Properties['host']) { [string]$hit.Receipt.reusedFrom.host } elseif ($hit.Receipt.PSObject.Properties['host']) { [string]$hit.Receipt.host } else { '' }
+        $originalStarted = if ($hit.Receipt.PSObject.Properties['reusedFrom']) { [string]$hit.Receipt.reusedFrom.startedAt } else { [string]$hit.Receipt.startedAt }
+        $originalHead = if ($hit.Receipt.PSObject.Properties['reusedFrom']) { [string]$hit.Receipt.reusedFrom.head } else { [string]$hit.Receipt.head }
+        $reusedFrom = [ordered]@{ startedAt = $originalStarted; head = $originalHead; host = $hostName }
+        $cachedGates = @($hit.Receipt.gates)
+    }
+    elseif ($hit.Reason -ne 'missing')
+    {
+        Write-Host "verify: a stored receipt for this content was refused ($($hit.Reason)); running the gates."
+    }
+}
+
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 Get-ChildItem -Path $OutDir -File | Remove-Item -Force
 Push-Location $RepoRoot
@@ -186,57 +229,57 @@ function Invoke-Logged([string]$Stem, [string]$Exe, [string[]]$Arguments, [strin
     }
     else
     {
-        $psi = [Diagnostics.ProcessStartInfo]::new($file)
-        foreach ($argument in $Arguments) { [void]$psi.ArgumentList.Add($argument) }
-        $psi.WorkingDirectory = $Directory
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-        $psi.RedirectStandardInput = $true
-        $psi.UseShellExecute = $false
-        $psi.StandardOutputEncoding = [Console]::OutputEncoding
-        $psi.StandardErrorEncoding = [Console]::OutputEncoding
-        $process = [Diagnostics.Process]::Start($psi)
-        $process.StandardInput.Close()
-        $pendingOut = $process.StandardOutput.ReadLineAsync()
-        $pendingErr = $process.StandardError.ReadLineAsync()
-        $deadline = [DateTime]::UtcNow.AddMinutes($TimeoutMinutes)
-        $timedOut = $false
-        $exitedAt = $null
-        while ($pendingOut -or $pendingErr)
+        # The command and everything it starts run in one job object (process-tree.ps1), with standard output and error
+        # merged into one file in arrival order. The caller never waits on a pipe: a grandchild that outlives the command
+        # and keeps the output open cannot block the gate. When the command ends (or times out) the whole tree is stopped.
+        Initialize-ProcessJob
+        $job = [AwProcessJob]::Create()
+        if ($job -eq [IntPtr]::Zero)
         {
-            $active = [Threading.Tasks.Task[]]@(@($pendingOut, $pendingErr) | Where-Object { $_ })
-            [void][Threading.Tasks.Task]::WaitAny($active, 200)
-            if ($pendingOut -and $pendingOut.IsCompleted)
+            throw 'verify: could not create a job object for the gate command.'
+        }
+        $capture = Join-Path ([IO.Path]::GetTempPath()) ('aw-verify-' + [guid]::NewGuid().ToString('N') + '.out')
+        try
+        {
+            $quoted = @($Arguments | ForEach-Object { ConvertTo-ProcessArgument $_ })
+            $process = Start-ProcessInJob $job $file $quoted $Directory $null $capture $capture
+            $finished = Wait-ProcessExit $process ([long]$TimeoutMinutes * 60000)
+            if ($finished)
             {
-                $line = $pendingOut.Result
-                if ($null -eq $line) { $pendingOut = $null } else { $lines.Add($line); $pendingOut = $process.StandardOutput.ReadLineAsync() }
+                $exitCode = Get-ProcessExitCode $process
+                $containment = Test-JobContainment $job
+                if ($containment.Leftover -gt 0)
+                {
+                    Write-Host "verify: warning: '$Stem' left $($containment.Leftover) process(es) running after it ended; they were stopped."
+                }
             }
-            if ($pendingErr -and $pendingErr.IsCompleted)
+            else
             {
-                $line = $pendingErr.Result
-                if ($null -eq $line) { $pendingErr = $null } else { $lines.Add($line); $pendingErr = $process.StandardError.ReadLineAsync() }
+                [void](Stop-ProcessJob $job 10)
+                $lines.Add("timed out after $TimeoutMinutes minute(s); the command was stopped")
+                $exitCode = 124
             }
-            if ([DateTime]::UtcNow -gt $deadline)
+            [AwProcessJob]::CloseProcess($process.Handle)
+            if (Test-Path -LiteralPath $capture)
             {
-                $timedOut = $true
-                try { $process.Kill($true) } catch { }
-                break
-            }
-            if ($process.HasExited)
-            {
-                # A grandchild that keeps a pipe open must not hold the gate for ever.
-                if (-not $exitedAt) { $exitedAt = [DateTime]::UtcNow }
-                elseif (([DateTime]::UtcNow - $exitedAt).TotalSeconds -gt 5) { break }
+                $stream = [IO.File]::Open($capture, 'Open', 'Read', 'ReadWrite')
+                try
+                {
+                    $reader = [IO.StreamReader]::new($stream, [Console]::OutputEncoding)
+                    $captured = $reader.ReadToEnd()
+                }
+                finally { $stream.Dispose() }
+                $captureLines = [Collections.Generic.List[string]]::new([string[]]@($captured -split "`r?`n"))
+                if ($captureLines.Count -gt 0 -and $captureLines[$captureLines.Count - 1] -eq '') { $captureLines.RemoveAt($captureLines.Count - 1) }
+                # Output comes before the timeout note.
+                $lines.InsertRange(0, $captureLines)
             }
         }
-        $process.WaitForExit()
-        $exitCode = $process.ExitCode
-        if ($timedOut)
+        finally
         {
-            $lines.Add("timed out after $TimeoutMinutes minute(s); the command was stopped")
-            $exitCode = 124
+            [AwProcessJob]::Close($job)
+            Remove-Item -LiteralPath $capture -Force -ErrorAction SilentlyContinue
         }
-        $process.Dispose()
     }
     $text = @($lines | ForEach-Object { "$_" })
     if (-not $script:LogLines.ContainsKey($Stem)) { $script:LogLines[$Stem] = [Collections.Generic.List[string]]::new() }
@@ -431,6 +474,14 @@ $started = Get-Date
 $gates = [System.Collections.Generic.List[object]]::new()
 $statusByGate = @{}
 
+if ($reusedFrom)
+{
+    # No gate runs: the stored receipt of identical content is the answer, and the gates are listed from it.
+    foreach ($storedGate in $cachedGates) { $gates.Add($storedGate) }
+    Pop-Location
+}
+else
+{
 try
 {
     foreach ($name in $GateNames)
@@ -468,6 +519,7 @@ finally
 {
     Pop-Location
 }
+}
 
 $failed = @($gates | Where-Object { $_.status -eq 'fail' })
 $skipped = @($gates | Where-Object { $_.status -eq 'skipped' })
@@ -484,7 +536,21 @@ $verdict = [ordered]@{
     filter = $Filter
     gates = $gates
 }
-$verdict | ConvertTo-Json -Depth 6 | Set-Content -Path $VerdictPath -Encoding utf8
+if ($status -eq 'pass' -and $Cacheable)
+{
+    # Only a complete passing run of every gate carries its content inputs; they are what the merge gate and a later run compare.
+    $verdict.inputs = $CacheInputs
+    $verdict.cacheKey = $CacheKey
+    $verdict.host = [Environment]::MachineName
+}
+if ($reusedFrom) { $verdict.reusedFrom = $reusedFrom }
+$verdictJson = $verdict | ConvertTo-Json -Depth 6
+$verdictJson | Set-Content -Path $VerdictPath -Encoding utf8
+if ($status -eq 'pass' -and $Cacheable -and -not $reusedFrom)
+{
+    try { Save-AwVerifyCache -Directory $CacheDir -Inputs $CacheInputs -ReceiptJson $verdictJson }
+    catch { Write-Host "verify: the receipt could not be stored for reuse: $($_.Exception.Message)" }
+}
 
 Write-Host ''
 foreach ($gate in $gates)
@@ -499,7 +565,7 @@ foreach ($gate in $gates)
 Write-Host ''
 $resultLine = switch ($status)
 {
-    'pass' { 'VERIFY PASSED: every gate passed.' }
+    'pass' { if ($reusedFrom) { "VERIFY PASSED - REUSED: a complete pass of identical content (tree, gate configuration, kit and verify tool) from $($reusedFrom.startedAt), head $($reusedFrom.head), host $($reusedFrom.host); no gate ran. Use -NoReuse to run them." } else { 'VERIFY PASSED: every gate passed.' } }
     'partial' { 'VERIFY PARTIAL: no failures, but gates were skipped or tests filtered; run without -Skip and -Filter for a final verdict.' }
     default { "VERIFY FAILED: $($failed.Count) gate(s) failed. Fix the details above and run again." }
 }

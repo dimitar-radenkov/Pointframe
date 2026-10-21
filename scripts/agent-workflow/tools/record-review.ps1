@@ -63,12 +63,12 @@ function Invoke-SelfTest
         Write-AwSelfTestConfig $tempRepo (Get-AwSelfTestConfig -Namespace 'selftest')
         $evidenceFile = Join-Path $tempRepo 'evidence.md'; [IO.File]::WriteAllText($evidenceFile, 'offline evidence')
         $briefFile = Join-Path $tempRepo 'brief.md'; [IO.File]::WriteAllText($briefFile, 'requirement: self test')
-        $invoke = @('-NoProfile','-File',$PSCommandPath,'-Worktree',$tempRepo,'-Executor','claude:coordinator','-ExecutorSession','e2e','-Reviewer','codex:gpt-6-luna','-ReviewerSession','review','-Verdict','PASS','-Evidence',$evidenceFile,'-Requirement','offline e2e','-Review','light')
+        $invoke = @('-NoProfile','-File',$PSCommandPath,'-Root',$tempRepo,'-Worktree',$tempRepo,'-Executor','claude:coordinator','-ExecutorSession','e2e','-Reviewer','codex:gpt-6-luna','-ReviewerSession','review','-Verdict','PASS','-Evidence',$evidenceFile,'-Requirement','offline e2e','-Review','light')
         & pwsh @invoke | Out-Null
         if ($LASTEXITCODE -ne 0) { $failures.Add('end-to-end record creation command failed') }
-        $badHeadOutput = & pwsh -NoProfile -File $PSCommandPath -Worktree $tempRepo -Head does-not-exist -Executor claude:coordinator -ExecutorSession e2e -Reviewer codex:gpt-6-luna -ReviewerSession review -Verdict PASS -Evidence $evidenceFile -Requirement 'bad head check' -Review light 2>&1
+        $badHeadOutput = & pwsh -NoProfile -File $PSCommandPath -Root $tempRepo -Worktree $tempRepo -Head does-not-exist -Executor claude:coordinator -ExecutorSession e2e -Reviewer codex:gpt-6-luna -ReviewerSession review -Verdict PASS -Evidence $evidenceFile -Requirement 'bad head check' -Review light 2>&1
         if ($LASTEXITCODE -ne 2 -or ($badHeadOutput -join "`n") -notmatch 'Head.*does-not-exist.*does not resolve') { $failures.Add("bad head did not exit 2 with a clear refusal (exit=$LASTEXITCODE output=$($badHeadOutput -join ' | '))") }
-        $sameModelOutput = & pwsh -NoProfile -File $PSCommandPath -Worktree $tempRepo -Executor codex:gpt-6-luna -ExecutorSession e2e -Reviewer claude:gpt-6-luna -ReviewerSession review -Verdict PASS -Evidence $evidenceFile -Requirement 'same model check' -Review light 2>&1
+        $sameModelOutput = & pwsh -NoProfile -File $PSCommandPath -Root $tempRepo -Worktree $tempRepo -Executor codex:gpt-6-luna -ExecutorSession e2e -Reviewer claude:gpt-6-luna -ReviewerSession review -Verdict PASS -Evidence $evidenceFile -Requirement 'same model check' -Review light 2>&1
         if ($LASTEXITCODE -ne 2 -or ($sameModelOutput -join "`n") -notmatch 'different models') { $failures.Add('cross-provider same-model review was accepted') }
         $head = (& git -C $tempRepo rev-parse HEAD).Trim()
         $recordFile = Join-Path $tempRepo '.git' "selftest/reviews/$head.json"

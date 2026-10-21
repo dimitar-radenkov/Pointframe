@@ -113,6 +113,7 @@ function Invoke-SelfTest
         $psi.RedirectStandardInput = $true
         $psi.UseShellExecute = $false
         $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        $psi.Environment['AW_KB_SELFTEST'] = '1'
         foreach ($k in $EnvVars.Keys) { $psi.Environment[$k] = [string]$EnvVars[$k] }
         $p = [System.Diagnostics.Process]::Start($psi)
         if ($StdIn) { $p.StandardInput.Write($StdIn) }
@@ -336,11 +337,12 @@ $For = @(if ($ReadMode -or $InitMode) { $Targets })
 . (Join-Path $PSScriptRoot '..' 'lib' 'render.ps1')
 
 # Root: the explicit -Root, else the repository that holds this script. A selftest fixture (an explicit root that
-# lists its own files in tracked.txt) has no git work tree of its own and is used as given.
+# lists its own files in tracked.txt) has no git work tree of its own and is used as given, but only when the caller
+# says so with AW_KB_SELFTEST=1 (the self-test sets it for its child processes); a tracked.txt alone never does.
 $IsFixture = $false
 try
 {
-    if ($Root -and (Test-Path -LiteralPath (Join-Path $Root 'tracked.txt')) -and [System.IO.Path]::IsPathFullyQualified($Root))
+    if ($env:AW_KB_SELFTEST -ceq '1' -and $Root -and (Test-Path -LiteralPath (Join-Path $Root 'tracked.txt')) -and [System.IO.Path]::IsPathFullyQualified($Root))
     {
         $IsFixture = $true
         $RepoRoot = [System.IO.Path]::GetFullPath($Root)
@@ -353,7 +355,12 @@ try
 }
 catch
 {
-    if ($Hook) { exit 0 }
+    if ($Hook)
+    {
+        # An advisory hook never blocks the agent, but it says once why it has nothing to offer.
+        [System.Console]::Error.WriteLine("kb hook: agent-workflow.json is missing or invalid: $($_.Exception.Message)")
+        exit 0
+    }
     Write-Host "ERROR $($_.Exception.Message)"
     exit 1
 }
