@@ -58,7 +58,7 @@ pwsh scripts/verify.ps1
 
 The rules every change keeps (composition, MVVM, settings, undo, DPI, new annotation tools) are the [Architecture rules](docs/knowledge-base/knowledge-base.md#architecture-rules) in the knowledge base core, which `/kb-init` prints; the why, the flows, and the recipes are in the sections they link.
 
-- **`pointframe verify` is not `scripts/verify.ps1`.** The product feature (F-39 in `docs/knowledge-base/features/verify.md`) lives in `Pointframe.Cli/Verification/` with tests in `Pointframe.Tests/Cli/`; `pwsh scripts/verify.ps1` is only this repo's done-gate. For manual trials use an installed or copied CLI, never `Pointframe.Cli/bin`.
+- **`pointframe verify` is not `scripts/verify.ps1`.** The product feature (F-39 in `docs/knowledge-base/features/verify.md`) lives in `Pointframe.Cli/Verification/` with tests in `Pointframe.Agent.Tests/Cli/`; `pwsh scripts/verify.ps1` is only this repo's done-gate. For manual trials use an installed or copied CLI, never `Pointframe.Cli/bin`.
 
 ## Code Style
 

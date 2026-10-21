@@ -59,6 +59,24 @@
       "passSummary": "Release build of the test project and everything it references succeeded."
     },
     {
+      "id": "build-agent",
+      "exe": "dotnet",
+      "args": [
+        "build",
+        "Pointframe.Agent.Tests/Pointframe.Agent.Tests.csproj",
+        "--configuration",
+        "Release",
+        "--nologo",
+        "-v",
+        "q"
+      ],
+      "cwd": ".",
+      "timeoutMinutes": 30,
+      "dependsOn": [],
+      "parser": "dotnet-build",
+      "passSummary": "Release build of the agent test project (CLI and MCP) succeeded."
+    },
+    {
       "id": "format",
       "exe": "dotnet",
       "args": [
@@ -98,6 +116,32 @@
       ],
       "parser": "dotnet-test",
       "resultFile": "artifacts/verify/test-results/tests.trx",
+      "filterFlag": "--filter"
+    },
+    {
+      "id": "tests-agent",
+      "exe": "dotnet",
+      "args": [
+        "test",
+        "Pointframe.Agent.Tests/Pointframe.Agent.Tests.csproj",
+        "--configuration",
+        "Release",
+        "--no-build",
+        "--nologo",
+        "--filter",
+        "Category!=Integration",
+        "--logger",
+        "trx;LogFileName=tests-agent.trx",
+        "--results-directory",
+        "artifacts/verify/test-results"
+      ],
+      "cwd": ".",
+      "timeoutMinutes": 45,
+      "dependsOn": [
+        "build-agent"
+      ],
+      "parser": "dotnet-test",
+      "resultFile": "artifacts/verify/test-results/tests-agent.trx",
       "filterFlag": "--filter"
     },
     {
@@ -322,7 +366,8 @@
         "Pointframe.Engine/bin/Release",
         "Pointframe.Mcp/bin/Release",
         "Pointframe.Cli/bin/Release",
-        "Pointframe.Tests/bin/Release"
+        "Pointframe.Tests/bin/Release",
+        "Pointframe.Agent.Tests/bin/Release"
       ]
     },
     "doctor": true

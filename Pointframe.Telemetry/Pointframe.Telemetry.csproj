@@ -17,6 +17,7 @@
          It is empty in source, so source builds send nothing. -->
     <EmbeddedResource Include="telemetry.json" LogicalName="Pointframe.Telemetry.telemetry.json" />
     <InternalsVisibleTo Include="Pointframe.Tests" />
+    <InternalsVisibleTo Include="Pointframe.Agent.Tests" />
   </ItemGroup>
 
 </Project>

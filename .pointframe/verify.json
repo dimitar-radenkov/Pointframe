@@ -6,9 +6,11 @@
   },
   "gates": [
     { "id": "build", "run": "dotnet build Pointframe.Tests/Pointframe.Tests.csproj --configuration Release --nologo -v q" },
+    { "id": "build-agent", "run": "dotnet build Pointframe.Agent.Tests/Pointframe.Agent.Tests.csproj --configuration Release --nologo -v q" },
     { "id": "fixture", "run": "dotnet build Pointframe.DesktopTestFixture/Pointframe.DesktopTestFixture.csproj --configuration Release --nologo -v q" },
     { "id": "format", "run": "dotnet format Pointframe/Pointframe.csproj --verify-no-changes --no-restore" },
     { "id": "tests", "run": "dotnet test Pointframe.Tests/Pointframe.Tests.csproj --configuration Release --no-build --nologo --filter Category!=Integration", "timeoutMinutes": 30 },
+    { "id": "tests-agent", "run": "dotnet test Pointframe.Agent.Tests/Pointframe.Agent.Tests.csproj --configuration Release --no-build --nologo --filter Category!=Integration", "timeoutMinutes": 30 },
     { "id": "kb", "run": "pwsh -NoProfile -NonInteractive -File scripts/kb.ps1 check -NoFix" }
   ],
   "scenarios": [

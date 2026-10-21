@@ -8,6 +8,7 @@
     <Project Path="Pointframe/Pointframe.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="Pointframe.Agent.Tests/Pointframe.Agent.Tests.csproj" />
     <Project Path="Pointframe.AutomationTests/Pointframe.AutomationTests.csproj" />
     <Project Path="Pointframe.Tests/Pointframe.Tests.csproj" />
   </Folder>

@@ -46,15 +46,20 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Restore
-        # The test project references every product project; no need to restore the automation tests or the fixture.
-        run: dotnet restore Pointframe.Tests/Pointframe.Tests.csproj
+        # The desktop test project references every product project, the agent test project the CLI and MCP server only;
+        # no need to restore the automation tests or the fixture.
+        run: |
+          dotnet restore Pointframe.Tests/Pointframe.Tests.csproj
+          dotnet restore Pointframe.Agent.Tests/Pointframe.Agent.Tests.csproj
 
       - name: Build
-        run: dotnet build Pointframe.Tests/Pointframe.Tests.csproj --no-restore --configuration Release
+        run: |
+          dotnet build Pointframe.Tests/Pointframe.Tests.csproj --no-restore --configuration Release
+          dotnet build Pointframe.Agent.Tests/Pointframe.Agent.Tests.csproj --no-restore --configuration Release
 
       - name: MCP contract and discovery tests
         run: >
-          dotnet test Pointframe.Tests/Pointframe.Tests.csproj
+          dotnet test Pointframe.Agent.Tests/Pointframe.Agent.Tests.csproj
           --configuration Release
           --no-build
           --no-restore
@@ -66,6 +71,17 @@ jobs:
         # DesktopAutomation and InstallerSmoke run outside this workflow.
         run: >
           dotnet test Pointframe.Tests/Pointframe.Tests.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+          --verbosity normal
+          --filter "Category!=Integration"
+          --collect:"XPlat Code Coverage"
+          --results-directory coverage
+
+      - name: Test agent products with coverage
+        run: >
+          dotnet test Pointframe.Agent.Tests/Pointframe.Agent.Tests.csproj
           --configuration Release
           --no-build
           --no-restore
