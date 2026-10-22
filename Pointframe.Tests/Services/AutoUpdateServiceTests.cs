@@ -59,7 +59,7 @@ public sealed class AutoUpdateServiceTests
         using var subscription = eventAggregator.Subscribe<UpdateAvailableMessage>(recorder.HandleAsync);
 
         await sut.StartAsync(CancellationToken.None);
-        await Task.Delay(50);
+        await recorder.Received.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await sut.StopAsync(CancellationToken.None);
 
         Assert.NotNull(recorder.Message);
