@@ -86,7 +86,7 @@ ship    resumable, one repository-wide ship lock (git common dir <namespace>/shi
         so no step after it uses it.
         Without a remote ("repository": { "remote": null }) there is no fetch, no push, no pull request and no channels: base, pin, verify,
         record and qualify run as above (the rebase is onto the local base branch), then ship stops at the stage no-remote (exit 3, "no remote
-        is configured", nothing merged). `ship -LocalMerge` instead runs merge-pr.ps1 -LocalMerge -FromShip: the same receipt and review
+        is configured", nothing merged). `ship -LocalMerge` instead runs merge-pr.ps1 -LocalMerge -FromShip -ShipId <this package>: the same receipt and review
         checks as a merge through GitHub, the base branch fast-forwarded to the shipped head in the main checkout, the worktree and branch
         removed; stage merged, channels recorded as not configured.
 
@@ -4696,7 +4696,7 @@ function Step-ShipLocalMerge($Info)
     if ($evidence.Count) { return (Stop-Ship $Info 'ship-failed' 'merge' @{ status = 'failed'; head = $localHead; calls = $calls } "ERROR the evidence does not cover the head to be merged: $($evidence -join '; ')") }
     $mergePr = Resolve-ShipScript 'merge-pr' $MergePrScript (Join-Path $PSScriptRoot 'merge-pr.ps1')
     $log = Join-Path (Get-ShipPaths $Info).Dir "merge-$([guid]::NewGuid().ToString('N')).log"
-    $mergeArgs = @('-NoProfile', '-File', $mergePr, '-LocalMerge', '-FromShip', '-Worktree', $wt, '-Root', [string]$Info.MainCheckout)
+    $mergeArgs = @('-NoProfile', '-File', $mergePr, '-LocalMerge', '-FromShip', '-ShipId', $Id, '-Worktree', $wt, '-Root', [string]$Info.MainCheckout)
     Set-ShipStep $Info 'merge' @{ status = 'running'; local = $true; head = $localHead; calls = ($calls + 1) }
     Write-Host "ship: merge-pr.ps1 -LocalMerge (fast-forward $($script:Ctx.BaseRef) to $localHead)"
     $code = Invoke-Logged 'pwsh' $mergeArgs $Info.MainCheckout $log -Live
@@ -7751,7 +7751,7 @@ if (process.env.AW_PKG_TEST_JS_TREE) {
   out({ type: 'result', subtype: 'success', is_error: false, result: 'npm stub done, stdin chars ' + stdin.length, session_id: sid, usage: { input_tokens: 5, output_tokens: 1 } });
 }
 '@)
-                $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', $fakeShim)
+                $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', $fakeShim, '-ProbeSeconds', '60')
                 $state = & $stateFile 'cl'
                 $run = $state.runs[-1]
                 $npmReport = if ($run.artifacts -and $run.artifacts.outMd -and (Test-Path -LiteralPath $run.artifacts.outMd.path -PathType Leaf)) { Get-Content -LiteralPath $run.artifacts.outMd.path -Raw } else { $null }
@@ -7766,7 +7766,7 @@ if (process.env.AW_PKG_TEST_JS_TREE) {
                 # node's own children are in the job: a grandchild of node does not survive the timeout.
                 $env:AW_PKG_TEST_JS_TREE = '1'
                 Remove-Item -LiteralPath $env:AW_PKG_TEST_PIDFILE -ErrorAction SilentlyContinue
-                $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', $fakeShim, '-MaxMinutes', '0.15')
+                $r = & $pkg @('run', '-Id', 'cl', '-Executor', 'claude-sonnet', '-ClaudePath', $fakeShim, '-MaxMinutes', '0.15', '-ProbeSeconds', '60')
                 $state = & $stateFile 'cl'
                 $childPid = if (Test-Path $env:AW_PKG_TEST_PIDFILE) { [int](Get-Content $env:AW_PKG_TEST_PIDFILE -Raw).Trim() } else { 0 }
                 Start-Sleep -Milliseconds 500
