@@ -6,7 +6,7 @@ function Get-AwBase {
     # The base of the repository: the remote that holds it (or $null) and the branch name on it. A repository without a remote
     # says so with `"repository": { "remote": null }` and names a local branch in baseRef (for example "main", or "release/1").
     # Without the key the remote is read from baseRef ("origin/main" is remote origin, branch main); a baseRef without a slash
-    # keeps its old reading, remote origin.
+    # keeps its old reading, remote origin. An empty string is neither: it is refused (schema and here), not read as no remote.
     param(
         [Parameter(Mandatory)]
         [Collections.IDictionary]$Config
@@ -17,7 +17,9 @@ function Get-AwBase {
     $remote = $null
     if ($Config.repository.Contains('remote')) {
         $declared = $Config.repository['remote']
-        if ($null -ne $declared -and -not [string]::IsNullOrWhiteSpace([string]$declared)) { $remote = [string]$declared }
+        # The schema refuses an empty or blank string, and so does this reading: "no remote" is spelled null, nothing else.
+        if ($null -ne $declared -and [string]::IsNullOrWhiteSpace([string]$declared)) { throw 'repository.remote is an empty string: write null for a repository without a remote, or the name of the remote.' }
+        if ($null -ne $declared) { $remote = [string]$declared }
     }
     elseif ($slash -gt 0) { $remote = $baseRef.Substring(0, $slash) }
     else { $remote = 'origin' }

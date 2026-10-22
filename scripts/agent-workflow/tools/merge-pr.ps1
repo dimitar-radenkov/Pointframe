@@ -50,10 +50,15 @@ A repository without a remote ("repository": { "remote": null }, baseRef a local
 refuse at once (exit 2, "no remote is configured"), gh is not needed, and -PinOnly still works. -LocalMerge is the merge there, and it refuses
 with exit 2 when a remote is configured. It runs the very receipt and review checks of -Auto on the worktree's head (a complete passing verify
 receipt for exactly this head and tree, or for an ancestor whose only later change is the pin files; a passing review record; a candidate kit
-install never merges), checks that the base branch can be fast-forwarded to the head (exit 3 when it cannot), takes the exclusive main-sync lock,
+install never merges; a receipt made under other gates or verify.* settings, verify.environment included, than the main checkout's agent-workflow.json is refused: verify.ps1 reads them from the verified tree, so the receipt records their hash, inputs.configSha256;
+a branch that only adds gates is accepted, its configuration being read from the head commit; a PR that changes verify.* is not mergeable through the gate: it needs
+explicit owner approval, which the coordinator records in the review record's requirement text, is merged with the existing bypass (gh pr merge with a remote, a manual
+git merge without one), and verify.ps1 runs on the base immediately after), checks that the base branch can be fast-forwarded to the head (exit 3 when it cannot), takes the exclusive main-sync lock,
 refuses (exit 3, blockers named) unless the main checkout is on the base branch, clean, and no package run or review is active, then runs
 `git merge --ff-only` in the main checkout, removes the worktree and deletes the work branch. The merge commit is the head itself: nothing is
-squashed. A failed fast-forward exits 4. -FromShip says the caller (package.ps1 ship) holds the ship lock, which then does not count as a blocker.
+squashed. A failed fast-forward exits 4. -FromShip -ShipId <package id> says the caller is the ship of that package (package.ps1 ship passes its
+own id): only the ship lock held by that very package does not count as a blocker. A lock held by another package, or one whose holder record
+(<git common dir>/<namespace>/ship.json) names no package, is a blocker, and -FromShip without -ShipId is a bad argument (exit 2).
 
 The pin adapter (hooks.pin) is a repository script run with -Action Behind|Update|Validate -Root <worktree>. Behind: exit 0 not
 behind, 10 behind. Update: exit 0 already current, 10 updated and committed, 1 failed (it printed why). Validate: exit 0 valid;
@@ -78,6 +83,7 @@ param(
     [switch]$SyncMain,
     [switch]$LocalMerge,
     [switch]$FromShip,
+    [string]$ShipId,
     [string]$StatusId,
     [string]$Root,
     [switch]$SelfTest
@@ -194,7 +200,8 @@ function Test-ReceiptFixture
 
 function Update-Status([string]$Stage, [string]$Artifact, [string]$Blocker)
 {
-    if (-not $StatusId) { return }
+    # A dry run changes nothing, the status store included (a refusal of a dry run too).
+    if (-not $StatusId -or $DryRun) { return }
     $statusScript = Join-Path $PSScriptRoot 'status.ps1'
     # Success stages pass no blocker, which clears an earlier one ('none').
     $statusArguments = @('-NoProfile', '-File', $statusScript, '-Set', '-Id', $StatusId, '-Stage', $Stage)
@@ -334,7 +341,7 @@ function Invoke-MergedCleanup([string]$Branch, [string]$MainTree = (Get-MainTree
     Write-Host "Main checkout left at $($head.Trim()); $remote/$base is at $($remoteHead.Trim()). When no package is running, bring it up to date with: $(Get-SyncMainCommand)"
 }
 
-function Get-SyncMainBlockers([string]$MainTree, [string]$Base, [switch]$IgnoreShipLock)
+function Get-SyncMainBlockers([string]$MainTree, [string]$Base, [switch]$IgnoreShipLock, [string]$ShipId)
 {
     $blockers = [Collections.Generic.List[string]]::new()
 
@@ -382,7 +389,8 @@ function Get-SyncMainBlockers([string]$MainTree, [string]$Base, [switch]$IgnoreS
 
     # The work package runner keeps this file open with no sharing while a ship runs; a file nobody holds is a dead ship's leftover.
     $shipLock = Join-Path $common "$($script:Namespace)/ship.lock"
-    # -IgnoreShipLock (-LocalMerge -FromShip): the caller is that ship, so the held lock is expected; a lock nobody holds means no ship called.
+    # -IgnoreShipLock (-LocalMerge -FromShip -ShipId): the caller is the ship of package ShipId, so that ship's held lock is expected. A lock nobody
+    # holds means no ship called; a lock held by another package (ship.json names it), or whose holder record names nobody, is a blocker.
     $shipHeld = $false
     if (Test-Path -LiteralPath $shipLock -PathType Leaf)
     {
@@ -397,6 +405,22 @@ function Get-SyncMainBlockers([string]$MainTree, [string]$Base, [switch]$IgnoreS
         }
     }
     if ($IgnoreShipLock -and -not $shipHeld) { $blockers.Add("-FromShip was given but no ship holds the ship lock $shipLock") }
+    elseif ($IgnoreShipLock)
+    {
+        $holderPath = Join-Path $common "$($script:Namespace)/ship.json"
+        $holder = ''
+        try
+        {
+            if (Test-Path -LiteralPath $holderPath -PathType Leaf)
+            {
+                $record = Get-Content -LiteralPath $holderPath -Raw | ConvertFrom-Json
+                if ($record.PSObject.Properties['slug']) { $holder = [string]$record.slug }
+            }
+        }
+        catch { $holder = '' }
+        if ([string]::IsNullOrWhiteSpace($holder)) { $blockers.Add("the ship lock $shipLock is held, but its holder record $holderPath names no package, so it cannot be shown to be the ship of '$ShipId'") }
+        elseif ([string]::IsNullOrWhiteSpace($ShipId) -or $holder -cne $ShipId) { $blockers.Add("the ship lock $shipLock is held by the ship of package '$holder', not by '$ShipId' (-FromShip -ShipId)") }
+    }
     elseif (-not $IgnoreShipLock -and $shipHeld) { $blockers.Add("a ship is in flight (the ship lock $shipLock is held)") }
     $blockers.ToArray()
 }
@@ -1018,9 +1042,86 @@ function Test-MergeReceipt([string]$WorktreePath, [string]$PrHead)
     $core = Test-MergeReceiptCore $WorktreePath $PrHead
     if (-not $core.Ok) { return $core }
     $root = (Resolve-Path -LiteralPath $WorktreePath).Path
-    $gates = Test-ReceiptGates (Read-VerifyReceipt (Get-VerdictPath $root))
+    $receipt = Read-VerifyReceipt (Get-VerdictPath $root)
+    $gates = Test-ReceiptGates $receipt
     if (-not $gates.Ok) { return $gates }
+    $configuration = Test-ReceiptConfiguration $receipt $root $PrHead
+    if (-not $configuration.Ok) { return $configuration }
+    if ($configuration.PSObject.Properties['StrengthensOnly'] -and $configuration.StrengthensOnly) { return [pscustomobject]@{ Ok = $true; Reason = "$($core.Reason); $($configuration.Reason)" } }
     $core
+}
+
+function Test-ReceiptConfiguration($Receipt, [string]$Root, [string]$PrHead)
+{
+    # verify.ps1 reads the gates and verify.* (verify.environment included) from the tree it verifies, so a branch that edits its own
+    # agent-workflow.json would be verified under its own rules. The receipt records the hash of that configuration (inputs.configSha256);
+    # the merge gate compares it with the main checkout's, for every way a receipt can be accepted (exact head, same tree, pin-only ancestor).
+    # Gates may only be added (see below); a change to verify.* never passes the gate.
+    $expected = Get-AwVerifyConfigHash -Config $script:Ctx.Config
+    $recorded = if ($Receipt -and $Receipt.PSObject.Properties['inputs'] -and $Receipt.inputs.PSObject.Properties['configSha256']) { [string]$Receipt.inputs.configSha256 } else { '' }
+    if (-not $recorded)
+    {
+        return [pscustomobject]@{ Ok = $false; Reason = 'configuration mismatch (the receipt records no configSha256, so the gates and verify.environment it was made under are unknown; run verify.ps1 again)' }
+    }
+    if ($recorded -ceq $expected)
+    {
+        return [pscustomobject]@{ Ok = $true; Reason = 'the receipt was made under the configuration of the main checkout' }
+    }
+
+    # A branch that strengthens the gates is mergeable (Test-ReceiptGates, run before this, already proved the receipt holds every gate of the
+    # main checkout, each passed). Accept the receipt of the configuration committed at the PR head (git show, never the working tree) when
+    # its verify section is the main checkout's and its gates differ only by additions (checked below).
+    $refusal = "configuration mismatch (configSha256: the receipt was made under other gates or verify.* settings, verify.environment included, than the main checkout's agent-workflow.json; a change to verify.* is not mergeable through the gate and lands only by the documented owner-approved procedure; otherwise verify the branch again)"
+    $headConfig = $null
+    try
+    {
+        $text = (& git -C $Root show "${PrHead}:agent-workflow.json" 2>$null) -join "`n"
+        if ($LASTEXITCODE -eq 0 -and $text) { $headConfig = ConvertFrom-Json -InputObject $text -AsHashtable -Depth 100 }
+    }
+    catch { $headConfig = $null }
+    if (-not ($headConfig -is [Collections.IDictionary]))
+    {
+        return [pscustomobject]@{ Ok = $false; Reason = $refusal }
+    }
+    if ($recorded -cne (Get-AwVerifyConfigHash -Config $headConfig))
+    {
+        return [pscustomobject]@{ Ok = $false; Reason = $refusal }
+    }
+    $mainVerify = if ($script:Ctx.Config.Contains('verify')) { $script:Ctx.Config['verify'] } else { $null }
+    $headVerify = if ($headConfig.Contains('verify')) { $headConfig['verify'] } else { $null }
+    if ((ConvertTo-AwCanonicalJson $headVerify) -cne (ConvertTo-AwCanonicalJson $mainVerify))
+    {
+        return [pscustomobject]@{ Ok = $false; Reason = $refusal }
+    }
+
+    # Only additions: every gate record of the main checkout is in the head configuration unchanged (same id, equal canonical JSON), and no
+    # new head record resolves to a gate name the main checkout defines (a new record cannot shadow or replace a main gate).
+    $gateName = { param($record) if ($record.Contains('gate')) { [string]$record['gate'] } else { [string]$record['id'] } }
+    $mainRecords = @($script:Ctx.Config['gates'])
+    $headRecords = if ($headConfig.Contains('gates')) { @($headConfig['gates']) } else { @() }
+    $headById = @{}
+    foreach ($record in $headRecords) { if ($record -is [Collections.IDictionary] -and $record.Contains('id')) { $headById[[string]$record['id']] = $record } }
+    $mainNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($record in $mainRecords)
+    {
+        $id = [string]$record['id']
+        [void]$mainNames.Add((& $gateName $record))
+        if (-not $headById.ContainsKey($id) -or (ConvertTo-AwCanonicalJson $headById[$id]) -cne (ConvertTo-AwCanonicalJson $record))
+        {
+            return [pscustomobject]@{ Ok = $false; Reason = "configuration mismatch (the branch changes or removes the main checkout's gate '$id'; a branch may only add gates; a change to an existing gate is not mergeable through the gate and lands only by the documented owner-approved procedure)" }
+        }
+    }
+    $mainIds = @($mainRecords | ForEach-Object { [string]$_['id'] })
+    foreach ($record in $headRecords)
+    {
+        if ($record -isnot [Collections.IDictionary]) { return [pscustomobject]@{ Ok = $false; Reason = $refusal } }
+        if ($mainIds -ccontains [string]$record['id']) { continue }
+        if ($mainNames.Contains((& $gateName $record)))
+        {
+            return [pscustomobject]@{ Ok = $false; Reason = "configuration mismatch (the new gate record '$($record['id'])' resolves to the gate name '$(& $gateName $record)' that the main checkout defines; a branch may only add gates; this is not mergeable through the gate and lands only by the documented owner-approved procedure)" }
+        }
+    }
+    [pscustomobject]@{ Ok = $true; StrengthensOnly = $true; Reason = "the receipt was made under the configuration at the PR head, which differs from the main checkout's only by added gates; the branch strengthens gates only" }
 }
 function Push-PluginPin([string]$WorktreePath, [string]$PullRequest)
 {
@@ -1117,7 +1218,7 @@ function Invoke-LocalMerge([string]$WorktreePath, [switch]$Preview)
     catch { return (& $refuse 3 'LOCAL MERGE REFUSED' $_.Exception.Message) }
     try
     {
-        $blockers = @(Get-SyncMainBlockers $main $base -IgnoreShipLock:$FromShip)
+        $blockers = @(Get-SyncMainBlockers $main $base -IgnoreShipLock:$FromShip -ShipId $ShipId)
         if ($blockers.Count -gt 0)
         {
             Write-Host "${prefix}LOCAL MERGE REFUSED: the main checkout $main was not changed; $($blockers.Count) blocker(s):"
@@ -1156,6 +1257,7 @@ function Invoke-LocalMerge([string]$WorktreePath, [switch]$Preview)
 if ($LocalMerge)
 {
     if (-not $Worktree) { Write-Host 'ERROR merging requires -Worktree.'; exit 2 }
+    if ($FromShip -and [string]::IsNullOrWhiteSpace($ShipId)) { Write-Host 'ERROR -FromShip needs -ShipId <package id>: only the ship of that package may hold the ship lock for this merge.'; exit 2 }
     exit (Invoke-LocalMerge $WorktreeFull -Preview:$DryRun)
 }
 
