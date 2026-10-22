@@ -25,6 +25,7 @@ Every decision by date, whichever file holds it. The sections themselves are in 
 | 2026-10-15 | [D-016](#d-016-agents-follow-one-workflow-in-the-knowledge-base) | Agents follow one workflow in the knowledge base |
 | 2026-10-15 | [D-017](features/telemetry.md#d-017-agent-outcomes-separate-failing-verdicts-and-invalid-input) | Agent outcomes separate failing verdicts and invalid input |
 | 2026-10-21 | [D-018](#d-018-one-repository-with-two-release-trains-screen-explainer-separate) | One repository with two release trains; Screen Explainer separate |
+| 2026-10-21 | [D-019](#d-019-desktop-owns-github-latest-agents-discover-releases-through-the-api) | Desktop owns GitHub Latest; agents discover releases through the API |
 
 ## D-001 MVVM plus DI is the composition model
 
@@ -133,3 +134,28 @@ Decided 2026-10-21, by the owner, after a Claude-Codex consultation on repositor
 **Alternatives rejected.** A separate CLI/MCP repository: it would turn Engine and Data project references into packages, replace atomic changes with coordinated releases, and move release URLs, plugin pins, and registry publication, with no operational benefit the release trains do not already bring. Screen Explainer as a folder in Pointframe: a third release train, scoped privacy rules, and an import of history that must first be cleaned of private window titles. A shared NuGet package of `Pointframe.Engine`: it keeps the broad dependencies and adds API compatibility and publishing obligations.
 
 **Files.** `.github/workflows/cd.yml`, `Pointframe/Services/Update/GitHubUpdateService.cs`, `Pointframe.Tests/Pointframe.Tests.csproj`, `Pointframe.slnx`, `docs/knowledge-base/features/cli-mcp.md`, `docs/knowledge-base/features/verify.md`.
+
+## D-019 Desktop owns GitHub Latest; agents discover releases through the API
+
+Decided 2026-10-21, by the owner, on the release-trains design that D-018 required (a two-round Claude-Codex debate and a heavy review). Approved, not yet implemented: publishing changes only through the migration below.
+
+**Context.** Every merge cuts one release carrying everything (about 39 releases from 2026-10-16 to 2026-10-21). Desktop users download and install updates for agent-only changes, and every agent change waits for desktop qualification. Two kinds of installed clients cannot learn a new contract until they update: desktop updaters (`GitHubUpdateService`) read `releases/latest`, parse only numeric `v<version>` tags, and need a `Pointframe-*-Setup.exe` asset there; released CLIs fetch their MCP bundle from their own version's release (`GitHubMcpPackageSource`). About 30 repository files, the MCP guide inside released binaries, and agents' own instructions use the `releases/latest/download` aliases.
+
+**Decision.**
+
+- Two trains: desktop (installer, in-app updater, winget `DimitarRadenkov.Pointframe`) and agent (CLI zip, MCP bundle, MCP Registry, winget `DimitarRadenkov.Pointframe.Cli`, plugin pin). The CLI and MCP stay paired.
+- The desktop train owns GitHub Latest permanently. Agent releases are created and updated with an explicit `make_latest=false`; a desktop release takes Latest only when its version is above the highest published desktop version. After every publication a check asserts Latest is a desktop tag with a matching installer, re-marks it if not, and alerts.
+- Numeric `v<version>` tags from one shared version sequence; each train takes an increasing subsequence, gaps are harmless, and a version is never published twice. No tag prefixes.
+- `release-impact.ps1` becomes a machine-readable release plan per merge that separates which trains ship from which qualification is required; unknown paths fail closed, and each train compares against its last successful release. A release-marker file forces a desktop release.
+- New agent install and update code, the plugin skill and onboarding find the newest complete CLI and MCP pair through the GitHub Releases API (highest numeric version, versioned assets with hashes), called only on explicit install or update. Released CLIs keep fetching the MCP of their own version. No new endpoint.
+- Every desktop release carries the stable agent aliases of the last qualified agent pair, copied byte for byte; published aliases are never replaced in place and versioned assets stay forever. The aliases may lag the newest agent release: a security fix (a `security` label the coordinator puts on the PR) within 24 hours, best effort; any other agent release within 7 days. A scheduled check only alerts, and the coordinator opens a refresh PR through the normal serial merge.
+- Every agent build gets headless checks; interactive desktop qualification stays required by risk (UI automation, capture and input, native dependencies, Engine and Data, relevant packaging). Until a reviewed rule says otherwise, today's qualification rule holds.
+- Telemetry and privacy do not change.
+
+**Migration.** PR 1 records this decision. PR 2a adds the release plan, explicit `make_latest` with the Latest check, and per-train receipts while combined releases continue, and proves `make_latest=false` with one guarded real release. PR 2b moves the readers to the Releases API. PR 3 starts selective publication, alias carry-forward and the lag alert, and changes the "every merge cuts a release" rule in the [Agent workflow](workflow.md#pr-and-merge). PR 3 is the point of no return: from then on automation cannot assume every product exists at every version, and shipped defects roll forward. The owner is notified before it merges.
+
+**Consequences.** About one extra desktop release a week while agent work is active, to refresh the aliases. Released readers make the versioned asset names permanent. If PR 3 slips, batching (one combined release a day or on demand) is the fallback.
+
+**Alternatives rejected.** Tag prefixes (`desktop-v*`, `agent-v*`): installed updaters read them as version 0.0.0. Carrying the installer under every agent tag: old updaters re-offer the same build. A discovery pointer file on a branch or Pages: a new endpoint to keep forever, deferred until API rate limits bite. Refreshing aliases in place: not atomic across the zip, its hash and the bundle, and it breaks the pinned URLs of released CLIs. A scheduled job that releases on its own: it bypasses the serial merge. Separate version streams: more configuration and no discovery gain.
+
+**Files.** `.github/workflows/cd.yml`, `scripts/release-impact.ps1`, `scripts/check-release-channels.ps1`, `Pointframe/Services/Update/GitHubUpdateService.cs`, `Pointframe/Services/Update/UpdateOfferPolicy.cs`, `Pointframe.Cli/McpManagement/GitHubMcpPackageSource.cs`.
