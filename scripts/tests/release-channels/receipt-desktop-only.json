@@ -28,11 +28,11 @@
     "observed": {
       "release": {
         "desktop": {
-          "exists": true, "draft": false, "cdConclusion": "success", "cdStatus": "completed",
+          "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "cdConclusion": "success", "cdStatus": "completed",
           "assets": ["Pointframe-6.7.91-x64-Setup.exe"],
           "digests": { "Pointframe-6.7.91-x64-Setup.exe": "1111111111111111111111111111111111111111111111111111111111111111" }
         },
-        "agent": { "exists": true, "draft": false, "assets": ["would-be-ignored"], "cdConclusion": "success", "cdStatus": "completed" }
+        "agent": { "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "assets": ["would-be-ignored"], "cdConclusion": "success", "cdStatus": "completed" }
       },
       "winget": {
         "DimitarRadenkov.Pointframe": { "workflowConclusion": "success", "prState": "merged" },

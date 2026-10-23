@@ -28,7 +28,7 @@
     "observed": {
       "release": {
         "desktop": {
-          "exists": true, "draft": false, "assets": ["Pointframe-6.7.94-x64-Setup.exe"], "cdConclusion": "success", "cdStatus": "completed",
+          "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "assets": ["Pointframe-6.7.94-x64-Setup.exe"], "cdConclusion": "success", "cdStatus": "completed",
           "digests": { "Pointframe-6.7.94-x64-Setup.exe": "9999999999999999999999999999999999999999999999999999999999999999" }
         }
       },

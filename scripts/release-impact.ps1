@@ -217,6 +217,12 @@ function New-ReleasePlan
 
     if ($null -ne $Releases)
     {
+        $unclassified = [System.Collections.Generic.List[string]]::new()
+        foreach ($path in $classification.Unclassified)
+        {
+            $unclassified.Add($path)
+        }
+
         $perTrain = [ordered]@{}
         foreach ($train in @('desktop', 'agent'))
         {
@@ -230,6 +236,14 @@ function New-ReleasePlan
             $tag = [string]$baseline.tag_name
             $sincePaths = @(& $GetPathsSince $tag)
             $sinceClass = Get-Classification $sincePaths
+            foreach ($path in $sinceClass.Unclassified)
+            {
+                if ($path -notin $unclassified)
+                {
+                    $unclassified.Add($path)
+                }
+            }
+
             $mine = @($sinceClass.Paths | Where-Object { $train -in (Get-ClassTrains $_.Class) } | ForEach-Object { $_.Path })
             $perTrain[$train] = [ordered]@{
                 baseline = $tag
@@ -240,6 +254,7 @@ function New-ReleasePlan
         }
 
         $plan['perTrain'] = $perTrain
+        $plan['unclassifiedPaths'] = $unclassified.ToArray()
     }
 
     return $plan
@@ -307,9 +322,9 @@ function Write-ImpactLines
 function Invoke-Self
 {
     # Runs this script as a child process; returns the output lines and the exit code.
-    param([string[]]$Arguments)
+    param([string[]]$Arguments, [string]$WorkingDirectory = $script:RepositoryRoot)
 
-    Push-Location $script:RepositoryRoot
+    Push-Location $WorkingDirectory
     try
     {
         $lines = @(& pwsh -NoProfile -File $PSCommandPath @Arguments 2>&1 | ForEach-Object { "$_" })
@@ -460,6 +475,58 @@ function Test-PlanFixture
     }
 }
 
+function Test-UnclassifiedBaselineDiff
+{
+    $fixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'tests/release-impact/plan-unclassified-in-baseline-diff.json') -Raw | ConvertFrom-Json
+    $diffs = $fixture.diffsSinceTag
+    $provider = { param([string]$Tag) @($diffs.$Tag) }.GetNewClosure()
+    $plan = New-ReleasePlan -Base 'b' -Head 'h' -ChangedPaths @($fixture.changed) -Releases @($fixture.releases) -GetPathsSince $provider
+    $wanted = @($fixture.expected.unclassified)
+    if (($plan.unclassifiedPaths -join '|') -ne ($wanted -join '|'))
+    {
+        throw "plan-unclassified-in-baseline-diff: unclassifiedPaths expected [$($wanted -join ', ')], got [$($plan.unclassifiedPaths -join ', ')]."
+    }
+
+    if ($plan.perTrain['desktop'].selected -ne [bool]$fixture.expected.desktopSelected -or $plan.perTrain['agent'].selected -ne [bool]$fixture.expected.agentSelected)
+    {
+        throw 'plan-unclassified-in-baseline-diff: the selected trains differ from the fixture.'
+    }
+
+    $repository = Join-Path ([IO.Path]::GetTempPath()) "release-impact-git-$([guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Path $repository -Force | Out-Null
+    try
+    {
+        $git = { & git -C $repository -c user.name=selftest -c user.email=selftest@example.invalid -c commit.gpgsign=false -c core.autocrlf=false @args 2>&1 | Out-Null; if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') failed in the self-test repository." } }
+        $commit = {
+            param([string]$Path, [string]$Message)
+            $target = Join-Path $repository $Path
+            New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
+            Set-Content -LiteralPath $target -Value $Message
+            & $git @('add', '--', $Path)
+            & $git @('commit', '-m', $Message)
+        }
+        & $git @('init', '-q')
+        & $commit 'docs/start.md' 'start'
+        & $git @('tag', 'v6.7.10')
+        & $commit 'new-shipping-library/Code.cs' 'unclassified code'
+        & $commit 'docs/desktop-only.md' 'desktop-only release'
+        & $git @('tag', 'v6.7.12')
+        & $commit 'docs/a.md' 'docs'
+
+        $releasesFile = Join-Path $repository 'releases.json'
+        ConvertTo-Json -InputObject @($fixture.releases) -Depth 8 | Set-Content -LiteralPath $releasesFile
+        $run = Invoke-Self @('-Base', 'v6.7.12', '-Head', 'HEAD', '-ReleasesFile', $releasesFile) $repository
+        if ($run.ExitCode -ne 3 -or 'UNCLASSIFIED new-shipping-library/Code.cs' -notin $run.Lines -or 'desktop-qualification: not-required' -notin $run.Lines)
+        {
+            throw "an unclassified path in a baseline diff must print UNCLASSIFIED and exit 3 (exit $($run.ExitCode): $($run.Lines -join ' | '))."
+        }
+    }
+    finally
+    {
+        Remove-Item -LiteralPath $repository -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Test-OutputContract
 {
     $qualification = '^desktop-qualification:\s*(required|not-required)\s*$'
@@ -562,9 +629,10 @@ if ($SelfTest)
     $classificationCases = Test-ClassificationFixture
     $baselineFixtures = Test-BaselineFixtures
     Test-PlanFixture
+    Test-UnclassifiedBaselineDiff
     Test-OutputContract
     $trackedPaths = Test-TrackedTree
-    Write-Host "release-impact self-test passed: $qualificationCases qualification cases, $classificationCases class cases, $baselineFixtures baseline fixtures, per-train plan, output contract, $trackedPaths tracked paths classified."
+    Write-Host "release-impact self-test passed: $qualificationCases qualification cases, $classificationCases class cases, $baselineFixtures baseline fixtures, per-train plan, unclassified path in a baseline diff, output contract, $trackedPaths tracked paths classified."
     exit 0
 }
 

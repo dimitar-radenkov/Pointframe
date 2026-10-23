@@ -31,8 +31,9 @@ channels are github-release:desktop, github-release:agent, winget:<id>, mcp-regi
 unselected train is `not-applicable` (never pending, never failed, and never a substitute for a channel of a selected
 train); desktop = the installer and winget DimitarRadenkov.Pointframe, agent = the CLI zip, MCPB, winget
 DimitarRadenkov.Pointframe.Cli, MCP Registry and plugin pin. A receipt that records a failed publication fails its
-github-release channel, and an asset whose SHA-256 differs from the receipt fails it too (compared when GitHub reports an
-asset digest). The plugin-pin predecessor is the previous release of the agent train. Without -Receipt nothing changes.
+github-release channel, and so does a release that reports another commit than the receipt (the CD and Winget runs are
+looked up for the receipt commit only) or an asset whose SHA-256 differs from the receipt (compared when GitHub reports
+an asset digest). The plugin-pin predecessor is the previous release of the agent train. Without -Receipt nothing changes.
 
 Exit codes: 0 every channel accepted, skipped or not applicable, 1 any failed, 2 bad arguments (including an invalid
 receipt), 3 something still pending or submitted.
@@ -324,6 +325,17 @@ function Resolve-TrainReleaseChannel
         return New-Channel $name 'pending' 'the release receipt records this train as a draft'
     }
 
+    if ([bool](Get-Opt $Observed 'exists' $false))
+    {
+        $receiptCommit = [string](Get-Opt $TrainReceipt 'commit' '')
+        $releaseCommit = [string](Get-Opt $Observed 'commit' '')
+        if ($releaseCommit -cne $receiptCommit)
+        {
+            $shown = if ($releaseCommit) { $releaseCommit } else { 'no full commit SHA' }
+            return New-Channel $name 'failed' "the release reports $shown, the receipt has commit $receiptCommit"
+        }
+    }
+
     $receiptAssets = @(Get-Opt $TrainReceipt 'assets' @())
     $releaseInput = [pscustomobject]@{
         exists = [bool](Get-Opt $Observed 'exists' $false)
@@ -557,6 +569,19 @@ function Test-ChannelFixtures
                     if ($null -eq $channel -or $channel.state -ne $entry.Value)
                     {
                         throw "$($file.Name): channel '$($entry.Name)' expected '$($entry.Value)', got '$(if ($null -eq $channel) { 'missing' } else { "$($channel.state) ($($channel.detail))" })'."
+                    }
+                }
+
+                $details = Get-Opt $fixture 'expectedDetails' $null
+                if ($null -ne $details)
+                {
+                    foreach ($entry in @($details.PSObject.Properties))
+                    {
+                        $channel = $channels | Where-Object { $_.name -eq $entry.Name } | Select-Object -First 1
+                        if ($null -eq $channel -or $channel.detail -notlike "*$($entry.Value)*")
+                        {
+                            throw "$($file.Name): channel '$($entry.Name)' expected detail containing '$($entry.Value)', got '$(if ($null -eq $channel) { 'missing' } else { $channel.detail })'."
+                        }
                     }
                 }
 
@@ -832,20 +857,18 @@ function Get-PluginPinVersion
 function Get-ReleaseObservation
 {
     # The release and its commit anchor everything else: the CD and Winget runs are the ones for that commit.
-    # KnownSha (from a receipt) stands in when the release does not report its commit.
+    # KnownSha (the commit of a receipt) is authoritative: the runs are looked up for it only, and the caller compares
+    # it with the commit the release reports (ReleaseCommit). Without it the release's own commit anchors the runs.
     param([string]$Version, [string]$KnownSha = '')
 
     $release = Invoke-GhJson @('release', 'view', "v$Version", '--repo', $script:Repository, '--json', 'isDraft,targetCommitish,assets')
-    $sha = ''
+    $releaseCommit = ''
     if ($null -ne $release)
     {
-        $sha = [string]$release.targetCommitish
+        $releaseCommit = [string]$release.targetCommitish
     }
 
-    if ($sha -notmatch '^[0-9a-f]{40}$' -and $KnownSha)
-    {
-        $sha = $KnownSha
-    }
+    $sha = if ($KnownSha) { $KnownSha } else { $releaseCommit }
 
     $cdRun = $null
     if ($sha -match '^[0-9a-f]{40}$')
@@ -869,7 +892,7 @@ function Get-ReleaseObservation
         $cdDetails = Invoke-GhJson @('run', 'view', [string]$cdRun.databaseId, '--repo', $script:Repository, '--json', 'jobs')
     }
 
-    return [pscustomobject]@{ Release = $release; Sha = $sha; CdRun = $cdRun; CdDetails = $cdDetails }
+    return [pscustomobject]@{ Release = $release; Sha = $sha; ReleaseCommit = $releaseCommit; CdRun = $cdRun; CdDetails = $cdDetails }
 }
 
 function Get-WingetRunObservation
@@ -1037,6 +1060,7 @@ function Get-ReceiptChannels
         $observed.release[$train] = [pscustomobject]@{
             exists = ($null -ne $observation.Release)
             draft = [bool](Get-Opt $observation.Release 'isDraft' $false)
+            commit = $observation.ReleaseCommit
             assets = @(Get-Opt $observation.Release 'assets' @() | ForEach-Object { $_.name })
             digests = [pscustomobject]$digests
             cdConclusion = [string](Get-Opt $observation.CdRun 'conclusion' '')

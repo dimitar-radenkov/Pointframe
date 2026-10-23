@@ -30,8 +30,8 @@
     },
     "observed": {
       "release": {
-        "desktop": { "exists": true, "draft": false, "assets": ["Pointframe-6.7.93-x64-Setup.exe"], "cdConclusion": "success", "cdStatus": "completed" },
-        "agent": { "exists": true, "draft": false, "assets": ["Pointframe.Cli-6.7.93-win-x64.zip"], "cdConclusion": "success", "cdStatus": "completed" }
+        "desktop": { "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "assets": ["Pointframe-6.7.93-x64-Setup.exe"], "cdConclusion": "success", "cdStatus": "completed" },
+        "agent": { "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "assets": ["Pointframe.Cli-6.7.93-win-x64.zip"], "cdConclusion": "success", "cdStatus": "completed" }
       },
       "winget": {
         "DimitarRadenkov.Pointframe": null,

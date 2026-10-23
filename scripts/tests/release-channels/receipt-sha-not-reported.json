@@ -27,7 +27,7 @@
     },
     "observed": {
       "release": {
-        "desktop": { "exists": true, "draft": false, "assets": ["Pointframe-6.7.95-x64-Setup.exe"], "cdConclusion": "success", "cdStatus": "completed" }
+        "desktop": { "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "assets": ["Pointframe-6.7.95-x64-Setup.exe"], "cdConclusion": "success", "cdStatus": "completed" }
       },
       "winget": { "DimitarRadenkov.Pointframe": { "workflowConclusion": "success", "prState": "merged" } }
     }
