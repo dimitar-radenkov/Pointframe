@@ -151,7 +151,7 @@ When runtime behavior changes, run the real app: `pwsh scripts/desktop-tests.ps1
 <!-- /slot:closure-ref -->
 
 <!-- slot:closure-triggers -->
-At package end, end of day, the first context compaction, or a measured 150K context, whichever comes first
+The owner lifted that limit on 2026-10-23: after a package ends and its checkpoint is written, the same session may start the next package. At end of day, the first context compaction, or a measured 150K context, whichever comes first
 <!-- /slot:closure-triggers -->
 
 <!-- slot:planned-store -->
