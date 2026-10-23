@@ -1,0 +1,52 @@
+{
+  "file": "receipt-agent-only.json",
+  "kind": "receipt",
+  "expected": "pending",
+  "expectedChannels": {
+    "github-release:desktop": "not-applicable",
+    "github-release:agent": "accepted",
+    "winget:DimitarRadenkov.Pointframe": "not-applicable",
+    "winget:DimitarRadenkov.Pointframe.Cli": "accepted",
+    "mcp-registry": "accepted",
+    "plugin-pin": "pending"
+  },
+  "input": {
+    "wingetIds": ["DimitarRadenkov.Pointframe", "DimitarRadenkov.Pointframe.Cli"],
+    "receipt": {
+      "schemaVersion": 1,
+      "repository": "dimitar-radenkov/Pointframe",
+      "createdUtc": "2026-10-23T10:00:00Z",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "trains": {
+        "desktop": { "selected": false },
+        "agent": {
+          "selected": true, "version": "6.7.92", "tag": "v6.7.92", "commit": "0123456789abcdef0123456789abcdef01234567", "publication": "published",
+          "assets": [
+            { "name": "Pointframe.Cli-6.7.92-win-x64.zip", "sha256": "2222222222222222222222222222222222222222222222222222222222222222" },
+            { "name": "Pointframe.Cli-6.7.92-win-x64.zip.sha256", "sha256": null },
+            { "name": "Pointframe.Mcp-6.7.92-win-x64.mcpb", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" }
+          ]
+        }
+      }
+    },
+    "observed": {
+      "release": {
+        "desktop": { "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "assets": ["Pointframe-6.7.92-x64-Setup.exe"], "cdConclusion": "success", "cdStatus": "completed" },
+        "agent": {
+          "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "cdConclusion": "success", "cdStatus": "completed",
+          "assets": ["Pointframe.Cli-6.7.92-win-x64.zip", "Pointframe.Cli-6.7.92-win-x64.zip.sha256", "Pointframe.Mcp-6.7.92-win-x64.mcpb"],
+          "digests": {
+            "Pointframe.Cli-6.7.92-win-x64.zip": "2222222222222222222222222222222222222222222222222222222222222222",
+            "Pointframe.Mcp-6.7.92-win-x64.mcpb": "4444444444444444444444444444444444444444444444444444444444444444"
+          }
+        }
+      },
+      "winget": {
+        "DimitarRadenkov.Pointframe": { "workflowConclusion": "success", "prState": "merged" },
+        "DimitarRadenkov.Pointframe.Cli": { "workflowConclusion": "success", "prState": "merged" }
+      },
+      "registry": { "publishFailed": false, "versionPresent": true },
+      "plugin": { "current": "6.7.89", "previous": "6.7.89" }
+    }
+  }
+}

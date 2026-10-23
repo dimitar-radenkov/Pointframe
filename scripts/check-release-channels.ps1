@@ -25,7 +25,18 @@ Channels:
   plugin-pin      plugin/pointframe/server.lock.json on master: == x accepted, == previous release pending (the next merged
                   PR pins it), older failed.
 
-Exit codes: 0 every channel accepted or skipped, 1 any failed, 2 bad arguments, 3 something still pending or submitted.
+With -Receipt <release-plan.json> (written by CD through scripts/write-release-receipt.ps1) the check follows the release
+trains instead of assuming one version everywhere. Versions, tags and commits come from the receipt per train; the
+channels are github-release:desktop, github-release:agent, winget:<id>, mcp-registry and plugin-pin. A channel of an
+unselected train is `not-applicable` (never pending, never failed, and never a substitute for a channel of a selected
+train); desktop = the installer and winget DimitarRadenkov.Pointframe, agent = the CLI zip, MCPB, winget
+DimitarRadenkov.Pointframe.Cli, MCP Registry and plugin pin. A receipt that records a failed publication fails its
+github-release channel, and so does a release that reports another commit than the receipt (the CD and Winget runs are
+looked up for the receipt commit only) or an asset whose SHA-256 differs from the receipt (compared when GitHub reports
+an asset digest). The plugin-pin predecessor is the previous release of the agent train. Without -Receipt nothing changes.
+
+Exit codes: 0 every channel accepted, skipped or not applicable, 1 any failed, 2 bad arguments (including an invalid
+receipt), 3 something still pending or submitted.
 #>
 [CmdletBinding()]
 param(
@@ -34,12 +45,15 @@ param(
     [int]$TimeoutMinutes = 60,
     [int]$PollSeconds = 60,
     [string]$OutDirectory,
+    [string]$Receipt,
     [switch]$SelfTest
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
+
+. (Join-Path $PSScriptRoot 'release-model.ps1')
 
 $script:RepositoryRoot = Split-Path $PSScriptRoot -Parent
 $script:Repository = 'dimitar-radenkov/Pointframe'
@@ -274,6 +288,178 @@ function Get-ErrorLine
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
+# Release receipt: pure channel decisions per train. Observed holds what the live layer collected for the selected trains
+# only (release.<train>, winget.<id>, registry, plugin); an unselected train is never looked at.
+# ---------------------------------------------------------------------------------------------------------------------
+
+function Get-ChannelTrain
+{
+    param([string]$ChannelName)
+
+    if ($ChannelName -match '^github-release:(desktop|agent)$')
+    {
+        return $Matches[1]
+    }
+
+    if ($ChannelName -match '^winget:.*\.Cli$' -or $ChannelName -in @('mcp-registry', 'plugin-pin'))
+    {
+        return 'agent'
+    }
+
+    return 'desktop'
+}
+
+function Resolve-TrainReleaseChannel
+{
+    param([string]$Train, $TrainReceipt, $Observed)
+
+    $name = "github-release:$Train"
+    $publication = [string](Get-Opt $TrainReceipt 'publication' '')
+    if ($publication -eq 'failed')
+    {
+        return New-Channel $name 'failed' 'the release receipt records a failed publication for this train'
+    }
+
+    if ($publication -eq 'draft')
+    {
+        return New-Channel $name 'pending' 'the release receipt records this train as a draft'
+    }
+
+    if ([bool](Get-Opt $Observed 'exists' $false))
+    {
+        $receiptCommit = [string](Get-Opt $TrainReceipt 'commit' '')
+        $releaseCommit = [string](Get-Opt $Observed 'commit' '')
+        if ($releaseCommit -cne $receiptCommit)
+        {
+            $shown = if ($releaseCommit) { $releaseCommit } else { 'no full commit SHA' }
+            return New-Channel $name 'failed' "the release reports $shown, the receipt has commit $receiptCommit"
+        }
+    }
+
+    $receiptAssets = @(Get-Opt $TrainReceipt 'assets' @())
+    $releaseInput = [pscustomobject]@{
+        exists = [bool](Get-Opt $Observed 'exists' $false)
+        draft = [bool](Get-Opt $Observed 'draft' $false)
+        assets = @(Get-Opt $Observed 'assets' @())
+        expectedAssets = @($receiptAssets | ForEach-Object { $_.name })
+        cdConclusion = [string](Get-Opt $Observed 'cdConclusion' '')
+        cdStatus = [string](Get-Opt $Observed 'cdStatus' '')
+    }
+    $channel = Resolve-ReleaseChannel $releaseInput
+    $channel.name = $name
+    if ($channel.state -ne 'accepted')
+    {
+        return $channel
+    }
+
+    $digests = Get-Opt $Observed 'digests' $null
+    $compared = 0
+    $unknown = 0
+    foreach ($asset in $receiptAssets)
+    {
+        $expected = [string](Get-Opt $asset 'sha256' '')
+        if (-not $expected)
+        {
+            $unknown++
+            continue
+        }
+
+        $actual = if ($null -eq $digests) { '' } else { [string](Get-Opt $digests $asset.name '') }
+        if (-not $actual)
+        {
+            $unknown++
+            continue
+        }
+
+        if ($actual -ne $expected)
+        {
+            return New-Channel $name 'failed' "asset $($asset.name) has SHA-256 $actual on the release, the receipt has $expected"
+        }
+
+        $compared++
+    }
+
+    $note = if ($unknown -eq 0) { "SHA-256 of all $compared assets matches the receipt" } else { "SHA-256 matched for $compared assets; $unknown not compared (no digest in the receipt or on the release)" }
+    return New-Channel $name 'accepted' "$($channel.detail); $note"
+}
+
+function Resolve-ReceiptChannels
+{
+    param($Receipt, $Observed, [string[]]$WingetIds)
+
+    $selected = @{}
+    foreach ($train in @('desktop', 'agent'))
+    {
+        $selected[$train] = [bool]$Receipt.trains.$train.selected
+    }
+
+    $channels = [System.Collections.Generic.List[object]]::new()
+    $notApplicable = {
+        param([string]$Name)
+        $train = Get-ChannelTrain $Name
+        New-Channel $Name 'not-applicable' "the $train train is not part of this release"
+    }
+
+    foreach ($train in @('desktop', 'agent'))
+    {
+        $name = "github-release:$train"
+        if (-not $selected[$train])
+        {
+            $channels.Add((& $notApplicable $name))
+            continue
+        }
+
+        $channels.Add((Resolve-TrainReleaseChannel $train $Receipt.trains.$train (Get-Opt (Get-Opt $Observed 'release' $null) $train $null)))
+    }
+
+    foreach ($id in $WingetIds)
+    {
+        $name = "winget:$id"
+        if (-not $selected[(Get-ChannelTrain $name)])
+        {
+            $channels.Add((& $notApplicable $name))
+            continue
+        }
+
+        $package = Get-Opt (Get-Opt $Observed 'winget' $null) $id $null
+        if ($null -eq $package)
+        {
+            $channels.Add((New-Channel $name 'pending' 'no Winget Release run for the release commit yet'))
+            continue
+        }
+
+        $withName = $package | ConvertTo-Json -Depth 4 | ConvertFrom-Json
+        $withName | Add-Member -NotePropertyName name -NotePropertyValue $name -Force
+        $channels.Add((Resolve-WingetChannel $withName))
+    }
+
+    if ($selected['agent'])
+    {
+        $channels.Add((Resolve-RegistryChannel (Get-Opt $Observed 'registry' ([pscustomobject]@{ publishFailed = $false; versionPresent = $false }))))
+        $pin = Get-Opt $Observed 'plugin' $null
+        if ($null -eq $pin)
+        {
+            $channels.Add((New-Channel 'plugin-pin' 'pending' 'could not read plugin/pointframe/server.lock.json from master'))
+        }
+        else
+        {
+            $channels.Add((Resolve-PluginChannel ([pscustomobject]@{
+                version = $Receipt.trains.agent.version
+                current = $pin.current
+                previous = (Get-Opt $pin 'previous' '')
+            })))
+        }
+    }
+    else
+    {
+        $channels.Add((& $notApplicable 'mcp-registry'))
+        $channels.Add((& $notApplicable 'plugin-pin'))
+    }
+
+    return $channels.ToArray()
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
 # Repository facts read from the checkout, so the check follows the workflows instead of repeating their lists.
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -362,6 +548,55 @@ function Test-ChannelFixtures
             'registry' { $got = Resolve-RegistryChannel $fixture.input }
             'plugin' { $got = Resolve-PluginChannel $fixture.input }
             'errorline' { $got = New-Channel 'errorline' 'extracted' (Get-ErrorLine @($fixture.input.log)) }
+            'receipt'
+            {
+                $problems = @(Test-ReleaseReceipt $fixture.input.receipt)
+                if ($problems.Count -gt 0)
+                {
+                    throw "$($file.Name): the fixture receipt is invalid: $($problems -join '; ')."
+                }
+
+                $channels = @(Resolve-ReceiptChannels $fixture.input.receipt $fixture.input.observed @($fixture.input.wingetIds))
+                $wanted = @($fixture.expectedChannels.PSObject.Properties)
+                if ($channels.Count -ne $wanted.Count)
+                {
+                    throw "$($file.Name): expected $($wanted.Count) channels, got $($channels.Count): $(($channels | ForEach-Object { $_.name }) -join ', ')."
+                }
+
+                foreach ($entry in $wanted)
+                {
+                    $channel = $channels | Where-Object { $_.name -eq $entry.Name } | Select-Object -First 1
+                    if ($null -eq $channel -or $channel.state -ne $entry.Value)
+                    {
+                        throw "$($file.Name): channel '$($entry.Name)' expected '$($entry.Value)', got '$(if ($null -eq $channel) { 'missing' } else { "$($channel.state) ($($channel.detail))" })'."
+                    }
+                }
+
+                $details = Get-Opt $fixture 'expectedDetails' $null
+                if ($null -ne $details)
+                {
+                    foreach ($entry in @($details.PSObject.Properties))
+                    {
+                        $channel = $channels | Where-Object { $_.name -eq $entry.Name } | Select-Object -First 1
+                        if ($null -eq $channel -or $channel.detail -notlike "*$($entry.Value)*")
+                        {
+                            throw "$($file.Name): channel '$($entry.Name)' expected detail containing '$($entry.Value)', got '$(if ($null -eq $channel) { 'missing' } else { $channel.detail })'."
+                        }
+                    }
+                }
+
+                $got = New-Channel 'receipt' (Get-FinalState $channels) (($channels | ForEach-Object { "$($_.name)=$($_.state)" }) -join ', ')
+            }
+            'receipt-invalid'
+            {
+                $problems = @(Test-ReleaseReceipt $fixture.input.receipt)
+                $got = New-Channel 'receipt' $(if ($problems.Count -gt 0) { 'invalid' } else { 'valid' }) ($problems -join '; ')
+            }
+            'previous-agent'
+            {
+                $previous = Get-PreviousTrainRelease @($fixture.input.releases) 'agent' ([version]$fixture.input.version)
+                $got = New-Channel 'previous' $(if ($null -eq $previous) { 'none' } else { [string]$previous.tag_name }) ''
+            }
             default { throw "$($file.Name): unknown fixture kind '$($fixture.kind)'." }
         }
 
@@ -420,6 +655,50 @@ if ($SelfTest)
 {
     Write-Host (Test-ChannelFixtures)
     exit 0
+}
+
+$receiptDocument = $null
+if ($Receipt)
+{
+    if (-not (Test-Path -LiteralPath $Receipt -PathType Leaf))
+    {
+        [Console]::Error.WriteLine("-Receipt does not exist: $Receipt")
+        exit 2
+    }
+
+    try
+    {
+        $receiptDocument = Get-Content -LiteralPath $Receipt -Raw | ConvertFrom-Json
+    }
+    catch
+    {
+        [Console]::Error.WriteLine("-Receipt is not valid JSON: $($_.Exception.Message)")
+        exit 2
+    }
+
+    $receiptProblems = @(Test-ReleaseReceipt $receiptDocument)
+    if ($receiptProblems.Count -gt 0)
+    {
+        [Console]::Error.WriteLine("-Receipt is not a valid release receipt: $($receiptProblems -join '; ')")
+        exit 2
+    }
+
+    $receiptVersions = @(@('desktop', 'agent') | Where-Object { $receiptDocument.trains.$_.selected } | ForEach-Object { [version]$receiptDocument.trains.$_.version } | Sort-Object -Descending)
+    if ($receiptVersions.Count -eq 0)
+    {
+        [Console]::Error.WriteLine('-Receipt selects no train; there is nothing to check.')
+        exit 2
+    }
+
+    if (-not $Version)
+    {
+        $Version = $receiptVersions[0].ToString()
+    }
+    elseif ($Version -notin @($receiptVersions | ForEach-Object { $_.ToString() }))
+    {
+        [Console]::Error.WriteLine("-Version $Version is not the version of a train selected by the receipt.")
+        exit 2
+    }
 }
 
 if ($Version -notmatch '^\d+\.\d+\.\d+$' -or $TimeoutMinutes -lt 1 -or $PollSeconds -lt 1)
@@ -575,20 +854,21 @@ function Get-PluginPinVersion
     return [string]($json | ConvertFrom-Json).version
 }
 
-function Get-Channels
+function Get-ReleaseObservation
 {
-    param([string]$Version)
-
-    $workflowDirectory = Join-Path $script:RepositoryRoot '.github/workflows'
-    $channels = [System.Collections.Generic.List[object]]::new()
-
     # The release and its commit anchor everything else: the CD and Winget runs are the ones for that commit.
+    # KnownSha (the commit of a receipt) is authoritative: the runs are looked up for it only, and the caller compares
+    # it with the commit the release reports (ReleaseCommit). Without it the release's own commit anchors the runs.
+    param([string]$Version, [string]$KnownSha = '')
+
     $release = Invoke-GhJson @('release', 'view', "v$Version", '--repo', $script:Repository, '--json', 'isDraft,targetCommitish,assets')
-    $sha = ''
+    $releaseCommit = ''
     if ($null -ne $release)
     {
-        $sha = [string]$release.targetCommitish
+        $releaseCommit = [string]$release.targetCommitish
     }
+
+    $sha = if ($KnownSha) { $KnownSha } else { $releaseCommit }
 
     $cdRun = $null
     if ($sha -match '^[0-9a-f]{40}$')
@@ -612,6 +892,227 @@ function Get-Channels
         $cdDetails = Invoke-GhJson @('run', 'view', [string]$cdRun.databaseId, '--repo', $script:Repository, '--json', 'jobs')
     }
 
+    return [pscustomobject]@{ Release = $release; Sha = $sha; ReleaseCommit = $releaseCommit; CdRun = $cdRun; CdDetails = $cdDetails }
+}
+
+function Get-WingetRunObservation
+{
+    # The Winget Release run for the commit and its jobs, judged per package by Get-WingetObservation.
+    param([string]$Sha)
+
+    $wingetRun = $null
+    $wingetDetails = $null
+    if ($Sha)
+    {
+        $wingetRun = Get-RunForCommit 'Winget Release' $Sha
+        if ($null -ne $wingetRun)
+        {
+            $wingetDetails = Invoke-GhJson @('run', 'view', [string]$wingetRun.databaseId, '--repo', $script:Repository, '--json', 'jobs')
+        }
+    }
+
+    return [pscustomobject]@{ Run = $wingetRun; Details = $wingetDetails }
+}
+
+function Get-WingetObservation
+{
+    # The Resolve-WingetChannel input for one package id; $null when there is no Winget Release run for the commit yet.
+    param([string]$Id, [string]$Version, $WingetRun, $WingetDetails)
+
+    if ($null -eq $WingetRun)
+    {
+        return $null
+    }
+
+    $job = $null
+    if ($null -ne $WingetDetails)
+    {
+        $job = $WingetDetails.jobs | Where-Object { $_.name -like "submit ($Id,*" } | Select-Object -First 1
+    }
+
+    $conclusion = [string]$WingetRun.conclusion
+    if ($WingetRun.status -ne 'completed')
+    {
+        $conclusion = 'in_progress'
+    }
+
+    if ($null -ne $job)
+    {
+        $conclusion = if ($job.status -ne 'completed') { 'in_progress' } else { [string]$job.conclusion }
+    }
+
+    $errorLine = ''
+    if ($conclusion -eq 'failure' -and $null -ne $job)
+    {
+        $log = @(& gh run view ([string]$WingetRun.databaseId) --repo $script:Repository --job ([string]$job.databaseId) --log-failed 2>$null)
+        $errorLine = Get-ErrorLine $log
+    }
+
+    $submitSkipped = $false
+    if ($null -ne $job)
+    {
+        $submit = $job.steps | Where-Object { $_.name -eq 'Submit to winget' } | Select-Object -First 1
+        $submitSkipped = ($null -ne $submit -and $submit.conclusion -eq 'skipped')
+    }
+
+    $prState = ''
+    if ($conclusion -eq 'success' -and -not $submitSkipped)
+    {
+        $prState = Get-WingetPrState $Id $Version
+    }
+
+    return [pscustomobject]@{
+        name = "winget:$Id"
+        workflowConclusion = $conclusion
+        errorLine = $errorLine
+        prState = $prState
+        submitSkipped = $submitSkipped
+        skipReason = "$Id is not in winget-pkgs yet; its first version must be submitted manually"
+    }
+}
+
+function Get-RegistryObservation
+{
+    # The Resolve-RegistryChannel input: the version endpoint answers; a failed CD publish step is the only way to call it failed.
+    param([string]$Version, $CdDetails)
+
+    $publishFailed = $false
+    $publishError = ''
+    $publishStep = Get-Step $CdDetails $script:RegistryPublishStep
+    if ($null -ne $publishStep -and $publishStep.conclusion -eq 'failure')
+    {
+        $publishFailed = $true
+        $publishError = "CD step '$($script:RegistryPublishStep)' failed"
+    }
+
+    $serverName = Get-RegistryServerName (Join-Path $script:RepositoryRoot 'packaging/build-mcp-package.ps1')
+    $registry = Get-RegistryVersionState $serverName $Version
+    return [pscustomobject]@{
+        publishFailed = ($publishFailed -and -not $registry.Present)
+        error = $(if ($publishFailed) { $publishError } else { $registry.Error })
+        versionPresent = $registry.Present
+    }
+}
+
+function Get-PreviousAgentVersion
+{
+    # The previous release of the agent train (a release with the CLI zip, its .sha256 and the MCPB), '' when none or unreadable.
+    param([string]$Version)
+
+    $all = [System.Collections.Generic.List[object]]::new()
+    for ($page = 1; $page -le 20; $page++)
+    {
+        $chunk = Invoke-GhJson @('api', "repos/$($script:Repository)/releases?per_page=100&page=$page")
+        if ($null -eq $chunk)
+        {
+            return ''
+        }
+
+        foreach ($release in @($chunk))
+        {
+            $all.Add($release)
+        }
+
+        if (@($chunk).Count -lt 100)
+        {
+            break
+        }
+    }
+
+    $previous = Get-PreviousTrainRelease $all.ToArray() 'agent' ([version]$Version)
+    if ($null -eq $previous)
+    {
+        return ''
+    }
+
+    return ([string]$previous.tag_name).Substring(1)
+}
+
+function Get-ReceiptChannels
+{
+    param($Receipt)
+
+    $workflowDirectory = Join-Path $script:RepositoryRoot '.github/workflows'
+    $wingetIds = @(Get-WingetPackageIds (Join-Path $workflowDirectory 'winget-release.yml'))
+    $observed = [ordered]@{ release = [ordered]@{}; winget = [ordered]@{}; registry = $null; plugin = $null }
+    $info = @{}
+
+    foreach ($train in @('desktop', 'agent'))
+    {
+        $trainReceipt = $Receipt.trains.$train
+        if (-not $trainReceipt.selected)
+        {
+            continue
+        }
+
+        $observation = Get-ReleaseObservation $trainReceipt.version $trainReceipt.commit
+        $info[$train] = $observation
+        $digests = [ordered]@{}
+        foreach ($asset in @(Get-Opt $observation.Release 'assets' @()))
+        {
+            $digest = [string](Get-Opt $asset 'digest' '')
+            if ($digest)
+            {
+                $digests[[string]$asset.name] = $digest -replace '^sha256:', ''
+            }
+        }
+
+        $observed.release[$train] = [pscustomobject]@{
+            exists = ($null -ne $observation.Release)
+            draft = [bool](Get-Opt $observation.Release 'isDraft' $false)
+            commit = $observation.ReleaseCommit
+            assets = @(Get-Opt $observation.Release 'assets' @() | ForEach-Object { $_.name })
+            digests = [pscustomobject]$digests
+            cdConclusion = [string](Get-Opt $observation.CdRun 'conclusion' '')
+            cdStatus = [string](Get-Opt $observation.CdRun 'status' '')
+        }
+    }
+
+    foreach ($id in $wingetIds)
+    {
+        $train = Get-ChannelTrain "winget:$id"
+        if (-not $info.ContainsKey($train))
+        {
+            continue
+        }
+
+        $run = Get-WingetRunObservation $info[$train].Sha
+        $observed.winget[$id] = Get-WingetObservation $id $Receipt.trains.$train.version $run.Run $run.Details
+    }
+
+    if ($info.ContainsKey('agent'))
+    {
+        $agentVersion = $Receipt.trains.agent.version
+        $observed.registry = Get-RegistryObservation $agentVersion $info['agent'].CdDetails
+        $pin = Get-PluginPinVersion
+        if ($pin)
+        {
+            $observed.plugin = [pscustomobject]@{ current = $pin; previous = (Get-PreviousAgentVersion $agentVersion) }
+        }
+    }
+
+    $observedObject = [pscustomobject]@{
+        release = [pscustomobject]$observed.release
+        winget = [pscustomobject]$observed.winget
+        registry = $observed.registry
+        plugin = $observed.plugin
+    }
+    return Resolve-ReceiptChannels $Receipt $observedObject $wingetIds
+}
+
+function Get-Channels
+{
+    param([string]$Version)
+
+    $workflowDirectory = Join-Path $script:RepositoryRoot '.github/workflows'
+    $channels = [System.Collections.Generic.List[object]]::new()
+
+    $observation = Get-ReleaseObservation $Version
+    $release = $observation.Release
+    $sha = $observation.Sha
+    $cdRun = $observation.CdRun
+    $cdDetails = $observation.CdDetails
+
     $releaseInput = [pscustomobject]@{
         exists = ($null -ne $release)
         draft = [bool](Get-Opt $release 'isDraft' $false)
@@ -623,90 +1124,23 @@ function Get-Channels
     $channels.Add((Resolve-ReleaseChannel $releaseInput))
 
     # Winget: one channel per package id; each is judged by its own matrix job in the run for the release commit.
-    $wingetRun = $null
-    $wingetDetails = $null
-    if ($sha)
-    {
-        $wingetRun = Get-RunForCommit 'Winget Release' $sha
-        if ($null -ne $wingetRun)
-        {
-            $wingetDetails = Invoke-GhJson @('run', 'view', [string]$wingetRun.databaseId, '--repo', $script:Repository, '--json', 'jobs')
-        }
-    }
+    $wingetObservation = Get-WingetRunObservation $sha
 
     foreach ($id in Get-WingetPackageIds (Join-Path $workflowDirectory 'winget-release.yml'))
     {
         $channelName = "winget:$id"
-        if ($null -eq $wingetRun)
+        $package = Get-WingetObservation $id $Version $wingetObservation.Run $wingetObservation.Details
+        if ($null -eq $package)
         {
             $channels.Add((New-Channel $channelName 'pending' 'no Winget Release run for the release commit yet'))
             continue
         }
 
-        $job = $null
-        if ($null -ne $wingetDetails)
-        {
-            $job = $wingetDetails.jobs | Where-Object { $_.name -like "submit ($id,*" } | Select-Object -First 1
-        }
-
-        $conclusion = [string]$wingetRun.conclusion
-        if ($wingetRun.status -ne 'completed')
-        {
-            $conclusion = 'in_progress'
-        }
-
-        if ($null -ne $job)
-        {
-            $conclusion = if ($job.status -ne 'completed') { 'in_progress' } else { [string]$job.conclusion }
-        }
-
-        $errorLine = ''
-        if ($conclusion -eq 'failure' -and $null -ne $job)
-        {
-            $log = @(& gh run view ([string]$wingetRun.databaseId) --repo $script:Repository --job ([string]$job.databaseId) --log-failed 2>$null)
-            $errorLine = Get-ErrorLine $log
-        }
-
-        $submitSkipped = $false
-        if ($null -ne $job)
-        {
-            $submit = $job.steps | Where-Object { $_.name -eq 'Submit to winget' } | Select-Object -First 1
-            $submitSkipped = ($null -ne $submit -and $submit.conclusion -eq 'skipped')
-        }
-
-        $prState = ''
-        if ($conclusion -eq 'success' -and -not $submitSkipped)
-        {
-            $prState = Get-WingetPrState $id $Version
-        }
-
-        $channels.Add((Resolve-WingetChannel ([pscustomobject]@{
-            name = $channelName
-            workflowConclusion = $conclusion
-            errorLine = $errorLine
-            prState = $prState
-            submitSkipped = $submitSkipped
-            skipReason = "$id is not in winget-pkgs yet; its first version must be submitted manually"
-        })))
+        $channels.Add((Resolve-WingetChannel $package))
     }
 
     # MCP Registry: the version endpoint answers; a failed CD publish step is the only way to call it failed.
-    $publishFailed = $false
-    $publishError = ''
-    $publishStep = Get-Step $cdDetails $script:RegistryPublishStep
-    if ($null -ne $publishStep -and $publishStep.conclusion -eq 'failure')
-    {
-        $publishFailed = $true
-        $publishError = "CD step '$($script:RegistryPublishStep)' failed"
-    }
-
-    $serverName = Get-RegistryServerName (Join-Path $script:RepositoryRoot 'packaging/build-mcp-package.ps1')
-    $registry = Get-RegistryVersionState $serverName $Version
-    $channels.Add((Resolve-RegistryChannel ([pscustomobject]@{
-        publishFailed = ($publishFailed -and -not $registry.Present)
-        error = $(if ($publishFailed) { $publishError } else { $registry.Error })
-        versionPresent = $registry.Present
-    })))
+    $channels.Add((Resolve-RegistryChannel (Get-RegistryObservation $Version $cdDetails)))
 
     # Plugin pin: master's pin against this release and its predecessor.
     $pin = Get-PluginPinVersion
@@ -737,7 +1171,7 @@ $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
 
 while ($true)
 {
-    $channels = Get-Channels $Version
+    $channels = if ($null -ne $receiptDocument) { Get-ReceiptChannels $receiptDocument } else { Get-Channels $Version }
     foreach ($channel in $channels)
     {
         Write-Host ('CHANNEL {0}: {1} - {2}' -f $channel.name, $channel.state, $channel.detail)
@@ -752,6 +1186,11 @@ while ($true)
         status = $final
         channels = @($channels)
     }
+    if ($null -ne $receiptDocument)
+    {
+        $result['receipt'] = [IO.Path]::GetFullPath($Receipt)
+    }
+
     $result | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $OutDirectory 'result.json') -Encoding utf8NoBOM
 
     if (-not $Watch -or $final -ne 'pending' -or (Get-Date) -ge $deadline)

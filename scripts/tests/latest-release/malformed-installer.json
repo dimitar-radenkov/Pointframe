@@ -1,0 +1,10 @@
+{
+  "description": "The newest release names its installer wrongly (no version, or no x64): it is not a desktop release, so it neither is nor becomes Latest.",
+  "releases": [
+    { "tag_name": "v6.8.4", "draft": false, "prerelease": false, "published_at": "2026-10-15T10:00:00Z", "assets": ["Pointframe-Setup.exe", "Pointframe-6.8.4-Setup.exe", "Pointframe-6.8.4-x64-Setup.exe.blockmap"] },
+    { "tag_name": "v6.8.2", "draft": false, "prerelease": false, "published_at": "2026-10-13T10:00:00Z", "assets": ["Pointframe-6.8.2-x64-Setup.exe"] }
+  ],
+  "latestTag": "v6.8.2",
+  "expected": "ok",
+  "promoteCases": [ { "tag": "v6.8.4", "promote": false } ]
+}

@@ -1,0 +1,21 @@
+{
+  "file": "receipt-invalid-tag.json",
+  "kind": "receipt-invalid",
+  "expected": "invalid",
+  "expectedDetail": "trains.desktop.tag must be v6.7.96",
+  "input": {
+    "receipt": {
+      "schemaVersion": 1,
+      "repository": "dimitar-radenkov/Pointframe",
+      "createdUtc": "2026-10-23T10:00:00Z",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "trains": {
+        "desktop": {
+          "selected": true, "version": "6.7.96", "tag": "v6.7.95", "commit": "0123456789abcdef0123456789abcdef01234567", "publication": "published",
+          "assets": [ { "name": "Pointframe-6.7.96-x64-Setup.exe", "sha256": null } ]
+        },
+        "agent": { "selected": false }
+      }
+    }
+  }
+}

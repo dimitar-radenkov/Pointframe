@@ -248,12 +248,39 @@ jobs:
           name: Pointframe-${{ steps.version.outputs.display }}-x64-Setup
           path: installer/output/Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe
 
+      # GitHub's Latest must stay a desktop release (D-019). Read the current Latest before the release exists so the
+      # create and update proofs below can show the new release did not take Latest over by itself.
+      - name: Read the previous Latest release
+        id: previous-latest
+        if: steps.existing.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $output = gh api "repos/${{ github.repository }}/releases/latest" 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            $errorText = $output -join "`n"
+            if ($errorText -match 'HTTP 404') {
+              "tag=" >> $env:GITHUB_OUTPUT
+              exit 0
+            }
+            throw "Could not read the previous Latest release: $errorText"
+          }
+
+          $tag = ($output -join "`n" | ConvertFrom-Json).tag_name
+          Write-Host "Previous Latest release: $tag"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      # Still one combined release per merge. It is created as not-Latest and promoted below, so every create and
+      # every update of a release passes make_latest explicitly (the API default is true).
       - name: Create GitHub Release
+        id: release
         if: steps.existing.outputs.skip != 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.version.outputs.display }}
           target_commitish: ${{ github.event.workflow_run.head_sha }}
+          make_latest: 'false'
           files: |
             installer/output/Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe
             packaging/output/Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip
@@ -272,6 +299,65 @@ jobs:
             - Includes a standalone Pointframe CLI for whole-monitor screenshots.
             - Includes the Pointframe MCPB stdio server bundle and registry metadata.
             - For the full list of commits, see Compare in this release page.
+
+      # Proofs that make_latest=false holds on create and on update (they run only for a release created in this run).
+      - name: Prove make_latest on create
+        id: prove-create
+        if: ${{ steps.release.outcome == 'success' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $previous = '${{ steps.previous-latest.outputs.tag }}'
+          if (-not $previous) {
+            Write-Host '::notice::No Latest release existed before this run; there is nothing to compare with.'
+            New-Item -ItemType Directory -Path release-receipt -Force | Out-Null
+            '{"status":"not-run","message":"no previous Latest release"}' | Set-Content release-receipt/create.json
+            exit 0
+          }
+          ./scripts/check-latest-release.ps1 -Repository '${{ github.repository }}' -Expect $previous -ResultOut release-receipt/create.json
+          exit $LASTEXITCODE
+
+      - name: Prove make_latest on update
+        id: prove-update
+        if: ${{ steps.release.outcome == 'success' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $previous = '${{ steps.previous-latest.outputs.tag }}'
+          if (-not $previous) {
+            Write-Host '::notice::No Latest release existed before this run; there is nothing to compare with.'
+            New-Item -ItemType Directory -Path release-receipt -Force | Out-Null
+            '{"status":"not-run","message":"no previous Latest release"}' | Set-Content release-receipt/update.json
+            exit 0
+          }
+          ./scripts/check-latest-release.ps1 -Repository '${{ github.repository }}' -Update 'v${{ steps.version.outputs.display }}' -MakeLatest false -ResultOut release-receipt/update.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/check-latest-release.ps1 -Repository '${{ github.repository }}' -Expect $previous -ResultOut release-receipt/update.json
+          exit $LASTEXITCODE
+
+      # Latest moves only to the highest published desktop release, so a re-run of an older CD attempt changes nothing.
+      # These two steps also run when the build was skipped, so a re-run after a partial failure still promotes or repairs.
+      - name: Promote to Latest
+        id: promote
+        if: ${{ !cancelled() && (steps.existing.outputs.skip == 'true' || steps.release.outcome == 'success') }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./scripts/check-latest-release.ps1 -Repository '${{ github.repository }}' -Promote 'v${{ steps.version.outputs.display }}' -ResultOut release-receipt/promote.json
+          exit $LASTEXITCODE
+
+      - name: Check Latest release
+        id: latest-check
+        if: ${{ !cancelled() && (steps.existing.outputs.skip == 'true' || steps.release.outcome == 'success') }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./scripts/check-latest-release.ps1 -Repository '${{ github.repository }}' -Repair -ResultOut release-receipt/latest.json
+          exit $LASTEXITCODE
 
       # Runs after the release exists because server.json pins the MCPB release URL and SHA-256.
       # OIDC proves ownership of the io.github.dimitar-radenkov/* namespace; no secret is needed.
@@ -324,3 +410,71 @@ jobs:
         with:
           name: release-version
           path: release-version.txt
+
+      # Informational in this step of the release-trains migration (D-019): the merge is compared with the previous
+      # release and the result is recorded; it never blocks a release, and every merge still ships both trains.
+      - name: Compute release plan
+        id: plan
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $current = [version]'${{ steps.version.outputs.display }}'
+          $sha = '${{ github.event.workflow_run.head_sha }}'
+          New-Item -ItemType Directory -Path release-receipt -Force | Out-Null
+
+          $all = @()
+          for ($page = 1; $page -le 20; $page++) {
+            $json = gh api "repos/${{ github.repository }}/releases?per_page=100&page=$page"
+            if ($LASTEXITCODE -ne 0) { throw "Could not list releases (page $page)." }
+            $chunk = @($json | ConvertFrom-Json)
+            $all += $chunk
+            if ($chunk.Count -lt 100) { break }
+          }
+
+          $below = @($all | Where-Object { $_.tag_name -cmatch '^v\d+\.\d+\.\d+$' -and [version]$_.tag_name.Substring(1) -lt $current })
+          ConvertTo-Json -InputObject $below -Depth 8 | Set-Content release-receipt/releases.json
+          $previous = $below | Where-Object { $_.published_at } | Sort-Object { [version]$_.tag_name.Substring(1) } -Descending | Select-Object -First 1
+          $base = if ($previous) { $previous.tag_name } else { "$sha~1" }
+
+          $security = $false
+          $pulls = gh api "repos/${{ github.repository }}/commits/$sha/pulls" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $security = @($pulls | ConvertFrom-Json | ForEach-Object { $_.labels } | Where-Object { $_.name -eq 'security' }).Count -gt 0
+          }
+
+          ./scripts/release-impact.ps1 -Base $base -Head $sha -ReleasesFile release-receipt/releases.json -PlanOut release-receipt/plan.json -Security:$security
+          if ($LASTEXITCODE -eq 3) {
+            Write-Host '::warning::This merge changes paths that release-impact.ps1 cannot classify.'
+            exit 0
+          }
+          exit $LASTEXITCODE
+
+      - name: Write release receipt
+        id: receipt
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $published = '${{ steps.existing.outputs.skip }}' -eq 'true' -or '${{ steps.release.outcome }}' -eq 'success'
+          ./scripts/write-release-receipt.ps1 `
+            -Version '${{ steps.version.outputs.display }}' `
+            -Commit '${{ github.event.workflow_run.head_sha }}' `
+            -Repository '${{ github.repository }}' `
+            -Publication $(if ($published) { 'published' } else { 'failed' }) `
+            -ProofCreate release-receipt/create.json `
+            -ProofUpdate release-receipt/update.json `
+            -PromoteResult release-receipt/promote.json `
+            -LatestResult release-receipt/latest.json `
+            -PlanFile release-receipt/plan.json `
+            -Out release-receipt/release-plan.json
+          exit $LASTEXITCODE
+
+      - name: Publish release plan artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-plan
+          path: release-receipt/release-plan.json
+          if-no-files-found: error

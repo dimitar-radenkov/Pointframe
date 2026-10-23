@@ -1,0 +1,42 @@
+{
+  "file": "receipt-commit-not-reported.json",
+  "kind": "receipt",
+  "expected": "failed",
+  "expectedChannels": {
+    "github-release:desktop": "failed",
+    "github-release:agent": "not-applicable",
+    "winget:DimitarRadenkov.Pointframe": "accepted",
+    "winget:DimitarRadenkov.Pointframe.Cli": "not-applicable",
+    "mcp-registry": "not-applicable",
+    "plugin-pin": "not-applicable"
+  },
+  "expectedDetails": {
+    "github-release:desktop": "the release reports master, the receipt has commit 0123456789abcdef0123456789abcdef01234567"
+  },
+  "input": {
+    "wingetIds": ["DimitarRadenkov.Pointframe", "DimitarRadenkov.Pointframe.Cli"],
+    "receipt": {
+      "schemaVersion": 1,
+      "repository": "dimitar-radenkov/Pointframe",
+      "createdUtc": "2026-10-23T10:00:00Z",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "trains": {
+        "desktop": {
+          "selected": true, "version": "6.7.91", "tag": "v6.7.91", "commit": "0123456789abcdef0123456789abcdef01234567", "publication": "published",
+          "assets": [ { "name": "Pointframe-6.7.91-x64-Setup.exe", "sha256": null } ]
+        },
+        "agent": { "selected": false }
+      }
+    },
+    "observed": {
+      "release": {
+        "desktop": {
+          "exists": true, "draft": false, "commit": "master",
+          "cdConclusion": "success", "cdStatus": "completed",
+          "assets": ["Pointframe-6.7.91-x64-Setup.exe"]
+        }
+      },
+      "winget": { "DimitarRadenkov.Pointframe": { "workflowConclusion": "success", "prState": "merged" } }
+    }
+  }
+}

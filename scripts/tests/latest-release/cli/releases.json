@@ -1,0 +1,4 @@
+[
+  { "id": 102, "tag_name": "v6.9.4", "body": "Pointframe 6.9.4\n\n- notes", "draft": false, "prerelease": false, "published_at": "2026-10-20T10:00:00Z", "assets": [{ "name": "Pointframe-6.9.4-x64-Setup.exe" }] },
+  { "id": 101, "tag_name": "v6.9.5", "body": "Pointframe 6.9.5\n\n- notes", "draft": false, "prerelease": false, "published_at": "2026-10-19T10:00:00Z", "assets": [{ "name": "Pointframe-6.9.5-x64-Setup.exe" }] }
+]

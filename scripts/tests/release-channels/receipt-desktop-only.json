@@ -1,0 +1,45 @@
+{
+  "file": "receipt-desktop-only.json",
+  "kind": "receipt",
+  "expected": "ok",
+  "expectedChannels": {
+    "github-release:desktop": "accepted",
+    "github-release:agent": "not-applicable",
+    "winget:DimitarRadenkov.Pointframe": "accepted",
+    "winget:DimitarRadenkov.Pointframe.Cli": "not-applicable",
+    "mcp-registry": "not-applicable",
+    "plugin-pin": "not-applicable"
+  },
+  "input": {
+    "wingetIds": ["DimitarRadenkov.Pointframe", "DimitarRadenkov.Pointframe.Cli"],
+    "receipt": {
+      "schemaVersion": 1,
+      "repository": "dimitar-radenkov/Pointframe",
+      "createdUtc": "2026-10-23T10:00:00Z",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "trains": {
+        "desktop": {
+          "selected": true, "version": "6.7.91", "tag": "v6.7.91", "commit": "0123456789abcdef0123456789abcdef01234567", "publication": "published",
+          "assets": [ { "name": "Pointframe-6.7.91-x64-Setup.exe", "sha256": "1111111111111111111111111111111111111111111111111111111111111111" } ]
+        },
+        "agent": { "selected": false }
+      }
+    },
+    "observed": {
+      "release": {
+        "desktop": {
+          "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "cdConclusion": "success", "cdStatus": "completed",
+          "assets": ["Pointframe-6.7.91-x64-Setup.exe"],
+          "digests": { "Pointframe-6.7.91-x64-Setup.exe": "1111111111111111111111111111111111111111111111111111111111111111" }
+        },
+        "agent": { "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "assets": ["would-be-ignored"], "cdConclusion": "success", "cdStatus": "completed" }
+      },
+      "winget": {
+        "DimitarRadenkov.Pointframe": { "workflowConclusion": "success", "prState": "merged" },
+        "DimitarRadenkov.Pointframe.Cli": { "workflowConclusion": "failure", "errorLine": "must be ignored: the agent train is not selected" }
+      },
+      "registry": { "publishFailed": true, "versionPresent": false, "error": "must be ignored" },
+      "plugin": { "current": "1.0.0", "previous": "0.9.0" }
+    }
+  }
+}

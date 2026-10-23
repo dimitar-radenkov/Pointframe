@@ -38,6 +38,8 @@ $SelfTestScripts = @(
     'agent-run.ps1',
     'package.ps1',
     'release-impact.ps1',
+    'check-latest-release.ps1',
+    'write-release-receipt.ps1',
     'check-release-channels.ps1',
     'check-released-desktop.ps1',
     'usage-report.ps1',

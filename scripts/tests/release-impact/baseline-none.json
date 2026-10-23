@@ -1,0 +1,8 @@
+{
+  "description": "No complete published release of a train: the baseline is null (the plan then selects the train).",
+  "releases": [
+    { "tag_name": "v6.7.11", "draft": true, "prerelease": false, "published_at": null, "assets": ["Pointframe-6.7.11-x64-Setup.exe"] },
+    { "tag_name": "v6.7.10", "draft": false, "prerelease": false, "published_at": "2026-10-10T10:00:00Z", "assets": ["Pointframe.Cli-6.7.10-win-x64.zip"] }
+  ],
+  "expected": { "desktop": null, "agent": null }
+}
