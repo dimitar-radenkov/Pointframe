@@ -60,18 +60,6 @@ internal sealed class McpPackageInstaller : IMcpPackageInstaller
 
             var version = ReadManifestVersion(stagingDirectory);
 
-            // A candidate or source build's download (API-selected or the legacy alias fallback, which can lag) is never
-            // installed over a server at or above the verified bundle's own version.
-            if (!dryRun
-                && package.NeverDowngrade
-                && GetCurrent() is { } current
-                && TryParseVersion(version, out var bundleVersion)
-                && TryParseVersion(current.Version, out var currentVersion)
-                && bundleVersion <= currentVersion)
-            {
-                return current;
-            }
-
             var installDirectory = Path.Combine(_rootDirectory, version);
             var installation = new McpInstallation(version, Path.Combine(installDirectory, ExecutableName), installDirectory);
             if (dryRun)
@@ -81,6 +69,19 @@ internal sealed class McpPackageInstaller : IMcpPackageInstaller
 
             Directory.CreateDirectory(_rootDirectory);
             using var activationLock = AcquireActivationLock();
+
+            // A candidate or source build's download (API-selected or the legacy alias fallback, which can lag) is never
+            // installed over a server at or above the verified bundle's own version. The installed state is read here,
+            // under the activation lock, so a concurrent installer that just activated a newer server is seen.
+            if (package.NeverDowngrade
+                && GetCurrent() is { } current
+                && TryParseVersion(version, out var bundleVersion)
+                && TryParseVersion(current.Version, out var currentVersion)
+                && bundleVersion <= currentVersion)
+            {
+                return current;
+            }
+
             if (Directory.Exists(installDirectory) && !File.Exists(installation.ExecutablePath))
             {
                 Directory.Delete(installDirectory, recursive: true);

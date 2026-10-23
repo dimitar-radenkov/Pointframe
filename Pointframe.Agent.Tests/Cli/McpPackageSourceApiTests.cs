@@ -289,6 +289,43 @@ public sealed class McpPackageSourceApiTests : IDisposable
     }
 
     [Fact]
+    public async Task ANewerServerActivatedWhileWaitingForTheActivationLock_IsNotDowngraded()
+    {
+        SeedInstall("6.9.0");
+        var github = new FakeGitHub(new HttpResponseMessage(HttpStatusCode.Forbidden)) { BundleVersion = "6.9.1" };
+        var installer = new McpPackageInstaller(NewSource(github), _root);
+        var key = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(_root).ToUpperInvariant())))[..32];
+        var held = new ManualResetEventSlim();
+        var release = new ManualResetEventSlim();
+        var holder = new Thread(() =>
+        {
+            using var mutex = new Mutex(false, $"Local\\Pointframe.Mcp.Install.{key}");
+            mutex.WaitOne();
+            held.Set();
+            release.Wait();
+            mutex.ReleaseMutex();
+        });
+        holder.Start();
+        Assert.True(held.Wait(TimeSpan.FromSeconds(10)));
+
+        var pending = Task.Run(() => installer.InstallLatestAsync(false, CancellationToken.None));
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (github.RequestUris.Count < 3 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20);
+        }
+
+        await Task.Delay(300);
+        var newer = SeedInstall("6.9.2");
+        release.Set();
+        holder.Join();
+        var installation = await pending;
+
+        Assert.Equal(newer, installation);
+        Assert.Equal("6.9.2", installer.GetCurrent()?.Version);
+    }
+
+    [Fact]
     public async Task AFallbackAliasBundleAboveTheInstalledVersion_UpdatesIt()
     {
         SeedInstall("6.9.1");
