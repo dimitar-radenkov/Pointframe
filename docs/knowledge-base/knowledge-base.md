@@ -57,8 +57,11 @@ Generated from the area files under `docs/knowledge-base/features/`. Each featur
 - [Settings](features/settings.md): F-29 Settings window; F-30 Custom global hotkeys; F-31 Light and dark theme; F-42 Share destination settings
 - [Updates and About](features/updates.md): F-32 Update check and install; F-33 About window
 - [Telemetry](features/telemetry.md): F-34 App lifecycle and usage telemetry; F-44 CLI and MCP operation telemetry: one anonymous event per MCP tool call or CLI command, first-run notice, opt-out
-- [CLI and MCP](features/cli-mcp.md): F-35 CLI: capture/OCR/recording plus managed MCP install, status, and doctor for VS Code, and `mcp serve` (the stdio launcher a project's agent config runs); F-36 MCP capture, OCR, recording, and library tools; F-37 MCP desktop testing tools, signed reports, and exportable scenarios; F-45 Claude plugin: the pinned MCP server plus the desktop-verification, verification-skill generator, and capture skills, installed from the Claude plugin directory (the skills also install with `npx skills add`)
+- [CLI and MCP](features/cli-mcp.md): F-35 CLI: capture/OCR/recording plus managed MCP install, status, and doctor for VS Code, and `mcp serve` (the stdio launcher a project's agent config runs); F-36 MCP capture, OCR, recording, and library tools
+- [MCP desktop testing](features/mcp-desktop-testing.md): F-37 MCP desktop testing tools, signed reports, and exportable scenarios
 - [Verify](features/verify.md): F-39 CLI: spec-driven verification (`verify init`, `setup`, `run`, `scenario add`, `status`, `trust`, `task start`, `hook stop`, `agent`): gates, desktop scenarios, frozen task criteria, project onboarding, interactive desktop tools for the spec's app
+- [Claude plugin and packaging](features/claude-plugin.md): F-45 Claude plugin: the pinned MCP server plus the desktop-verification, verification-skill generator, and capture skills, installed from the Claude plugin directory (the skills also install with `npx skills add`)
+- [Verify decisions](features/verify-decisions.md): no features yet
 
 <!-- /features -->
 
@@ -89,14 +92,14 @@ A decision lives with what it governs (see [Structure and conventions](maintenan
 - [D-004 Native libraries ship loose and the installer packages them](decisions.md#d-004-native-libraries-ship-loose-and-the-installer-packages-them)
 - [D-005 The speech model is delivered by both the installer and the app](features/transcription.md#d-005-the-speech-model-is-delivered-by-both-the-installer-and-the-app)
 - [D-006 Cross-cutting knowledge base plus one file per feature area](decisions.md#d-006-cross-cutting-knowledge-base-plus-one-file-per-feature-area)
-- [D-007 `verify run` drives the MCP server instead of sharing an Engine service](features/verify.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service)
-- [D-008 Verify approvals need a person at a terminal and live outside the repository](features/verify.md#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository) (superseded)
-- [D-009 An approver agent behind fixed rules approves verify commands](features/verify.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands)
-- [D-010 Verify's agent roles run on any agent](features/verify.md#d-010-verifys-agent-roles-run-on-any-agent)
-- [D-011 Standard commands are approved by policy](features/verify.md#d-011-standard-commands-are-approved-by-policy)
-- [D-012 Version compatibility](features/verify.md#d-012-version-compatibility)
-- [D-013 Verification spec v1 is frozen](features/verify.md#d-013-verification-spec-v1-is-frozen)
-- [D-014 Interactive desktop testing reuses verify trust](features/verify.md#d-014-interactive-desktop-testing-reuses-verify-trust)
+- [D-007 `verify run` drives the MCP server instead of sharing an Engine service](features/verify-decisions.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service)
+- [D-008 Verify approvals need a person at a terminal and live outside the repository](features/verify-decisions.md#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository) (superseded)
+- [D-009 An approver agent behind fixed rules approves verify commands](features/verify-decisions.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands)
+- [D-010 Verify's agent roles run on any agent](features/verify-decisions.md#d-010-verifys-agent-roles-run-on-any-agent)
+- [D-011 Standard commands are approved by policy](features/verify-decisions.md#d-011-standard-commands-are-approved-by-policy)
+- [D-012 Version compatibility](features/verify-decisions.md#d-012-version-compatibility)
+- [D-013 Verification spec v1 is frozen](features/verify-decisions.md#d-013-verification-spec-v1-is-frozen)
+- [D-014 Interactive desktop testing reuses verify trust](features/verify-decisions.md#d-014-interactive-desktop-testing-reuses-verify-trust)
 - [D-015 Agent telemetry carries a random install ID](features/telemetry.md#d-015-agent-telemetry-carries-a-random-install-id)
 - [D-016 Agents follow one workflow in the knowledge base](decisions.md#d-016-agents-follow-one-workflow-in-the-knowledge-base)
 - [D-017 Agent outcomes separate failing verdicts and invalid input](features/telemetry.md#d-017-agent-outcomes-separate-failing-verdicts-and-invalid-input)
