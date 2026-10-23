@@ -156,6 +156,29 @@ function Get-TrainBaseline
     return $complete[0].Release
 }
 
+function Get-AllPages
+{
+    # Reads pages until one is short. FetchPage takes a 1-based page number and returns that page's items.
+    param([scriptblock]$FetchPage, [int]$PageSize = 100, [int]$MaxPages = 50)
+
+    $all = [System.Collections.Generic.List[object]]::new()
+    for ($page = 1; $page -le $MaxPages; $page++)
+    {
+        $items = @(& $FetchPage $page)
+        foreach ($item in $items)
+        {
+            $all.Add($item)
+        }
+
+        if ($items.Count -lt $PageSize)
+        {
+            return $all.ToArray()
+        }
+    }
+
+    throw "More than $MaxPages pages of releases; raise -MaxPages deliberately."
+}
+
 function Get-PreviousTrainRelease
 {
     # The highest complete release of the train below Before, or $null.

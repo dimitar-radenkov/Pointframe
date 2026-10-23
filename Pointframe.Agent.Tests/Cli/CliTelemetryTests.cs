@@ -1,7 +1,6 @@
-using System.IO;
 using Moq;
-using Pointframe.Engine;
 using Pointframe.Cli;
+using Pointframe.Engine;
 using Pointframe.Telemetry;
 using Xunit;
 

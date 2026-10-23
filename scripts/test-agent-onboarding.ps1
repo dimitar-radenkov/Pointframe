@@ -5,7 +5,8 @@ Proves that an AI client can be onboarded to the Pointframe MCP server and then 
 .DESCRIPTION
 For the chosen client the script does the following:
 
-  1. Resolves the MCP server (the checksum-verified release MCPB by default, or a local build / given path)
+  1. Resolves the MCP server (by default the checksum-verified versioned MCPB of the newest complete agent release,
+     found through the Releases API and named in the output; or a local build / given path)
      and validates the bundle manifest when a bundle is used.
   2. Registers the server in an ISOLATED client configuration (a temp directory), twice, and proves that
      the second run keeps the unrelated servers and settings that were already there. The user's real
@@ -69,9 +70,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "agent-release.ps1")
+
 $script:RepositoryRoot = Split-Path $PSScriptRoot -Parent
-$script:ReleaseBaseUrl = "https://github.com/dimitar-radenkov/Pointframe/releases/latest/download"
-$script:BundleFileName = "Pointframe.Mcp-win-x64.mcpb"
+$script:ReleaseRepository = "dimitar-radenkov/Pointframe"
 $script:FixtureWindowTitle = "Pointframe Scrolling Capture Fixture"
 $script:LockPath = Join-Path ([System.IO.Path]::GetTempPath()) "pointframe-desktop.lock"
 $script:LockRetrySeconds = 30
@@ -188,13 +190,27 @@ function Read-ExpectedChecksum
     return ($text -split "\s+")[0].ToLowerInvariant()
 }
 
+function Get-AgentBundleSource
+{
+    # The versioned MCPB and .sha256 of the newest complete agent release. GitHub Latest is a desktop release from the release
+    # trains on (D-019), so the latest/download alias is not used.
+    param([string]$ReleasesFile)
+
+    $version = Resolve-NewestAgentVersion -Repository $script:ReleaseRepository -ReleasesFile $ReleasesFile
+    $fileName = "Pointframe.Mcp-$version-win-x64.mcpb"
+    $baseUrl = "https://github.com/$($script:ReleaseRepository)/releases/download/v$version"
+    return [pscustomobject]@{ Version = $version; FileName = $fileName; BundleUrl = "$baseUrl/$fileName"; ChecksumUrl = "$baseUrl/$fileName.sha256" }
+}
+
 function Get-VerifiedBundle
 {
     param([Parameter(Mandatory = $true)][string]$WorkDirectory)
 
-    $bundle = Join-Path $WorkDirectory $script:BundleFileName
-    Invoke-WebRequest "$($script:ReleaseBaseUrl)/$($script:BundleFileName)" -OutFile $bundle
-    Invoke-WebRequest "$($script:ReleaseBaseUrl)/$($script:BundleFileName).sha256" -OutFile "$bundle.sha256"
+    $source = Get-AgentBundleSource
+    Add-Result -Name "agent release resolved" -Status "PASS" -Detail "v$($source.Version) (newest complete agent release; $($source.FileName))"
+    $bundle = Join-Path $WorkDirectory $source.FileName
+    Invoke-WebRequest $source.BundleUrl -OutFile $bundle
+    Invoke-WebRequest $source.ChecksumUrl -OutFile "$bundle.sha256"
     $expected = Read-ExpectedChecksum -ChecksumFile "$bundle.sha256"
     $actual = Get-Sha256 -Path $bundle
     Assert-That -Condition ($actual -eq $expected) -Name "bundle checksum" -Detail "sha256=$actual"
@@ -1323,6 +1339,24 @@ function Invoke-OfflineSelfTest
         $checksumFile = Join-Path $work "x.sha256"
         Set-Content -LiteralPath $checksumFile -Value "ABCDEF  Pointframe.Mcp-win-x64.mcpb"
         Assert-That -Condition ((Read-ExpectedChecksum -ChecksumFile $checksumFile) -eq "abcdef") -Name "selftest reads a checksum file"
+
+        # The default bundle is the versioned MCPB of the newest complete agent release, never the latest/download alias.
+        foreach ($releaseFixture in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot "tests/agent-release") -Filter "*.json")
+        {
+            $releaseCase = Get-Content -LiteralPath $releaseFixture.FullName -Raw | ConvertFrom-Json
+            if ($null -ne $releaseCase.PSObject.Properties["expectedError"])
+            {
+                $failedClearly = $false
+                try { Get-AgentBundleSource -ReleasesFile $releaseFixture.FullName | Out-Null } catch { $failedClearly = $_.Exception.Message -like "*$($releaseCase.expectedError)*" }
+                Assert-That -Condition $failedClearly -Name "selftest $($releaseFixture.BaseName): no complete agent release fails clearly"
+                continue
+            }
+
+            $version = $releaseCase.expected
+            $source = Get-AgentBundleSource -ReleasesFile $releaseFixture.FullName
+            $expectedUrl = "https://github.com/dimitar-radenkov/Pointframe/releases/download/v$version/Pointframe.Mcp-$version-win-x64.mcpb"
+            Assert-That -Condition ($source.Version -eq $version -and $source.BundleUrl -eq $expectedUrl -and $source.ChecksumUrl -eq "$expectedUrl.sha256") -Name "selftest $($releaseFixture.BaseName): downloads the versioned MCPB of v$version" -Detail $source.BundleUrl
+        }
 
         # Manifest validation on a synthetic bundle.
         $bundleDirectory = Join-Path $work "bundle"

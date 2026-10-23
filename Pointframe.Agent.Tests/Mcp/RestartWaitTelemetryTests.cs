@@ -1,17 +1,16 @@
-using System.IO;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Moq;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Moq;
 using Pointframe.Cli;
 using Pointframe.Mcp;
-using Pointframe.Tests.Cli;
 using Pointframe.Telemetry;
+using Pointframe.Tests.Cli;
 using Xunit;
 
 namespace Pointframe.Tests.Mcp;
@@ -322,7 +321,6 @@ public sealed class RestartWaitTelemetryTests : IDisposable
         public CallToolResult End(string sessionId, string actionId) =>
             new() { StructuredContent = JsonDocument.Parse("{\"operationStatus\":\"Completed\",\"dispatch\":\"Complete\"}").RootElement.Clone() };
     }
-
 
     private sealed class RecordingTelemetry : IOperationTelemetry
     {

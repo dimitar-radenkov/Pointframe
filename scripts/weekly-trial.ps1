@@ -10,7 +10,7 @@ param(
 )
 
 # Weekly cold-agent canary: does a fresh coding agent still verify the WPF sample from the public README?
-# Run it locally at the Monday retro. It resolves the latest release and the origin/master SHA once, runs
+# Run it locally at the Monday retro. It resolves the newest agent release and the origin/master SHA once, runs
 # scripts/trial.ps1 (wpf-sample, readme entry, FreshMachine) Repeat times, classifies every run, compares the batch
 # with the retained known-good baseline, and on a clean-pass loss opens or updates one GitHub issue.
 #
@@ -30,9 +30,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
+. (Join-Path $PSScriptRoot 'agent-release.ps1')
+
 $script:RepositoryRoot = Split-Path $PSScriptRoot -Parent
 $script:FixtureDirectory = Join-Path $PSScriptRoot 'tests/weekly-trial'
 $script:ReleaseRepository = 'dimitar-radenkov/Pointframe'
+$script:ReleasesFile = $null # a releases fixture for the self-test; $null reads GitHub through gh
 $script:IssueLabel = 'weekly-trial'
 $script:OverdueDays = 8
 $script:RegressionThreshold = 0.30
@@ -47,9 +50,9 @@ $script:Gh = {
 }
 $script:Resolvers = @{
     Version = {
-        $release = & gh release view --repo $script:ReleaseRepository --json tagName 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "Could not resolve the latest release: $($release -join ' ')" }
-        (($release -join "`n") | ConvertFrom-Json).tagName -replace '^v', ''
+        # The newest complete agent release; GitHub Latest is a desktop release from the release trains on.
+        try { Resolve-NewestAgentVersion -Repository $script:ReleaseRepository -ReleasesFile $script:ReleasesFile }
+        catch { throw "Could not resolve the newest agent release: $($_.Exception.Message)" }
     }
     DocsRef = {
         param([bool]$Fetch)
@@ -728,6 +731,28 @@ function Invoke-SelfTest
         Assert-That $promoteFailed 'promoting a run with a failure is refused'
         $promoted = New-BaselineRecord $scenarioRecords['all-clean'] 'x' $now
         Assert-That ($promoted.cleanCount -eq 3 -and $promoted.medianToolCalls -eq 100 -and $promoted.medianTotalInputTokens -eq 1000000) 'promotion records clean count and medians'
+
+        # The real version resolver reads the newest agent release (never Latest), from fixtures here
+        $releaseFixtures = Join-Path $PSScriptRoot 'tests/agent-release'
+        try
+        {
+            foreach ($releaseFixture in Get-ChildItem -LiteralPath $releaseFixtures -Filter '*.json')
+            {
+                $releaseCase = Read-JsonFile $releaseFixture.FullName
+                $script:ReleasesFile = $releaseFixture.FullName
+                if (Get-Prop $releaseCase 'expectedError')
+                {
+                    $failedClearly = $false
+                    try { & $savedResolvers.Version | Out-Null } catch { $failedClearly = $_.Exception.Message -like 'Could not resolve the newest agent release:*' }
+                    Assert-That $failedClearly "$($releaseFixture.Name): no complete agent release fails clearly"
+                }
+                else
+                {
+                    Assert-That ((& $savedResolvers.Version) -eq $releaseCase.expected) "$($releaseFixture.Name): the version is the newest agent release $($releaseCase.expected)"
+                }
+            }
+        }
+        finally { $script:ReleasesFile = $null }
 
         # Full run with fakes: baseline untouched, issue only on triage, DryRun runs nothing
         $trialCalls = [System.Collections.Generic.List[string]]::new()

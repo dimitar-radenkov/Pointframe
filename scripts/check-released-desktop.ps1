@@ -13,6 +13,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
+. (Join-Path $PSScriptRoot 'agent-release.ps1')
+
 $script:RepositoryRoot = Split-Path $PSScriptRoot -Parent
 $script:Results = [System.Collections.Generic.List[object]]::new()
 $script:StartedUtc = [DateTime]::UtcNow
@@ -26,6 +28,15 @@ $script:StderrTask = $null
 $script:Mode = 'release'
 $script:Packages = [System.Collections.Generic.List[object]]::new()
 $script:CandidateVersion = '0.0.0-candidate'
+
+function Resolve-ReleaseVersion {
+    # -Version wins; otherwise the newest complete agent release. This script qualifies the CLI/MCP pair, and GitHub Latest
+    # is a desktop release from the release trains on.
+    param([string]$Explicit, [string]$ReleasesFile)
+    if ($Explicit) { return $Explicit }
+    try { return Resolve-NewestAgentVersion -Repository 'dimitar-radenkov/Pointframe' -ReleasesFile $ReleasesFile }
+    catch { throw "Could not resolve the newest agent release: $($_.Exception.Message)" }
+}
 
 function Get-Sha256Hex {
     param([Parameter(Mandatory)][string]$Path)
@@ -327,6 +338,18 @@ function Test-Self {
             if (-not $rejected) { throw "Resolve-RunMode did not reject a bad argument combination with '$($case.Message)'." }
         }
 
+        $releaseFixtures = Join-Path $PSScriptRoot 'tests/agent-release'
+        foreach ($releaseFixture in Get-ChildItem -LiteralPath $releaseFixtures -Filter '*.json') {
+            $releaseCase = Get-Content -LiteralPath $releaseFixture.FullName -Raw | ConvertFrom-Json
+            if ($releaseCase.PSObject.Properties['expectedError']) {
+                $failedClearly = $false
+                try { Resolve-ReleaseVersion '' $releaseFixture.FullName | Out-Null } catch { $failedClearly = $_.Exception.Message -like 'Could not resolve the newest agent release:*' }
+                if (-not $failedClearly) { throw "$($releaseFixture.Name): no complete agent release must fail with a clear message." }
+            }
+            elseif ((Resolve-ReleaseVersion '' $releaseFixture.FullName) -ne $releaseCase.expected) { throw "$($releaseFixture.Name): without -Version the newest agent release $($releaseCase.expected) must be chosen." }
+            if ((Resolve-ReleaseVersion '6.7.1' $releaseFixture.FullName) -ne '6.7.1') { throw "$($releaseFixture.Name): -Version must win over the release lookup." }
+        }
+
         $existingFfmpeg = Join-Path $scratch 'ffmpeg.exe'
         [IO.File]::WriteAllBytes($existingFfmpeg, [byte[]](1, 2, 3))
         if ((Get-FfmpegPath $existingFfmpeg 'C:\on\path\ffmpeg.exe') -ne $existingFfmpeg) { throw 'FFMPEG_PATH did not win over PATH.' }
@@ -467,11 +490,7 @@ else {
 
         if ($runMode -eq 'release') {
             $Version = Invoke-Step 'resolve release version' {
-                $resolvedVersion = $Version
-                if (-not $resolvedVersion) {
-                    $release = Invoke-NativeChecked 'gh' @('release', 'view', '--repo', 'dimitar-radenkov/Pointframe', '--json', 'tagName') 'Resolve latest GitHub release'
-                    $resolvedVersion = (($release | ConvertFrom-Json).tagName -replace '^v', '')
-                }
+                $resolvedVersion = Resolve-ReleaseVersion $Version
                 if ($resolvedVersion -notmatch '^\d+\.\d+\.\d+$') { throw "Version '$resolvedVersion' is not a semantic x.y.z release version." }
                 $resolvedVersion
             }

@@ -1,0 +1,12 @@
+{
+  "description": "Tags that are not strict numeric v<x.y.z> are ignored even with complete assets.",
+  "releases": [
+    { "tag_name": "v6.9.9-rc1", "draft": false, "prerelease": false, "published_at": "2026-10-23T10:00:00Z", "assets": ["Pointframe.Cli-6.9.9-rc1-win-x64.zip", "Pointframe.Cli-6.9.9-rc1-win-x64.zip.sha256", "Pointframe.Mcp-6.9.9-rc1-win-x64.mcpb"] },
+    { "tag_name": "6.9.8", "draft": false, "prerelease": false, "published_at": "2026-10-23T10:00:00Z", "assets": ["Pointframe.Cli-6.9.8-win-x64.zip", "Pointframe.Cli-6.9.8-win-x64.zip.sha256", "Pointframe.Mcp-6.9.8-win-x64.mcpb"] },
+    { "tag_name": "v6.9", "draft": false, "prerelease": false, "published_at": "2026-10-23T10:00:00Z", "assets": ["Pointframe.Cli-6.9-win-x64.zip", "Pointframe.Cli-6.9-win-x64.zip.sha256", "Pointframe.Mcp-6.9-win-x64.mcpb"] },
+    { "tag_name": "V6.9.7", "draft": false, "prerelease": false, "published_at": "2026-10-23T10:00:00Z", "assets": ["Pointframe.Cli-6.9.7-win-x64.zip", "Pointframe.Cli-6.9.7-win-x64.zip.sha256", "Pointframe.Mcp-6.9.7-win-x64.mcpb"] },
+    { "tag_name": "agent-v6.9.6", "draft": false, "prerelease": false, "published_at": "2026-10-23T10:00:00Z", "assets": ["Pointframe.Cli-6.9.6-win-x64.zip", "Pointframe.Cli-6.9.6-win-x64.zip.sha256", "Pointframe.Mcp-6.9.6-win-x64.mcpb"] },
+    { "tag_name": "v6.9.1", "draft": false, "prerelease": false, "published_at": "2026-10-21T10:00:00Z", "assets": ["Pointframe.Cli-6.9.1-win-x64.zip", "Pointframe.Cli-6.9.1-win-x64.zip.sha256", "Pointframe.Mcp-6.9.1-win-x64.mcpb"] }
+  ],
+  "expected": "6.9.1"
+}
