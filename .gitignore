@@ -49,6 +49,8 @@ mono_crash.*
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
+# The root release/ folder holds the release marker (scripts/release-impact.ps1), not build output
+!/release/
 [Rr]eleases/
 x64/
 x86/

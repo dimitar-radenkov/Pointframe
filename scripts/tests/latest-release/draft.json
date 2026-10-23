@@ -1,0 +1,10 @@
+{
+  "description": "A draft desktop release with a higher version is not published and does not count as the highest desktop release.",
+  "releases": [
+    { "tag_name": "v6.8.2", "draft": true, "prerelease": false, "published_at": null, "assets": ["Pointframe-6.8.2-x64-Setup.exe"] },
+    { "tag_name": "v6.8.0", "draft": false, "prerelease": false, "published_at": "2026-10-12T10:00:00Z", "assets": ["Pointframe-6.8.0-x64-Setup.exe"] }
+  ],
+  "latestTag": "v6.8.0",
+  "expected": "ok",
+  "promoteCases": [ { "tag": "v6.8.2", "promote": false } ]
+}

@@ -1,0 +1,44 @@
+{
+  "file": "receipt-failed-publication.json",
+  "kind": "receipt",
+  "expected": "failed",
+  "expectedChannels": {
+    "github-release:desktop": "failed",
+    "github-release:agent": "accepted",
+    "winget:DimitarRadenkov.Pointframe": "pending",
+    "winget:DimitarRadenkov.Pointframe.Cli": "accepted",
+    "mcp-registry": "accepted",
+    "plugin-pin": "accepted"
+  },
+  "input": {
+    "wingetIds": ["DimitarRadenkov.Pointframe", "DimitarRadenkov.Pointframe.Cli"],
+    "receipt": {
+      "schemaVersion": 1,
+      "repository": "dimitar-radenkov/Pointframe",
+      "createdUtc": "2026-10-23T10:00:00Z",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "trains": {
+        "desktop": {
+          "selected": true, "version": "6.7.93", "tag": "v6.7.93", "commit": "0123456789abcdef0123456789abcdef01234567", "publication": "failed",
+          "assets": [ { "name": "Pointframe-6.7.93-x64-Setup.exe", "sha256": null } ]
+        },
+        "agent": {
+          "selected": true, "version": "6.7.93", "tag": "v6.7.93", "commit": "0123456789abcdef0123456789abcdef01234567", "publication": "published",
+          "assets": [ { "name": "Pointframe.Cli-6.7.93-win-x64.zip", "sha256": null } ]
+        }
+      }
+    },
+    "observed": {
+      "release": {
+        "desktop": { "exists": true, "draft": false, "assets": ["Pointframe-6.7.93-x64-Setup.exe"], "cdConclusion": "success", "cdStatus": "completed" },
+        "agent": { "exists": true, "draft": false, "assets": ["Pointframe.Cli-6.7.93-win-x64.zip"], "cdConclusion": "success", "cdStatus": "completed" }
+      },
+      "winget": {
+        "DimitarRadenkov.Pointframe": null,
+        "DimitarRadenkov.Pointframe.Cli": { "workflowConclusion": "success", "prState": "merged" }
+      },
+      "registry": { "publishFailed": false, "versionPresent": true },
+      "plugin": { "current": "6.7.93", "previous": "6.7.92" }
+    }
+  }
+}

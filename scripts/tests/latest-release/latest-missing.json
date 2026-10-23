@@ -1,0 +1,9 @@
+{
+  "description": "releases/latest answered 404 (no Latest at all): repair to the highest desktop release.",
+  "releases": [
+    { "tag_name": "v6.9.0", "draft": false, "prerelease": false, "published_at": "2026-10-16T10:00:00Z", "assets": ["Pointframe-6.9.0-x64-Setup.exe"] }
+  ],
+  "latestTag": null,
+  "expected": "repair",
+  "repairTarget": "v6.9.0"
+}
