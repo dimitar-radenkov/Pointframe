@@ -42,17 +42,6 @@ internal sealed class McpPackageInstaller : IMcpPackageInstaller
         var package = await _packageSource.DownloadLatestAsync(cancellationToken);
         VerifyChecksum(package);
 
-        // A release found through the Releases API is never installed over a server at or above its version.
-        if (!dryRun
-            && package.ReleaseVersion is { } resolved
-            && GetCurrent() is { } current
-            && TryParseVersion(resolved, out var resolvedVersion)
-            && TryParseVersion(current.Version, out var currentVersion)
-            && resolvedVersion <= currentVersion)
-        {
-            return current;
-        }
-
         var stagingParent = dryRun ? Path.GetTempPath() : _rootDirectory;
         var stagingDirectory = Path.Combine(stagingParent, $"Pointframe.Mcp.staging-{Guid.NewGuid():N}");
         try
@@ -70,6 +59,18 @@ internal sealed class McpPackageInstaller : IMcpPackageInstaller
             }
 
             var version = ReadManifestVersion(stagingDirectory);
+
+            // A candidate or source build's download (API-selected or the legacy alias fallback, which can lag) is never
+            // installed over a server at or above the verified bundle's own version.
+            if (!dryRun
+                && package.NeverDowngrade
+                && GetCurrent() is { } current
+                && TryParseVersion(version, out var bundleVersion)
+                && TryParseVersion(current.Version, out var currentVersion)
+                && bundleVersion <= currentVersion)
+            {
+                return current;
+            }
 
             var installDirectory = Path.Combine(_rootDirectory, version);
             var installation = new McpInstallation(version, Path.Combine(installDirectory, ExecutableName), installDirectory);

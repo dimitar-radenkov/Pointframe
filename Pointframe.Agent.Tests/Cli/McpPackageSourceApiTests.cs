@@ -271,6 +271,36 @@ public sealed class McpPackageSourceApiTests : IDisposable
         Assert.Equal([(byte)0], File.ReadAllBytes(current.ExecutablePath));
     }
 
+    [Theory]
+    [InlineData("6.9.2", "6.9.1")]
+    [InlineData("6.9.2", "6.9.2")]
+    public async Task AFallbackAliasBundleAtOrBelowTheInstalledVersion_IsNeverInstalled(string installedVersion, string aliasVersion)
+    {
+        var current = SeedInstall(installedVersion);
+        var github = new FakeGitHub(new HttpResponseMessage(HttpStatusCode.Forbidden)) { BundleVersion = aliasVersion };
+        var installer = new McpPackageInstaller(NewSource(github), _root);
+
+        var installation = await installer.InstallLatestAsync(false, CancellationToken.None);
+
+        Assert.Equal([$"{Api}1", LatestAlias, $"{LatestAlias}.sha256"], github.RequestUris);
+        Assert.Equal(current, installation);
+        Assert.Equal(installedVersion, installer.GetCurrent()?.Version);
+        Assert.False(Directory.Exists(Path.Combine(_root, aliasVersion)) && aliasVersion != installedVersion);
+    }
+
+    [Fact]
+    public async Task AFallbackAliasBundleAboveTheInstalledVersion_UpdatesIt()
+    {
+        SeedInstall("6.9.1");
+        var github = new FakeGitHub(new HttpResponseMessage(HttpStatusCode.Forbidden)) { BundleVersion = "6.9.2" };
+        var installer = new McpPackageInstaller(NewSource(github), _root);
+
+        var installation = await installer.InstallLatestAsync(false, CancellationToken.None);
+
+        Assert.Equal("6.9.2", installation.Version);
+        Assert.Equal("6.9.2", installer.GetCurrent()?.Version);
+    }
+
     [Fact]
     public async Task AReleaseAboveTheInstalledVersion_UpdatesIt()
     {

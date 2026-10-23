@@ -70,7 +70,7 @@ internal sealed partial class GitHubMcpPackageSource(HttpClient httpClient, stri
 
         checksumResponse.EnsureSuccessStatusCode();
         var checksum = await checksumResponse.Content.ReadAsStringAsync(cancellationToken);
-        return new McpPackageDownload(bundle, checksum, resolvedVersion);
+        return new McpPackageDownload(bundle, checksum, resolvedVersion, NeverDowngrade: _releaseVersion is null);
     }
 
     // Stops at the first page that has a complete agent release or at a short page; the cap is hard.

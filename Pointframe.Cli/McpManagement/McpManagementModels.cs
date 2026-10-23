@@ -1,6 +1,6 @@
 namespace Pointframe.Cli;
 
-internal sealed record McpPackageDownload(byte[] Bundle, string ChecksumText, string? ReleaseVersion = null);
+internal sealed record McpPackageDownload(byte[] Bundle, string ChecksumText, string? ReleaseVersion = null, bool NeverDowngrade = false);
 
 internal sealed record McpInstallation(string Version, string ExecutablePath, string InstallDirectory);
 
