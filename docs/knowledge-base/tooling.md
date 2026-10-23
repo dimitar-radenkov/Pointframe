@@ -87,7 +87,7 @@ The format gate covers the main project only. Do not run `dotnet format` on `Poi
 **Installer and packaging.**
 
 - `installer/Pointframe.iss` is the Inno Setup script; `installer/build-installer.ps1` and `installer/test-installer.ps1` build and check it locally. Its ARP `AppPublisher` is the source of truth that the winget manifests must mirror.
-- `winget/` holds the first manifest of each winget package (`DimitarRadenkov.Pointframe`, `DimitarRadenkov.Pointframe.Cli`). The MCP server is listed in the official MCP Registry, published by CD; see [Packaging and install](features/cli-mcp.md#packaging-and-install).
+- `winget/` holds the first manifest of each winget package (`DimitarRadenkov.Pointframe`, `DimitarRadenkov.Pointframe.Cli`). The MCP server is listed in the official MCP Registry, published by CD; see [Packaging and install](features/claude-plugin.md#packaging-and-install).
 - CD publishes both immutable versioned CLI/MCP assets and stable aliases (`Pointframe.Cli-win-x64.zip`, `Pointframe.Mcp-win-x64.mcpb`, and matching `.sha256` files). Use the aliases for `releases/latest/download` links and Shields.io badges; they prevent release-version changes from breaking those links.
 - Renaming anything in the delivery path (exe name, installer name, package id) touches the workflows, the installer, the winget manifests, and the updater's asset-name expectation together.
 - Lesson: A floating action tag moved upstream and broke every release

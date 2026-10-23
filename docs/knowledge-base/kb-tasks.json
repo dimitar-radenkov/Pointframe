@@ -85,8 +85,8 @@
       "target": "F-39",
       "sections": [
         "features/verify.md#overview-and-run-flow",
-        "features/verify.md#d-013-verification-spec-v1-is-frozen",
-        "features/verify.md#d-014-interactive-desktop-testing-reuses-verify-trust"
+        "features/verify-decisions.md#d-013-verification-spec-v1-is-frozen",
+        "features/verify-decisions.md#d-014-interactive-desktop-testing-reuses-verify-trust"
       ],
       "lessons": [
         "A named Mutex cannot guard work that awaits",
@@ -97,7 +97,7 @@
       "id": "topic-verify",
       "target": "verify run",
       "sections": [
-        "features/verify.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service"
+        "features/verify-decisions.md#d-007-verify-run-drives-the-mcp-server-instead-of-sharing-an-engine-service"
       ],
       "lessons": []
     },
@@ -118,7 +118,7 @@
       "target": "Pointframe.Cli/Verification/DesktopToolsApplication.cs",
       "sections": [
         "features/verify.md#initialization-setup-and-scenario-import",
-        "features/verify.md#d-014-interactive-desktop-testing-reuses-verify-trust"
+        "features/verify-decisions.md#d-014-interactive-desktop-testing-reuses-verify-trust"
       ],
       "lessons": []
     },
@@ -126,7 +126,7 @@
       "id": "engine-desktop-service",
       "target": "Pointframe.Engine/Automation/Services/DesktopTestReportService.cs",
       "sections": [
-        "features/cli-mcp.md#desktop-testing-driver-and-policy"
+        "features/mcp-desktop-testing.md#desktop-testing-driver-and-policy"
       ],
       "lessons": []
     },
@@ -134,7 +134,7 @@
       "id": "topic-trust",
       "target": "trust",
       "sections": [
-        "features/verify.md#d-014-interactive-desktop-testing-reuses-verify-trust"
+        "features/verify-decisions.md#d-014-interactive-desktop-testing-reuses-verify-trust"
       ],
       "lessons": []
     },
@@ -158,7 +158,7 @@
       "id": "topic-approval",
       "target": "approval",
       "sections": [
-        "features/verify.md#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository"
+        "features/verify-decisions.md#d-008-verify-approvals-need-a-person-at-a-terminal-and-live-outside-the-repository"
       ],
       "lessons": []
     },
@@ -166,7 +166,7 @@
       "id": "topic-approver",
       "target": "approver",
       "sections": [
-        "features/verify.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands"
+        "features/verify-decisions.md#d-009-an-approver-agent-behind-fixed-rules-approves-verify-commands"
       ],
       "lessons": []
     },
@@ -174,7 +174,7 @@
       "id": "topic-agent-roles",
       "target": "agent roles",
       "sections": [
-        "features/verify.md#d-010-verifys-agent-roles-run-on-any-agent"
+        "features/verify-decisions.md#d-010-verifys-agent-roles-run-on-any-agent"
       ],
       "lessons": []
     }
