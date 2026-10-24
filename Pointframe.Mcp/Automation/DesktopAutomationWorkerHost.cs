@@ -56,6 +56,14 @@ public sealed class DesktopAutomationWorkerHost : IDesktopAutomationWorkerHost
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         _worker = Process.Start(CreateStartInfo(pipeName))
             ?? throw new InvalidOperationException("The worker process could not be started.");
+        _worker.ErrorDataReceived += (_, eventArgs) =>
+        {
+            if (eventArgs.Data is not null)
+            {
+                Console.Error.WriteLine(eventArgs.Data);
+            }
+        };
+        _worker.BeginErrorReadLine();
         await _pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
         VerifyWorkerIdentity(_worker);
         var hello = await ReadAsync<DesktopAutomationWorkerHello>(cancellationToken).ConfigureAwait(false);
@@ -295,6 +303,7 @@ public sealed class DesktopAutomationWorkerHost : IDesktopAutomationWorkerHost
             FileName = _executablePath,
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardError = true,
         };
         if (string.Equals(Path.GetFileNameWithoutExtension(_executablePath), "dotnet", StringComparison.OrdinalIgnoreCase))
         {

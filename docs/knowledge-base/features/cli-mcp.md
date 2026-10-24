@@ -89,6 +89,7 @@ Spec-driven verification (`pointframe verify`, F-39) lives in [Verify](verify.md
 - Lesson: UI Automation property reads throw, and an unhandled worker exception poisons every later request
 - Lesson: A verification tool that cannot fail is worse than no verification tool
 - Lesson: A pending UIA Invoke blocks every UIA client of that app
+- Lesson: A stale cloaked lock-screen window can hold the foreground of an unlocked session
 - Lesson: A Stop hook whose command is missing fails open
 - Lesson: Desktop automation test assemblies should disable xUnit parallelization
 - Lesson: GetWindowRect includes the invisible resize border, so window captures leak what lies behind

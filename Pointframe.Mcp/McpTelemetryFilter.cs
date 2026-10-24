@@ -51,7 +51,10 @@ internal static class McpTelemetryFilter
             }
             finally
             {
-if (track)                {                    Track(telemetry, context, outcome, Stopwatch.GetElapsedTime(started));                }
+                if (track)
+                {
+                    Track(telemetry, context, outcome, Stopwatch.GetElapsedTime(started));
+                }
             }
         };
     }
