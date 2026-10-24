@@ -38,6 +38,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'release-model.ps1')
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $PagesBase = 'https://dimitar-radenkov.github.io/Pointframe/'
@@ -338,6 +339,8 @@ function Test-ReleaseAssetNames([string]$Root, [System.Collections.Generic.List[
     $cd = Read-RepoFile $Root $CdWorkflow
     $mcpScript = Read-RepoFile $Root $McpPackaging
     $cliScript = Read-RepoFile $Root $CliPackaging
+    $publisher = Read-RepoFile $Root 'scripts/publish-release.ps1'
+    if (-not $publisher) { $publisher = Read-RepoFile $RepoRoot 'scripts/publish-release.ps1' }
     if (-not $cd)
     {
         return
@@ -356,11 +359,16 @@ function Test-ReleaseAssetNames([string]$Root, [System.Collections.Generic.List[
             [void]$named.Add($match.Value)
         }
     }
+    $desktopAssets = @(Get-TrainAssetNames '1.2.3' @('desktop'))
+    if ($cd -notmatch 'scripts/publish-release\.ps1' -or $cd -notmatch '-Trains' -or $publisher -notmatch 'Get-TrainAssetNames')
+    {
+        Add-Problem $Problems "$CdWorkflow does not invoke the shared per-train publisher, or the publisher does not use Get-TrainAssetNames."
+    }
     foreach ($name in $named)
     {
-        if ($cd -notmatch "packaging/output/$([regex]::Escape($name))")
+        if ($name -notin $desktopAssets)
         {
-            Add-Problem $Problems "Asset $name is named in the docs but $CdWorkflow does not publish it."
+            Add-Problem $Problems "Asset $name is named in the docs but is not in the shared desktop asset list."
         }
         $versioned = $name -replace '-win-x64', '-$Version-win-x64'
         $script = if ($name -like 'Pointframe.Mcp*') { $mcpScript } else { $cliScript }
@@ -1062,7 +1070,7 @@ function Invoke-SelfTest
         @{ Name = 'MCP reference command drifted from the page'; Expect = 'is missing the README or MCP reference install command'; Apply = { param($r) Edit-FixtureFile $r 'docs/mcp/README.md' 'codex mcp add pointframe' 'codex mcp add pointframe3' } },
         @{ Name = 'drifted install command'; Expect = 'code line is not in README.md'; Apply = { param($r) Edit-FixtureFile $r 'website/windows-screenshot-mcp-server.html' 'claude mcp add --scope user' 'claude mcp add --scope project' } },
         @{ Name = 'drifted draft command'; Expect = 'install command is not in README.md'; Apply = { param($r) Edit-FixtureFile $r 'packaging/directory-submissions/mcp-so-issue.txt' 'codex mcp add pointframe' 'codex mcp add pointframe2' } },
-        @{ Name = 'asset not published'; Expect = 'does not publish it'; Apply = { param($r) Edit-FixtureFile $r '.github/workflows/cd.yml' 'packaging/output/Pointframe.Mcp-win-x64.mcpb' 'packaging/output/Other.mcpb' } },
+        @{ Name = 'asset not published'; Expect = 'does not invoke the shared per-train publisher'; Apply = { param($r) Edit-FixtureFile $r '.github/workflows/cd.yml' '-Trains' '-Train' } },
         @{ Name = 'tool missing on page'; Expect = 'does not mention the tool get_capture'; Apply = { param($r) Edit-FixtureFile $r 'website/windows-screenshot-mcp-server.html' 'get_capture' 'get_other' } },
         @{ Name = 'tool count drift'; Expect = "says 'All ten tools'"; Apply = { param($r) Edit-FixtureFile $r 'website/windows-screenshot-mcp-server.html' 'All three tools' 'All ten tools' } },
         @{ Name = 'page missing from sitemap'; Expect = 'does not list'; Apply = { param($r) Edit-FixtureFile $r 'website/sitemap.xml' 'windows-screenshot-mcp-server.html' 'other.html' } },

@@ -4,8 +4,7 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    branches:
-      - master
+    branches: [master]
 
 concurrency:
   group: cd-publish
@@ -17,7 +16,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
     permissions:
       contents: write
-      id-token: write # GitHub OIDC login to the MCP Registry
+      id-token: write
     env:
       SIGNING_CERT_B64: ${{ secrets.SIGNING_CERT_B64 }}
       SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
@@ -43,216 +42,145 @@ jobs:
       - name: Restore tools
         run: dotnet tool restore
 
-      # Display version comes from version.json + commit height via Nerdbank.GitVersioning.
-      # On a tag push the tag wins (e.g. v1.2.5 → publicRelease=true, no pre-release suffix).
       - name: Compute version
         id: version
         shell: pwsh
         run: |
           $json = dotnet nbgv get-version --format json | ConvertFrom-Json
-          $display = $json.NuGetPackageVersion   # e.g. "1.2.5"
-          echo "display=$display" >> $env:GITHUB_OUTPUT
+          $display = $json.NuGetPackageVersion
+          "display=$display" >> $env:GITHUB_OUTPUT
 
-      - name: Check existing release
-        id: existing
+      # Plan before any build. The complete paged release listing is required for per-train baselines and stale reruns.
+      - name: Compute and gate release plan
+        id: plan
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v${{ steps.version.outputs.display }}"
-          $releaseJson = gh release view $tag --json isDraft,assets 2>&1
-          if ($LASTEXITCODE -ne 0) {
-            $errorText = $releaseJson -join "`n"
-            if ($errorText -match '(?i)release not found|HTTP 404') {
-              "skip=false" >> $env:GITHUB_OUTPUT
-              exit 0
-            }
-            throw "Could not check release ${tag}: $errorText"
+          $sha = '${{ github.event.workflow_run.head_sha }}'
+          New-Item -ItemType Directory -Path release-receipt -Force | Out-Null
+          $all = [System.Collections.Generic.List[object]]::new()
+          for ($page = 1; $page -le 50; $page++) {
+            $output = gh api "repos/${{ github.repository }}/releases?per_page=100&page=$page" 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "Could not list releases (page $page): $($output -join ' ')" }
+            $chunk = @(($output -join "`n") | ConvertFrom-Json)
+            foreach ($release in $chunk) { $all.Add($release) }
+            if ($chunk.Count -lt 100) { break }
+            if ($page -eq 50) { throw 'More than 50 pages of releases; increase the explicit release listing cap.' }
           }
+          ConvertTo-Json -InputObject $all.ToArray() -Depth 10 | Set-Content release-receipt/releases.json -Encoding utf8NoBOM
+          $security = $false
+          $pulls = gh api "repos/${{ github.repository }}/commits/$sha/pulls" 2>$null
+          if ($LASTEXITCODE -eq 0) { $security = @(($pulls -join "`n") | ConvertFrom-Json | ForEach-Object { $_.labels } | Where-Object { $_.name -eq 'security' }).Count -gt 0 }
+          ./scripts/release-impact.ps1 -Base "$sha~1" -Head $sha -CurrentVersion '${{ steps.version.outputs.display }}' -ReleasesFile release-receipt/releases.json -PlanOut release-receipt/plan.json -Security:$security
+          if ($LASTEXITCODE -eq 3) { throw 'Release plan contains an unclassified path; refusing to build.' }
+          if ($LASTEXITCODE -ne 0) { throw "Release plan failed with exit $LASTEXITCODE; refusing to build." }
+          $plan = Get-Content release-receipt/plan.json -Raw | ConvertFrom-Json
+          foreach ($train in @('desktop', 'agent')) {
+            if ($plan.perTrain.$train.stale) { Write-Host "::notice::v${{ steps.version.outputs.display }} is stale for $train; published $($plan.perTrain.$train.baseline) already exists. No release or Latest change will be made for that train." }
+          }
+          $desktop = [bool]$plan.perTrain.desktop.selected
+          $agent = [bool]$plan.perTrain.agent.selected
+          $selectedTrains = [System.Collections.Generic.List[string]]::new()
+          if ($desktop) { $selectedTrains.Add('desktop') }
+          if ($agent) { $selectedTrains.Add('agent') }
+          $trains = $selectedTrains -join ','
+          "desktop=$($desktop.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "agent=$($agent.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "trains=$trains" >> $env:GITHUB_OUTPUT
+          Write-Host "Release trains selected: $(if ($trains) { $trains } else { 'none' })"
 
-          $release = $releaseJson | ConvertFrom-Json
-          $expectedAssets = @(
-            "Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe",
-            "Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip",
-            "Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip.sha256",
-            'Pointframe.Cli-win-x64.zip',
-            'Pointframe.Cli-win-x64.zip.sha256',
-            "Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb",
-            "Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb.sha256",
-            "Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.server.json",
-            'Pointframe.Mcp-win-x64.mcpb',
-            'Pointframe.Mcp-win-x64.mcpb.sha256'
-          )
-          $assetNames = @($release.assets | ForEach-Object { $_.name })
-          $complete = -not $release.isDraft -and @($expectedAssets | Where-Object { $_ -notin $assetNames }).Count -eq 0
-          if ($complete) {
-            Write-Host "Release $tag is already published with all expected assets; skipping build and release steps."
-            "skip=true" >> $env:GITHUB_OUTPUT
-          }
-          else {
-            "skip=false" >> $env:GITHUB_OUTPUT
-          }
-
-      - name: Inject Application Insights connection string
-        if: steps.existing.outputs.skip != 'true'
+      - name: Inject desktop telemetry connection string
+        if: steps.plan.outputs.desktop == 'true'
         shell: pwsh
         run: |
           $file = 'Pointframe/appsettings.json'
           $json = Get-Content $file | ConvertFrom-Json
           $json.ApplicationInsights.ConnectionString = '${{ secrets.APP_INSIGHTS_CONNECTION_STRING }}'
           $json | ConvertTo-Json -Depth 10 | Set-Content $file
+          $length = $json.ApplicationInsights.ConnectionString.Length
+          if ($length -eq 0) { throw 'APP_INSIGHTS_CONNECTION_STRING secret is empty or not set.' }
 
-          # The CLI and MCP server embed the same connection string from this file at build time.
-          $agentFile = 'Pointframe.Telemetry/telemetry.json'
-          $agentJson = Get-Content $agentFile | ConvertFrom-Json
-          $agentJson.ApplicationInsights.ConnectionString = '${{ secrets.APP_INSIGHTS_CONNECTION_STRING }}'
-          $agentJson | ConvertTo-Json -Depth 10 | Set-Content $agentFile
-
-      - name: Verify connection string was injected
-        if: steps.existing.outputs.skip != 'true'
+      - name: Inject agent telemetry connection string
+        if: steps.plan.outputs.agent == 'true'
         shell: pwsh
         run: |
-          $len = ((Get-Content 'Pointframe/appsettings.json' | ConvertFrom-Json).ApplicationInsights.ConnectionString).Length
-          if ($len -eq 0) { Write-Error "APP_INSIGHTS_CONNECTION_STRING secret is empty or not set"; exit 1 }
-          Write-Host "Connection string length: $len (secret injected successfully)"
-          $agentLen = ((Get-Content 'Pointframe.Telemetry/telemetry.json' | ConvertFrom-Json).ApplicationInsights.ConnectionString).Length
-          if ($agentLen -eq 0) { Write-Error "APP_INSIGHTS_CONNECTION_STRING was not injected for the CLI and MCP server"; exit 1 }
+          $file = 'Pointframe.Telemetry/telemetry.json'
+          $json = Get-Content $file | ConvertFrom-Json
+          $json.ApplicationInsights.ConnectionString = '${{ secrets.APP_INSIGHTS_CONNECTION_STRING }}'
+          $json | ConvertTo-Json -Depth 10 | Set-Content $file
+          if ($json.ApplicationInsights.ConnectionString.Length -eq 0) { throw 'APP_INSIGHTS_CONNECTION_STRING is empty for the agent packages.' }
 
-      - name: Publish (self-contained single-file)
-        if: steps.existing.outputs.skip != 'true'
-        run: >-
-          dotnet publish Pointframe/Pointframe.csproj
-          /p:PublishProfile=win-x64
-          --nologo
+      - name: Publish desktop application
+        if: steps.plan.outputs.desktop == 'true'
+        run: dotnet publish Pointframe/Pointframe.csproj /p:PublishProfile=win-x64 --nologo
 
       - name: Download ffmpeg for MCP package
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.plan.outputs.agent == 'true'
         shell: pwsh
         run: |
           $zipPath = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
           $extractPath = Join-Path $env:RUNNER_TEMP 'ffmpeg'
-          Invoke-WebRequest `
-            -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-9.0.zip' `
-            -OutFile $zipPath
+          Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-9.0.zip' -OutFile $zipPath
           Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
           $ffmpeg = Get-ChildItem $extractPath -Recurse -Filter ffmpeg.exe | Select-Object -First 1
           if ($null -eq $ffmpeg) { throw 'ffmpeg.exe was not found in the downloaded archive.' }
-          # Same input layout as microphone recording (FFMpegVideoWriter); fails if ffmpeg changed these options.
-          & $ffmpeg.FullName -hide_banner -loglevel error -f lavfi -i 'testsrc=size=64x64:rate=10' `
-            -thread_queue_size 512 -f lavfi -i anullsrc -map 0:v:0 -map 1:a:0 `
-            -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -t 1 -f null -
+          & $ffmpeg.FullName -hide_banner -loglevel error -f lavfi -i 'testsrc=size=64x64:rate=10' -thread_queue_size 512 -f lavfi -i anullsrc -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -t 1 -f null -
           if ($LASTEXITCODE -ne 0) { throw "ffmpeg rejected the recording arguments (exit $LASTEXITCODE)." }
           "FFMPEG_PATH=$($ffmpeg.FullName)" >> $env:GITHUB_ENV
 
       - name: Build MCP release package
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.plan.outputs.agent == 'true'
         shell: pwsh
-        run: |
-          ./packaging/build-mcp-package.ps1 `
-            -Version '${{ steps.version.outputs.display }}' `
-            -FfmpegPath $env:FFMPEG_PATH
+        run: ./packaging/build-mcp-package.ps1 -Version '${{ steps.version.outputs.display }}' -FfmpegPath $env:FFMPEG_PATH
 
       - name: Build CLI release package
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.plan.outputs.agent == 'true'
+        shell: pwsh
+        run: ./packaging/build-cli-package.ps1 -Version '${{ steps.version.outputs.display }}'
+
+      - name: Sign desktop executable
+        if: ${{ steps.plan.outputs.desktop == 'true' && env.SIGNING_CERT_B64 != '' }}
         shell: pwsh
         run: |
-          ./packaging/build-cli-package.ps1 `
-            -Version '${{ steps.version.outputs.display }}'
-
-      - name: Create stable CLI and MCP package aliases
-        if: steps.existing.outputs.skip != 'true'
-        shell: pwsh
-        run: |
-          $outputDirectory = 'packaging/output'
-          $version = '${{ steps.version.outputs.display }}'
-          $packages = @(
-            @{
-              Source = Join-Path $outputDirectory "Pointframe.Cli-$version-win-x64.zip"
-              Destination = Join-Path $outputDirectory 'Pointframe.Cli-win-x64.zip'
-            },
-            @{
-              Source = Join-Path $outputDirectory "Pointframe.Mcp-$version-win-x64.mcpb"
-              Destination = Join-Path $outputDirectory 'Pointframe.Mcp-win-x64.mcpb'
-            }
-          )
-
-          foreach ($package in $packages)
-          {
-            Copy-Item $package.Source $package.Destination -Force
-            $sha256 = (Get-FileHash $package.Destination -Algorithm SHA256).Hash.ToLowerInvariant()
-            Set-Content "$($package.Destination).sha256" "$sha256  $(Split-Path $package.Destination -Leaf)" -Encoding utf8NoBOM
-          }
-
-      # Sign the published exe if a code-signing certificate is available.
-      # Store your PFX as a base64 secret: SIGNING_CERT_B64
-      # Store the PFX password as:          SIGNING_CERT_PASSWORD
-      - name: Sign executable
-        if: ${{ steps.existing.outputs.skip != 'true' && env.SIGNING_CERT_B64 != '' }}
-        env:
-          SIGNING_CERT_B64: ${{ env.SIGNING_CERT_B64 }}
-          SIGNING_CERT_PASSWORD: ${{ env.SIGNING_CERT_PASSWORD }}
-        shell: pwsh
-        run: |
-          $pfx = [System.Convert]::FromBase64String($env:SIGNING_CERT_B64)
+          $pfx = [Convert]::FromBase64String($env:SIGNING_CERT_B64)
           $pfxPath = Join-Path $env:TEMP 'signing.pfx'
           [IO.File]::WriteAllBytes($pfxPath, $pfx)
           try {
-            $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
-              Sort-Object -Property FullName -Descending | Select-Object -First 1).FullName
-            $exePath = 'Pointframe\bin\publish\win-x64\Pointframe.exe'
-            & $signtool sign /fd SHA256 /p $env:SIGNING_CERT_PASSWORD /f $pfxPath /tr http://timestamp.digicert.com /td SHA256 $exePath
+            $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+            & $signtool sign /fd SHA256 /p $env:SIGNING_CERT_PASSWORD /f $pfxPath /tr http://timestamp.digicert.com /td SHA256 'Pointframe\bin\publish\win-x64\Pointframe.exe'
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          } finally {
-            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
-          }
+          } finally { Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue }
 
       - name: Install Inno Setup 6
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.plan.outputs.desktop == 'true'
         run: choco install innosetup --yes --no-progress
 
       - name: Build installer
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.plan.outputs.desktop == 'true'
         shell: pwsh
         run: |
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc `
-            /DAppVersion=${{ steps.version.outputs.display }} `
-            /O"installer\output" `
-            installer\Pointframe.iss
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          & $iscc /DAppVersion=${{ steps.version.outputs.display }} /O"installer\output" installer\Pointframe.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Sign installer
-        if: ${{ steps.existing.outputs.skip != 'true' && env.SIGNING_CERT_B64 != '' }}
-        env:
-          SIGNING_CERT_B64: ${{ env.SIGNING_CERT_B64 }}
-          SIGNING_CERT_PASSWORD: ${{ env.SIGNING_CERT_PASSWORD }}
+        if: ${{ steps.plan.outputs.desktop == 'true' && env.SIGNING_CERT_B64 != '' }}
         shell: pwsh
         run: |
-          $pfx = [System.Convert]::FromBase64String($env:SIGNING_CERT_B64)
+          $pfx = [Convert]::FromBase64String($env:SIGNING_CERT_B64)
           $pfxPath = Join-Path $env:TEMP 'signing.pfx'
           [IO.File]::WriteAllBytes($pfxPath, $pfx)
           try {
-            $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
-              Sort-Object -Property FullName -Descending | Select-Object -First 1).FullName
+            $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe | Sort-Object FullName -Descending | Select-Object -First 1).FullName
             $setupPath = "installer\output\Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe"
             & $signtool sign /fd SHA256 /p $env:SIGNING_CERT_PASSWORD /f $pfxPath /tr http://timestamp.digicert.com /td SHA256 $setupPath
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          } finally {
-            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
-          }
+          } finally { Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue }
 
-      - name: Upload installer artifact
-        if: steps.existing.outputs.skip != 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Pointframe-${{ steps.version.outputs.display }}-x64-Setup
-          path: installer/output/Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe
-
-      # GitHub's Latest must stay a desktop release (D-019). Read the current Latest before the release exists so the
-      # create and update proofs below can show the new release did not take Latest over by itself.
       - name: Read the previous Latest release
         id: previous-latest
-        if: steps.existing.outputs.skip != 'true'
+        if: steps.plan.outputs.desktop == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -260,88 +188,54 @@ jobs:
           $output = gh api "repos/${{ github.repository }}/releases/latest" 2>&1
           if ($LASTEXITCODE -ne 0) {
             $errorText = $output -join "`n"
-            if ($errorText -match 'HTTP 404') {
-              "tag=" >> $env:GITHUB_OUTPUT
-              exit 0
-            }
+            if ($errorText -match 'HTTP 404') { "tag=" >> $env:GITHUB_OUTPUT; exit 0 }
             throw "Could not read the previous Latest release: $errorText"
           }
+          "tag=$((($output -join "`n") | ConvertFrom-Json).tag_name)" >> $env:GITHUB_OUTPUT
 
-          $tag = ($output -join "`n" | ConvertFrom-Json).tag_name
-          Write-Host "Previous Latest release: $tag"
-          "tag=$tag" >> $env:GITHUB_OUTPUT
+      - name: Create, validate, and publish selected release trains
+        id: publish
+        if: ${{ success() && steps.plan.outputs.trains != '' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./scripts/publish-release.ps1 -Version '${{ steps.version.outputs.display }}' -Trains '${{ steps.plan.outputs.trains }}' -Commit '${{ github.event.workflow_run.head_sha }}' -Repository '${{ github.repository }}' -ResultOut release-receipt/publication.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $result = Get-Content release-receipt/publication.json -Raw | ConvertFrom-Json
+          "desktop_state=$($result.trains.desktop)" >> $env:GITHUB_OUTPUT
+          "agent_state=$($result.trains.agent)" >> $env:GITHUB_OUTPUT
+          "alias_source_version=$($result.aliasSourceVersion)" >> $env:GITHUB_OUTPUT
+          "published=$($result.published.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "skipped_complete=$($result.skippedComplete.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
-      # Still one combined release per merge. It is created as not-Latest and promoted below, so every create and
-      # every update of a release passes make_latest explicitly (the API default is true).
-      - name: Create GitHub Release
-        id: release
-        if: steps.existing.outputs.skip != 'true'
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: v${{ steps.version.outputs.display }}
-          target_commitish: ${{ github.event.workflow_run.head_sha }}
-          make_latest: 'false'
-          files: |
-            installer/output/Pointframe-${{ steps.version.outputs.display }}-x64-Setup.exe
-            packaging/output/Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip
-            packaging/output/Pointframe.Cli-${{ steps.version.outputs.display }}-win-x64.zip.sha256
-            packaging/output/Pointframe.Cli-win-x64.zip
-            packaging/output/Pointframe.Cli-win-x64.zip.sha256
-            packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb
-            packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.mcpb.sha256
-            packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.server.json
-            packaging/output/Pointframe.Mcp-win-x64.mcpb
-            packaging/output/Pointframe.Mcp-win-x64.mcpb.sha256
-          body: |
-            Pointframe ${{ steps.version.outputs.display }}
-
-            - Installer refresh and maintenance release.
-            - Includes a standalone Pointframe CLI for whole-monitor screenshots.
-            - Includes the Pointframe MCPB stdio server bundle and registry metadata.
-            - For the full list of commits, see Compare in this release page.
-
-      # Proofs that make_latest=false holds on create and on update (they run only for a release created in this run).
       - name: Prove make_latest on create
-        id: prove-create
-        if: ${{ steps.release.outcome == 'success' }}
+        if: ${{ steps.publish.outputs.published == 'true' && steps.plan.outputs.desktop == 'true' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $previous = '${{ steps.previous-latest.outputs.tag }}'
-          if (-not $previous) {
-            Write-Host '::notice::No Latest release existed before this run; there is nothing to compare with.'
-            New-Item -ItemType Directory -Path release-receipt -Force | Out-Null
-            '{"status":"not-run","message":"no previous Latest release"}' | Set-Content release-receipt/create.json
-            exit 0
-          }
+          if (-not $previous) { New-Item -ItemType Directory -Path release-receipt -Force | Out-Null; '{"status":"not-run","message":"no previous Latest release"}' | Set-Content release-receipt/create.json; exit 0 }
           ./scripts/check-latest-release.ps1 -Repository '${{ github.repository }}' -Expect $previous -ResultOut release-receipt/create.json
           exit $LASTEXITCODE
 
       - name: Prove make_latest on update
-        id: prove-update
-        if: ${{ steps.release.outcome == 'success' }}
+        if: ${{ steps.publish.outputs.published == 'true' && steps.plan.outputs.desktop == 'true' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $previous = '${{ steps.previous-latest.outputs.tag }}'
-          if (-not $previous) {
-            Write-Host '::notice::No Latest release existed before this run; there is nothing to compare with.'
-            New-Item -ItemType Directory -Path release-receipt -Force | Out-Null
-            '{"status":"not-run","message":"no previous Latest release"}' | Set-Content release-receipt/update.json
-            exit 0
-          }
+          if (-not $previous) { New-Item -ItemType Directory -Path release-receipt -Force | Out-Null; '{"status":"not-run","message":"no previous Latest release"}' | Set-Content release-receipt/update.json; exit 0 }
           ./scripts/check-latest-release.ps1 -Repository '${{ github.repository }}' -Update 'v${{ steps.version.outputs.display }}' -MakeLatest false -ResultOut release-receipt/update.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./scripts/check-latest-release.ps1 -Repository '${{ github.repository }}' -Expect $previous -ResultOut release-receipt/update.json
           exit $LASTEXITCODE
 
-      # Latest moves only to the highest published desktop release, so a re-run of an older CD attempt changes nothing.
-      # These two steps also run when the build was skipped, so a re-run after a partial failure still promotes or repairs.
-      - name: Promote to Latest
+      - name: Promote desktop release to Latest
         id: promote
-        if: ${{ !cancelled() && (steps.existing.outputs.skip == 'true' || steps.release.outcome == 'success') }}
+        if: ${{ !cancelled() && (steps.publish.outputs.desktop_state == 'published' || steps.publish.outputs.desktop_state == 'complete') }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -349,9 +243,9 @@ jobs:
           ./scripts/check-latest-release.ps1 -Repository '${{ github.repository }}' -Promote 'v${{ steps.version.outputs.display }}' -ResultOut release-receipt/promote.json
           exit $LASTEXITCODE
 
-      - name: Check Latest release
+      - name: Repair and check Latest
         id: latest-check
-        if: ${{ !cancelled() && (steps.existing.outputs.skip == 'true' || steps.release.outcome == 'success') }}
+        if: ${{ !cancelled() && (steps.publish.outputs.desktop_state == 'published' || steps.publish.outputs.desktop_state == 'complete') }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -359,25 +253,20 @@ jobs:
           ./scripts/check-latest-release.ps1 -Repository '${{ github.repository }}' -Repair -ResultOut release-receipt/latest.json
           exit $LASTEXITCODE
 
-      # Runs after the release exists because server.json pins the MCPB release URL and SHA-256.
-      # OIDC proves ownership of the io.github.dimitar-radenkov/* namespace; no secret is needed.
       - name: Publish MCP server to the MCP Registry
-        if: ${{ steps.existing.outputs.skip == 'true' || success() }}
+        if: ${{ success() && (steps.publish.outputs.agent_state == 'published' || steps.publish.outputs.agent_state == 'complete') }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $publisherVersion = 'v1.8.1'
           $publisherArchive = Join-Path $env:RUNNER_TEMP 'mcp-publisher.tar.gz'
-          Invoke-WebRequest `
-            -Uri "https://github.com/modelcontextprotocol/registry/releases/download/$publisherVersion/mcp-publisher_windows_amd64.tar.gz" `
-            -OutFile $publisherArchive
+          Invoke-WebRequest -Uri "https://github.com/modelcontextprotocol/registry/releases/download/$publisherVersion/mcp-publisher_windows_amd64.tar.gz" -OutFile $publisherArchive
           tar -xzf $publisherArchive -C $env:RUNNER_TEMP mcp-publisher.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $publisher = Join-Path $env:RUNNER_TEMP 'mcp-publisher.exe'
-
-          $serverJson = 'packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.server.json'
-          if ('${{ steps.existing.outputs.skip }}' -eq 'true') {
+          $serverJson = "packaging/output/Pointframe.Mcp-${{ steps.version.outputs.display }}-win-x64.server.json"
+          if ('${{ steps.publish.outputs.agent_state }}' -eq 'complete') {
             gh release download "v${{ steps.version.outputs.display }}" --pattern '*server.json' --dir packaging/output --clobber
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -390,88 +279,23 @@ jobs:
           $publishExitCode = $LASTEXITCODE
           $publishOutput | ForEach-Object { Write-Host $_ }
           if ($publishExitCode -ne 0) {
-            $publishText = $publishOutput -join "`n"
-            if ($publishText -match '(?i)cannot publish duplicate version') {
-              Write-Host '::notice::MCP Registry already has this version; treating the duplicate publish as success.'
-              exit 0
-            }
-            else {
-              exit $publishExitCode
-            }
+            if (($publishOutput -join "`n") -match '(?i)cannot publish duplicate version') { Write-Host '::notice::MCP Registry already has this version; treating the duplicate publish as success.'; exit 0 }
+            exit $publishExitCode
           }
-
-      - name: Upload release version artifact
-        shell: pwsh
-        run: |
-          '${{ steps.version.outputs.display }}' | Set-Content release-version.txt -NoNewline -Encoding utf8
-
-      - name: Publish release version artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-version
-          path: release-version.txt
-
-      # Informational in this step of the release-trains migration (D-019): the merge is compared with the previous
-      # release and the result is recorded; it never blocks a release, and every merge still ships both trains.
-      - name: Compute release plan
-        id: plan
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $current = [version]'${{ steps.version.outputs.display }}'
-          $sha = '${{ github.event.workflow_run.head_sha }}'
-          New-Item -ItemType Directory -Path release-receipt -Force | Out-Null
-
-          $all = @()
-          for ($page = 1; $page -le 20; $page++) {
-            $json = gh api "repos/${{ github.repository }}/releases?per_page=100&page=$page"
-            if ($LASTEXITCODE -ne 0) { throw "Could not list releases (page $page)." }
-            $chunk = @($json | ConvertFrom-Json)
-            $all += $chunk
-            if ($chunk.Count -lt 100) { break }
-          }
-
-          $below = @($all | Where-Object { $_.tag_name -cmatch '^v\d+\.\d+\.\d+$' -and [version]$_.tag_name.Substring(1) -lt $current })
-          ConvertTo-Json -InputObject $below -Depth 8 | Set-Content release-receipt/releases.json
-          $previous = $below | Where-Object { $_.published_at } | Sort-Object { [version]$_.tag_name.Substring(1) } -Descending | Select-Object -First 1
-          $base = if ($previous) { $previous.tag_name } else { "$sha~1" }
-
-          $security = $false
-          $pulls = gh api "repos/${{ github.repository }}/commits/$sha/pulls" 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            $security = @($pulls | ConvertFrom-Json | ForEach-Object { $_.labels } | Where-Object { $_.name -eq 'security' }).Count -gt 0
-          }
-
-          ./scripts/release-impact.ps1 -Base $base -Head $sha -ReleasesFile release-receipt/releases.json -PlanOut release-receipt/plan.json -Security:$security
-          if ($LASTEXITCODE -eq 3) {
-            Write-Host '::warning::This merge changes paths that release-impact.ps1 cannot classify.'
-            exit 0
-          }
-          exit $LASTEXITCODE
 
       - name: Write release receipt
-        id: receipt
         if: ${{ !cancelled() }}
         shell: pwsh
         run: |
-          $published = '${{ steps.existing.outputs.skip }}' -eq 'true' -or '${{ steps.release.outcome }}' -eq 'success'
-          ./scripts/write-release-receipt.ps1 `
-            -Version '${{ steps.version.outputs.display }}' `
-            -Commit '${{ github.event.workflow_run.head_sha }}' `
-            -Repository '${{ github.repository }}' `
-            -Publication $(if ($published) { 'published' } else { 'failed' }) `
-            -ProofCreate release-receipt/create.json `
-            -ProofUpdate release-receipt/update.json `
-            -PromoteResult release-receipt/promote.json `
-            -LatestResult release-receipt/latest.json `
-            -PlanFile release-receipt/plan.json `
-            -Out release-receipt/release-plan.json
+          $trains = '${{ steps.plan.outputs.trains }}'
+          if (-not $trains) { $publication = 'published' }
+          elseif ('${{ steps.publish.outcome }}' -eq 'success') { $publication = 'published' }
+          elseif (Test-Path release-receipt/publication.json) { $publication = 'draft' }
+          else { $publication = 'failed' }
+          ./scripts/write-release-receipt.ps1 -Version '${{ steps.version.outputs.display }}' -Commit '${{ github.event.workflow_run.head_sha }}' -Repository '${{ github.repository }}' -Trains $trains -Publication $publication -AliasSourceVersion '${{ steps.publish.outputs.alias_source_version }}' -StateFile release-receipt/publication.json -ProofCreate release-receipt/create.json -ProofUpdate release-receipt/update.json -PromoteResult release-receipt/promote.json -LatestResult release-receipt/latest.json -PlanFile release-receipt/plan.json -Out release-receipt/release-plan.json
           exit $LASTEXITCODE
 
-      - name: Publish release plan artifact
+      - name: Publish release plan receipt artifact
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:

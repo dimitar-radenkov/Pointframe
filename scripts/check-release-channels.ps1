@@ -315,6 +315,10 @@ function Resolve-TrainReleaseChannel
 
     $name = "github-release:$Train"
     $publication = [string](Get-Opt $TrainReceipt 'publication' '')
+    if ([string](Get-Opt $TrainReceipt 'state' '') -eq 'stale')
+    {
+        return New-Channel $name 'skipped' 'a higher published release of this train already exists; this run published nothing'
+    }
     if ($publication -eq 'failed')
     {
         return New-Channel $name 'failed' 'the release receipt records a failed publication for this train'
@@ -415,9 +419,16 @@ function Resolve-ReceiptChannels
     foreach ($id in $WingetIds)
     {
         $name = "winget:$id"
-        if (-not $selected[(Get-ChannelTrain $name)])
+        $trainName = Get-ChannelTrain $name
+        if (-not $selected[$trainName])
         {
             $channels.Add((& $notApplicable $name))
+            continue
+        }
+
+        if ([string](Get-Opt $Receipt.trains.$trainName 'state' '') -eq 'stale')
+        {
+            $channels.Add((New-Channel $name 'skipped' 'a higher published release of this train already exists'))
             continue
         }
 
@@ -435,6 +446,12 @@ function Resolve-ReceiptChannels
 
     if ($selected['agent'])
     {
+        if ([string](Get-Opt $Receipt.trains.agent 'state' '') -eq 'stale')
+        {
+            $channels.Add((New-Channel 'mcp-registry' 'skipped' 'a higher published agent release already exists'))
+            $channels.Add((New-Channel 'plugin-pin' 'skipped' 'a higher published agent release already exists'))
+            return $channels.ToArray()
+        }
         $channels.Add((Resolve-RegistryChannel (Get-Opt $Observed 'registry' ([pscustomobject]@{ publishFailed = $false; versionPresent = $false }))))
         $pin = Get-Opt $Observed 'plugin' $null
         if ($null -eq $pin)
@@ -480,34 +497,8 @@ function Get-WingetPackageIds
 
 function Get-ExpectedAssets
 {
-    # The release asset leaf names listed under the Create GitHub Release step's `files:` block in cd.yml.
-    param([string]$WorkflowPath, [string]$Version)
-
-    $inFiles = $false
-    $assets = [System.Collections.Generic.List[string]]::new()
-    foreach ($line in Get-Content -LiteralPath $WorkflowPath)
-    {
-        if (-not $inFiles)
-        {
-            if ($line -match '^\s*files:\s*\|\s*$')
-            {
-                $inFiles = $true
-            }
-
-            continue
-        }
-
-        if ($line -match '^\s+(\S+/.*\S)\s*$')
-        {
-            $leaf = ($Matches[1] -split '/')[-1]
-            $assets.Add($leaf.Replace('${{ steps.version.outputs.display }}', $Version))
-            continue
-        }
-
-        break
-    }
-
-    return $assets.ToArray()
+    param([string]$WorkflowPath, [string]$Version, [string[]]$Trains = @('desktop', 'agent'))
+    return @(Get-TrainAssetNames $Version $Trains)
 }
 
 function Get-RegistryServerName
@@ -634,12 +625,20 @@ function Test-ChannelFixtures
     }
 
     $assets = Get-ExpectedAssets (Join-Path $workflowDirectory 'cd.yml') '1.2.3'
+    if ($assets.Count -ne 10)
+    {
+        throw "The shared asset list must contain 10 assets for both trains, got $($assets.Count)."
+    }
     foreach ($required in @('Pointframe-1.2.3-x64-Setup.exe', 'Pointframe.Mcp-1.2.3-win-x64.mcpb', 'Pointframe.Mcp-1.2.3-win-x64.server.json', 'Pointframe.Cli-1.2.3-win-x64.zip'))
     {
         if ($required -notin $assets)
         {
             throw "Expected asset '$required' was not read from cd.yml: [$($assets -join ', ')]."
         }
+    }
+    foreach ($alias in @(Get-DesktopAliasAssetNames '1.2.3'))
+    {
+        if ($alias -notin $assets) { throw "Shared desktop assets omit legacy alias '$alias'." }
     }
 
     $serverName = Get-RegistryServerName (Join-Path $script:RepositoryRoot 'packaging/build-mcp-package.ps1')
@@ -686,8 +685,12 @@ if ($Receipt)
     $receiptVersions = @(@('desktop', 'agent') | Where-Object { $receiptDocument.trains.$_.selected } | ForEach-Object { [version]$receiptDocument.trains.$_.version } | Sort-Object -Descending)
     if ($receiptVersions.Count -eq 0)
     {
-        [Console]::Error.WriteLine('-Receipt selects no train; there is nothing to check.')
-        exit 2
+        $ids = @(Get-WingetPackageIds (Join-Path $script:RepositoryRoot '.github/workflows/winget-release.yml'))
+        $observed = [pscustomobject]@{ release = [pscustomobject]@{}; winget = [pscustomobject]@{}; registry = $null; plugin = $null }
+        $noneChannels = @(Resolve-ReceiptChannels $receiptDocument $observed $ids)
+        foreach ($channel in $noneChannels) { Write-Output "CHANNEL $($channel.name): $($channel.state) - $($channel.detail)" }
+        Write-Output 'CHANNELS: ok (no release; both trains are not applicable)'
+        exit 0
     }
 
     if (-not $Version)

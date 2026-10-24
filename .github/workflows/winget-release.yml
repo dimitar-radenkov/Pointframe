@@ -41,10 +41,12 @@ jobs:
           # Winget migration target for the Pointframe brand.
           # Historical SnippingTool manifests remain intact.
           - identifier: DimitarRadenkov.Pointframe
+            train: desktop
             installers-regex: 'x64-Setup\.exe$'
           # Portable zip with a `pointframe` command alias. The versioned asset only, never
           # the stable Pointframe.Cli-win-x64.zip alias, whose content changes every release.
           - identifier: DimitarRadenkov.Pointframe.Cli
+            train: agent
             installers-regex: 'Pointframe\.Cli-[0-9.]+-win-x64\.zip$'
     env:
       PACKAGE_ID: ${{ matrix.identifier }}
@@ -54,8 +56,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download CD release version
-        id: release_version
+      - name: Download CD release receipt
+        id: release_receipt
         if: github.event_name == 'workflow_run'
         shell: pwsh
         env:
@@ -63,7 +65,7 @@ jobs:
         run: |
           $runId = '${{ github.event.workflow_run.id }}'
           $triggerAttempt = '${{ github.event.workflow_run.run_attempt }}'
-          $destination = Join-Path $env:RUNNER_TEMP 'release-version'
+          $destination = Join-Path $env:RUNNER_TEMP 'release-plan'
           New-Item -ItemType Directory -Path $destination -Force | Out-Null
 
           # Artifacts belong to the run, not to an attempt (the API exposes no attempt on them), so
@@ -77,30 +79,31 @@ jobs:
               break
             }
             if ((Get-Date) -gt $deadline) {
-              throw "CD run $runId (triggered at attempt $triggerAttempt) was still $($run.status) at attempt $($run.run_attempt) after 15 minutes; cannot read its release-version artifact."
+              throw "CD run $runId (triggered at attempt $triggerAttempt) was still $($run.status) at attempt $($run.run_attempt) after 15 minutes; cannot read its release-plan artifact."
             }
             Write-Output "CD run $runId is $($run.status) (attempt $($run.run_attempt)); waiting for it to finish."
             Start-Sleep -Seconds 20
           }
-          if ($run.conclusion -ne 'success') {
-            throw "CD run $runId finished attempt $($run.run_attempt) as $($run.conclusion); not submitting to winget."
-          }
-
-          gh run download $runId --name release-version --dir $destination
+          if ($run.conclusion -ne 'success') { throw "CD run $runId finished attempt $($run.run_attempt) as $($run.conclusion); not submitting to winget." }
+          gh run download $runId --name release-plan --dir $destination
           if ($LASTEXITCODE -ne 0) {
-            throw "CD run $runId is missing its release-version artifact; cannot submit to winget."
+            throw "CD run $runId is missing its release-plan receipt; cannot submit to winget."
           }
-          $versionFile = Join-Path $destination 'release-version.txt'
-          if (-not (Test-Path $versionFile)) {
-            throw "CD run $runId did not provide release-version.txt; cannot submit to winget."
+          $receiptPath = Join-Path $destination 'release-plan.json'
+          if (-not (Test-Path $receiptPath)) { throw "CD run $runId did not provide release-plan.json." }
+          $receipt = Get-Content $receiptPath -Raw | ConvertFrom-Json
+          $train = '${{ matrix.train }}'
+          $record = $receipt.trains.$train
+          $eligible = $record.selected -and $record.state -in @('published', 'complete')
+          "submit=$($eligible.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if ($eligible) {
+            "display=$($record.version)" >> $env:GITHUB_OUTPUT
+            "tag=$($record.tag)" >> $env:GITHUB_OUTPUT
           }
-          $display = (Get-Content $versionFile -Raw).Trim()
-          if ([string]::IsNullOrWhiteSpace($display)) {
-            throw "CD run $runId provided an empty release version; cannot submit to winget."
-          }
-          "display=$display" >> $env:GITHUB_OUTPUT
+          else { Write-Output "::notice::$train train was not published or complete for this CD run; skipping $env:PACKAGE_ID." }
 
       - name: Restore tools
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.release_receipt.outputs.submit == 'true' }}
         run: dotnet tool restore
 
       - name: Get version
@@ -108,7 +111,7 @@ jobs:
         shell: pwsh
         run: |
           if ('${{ github.event_name }}' -eq 'workflow_run') {
-            $display = '${{ steps.release_version.outputs.display }}'
+            $display = '${{ steps.release_receipt.outputs.display }}'
           }
           else {
             $display = "${{ inputs.version }}"
@@ -119,6 +122,7 @@ jobs:
           }
 
           $tag = "${{ inputs.release_tag }}"
+          if ('${{ github.event_name }}' -eq 'workflow_run') { $tag = '${{ steps.release_receipt.outputs.tag }}' }
           if ([string]::IsNullOrWhiteSpace($tag)) {
             $tag = "v$display"
           }
@@ -130,6 +134,7 @@ jobs:
       # needs a manual first PR (see lessons.md). Skip, rather than fail, until that PR merges.
       - name: Check package exists upstream
         id: upstream
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.release_receipt.outputs.submit == 'true' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}

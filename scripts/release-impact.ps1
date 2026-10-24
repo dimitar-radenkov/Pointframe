@@ -37,6 +37,7 @@ param(
     [string]$Head = 'HEAD',
     [switch]$SelfTest,
     [string]$PlanOut,
+    [string]$CurrentVersion,
     [string]$ReleasesFile,
     [switch]$Security,
     [string]$Paths
@@ -97,7 +98,7 @@ $script:ClassRules = @(
     [pscustomobject]@{ Class = 'none'; Name = 'website'; Pattern = '^website/' }
     [pscustomobject]@{ Class = 'none'; Name = 'plugin'; Pattern = '^plugin/' }
     [pscustomobject]@{ Class = 'none'; Name = 'winget manifests'; Pattern = '^winget/' }
-    [pscustomobject]@{ Class = 'none'; Name = 'root documents'; Pattern = '^(README|CONTRIBUTING|SECURITY|PRIVACY|CHANGELOG|AGENTS|CLAUDE|lessons)\.md$' }
+    [pscustomobject]@{ Class = 'none'; Name = 'root documents'; Pattern = '^(README|CONTRIBUTING|SECURITY|PRIVACY|CHANGELOG|AGENTS|CLAUDE|lessons|executor-report)\.md$' }
     [pscustomobject]@{ Class = 'none'; Name = 'root settings'; Pattern = '^(LICENSE|\.editorconfig|\.gitattributes|\.gitignore|codecov\.yml|agent-workflow\.json|agent-workflow\.lock\.json|Pointframe\.slnx)$' }
 )
 
@@ -195,6 +196,7 @@ function New-ReleasePlan
         [string[]]$ChangedPaths,
         [bool]$Security = $false,
         [object[]]$Releases = $null,
+        [string]$CurrentVersion = '',
         [scriptblock]$GetPathsSince = $null
     )
 
@@ -226,10 +228,26 @@ function New-ReleasePlan
         $perTrain = [ordered]@{}
         foreach ($train in @('desktop', 'agent'))
         {
+            if ($CurrentVersion -match '^\d+\.\d+\.\d+$')
+            {
+                $higherThanRun = @(Get-TrainReleases $Releases $train | Where-Object { $_.Version -gt [version]$CurrentVersion })
+                if ($higherThanRun.Count -gt 0)
+                {
+                    $perTrain[$train] = [ordered]@{
+                        baseline = [string]$higherThanRun[0].Release.tag_name
+                        changedPaths = @()
+                        selected = $false
+                        stale = $true
+                        reason = "stale run v$CurrentVersion; higher published $train release $($higherThanRun[0].Release.tag_name) already exists"
+                    }
+                    continue
+                }
+            }
+
             $baseline = Get-TrainBaseline $Releases $train
             if ($null -eq $baseline)
             {
-                $perTrain[$train] = [ordered]@{ baseline = $null; changedPaths = @(); selected = $true; reason = 'no complete release of this train exists' }
+                $perTrain[$train] = [ordered]@{ baseline = $null; changedPaths = @(); selected = $true; stale = $false; reason = 'no complete release of this train exists' }
                 continue
             }
 
@@ -249,7 +267,31 @@ function New-ReleasePlan
                 baseline = $tag
                 changedPaths = $mine
                 selected = ($mine.Count -gt 0)
+                stale = $false
                 reason = $(if ($mine.Count -gt 0) { "$($mine.Count) path(s) changed since $tag" } else { "no path of this train changed since $tag" })
+            }
+        }
+
+        # A retry after publication must still select the trains already published at this version so CD can run
+        # Latest repair, Registry, Winget receipt, and channel reporting. The publisher itself remains idempotent.
+        if ($CurrentVersion -match '^\d+\.\d+\.\d+$')
+        {
+            $currentRelease = @($Releases | Where-Object { [string](Get-ModelProperty $_ 'tag_name' '') -ceq "v$CurrentVersion" -and -not [bool](Get-ModelProperty $_ 'draft' $false) } | Select-Object -First 1)
+            if ($currentRelease.Count -gt 0)
+            {
+                $names = @(Get-ReleaseAssetNames $currentRelease[0])
+                $agentNames = @(Get-TrainAssetNames $CurrentVersion @('agent'))
+                $desktopEvidence = @(Get-DesktopAssetNames $CurrentVersion)
+                $desktopEvidence += @(Get-DesktopAliasAssetNames $CurrentVersion)
+                foreach ($train in @('desktop', 'agent'))
+                {
+                    $evidence = if ($train -eq 'desktop') { $desktopEvidence } else { $agentNames }
+                    if (@($evidence | Where-Object { $_ -in $names }).Count -gt 0)
+                    {
+                        $perTrain[$train]['selected'] = $true
+                        $perTrain[$train]['reason'] = "published release v$CurrentVersion already contains assets of this train; continue downstream on retry"
+                    }
+                }
             }
         }
 
@@ -623,6 +665,31 @@ function Test-TrackedTree
     return $tracked.Count
 }
 
+function Test-CurrentReleaseRerun
+{
+    $fixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'tests/release-impact/plan-current-release-rerun.json') -Raw | ConvertFrom-Json
+    $provider = { param([string]$Tag) @() }
+    $plan = New-ReleasePlan -Base 'b' -Head 'h' -ChangedPaths @() -Releases @($fixture.release) -CurrentVersion $fixture.currentVersion -GetPathsSince $provider
+    foreach ($train in @('desktop', 'agent'))
+    {
+        if ([bool]$plan.perTrain[$train].selected -ne [bool]$fixture.expected.$train)
+        {
+            throw "current-release rerun fixture: $train expected selected=$($fixture.expected.$train), got $($plan.perTrain[$train].selected)."
+        }
+    }
+
+    $staleFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'tests/release-impact/plan-stale-rerun.json') -Raw | ConvertFrom-Json
+    $stale = New-ReleasePlan -Base 'b' -Head 'h' -ChangedPaths @() -Releases @($staleFixture.releases) -CurrentVersion $staleFixture.currentVersion -GetPathsSince $provider
+    foreach ($train in @('desktop', 'agent'))
+    {
+        $expectedTag = if ($train -eq 'desktop') { 'v1.4.0' } else { 'v1.5.0' }
+        if (-not $stale.perTrain[$train].stale -or $stale.perTrain[$train].selected -or $stale.perTrain[$train].baseline -ne $expectedTag)
+        {
+            throw "stale rerun fixture: $train should be marked stale and remain unselected."
+        }
+    }
+}
+
 if ($SelfTest)
 {
     $qualificationCases = Test-QualificationCases
@@ -631,8 +698,9 @@ if ($SelfTest)
     Test-PlanFixture
     Test-UnclassifiedBaselineDiff
     Test-OutputContract
+    Test-CurrentReleaseRerun
     $trackedPaths = Test-TrackedTree
-    Write-Host "release-impact self-test passed: $qualificationCases qualification cases, $classificationCases class cases, $baselineFixtures baseline fixtures, per-train plan, unclassified path in a baseline diff, output contract, $trackedPaths tracked paths classified."
+    Write-Host "release-impact self-test passed: $qualificationCases qualification cases, $classificationCases class cases, $baselineFixtures baseline fixtures, per-train plan, current-release and stale reruns, unclassified path in a baseline diff, output contract, $trackedPaths tracked paths classified."
     exit 0
 }
 
@@ -661,7 +729,7 @@ try
     }
 
     $since = { param([string]$Tag) Get-GitPaths "refs/tags/$Tag...$Head" }
-    $plan = New-ReleasePlan -Base $Base -Head $Head -ChangedPaths $changed -Security ([bool]$Security) -Releases $releases -GetPathsSince $since
+    $plan = New-ReleasePlan -Base $Base -Head $Head -ChangedPaths $changed -Security ([bool]$Security) -Releases $releases -CurrentVersion $CurrentVersion -GetPathsSince $since
 }
 catch
 {
