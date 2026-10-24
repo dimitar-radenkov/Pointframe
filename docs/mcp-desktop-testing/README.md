@@ -344,7 +344,7 @@ deciding to repeat anything.
 
 ## Local validation
 
-After every release, the coordinator runs `pwsh scripts/check-released-desktop.ps1 -Version <x.y.z>` on an unlocked interactive Windows desktop.
+After every agent release, the coordinator runs `pwsh scripts/check-released-desktop.ps1 -Version <x.y.z>` (the agent version from the CD receipt; without `-Version` it takes the newest agent release) on an unlocked interactive Windows desktop. A desktop-only release has no versioned CLI or MCP packages to check.
 It verifies the published CLI and MCP packages by checksum, then runs the fixture-backed desktop smoke and verification workflow against those released executables.
 
 Build and publish the MCP executable:
