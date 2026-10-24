@@ -416,12 +416,21 @@ function Invoke-PublishSelfTest
             $savedZip = Get-Content $badZip -Raw; $savedMcp = Get-Content $badMcp -Raw; $savedServer = Get-Content $sourceServer -Raw
             try
             {
-                if ($mismatch -eq 'zip') { Set-Content $badZip ((('f' * 64) + '  Pointframe.Cli-1.1.0-win-x64.zip')) }
-                if ($mismatch -eq 'mcpb') { Set-Content $badMcp ((('f' * 64) + '  Pointframe.Mcp-1.1.0-win-x64.mcpb')) }
+                if ($mismatch -eq 'zip') { Set-Content $badZip ((('f' * 64) + "  Pointframe.Cli-$sourceVersion-win-x64.zip")) }
+                if ($mismatch -eq 'mcpb') { Set-Content $badMcp ((('f' * 64) + "  Pointframe.Mcp-$sourceVersion-win-x64.mcpb")) }
                 if ($mismatch -eq 'server') { @{ packages = @(@{ fileSha256 = ('f' * 64) }) } | ConvertTo-Json -Depth 5 | Set-Content $badServer }
                 $mismatchState = @{ calls = [Collections.Generic.List[object]]::new(); releases = @($sourceRelease, $incompleteAgent); root = $root }
                 try { Publish-ReleasePlan '2.0.0' @('desktop') $commit 'o/r' $root (New-FakeGh $mismatchState) | Out-Null; throw "Expected $mismatch hash mismatch." }
-                catch { if ($_.Exception.Message -like "Expected $mismatch hash mismatch.") { throw } }
+                catch
+                {
+                    $expectedMessage = switch ($mismatch)
+                    {
+                        'zip' { 'Agent source zip SHA-256 mismatch' }
+                        'mcpb' { 'Agent source MCPB SHA-256 mismatch' }
+                        'server' { 'Agent source MCPB does not match server.json' }
+                    }
+                    if ($_.Exception.Message -notlike "*$expectedMessage*") { throw }
+                }
                 if (@($mismatchState.calls | Where-Object { $_ -match 'release\|create|\|PATCH\|' }).Count -gt 0) { throw "The $mismatch mismatch reached a publish call." }
                 $cases++
             }
@@ -451,7 +460,15 @@ function Invoke-PublishSelfTest
                 $expected = @(Get-TrainAssetNames $version $plan.trains | Sort-Object -Unique)
                 $actual = @($state.draft.assets | ForEach-Object name | Sort-Object -Unique)
                 if (Compare-Object $expected $actual) { throw "Draft assets differed for plan $($plan.trains -join ',')." }
-                if ($plan.trains.Count -eq 1 -and $plan.trains[0] -eq 'agent' -and $result.trains.desktop -ne 'not-selected') { throw 'Agent-only run selected desktop promotion.' }
+                if ($plan.trains.Count -eq 1 -and $plan.trains[0] -eq 'agent')
+                {
+                    $patchCalls = @($state.calls | Where-Object { $_ -match '\|PATCH\|' })
+                    $promoteCalls = @($state.calls | Where-Object { $_ -match 'release\|edit|make_latest.*true' })
+                    if ($result.trains.desktop -ne 'not-selected' -or $patchCalls.Count -ne 1 -or $state.patchBody.draft -cne $false -or $state.patchBody.make_latest -cne 'false' -or $promoteCalls.Count -gt 0)
+                    {
+                        throw 'Agent-only publication must send only a draft=false, make_latest=false publish PATCH and no promote or Latest-changing request.'
+                    }
+                }
             }
             $cases++
         }

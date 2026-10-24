@@ -29,7 +29,7 @@ Exit codes: 0 written, 2 bad arguments.
 param(
     [string]$Version,
     [string]$Commit,
-    [ValidateSet('published', 'failed', 'draft')]
+    [ValidateSet('published', 'failed', 'draft', 'skipped')]
     [string]$Publication = 'published',
     [string]$Trains = 'desktop,agent',
     [string]$AliasSourceVersion,
@@ -173,7 +173,7 @@ function Get-FileSha256
 
 function Get-ReceiptFiles
 {
-    param([string]$WorkflowPath, [string]$Version, [string]$Root, [string[]]$SelectedTrains = @('desktop', 'agent'))
+    param([string]$WorkflowPath, [string]$Version, [string]$Root, [string[]]$SelectedTrains = @('desktop', 'agent'), [switch]$UnknownHashes)
 
     $files = @(Get-ReleaseFileList $WorkflowPath $Version $SelectedTrains)
     if ($files.Count -eq 0 -and $SelectedTrains.Count -gt 0)
@@ -181,7 +181,7 @@ function Get-ReceiptFiles
         throw "No release files were read from the 'files: |' block of $WorkflowPath."
     }
 
-    return @($files | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Train = $_.Train; Sha256 = Get-FileSha256 $Root $_.Path } })
+    return @($files | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Train = $_.Train; Sha256 = $(if ($UnknownHashes) { $null } else { Get-FileSha256 $Root $_.Path }) } })
 }
 
 function Test-SelfCases
@@ -242,6 +242,17 @@ function Test-SelfCases
 
         $agentOnly = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @('agent') -Files $files -Publication 'published' -CreatedUtc '2026-10-23T10:00:00Z' | ConvertTo-Json -Depth 8 | ConvertFrom-Json
         if (@(Test-ReleaseReceipt $agentOnly).Count -gt 0 -or $agentOnly.trains.desktop.selected -or @($agentOnly.trains.agent.assets).Count -ne 5) { throw 'an agent-only receipt must list exactly the five versioned agent assets.' }
+        $skippedFiles = @(Get-ReceiptFiles $WorkflowPath $version $root @('desktop', 'agent') -UnknownHashes)
+        $skippedComplete = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @('desktop', 'agent') -Files $skippedFiles -Publication 'published' -TrainStates @{ desktop = 'complete'; agent = 'complete' } -CreatedUtc '2026-10-23T10:00:00Z'
+        if (@(Test-ReleaseReceipt ($skippedComplete | ConvertTo-Json -Depth 8 | ConvertFrom-Json)).Count -gt 0 -or @($skippedFiles | Where-Object { $null -ne $_.Sha256 }).Count -gt 0)
+        {
+            throw 'a skipped-complete receipt must validate and leave rebuilt local asset hashes unknown.'
+        }
+        $skippedPublication = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @('agent') -Files $files -Publication 'skipped' -CreatedUtc '2026-10-23T10:00:00Z'
+        if (@(Test-ReleaseReceipt ($skippedPublication | ConvertTo-Json -Depth 8 | ConvertFrom-Json)).Count -gt 0 -or $skippedPublication.trains.agent.publication -ne 'skipped')
+        {
+            throw 'a skipped publication state must pass receipt self-validation.'
+        }
         $none = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @() -Files @() -Publication 'published' -CreatedUtc '2026-10-23T10:00:00Z' | ConvertTo-Json -Depth 8 | ConvertFrom-Json
         if (@(Test-ReleaseReceipt $none).Count -gt 0 -or $none.trains.desktop.selected -or $none.trains.agent.selected) { throw 'a none receipt must validate with both trains unselected.' }
 
@@ -262,7 +273,7 @@ function Test-SelfCases
 if ($SelfTest)
 {
     Test-SelfCases
-    Write-Host 'write-release-receipt self-test passed: shared train asset lists, hashing, desktop-only, agent-only, both, and none receipts, alias source, validation.'
+    Write-Host 'write-release-receipt self-test passed: shared train asset lists, hashing, skipped-complete hashes, skipped publication, desktop-only, agent-only, both, and none receipts, alias source, validation.'
     exit 0
 }
 
@@ -279,9 +290,10 @@ if (@($selected | Where-Object { $_ -notin @('desktop', 'agent') }).Count -gt 0)
     exit 2
 }
 
-$files = Get-ReceiptFiles $WorkflowPath $Version $Root $selected
-$trainStates = @{}
 $publicationResult = Read-JsonFile $StateFile
+$unknownHashes = [bool](Get-ModelProperty $publicationResult 'skippedComplete' $false)
+$files = Get-ReceiptFiles $WorkflowPath $Version $Root $selected -UnknownHashes:$unknownHashes
+$trainStates = @{}
 if ($null -ne $publicationResult)
 {
     foreach ($train in @('desktop', 'agent'))

@@ -84,22 +84,41 @@ jobs:
           if ($LASTEXITCODE -eq 3) { throw 'Release plan contains an unclassified path; refusing to build.' }
           if ($LASTEXITCODE -ne 0) { throw "Release plan failed with exit $LASTEXITCODE; refusing to build." }
           $plan = Get-Content release-receipt/plan.json -Raw | ConvertFrom-Json
+          . ./scripts/release-model.ps1
           foreach ($train in @('desktop', 'agent')) {
             if ($plan.perTrain.$train.stale) { Write-Host "::notice::v${{ steps.version.outputs.display }} is stale for $train; published $($plan.perTrain.$train.baseline) already exists. No release or Latest change will be made for that train." }
           }
           $desktop = [bool]$plan.perTrain.desktop.selected
           $agent = [bool]$plan.perTrain.agent.selected
+          $buildDesktop = $desktop -and -not [bool]$plan.perTrain.desktop.stale
+          $buildAgent = $agent -and -not [bool]$plan.perTrain.agent.stale
+          $currentTag = "v${{ steps.version.outputs.display }}"
+          $existing = @($all.ToArray() | Where-Object { $_.tag_name -ceq $currentTag -and -not $_.draft -and -not $_.prerelease } | Select-Object -First 1)
+          if ($existing.Count -gt 0) {
+            $existingNames = @($existing[0].assets | ForEach-Object name)
+            foreach ($train in @('desktop', 'agent')) {
+              if (-not $plan.perTrain.$train.selected -or $plan.perTrain.$train.stale) { continue }
+              $expectedNames = @(Get-TrainAssetNames '${{ steps.version.outputs.display }}' @($train))
+              if (@($expectedNames | Where-Object { $_ -notin $existingNames }).Count -eq 0) {
+                if ($train -eq 'desktop') { $buildDesktop = $false }
+                else { $buildAgent = $false }
+                Write-Host "::notice::$currentTag already has the complete published $train train; skipping its build and package steps."
+              }
+            }
+          }
           $selectedTrains = [System.Collections.Generic.List[string]]::new()
           if ($desktop) { $selectedTrains.Add('desktop') }
           if ($agent) { $selectedTrains.Add('agent') }
           $trains = $selectedTrains -join ','
           "desktop=$($desktop.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "agent=$($agent.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "build_desktop=$($buildDesktop.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "build_agent=$($buildAgent.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "trains=$trains" >> $env:GITHUB_OUTPUT
           Write-Host "Release trains selected: $(if ($trains) { $trains } else { 'none' })"
 
       - name: Inject desktop telemetry connection string
-        if: steps.plan.outputs.desktop == 'true'
+        if: steps.plan.outputs.build_desktop == 'true'
         shell: pwsh
         run: |
           $file = 'Pointframe/appsettings.json'
@@ -110,7 +129,7 @@ jobs:
           if ($length -eq 0) { throw 'APP_INSIGHTS_CONNECTION_STRING secret is empty or not set.' }
 
       - name: Inject agent telemetry connection string
-        if: steps.plan.outputs.agent == 'true'
+        if: steps.plan.outputs.build_agent == 'true'
         shell: pwsh
         run: |
           $file = 'Pointframe.Telemetry/telemetry.json'
@@ -120,11 +139,11 @@ jobs:
           if ($json.ApplicationInsights.ConnectionString.Length -eq 0) { throw 'APP_INSIGHTS_CONNECTION_STRING is empty for the agent packages.' }
 
       - name: Publish desktop application
-        if: steps.plan.outputs.desktop == 'true'
+        if: steps.plan.outputs.build_desktop == 'true'
         run: dotnet publish Pointframe/Pointframe.csproj /p:PublishProfile=win-x64 --nologo
 
       - name: Download ffmpeg for MCP package
-        if: steps.plan.outputs.agent == 'true'
+        if: steps.plan.outputs.build_agent == 'true'
         shell: pwsh
         run: |
           $zipPath = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
@@ -138,17 +157,17 @@ jobs:
           "FFMPEG_PATH=$($ffmpeg.FullName)" >> $env:GITHUB_ENV
 
       - name: Build MCP release package
-        if: steps.plan.outputs.agent == 'true'
+        if: steps.plan.outputs.build_agent == 'true'
         shell: pwsh
         run: ./packaging/build-mcp-package.ps1 -Version '${{ steps.version.outputs.display }}' -FfmpegPath $env:FFMPEG_PATH
 
       - name: Build CLI release package
-        if: steps.plan.outputs.agent == 'true'
+        if: steps.plan.outputs.build_agent == 'true'
         shell: pwsh
         run: ./packaging/build-cli-package.ps1 -Version '${{ steps.version.outputs.display }}'
 
       - name: Sign desktop executable
-        if: ${{ steps.plan.outputs.desktop == 'true' && env.SIGNING_CERT_B64 != '' }}
+        if: ${{ steps.plan.outputs.build_desktop == 'true' && env.SIGNING_CERT_B64 != '' }}
         shell: pwsh
         run: |
           $pfx = [Convert]::FromBase64String($env:SIGNING_CERT_B64)
@@ -161,11 +180,11 @@ jobs:
           } finally { Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue }
 
       - name: Install Inno Setup 6
-        if: steps.plan.outputs.desktop == 'true'
+        if: steps.plan.outputs.build_desktop == 'true'
         run: choco install innosetup --yes --no-progress
 
       - name: Build installer
-        if: steps.plan.outputs.desktop == 'true'
+        if: steps.plan.outputs.build_desktop == 'true'
         shell: pwsh
         run: |
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
@@ -173,7 +192,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Sign installer
-        if: ${{ steps.plan.outputs.desktop == 'true' && env.SIGNING_CERT_B64 != '' }}
+        if: ${{ steps.plan.outputs.build_desktop == 'true' && env.SIGNING_CERT_B64 != '' }}
         shell: pwsh
         run: |
           $pfx = [Convert]::FromBase64String($env:SIGNING_CERT_B64)
