@@ -33,6 +33,8 @@ param(
     [string]$Publication = 'published',
     [string]$Trains = 'desktop,agent',
     [string]$AliasSourceVersion,
+    [ValidateSet('ok', 'failed')]
+    [string]$SecurityLookup = 'ok',
     [string]$StateFile,
     [string]$Repository = 'dimitar-radenkov/Pointframe',
     [string]$ProofCreate,
@@ -104,6 +106,7 @@ function New-ReleaseReceipt
         $PromoteResult = $null,
         $LatestResult = $null,
         $Plan = $null,
+        [string]$SecurityLookup = 'ok',
         [string]$CreatedUtc
     )
 
@@ -143,6 +146,7 @@ function New-ReleaseReceipt
         repository = $Repository
         createdUtc = $CreatedUtc
         commit = $Commit
+        securityLookup = $SecurityLookup
         trains = $trains
         proofs = [ordered]@{
             makeLatestOnCreate = ConvertTo-ProofRecord $ProofCreate
@@ -230,8 +234,8 @@ function Test-SelfCases
             throw 'the combined receipt does not hold 1 desktop asset, 9 agent assets, the proofs, the latest result and the plan.'
         }
 
-        $desktopOnly = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @('desktop') -Files $files -Publication 'failed' -AliasSourceVersion '1.2.2' -CreatedUtc '2026-10-23T10:00:00Z' | ConvertTo-Json -Depth 8 | ConvertFrom-Json
-        if (@(Test-ReleaseReceipt $desktopOnly).Count -gt 0 -or $desktopOnly.trains.agent.selected -or $desktopOnly.trains.desktop.publication -ne 'failed' -or @($desktopOnly.trains.desktop.assets).Count -ne 5 -or $desktopOnly.trains.desktop.aliasSourceVersion -ne '1.2.2' -or $desktopOnly.proofs.makeLatestOnUpdate.status -ne 'not-run' -or $null -ne $desktopOnly.plan)
+        $desktopOnly = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @('desktop') -Files $files -Publication 'failed' -AliasSourceVersion '1.2.2' -SecurityLookup 'failed' -CreatedUtc '2026-10-23T10:00:00Z' | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+        if (@(Test-ReleaseReceipt $desktopOnly).Count -gt 0 -or $desktopOnly.trains.agent.selected -or $desktopOnly.trains.desktop.publication -ne 'failed' -or @($desktopOnly.trains.desktop.assets).Count -ne 5 -or $desktopOnly.trains.desktop.aliasSourceVersion -ne '1.2.2' -or $desktopOnly.securityLookup -ne 'failed' -or $desktopOnly.proofs.makeLatestOnUpdate.status -ne 'not-run' -or $null -ne $desktopOnly.plan)
         {
             throw 'a desktop-only receipt must validate, list installer and aliases, record the alias source, and leave the agent train unselected.'
         }
@@ -288,7 +292,7 @@ if ($null -ne $publicationResult)
 }
 $receipt = New-ReleaseReceipt -Repository $Repository -Commit $Commit -Version $Version -SelectedTrains $selected -Files $files -Publication $Publication `
     -AliasSourceVersion $AliasSourceVersion -TrainStates $trainStates `
-    -ProofCreate (Read-JsonFile $ProofCreate) -ProofUpdate (Read-JsonFile $ProofUpdate) -PromoteResult (Read-JsonFile $PromoteResult) `
+    -SecurityLookup $SecurityLookup -ProofCreate (Read-JsonFile $ProofCreate) -ProofUpdate (Read-JsonFile $ProofUpdate) -PromoteResult (Read-JsonFile $PromoteResult) `
     -LatestResult (Read-JsonFile $LatestResult) -Plan (Read-JsonFile $PlanFile) -CreatedUtc ([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))
 
 $problems = @(Test-ReleaseReceipt ($receipt | ConvertTo-Json -Depth 12 | ConvertFrom-Json))

@@ -603,6 +603,13 @@ function Test-ChannelFixtures
         }
     }
 
+    $noneReceiptPath = Join-Path $fixtureDirectory 'cli/receipt-none-plan.json'
+    $noneOutput = @(& pwsh -NoProfile -File $PSCommandPath -Receipt $noneReceiptPath 2>&1)
+    if ($LASTEXITCODE -ne 0 -or ($noneOutput -join "`n") -notmatch 'CHANNELS: ok \(no release; both trains are not applicable\)')
+    {
+        throw "The CLI -Receipt none path did not return its successful no-release result (exit $LASTEXITCODE): $($noneOutput -join ' ')"
+    }
+
     $rollup = @(
         @{ States = @('accepted', 'skipped'); Expected = 'ok' }
         @{ States = @('accepted', 'submitted'); Expected = 'pending' }
@@ -647,7 +654,7 @@ function Test-ChannelFixtures
         throw "Registry server name looks wrong: $serverName."
     }
 
-    return "release-channel fixtures ($($files.Count)), roll-up, and workflow parsing ($($ids.Count) packages, $($assets.Count) assets) passed offline."
+    return "release-channel fixtures ($($files.Count)), CLI none receipt, roll-up, and workflow parsing ($($ids.Count) packages, $($assets.Count) assets) passed offline."
 }
 
 if ($SelfTest)

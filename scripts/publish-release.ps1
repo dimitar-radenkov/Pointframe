@@ -150,7 +150,8 @@ function Resolve-ExistingAliasSourceVersion
     $null = & $Gh -Arguments $downloadArgs
     if ($LASTEXITCODE -ne 0) { throw "Could not read $aliasName from published release $($Release.tag_name)." }
     $aliasHash = Get-ChecksumHash (Join-Path $directory $aliasName) 'Pointframe.Cli-win-x64.zip'
-    foreach ($candidate in @(Get-StrictAgentSource $Releases))
+    $completeCandidates = @($Releases | Where-Object { Test-StrictAgentRelease $_ } | Sort-Object { ConvertTo-ReleaseVersion ([string]$_.tag_name) } -Descending)
+    foreach ($candidate in $completeCandidates)
     {
         $candidateVersion = (ConvertTo-ReleaseVersion ([string]$candidate.tag_name)).ToString()
         $checksumName = "Pointframe.Cli-$candidateVersion-win-x64.zip.sha256"
@@ -283,11 +284,9 @@ function Publish-ReleasePlan
     $ghArguments = @('release', 'create', $tag) + @($files | ForEach-Object { Join-Path $Root $_.Path }) + @('--draft', '--title', "Pointframe $Version", '--notes', ($notes -join "`n"), '--target', $Commit)
     $null = & $Gh -Arguments $ghArguments
     if ($LASTEXITCODE -ne 0) { throw "Could not create draft $tag." }
-    $tagArgs = @('api', "repos/$Repository/releases/tags/$tag")
-    $createdResponse = & $Gh -Arguments $tagArgs
-    $created = $createdResponse.data
-    if ($LASTEXITCODE -ne 0 -or -not $created) { throw "Could not read back draft $tag." }
-    if ($created -is [string]) { $created = $created | ConvertFrom-Json }
+    $created = @(Read-GhReleaseListing $Gh $Repository | Where-Object { [string](Get-ModelProperty $_ 'tag_name' '') -ceq $tag -and [bool](Get-ModelProperty $_ 'draft' $false) } | Select-Object -First 1)
+    if ($created.Count -eq 0) { throw "Could not read back draft $tag by id from the releases listing." }
+    $created = $created[0]
     if (-not [bool](Get-ModelProperty $created 'draft' $false)) { throw "Release $tag was not created as a draft." }
     foreach ($train in $selection.Active) { $states[$train] = 'draft' }
     Write-PublishResult $ResultOut ([pscustomobject]@{ tag = $tag; trains = $states; publication = 'draft'; aliasSourceVersion = $aliasSourceVersion; published = $false; skippedComplete = $false; releaseId = [string](Get-ModelProperty $created 'id' '') })
@@ -307,7 +306,9 @@ function Publish-ReleasePlan
     }
     $releaseId = [string](Get-ModelProperty $created 'id' '')
     if (-not $releaseId) { throw "Draft $tag has no release id." }
-    $publishArgs = @('api', "repos/$Repository/releases/$releaseId", '-X', 'PATCH', '-F', 'draft=false', '-F', 'make_latest=false')
+    $publishBody = Join-Path $Root '.publish-release-request.json'
+    @{ draft = $false; make_latest = 'false' } | ConvertTo-Json -Compress | Set-Content -LiteralPath $publishBody -Encoding utf8NoBOM
+    $publishArgs = @('api', "repos/$Repository/releases/$releaseId", '-X', 'PATCH', '--input', $publishBody)
     $published = & $Gh -Arguments $publishArgs
     if ($LASTEXITCODE -ne 0) { throw "Could not publish validated draft $tag." }
     foreach ($train in $selection.Active) { $states[$train] = 'published' }
@@ -327,14 +328,20 @@ function New-FakeGh
         $global:LASTEXITCODE = 0
         $State.calls.Add(($Arguments -join '|'))
         if ($Arguments[0] -eq 'api' -and $Arguments[1] -match '/releases\?') { return [pscustomobject]@{ data = $State.releases.ToArray() } }
-        if ($Arguments[0] -eq 'api' -and $Arguments[1] -match '/releases/[^/]+$' -and [Array]::IndexOf($Arguments, '-X') -ge 0 -and $Arguments[[Array]::IndexOf($Arguments, '-X') + 1] -eq 'DELETE') { return $null }
+        if ($Arguments[0] -eq 'api' -and $Arguments[1] -match '/releases/[^/]+$' -and [Array]::IndexOf($Arguments, '-X') -ge 0 -and $Arguments[[Array]::IndexOf($Arguments, '-X') + 1] -eq 'DELETE')
+        {
+            $id = ($Arguments[1] -split '/')[-1]
+            for ($index = $State.releases.Count - 1; $index -ge 0; $index--) { if ([string]$State.releases[$index].id -ceq $id) { $State.releases.RemoveAt($index) } }
+            return $null
+        }
         if ($Arguments[0] -eq 'release' -and $Arguments[1] -eq 'create')
         {
             $assets = @($Arguments | Where-Object { $_ -match '\.(exe|zip|sha256|mcpb|json)$' } | ForEach-Object { [pscustomobject]@{ name = Split-Path -Leaf $_ } })
             $State.draft = [pscustomobject]@{ id = 'draft-1'; tag_name = $Arguments[2]; draft = $true; prerelease = $false; assets = $assets }
+            $State.releases.Add($State.draft)
             return $null
         }
-        if ($Arguments[0] -eq 'api' -and $Arguments[1] -match '/releases/tags/') { return [pscustomobject]@{ data = $State.draft } }
+        if ($Arguments[0] -eq 'api' -and $Arguments[1] -match '/releases/tags/' -and $State.draft -and $State.draft.draft) { $global:LASTEXITCODE = 1; return $null }
         if ($Arguments[0] -eq 'release' -and $Arguments[1] -eq 'download')
         {
             $name = $Arguments[[Array]::IndexOf($Arguments, '--pattern') + 1]
@@ -347,6 +354,10 @@ function New-FakeGh
         }
         if ($Arguments[0] -eq 'api' -and [Array]::IndexOf($Arguments, '-X') -ge 0 -and $Arguments[[Array]::IndexOf($Arguments, '-X') + 1] -eq 'PATCH')
         {
+            $bodyPath = $Arguments[[Array]::IndexOf($Arguments, '--input') + 1]
+            $body = Get-Content -LiteralPath $bodyPath -Raw | ConvertFrom-Json
+            if ($body.draft -cne $false -or $body.make_latest -isnot [string] -or $body.make_latest -cne 'false') { throw 'Publish PATCH body must have draft=false and string make_latest="false".' }
+            $State.patchBody = $body
             $State.draft.draft = $false
             $State.draft | Add-Member -NotePropertyName published_at -NotePropertyValue '2026-10-24T12:00:00Z' -Force
             $State.releases.Add($State.draft)
@@ -447,9 +458,14 @@ function Invoke-PublishSelfTest
         $fakeState = @{ calls = [Collections.Generic.List[object]]::new(); releases = @($sourceRelease); root = $root }
         $gh = New-FakeGh $fakeState
         $result = Publish-ReleasePlan $version @('desktop', 'agent') $commit 'o/r' $root $gh
-        if (-not $result.published -or @($fakeState.calls | Where-Object { $_ -match 'make_latest=false' }).Count -ne 1) { throw 'Publish did not issue explicit make_latest=false.' }
+        if (-not $result.published -or @($fakeState.calls | Where-Object { $_ -match '\|--input\|' }).Count -ne 1) { throw 'Publish did not issue one JSON-body publish PATCH.' }
         $patchCall = [string]@($fakeState.calls | Where-Object { $_ -match '\|PATCH\|' } | Select-Object -Last 1)[0]
-        if ($patchCall -notmatch '\|draft=false\|' -or $patchCall -notmatch '\|make_latest=false$') { throw 'Publish PATCH omitted explicit draft=false or make_latest=false.' }
+        if ($patchCall -notmatch '\|--input\|') { throw 'Publish PATCH did not send its JSON request body through --input.' }
+        if ($fakeState.patchBody.draft -cne $false -or $fakeState.patchBody.make_latest -isnot [string] -or $fakeState.patchBody.make_latest -cne 'false') { throw 'Publish PATCH body did not preserve draft=false and string make_latest="false".' }
+        $fakeState.draft.draft = $true
+        $tagRead = & $gh -Arguments @('api', 'repos/o/r/releases/tags/v1.2.3')
+        if ($null -ne $tagRead -or $LASTEXITCODE -ne 1) { throw 'Fake gh must return 404 for a draft read through releases/tags/<tag>.' }
+        $fakeState.draft.draft = $false
         $cases++
         $rerun = Publish-ReleasePlan $version @('desktop', 'agent') $commit 'o/r' $root $gh
         if (-not $rerun.skippedComplete -or @($fakeState.calls | Where-Object { $_ -match 'release\|create' }).Count -ne 1) { throw 'Re-running a published version created it twice.' }
@@ -467,6 +483,27 @@ function Invoke-PublishSelfTest
         $completeResult = Publish-ReleasePlan $version @('agent') $commit 'o/r' $root (New-FakeGh $completeState)
         if ($retryFixture.publishedComplete -cne 'skip') { throw 'Retry fixture does not specify complete-release skip.' }
         if (-not $completeResult.skippedComplete -or @($completeState.calls | Where-Object { $_ -match 'release\|create|\|PATCH\|' }).Count -gt 0) { throw 'A published complete release was not skipped.' }
+        $cases++
+
+        $olderVersion = [string]$aliasFixture.olderCompleteAgentVersion
+        $olderZip = & $createFile "source-assets/Pointframe.Cli-$olderVersion-win-x64.zip" 'older source CLI bytes'
+        $olderMcpb = & $createFile "source-assets/Pointframe.Mcp-$olderVersion-win-x64.mcpb" 'older source MCPB bytes'
+        foreach ($file in @($olderZip, $olderMcpb)) { $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant(); Set-Content "$file.sha256" "$hash  $(Split-Path -Leaf $file)" -NoNewline }
+        $olderServer = & $createFile "source-assets/Pointframe.Mcp-$olderVersion-win-x64.server.json" (@{ packages = @(@{ fileSha256 = (Get-FileHash $olderMcpb -Algorithm SHA256).Hash.ToLowerInvariant() }) } | ConvertTo-Json -Depth 5)
+        $olderAssets = @(Get-TrainAssetNames $olderVersion @('agent') | ForEach-Object { [pscustomobject]@{ name = $_; browser_download_url = "https://fake/$_" } })
+        $olderRelease = [pscustomobject]@{ tag_name = "v$olderVersion"; id = 'older-id'; draft = $false; prerelease = $false; published_at = '2026-09-30T00:00:00Z'; assets = $olderAssets }
+        $oldZipHash = (Get-FileHash $olderZip -Algorithm SHA256).Hash.ToLowerInvariant()
+        Copy-Item $olderZip (Join-Path $root 'packaging/output/Pointframe.Cli-win-x64.zip') -Force
+        Set-Content (Join-Path $root 'packaging/output/Pointframe.Cli-win-x64.zip.sha256') "$oldZipHash  Pointframe.Cli-win-x64.zip" -NoNewline
+        $desktopAssets = @(Get-TrainAssetNames $version @('desktop') | ForEach-Object { [pscustomobject]@{ name = $_ } })
+        $desktopAssets += [pscustomobject]@{ name = 'Pointframe.Cli-win-x64.zip.sha256' }
+        $desktopAssets += [pscustomobject]@{ name = 'Pointframe.Mcp-win-x64.mcpb.sha256' }
+        $desktopAssets += [pscustomobject]@{ name = 'Pointframe.Cli-win-x64.zip' }
+        $desktopAssets += [pscustomobject]@{ name = 'Pointframe.Mcp-win-x64.mcpb' }
+        $desktopRerun = [pscustomobject]@{ tag_name = "v$version"; id = 'desktop-rerun'; draft = $false; prerelease = $false; assets = $desktopAssets }
+        $desktopRerunState = @{ calls = [Collections.Generic.List[object]]::new(); releases = @($desktopRerun, $sourceRelease, $olderRelease); root = $root }
+        $desktopRerunResult = Publish-ReleasePlan $version @('desktop') $commit 'o/r' $root (New-FakeGh $desktopRerunState)
+        if (-not $desktopRerunResult.skippedComplete -or $desktopRerunResult.aliasSourceVersion -cne $olderVersion) { throw 'A complete desktop rerun did not identify its aliases from an older complete agent release.' }
         $cases++
 
         $incomplete = [pscustomobject]@{ tag_name = "v$version"; id = 'incomplete-id'; draft = $false; prerelease = $false; published_at = '2026-10-20T00:00:00Z'; assets = @([pscustomobject]@{ name = $agentAssets[0].name }) }

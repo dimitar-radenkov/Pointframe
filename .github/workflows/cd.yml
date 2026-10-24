@@ -70,8 +70,16 @@ jobs:
           }
           ConvertTo-Json -InputObject $all.ToArray() -Depth 10 | Set-Content release-receipt/releases.json -Encoding utf8NoBOM
           $security = $false
-          $pulls = gh api "repos/${{ github.repository }}/commits/$sha/pulls" 2>$null
-          if ($LASTEXITCODE -eq 0) { $security = @(($pulls -join "`n") | ConvertFrom-Json | ForEach-Object { $_.labels } | Where-Object { $_.name -eq 'security' }).Count -gt 0 }
+          $securityLookup = 'ok'
+          $pulls = gh api "repos/${{ github.repository }}/commits/$sha/pulls" 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            try { $security = @(($pulls -join "`n") | ConvertFrom-Json | ForEach-Object { $_.labels } | Where-Object { $_.name -eq 'security' }).Count -gt 0 }
+            catch { $securityLookup = 'failed'; Write-Host "::warning::Could not parse merged PR security labels for $sha; continuing release qualification without a security mark." }
+          } else {
+            $securityLookup = 'failed'
+            Write-Host "::warning::Could not read merged PR security labels for $sha; continuing release qualification without a security mark. $($pulls -join ' ')"
+          }
+          "securityLookup=$securityLookup" | Set-Content release-receipt/security-lookup.txt -Encoding utf8NoBOM
           ./scripts/release-impact.ps1 -Base "$sha~1" -Head $sha -CurrentVersion '${{ steps.version.outputs.display }}' -ReleasesFile release-receipt/releases.json -PlanOut release-receipt/plan.json -Security:$security
           if ($LASTEXITCODE -eq 3) { throw 'Release plan contains an unclassified path; refusing to build.' }
           if ($LASTEXITCODE -ne 0) { throw "Release plan failed with exit $LASTEXITCODE; refusing to build." }
@@ -180,7 +188,7 @@ jobs:
 
       - name: Read the previous Latest release
         id: previous-latest
-        if: steps.plan.outputs.desktop == 'true'
+        if: steps.plan.outputs.trains != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -210,7 +218,7 @@ jobs:
           "skipped_complete=$($result.skippedComplete.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
       - name: Prove make_latest on create
-        if: ${{ steps.publish.outputs.published == 'true' && steps.plan.outputs.desktop == 'true' }}
+        if: ${{ steps.publish.outputs.published == 'true' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -221,7 +229,7 @@ jobs:
           exit $LASTEXITCODE
 
       - name: Prove make_latest on update
-        if: ${{ steps.publish.outputs.published == 'true' && steps.plan.outputs.desktop == 'true' }}
+        if: ${{ steps.publish.outputs.published == 'true' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -245,7 +253,7 @@ jobs:
 
       - name: Repair and check Latest
         id: latest-check
-        if: ${{ !cancelled() && (steps.publish.outputs.desktop_state == 'published' || steps.publish.outputs.desktop_state == 'complete') }}
+        if: ${{ !cancelled() && steps.publish.outcome != 'skipped' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -289,10 +297,13 @@ jobs:
         run: |
           $trains = '${{ steps.plan.outputs.trains }}'
           if (-not $trains) { $publication = 'published' }
-          elseif ('${{ steps.publish.outcome }}' -eq 'success') { $publication = 'published' }
-          elseif (Test-Path release-receipt/publication.json) { $publication = 'draft' }
-          else { $publication = 'failed' }
-          ./scripts/write-release-receipt.ps1 -Version '${{ steps.version.outputs.display }}' -Commit '${{ github.event.workflow_run.head_sha }}' -Repository '${{ github.repository }}' -Trains $trains -Publication $publication -AliasSourceVersion '${{ steps.publish.outputs.alias_source_version }}' -StateFile release-receipt/publication.json -ProofCreate release-receipt/create.json -ProofUpdate release-receipt/update.json -PromoteResult release-receipt/promote.json -LatestResult release-receipt/latest.json -PlanFile release-receipt/plan.json -Out release-receipt/release-plan.json
+          elseif (Test-Path release-receipt/publication.json) {
+            $publicationState = Get-Content release-receipt/publication.json -Raw | ConvertFrom-Json
+            $publication = [string]$publicationState.publication
+          } else { $publication = 'failed' }
+          $securityLookup = 'ok'
+          if (Test-Path release-receipt/security-lookup.txt) { $securityLookup = ((Get-Content release-receipt/security-lookup.txt -Raw).Trim() -replace '^securityLookup=', '') }
+          ./scripts/write-release-receipt.ps1 -Version '${{ steps.version.outputs.display }}' -Commit '${{ github.event.workflow_run.head_sha }}' -Repository '${{ github.repository }}' -Trains $trains -Publication $publication -AliasSourceVersion '${{ steps.publish.outputs.alias_source_version }}' -SecurityLookup $securityLookup -StateFile release-receipt/publication.json -ProofCreate release-receipt/create.json -ProofUpdate release-receipt/update.json -PromoteResult release-receipt/promote.json -LatestResult release-receipt/latest.json -PlanFile release-receipt/plan.json -Out release-receipt/release-plan.json
           exit $LASTEXITCODE
 
       - name: Publish release plan receipt artifact
