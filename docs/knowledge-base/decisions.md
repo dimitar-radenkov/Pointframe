@@ -137,7 +137,7 @@ Decided 2026-10-21, by the owner, after a Claude-Codex consultation on repositor
 
 ## D-019 Desktop owns GitHub Latest; agents discover releases through the API
 
-Decided 2026-10-21, by the owner, on the release-trains design that D-018 required (a two-round Claude-Codex debate and a heavy review). Approved, not yet implemented: publishing changes only through the migration below.
+Decided 2026-10-21, by the owner, on the release-trains design that D-018 required (a two-round Claude-Codex debate and a heavy review). Approved and implemented through the migration below; selective publication runs since PR 3 (2026-10-24).
 
 **Context.** Every merge cuts one release carrying everything (about 39 releases from 2026-10-16 to 2026-10-21). Desktop users download and install updates for agent-only changes, and every agent change waits for desktop qualification. Two kinds of installed clients cannot learn a new contract until they update: desktop updaters (`GitHubUpdateService`) read `releases/latest`, parse only numeric `v<version>` tags, and need a `Pointframe-*-Setup.exe` asset there; released CLIs fetch their MCP bundle from their own version's release (`GitHubMcpPackageSource`). About 30 repository files, the MCP guide inside released binaries, and agents' own instructions use the `releases/latest/download` aliases.
 
@@ -158,4 +158,4 @@ Decided 2026-10-21, by the owner, on the release-trains design that D-018 requir
 
 **Alternatives rejected.** Tag prefixes (`desktop-v*`, `agent-v*`): installed updaters read them as version 0.0.0. Carrying the installer under every agent tag: old updaters re-offer the same build. A discovery pointer file on a branch or Pages: a new endpoint to keep forever, deferred until API rate limits bite. Refreshing aliases in place: not atomic across the zip, its hash and the bundle, and it breaks the pinned URLs of released CLIs. A scheduled job that releases on its own: it bypasses the serial merge. Separate version streams: more configuration and no discovery gain.
 
-**Files.** `.github/workflows/cd.yml`, `scripts/release-impact.ps1`, `scripts/check-release-channels.ps1`, `Pointframe/Services/Update/GitHubUpdateService.cs`, `Pointframe/Services/Update/UpdateOfferPolicy.cs`, `Pointframe.Cli/McpManagement/GitHubMcpPackageSource.cs`.
+**Files.** `.github/workflows/cd.yml`, `.github/workflows/alias-lag.yml`, `scripts/release-impact.ps1`, `scripts/publish-release.ps1`, `scripts/check-alias-lag.ps1`, `scripts/check-release-channels.ps1`, `Pointframe/Services/Update/GitHubUpdateService.cs`, `Pointframe/Services/Update/UpdateOfferPolicy.cs`, `Pointframe.Cli/McpManagement/GitHubMcpPackageSource.cs`.

@@ -131,7 +131,7 @@ When runtime behavior changes, run the real app: `pwsh scripts/desktop-tests.ps1
 <!-- /slot:real-environment -->
 
 <!-- slot:W-25 -->
-- **Release qualification.** Run `pwsh scripts/release-impact.ps1` before merging; when it prints `desktop-qualification: required`, run `scripts/check-released-desktop.ps1 -BuildCandidate`. After each release run `scripts/check-release-channels.ps1 -Version <x> -Watch` and report a failed channel at once.
+- **Release qualification.** Run `pwsh scripts/release-impact.ps1` before merging; when it prints `desktop-qualification: required`, run `scripts/check-released-desktop.ps1 -BuildCandidate`. After each merge run `scripts/check-release-channels.ps1 -Receipt <release-plan.json> -Watch` with its CD run's receipt and report a failed channel at once.
 <!-- /slot:W-25 -->
 
 <!-- slot:required-checks -->
@@ -139,7 +139,7 @@ When runtime behavior changes, run the real app: `pwsh scripts/desktop-tests.ps1
 <!-- /slot:required-checks -->
 
 <!-- slot:serial-note -->
- Every merge cuts a release.
+ Every merge evaluates release impact; affected trains publish after qualification.
 <!-- /slot:serial-note -->
 
 <!-- slot:pin-policy -->

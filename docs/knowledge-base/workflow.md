@@ -140,7 +140,7 @@ Every behavior change gets an independent review from a different agent than its
 <!-- rule:W-24 roles=coordinator,executor -->
 - **Real-environment check.** When runtime behavior changes, run the real app: `pwsh scripts/desktop-tests.ps1` for the regression selection, with `-Repeat N` for stress. The desktop is announced and kept to 30 minutes at a time; check the input desktop is not locked first.
 <!-- rule:W-25 roles=coordinator -->
-- **Release qualification.** Run `pwsh scripts/release-impact.ps1` before merging; when it prints `desktop-qualification: required`, run `scripts/check-released-desktop.ps1 -BuildCandidate`. After each release run `scripts/check-release-channels.ps1 -Version <x> -Watch` and report a failed channel at once.
+- **Release qualification.** Run `pwsh scripts/release-impact.ps1` before merging; when it prints `desktop-qualification: required`, run `scripts/check-released-desktop.ps1 -BuildCandidate`. After each merge run `scripts/check-release-channels.ps1 -Receipt <release-plan.json> -Watch` with its CD run's receipt and report a failed channel at once.
 <!-- rule:W-26 roles=all -->
 - **Report what was not tested.** A report that omits an untested path claims it passed.
 
@@ -162,7 +162,7 @@ For a package run through `scripts/package.ps1`, `accept` covers step 3 and `shi
 <!-- rule:W-29 roles=coordinator -->
 - **Checks.** Every required check (`unit-tests`, `package-checks`, `Analyze (csharp)`, CodeQL) must be present. Every check on the PR head, required or otherwise, must have completed without failure or cancellation; skipped checks are allowed. Never delete the branch or worktree until GitHub says MERGED.
 <!-- rule:W-30 roles=coordinator -->
-- **Serial.** Merge PRs one at a time; KB edits conflict. Every merge cuts a release.
+- **Serial.** Merge PRs one at a time; KB edits conflict. Every merge evaluates release impact; affected trains publish after qualification.
 - **Plugin pin.** A stale pin is acceptable when only the two pin files changed and `check-agent-discovery.ps1` passes; `-Auto` commits the pin itself.
 - **Repository settings** (rulesets, auto-merge) change only on the owner's explicit wording.
 
