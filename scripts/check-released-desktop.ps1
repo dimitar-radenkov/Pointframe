@@ -205,9 +205,49 @@ public static class PointframeInputDesktop {
     return $true
 }
 
+function Get-ForegroundWindowInfo {
+    if (-not ('PointframeForegroundProbe' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class PointframeForegroundProbe {
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr window, StringBuilder className, int maxCount);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out int value, int valueSize);
+    public static object Read() {
+        var window = GetForegroundWindow();
+        uint processId;
+        GetWindowThreadProcessId(window, out processId);
+        var className = new StringBuilder(256);
+        if (window == IntPtr.Zero || GetClassName(window, className, className.Capacity) == 0) className.Append("unknown");
+        string processName = "unknown";
+        try { if (processId != 0) processName = Process.GetProcessById((int)processId).ProcessName; } catch { }
+        int cloaked;
+        var cloakResult = DwmGetWindowAttribute(window, 14, out cloaked, sizeof(int));
+        return new { ClassName = className.ToString(), ProcessName = processName, ProcessId = (int)processId, Cloaked = cloakResult < 0 ? (bool?)null : cloaked != 0 };
+    }
+}
+'@
+    }
+
+    return [PointframeForegroundProbe]::Read()
+}
+
 function Assert-InteractiveDesktop {
-    if (-not (Test-InputDesktopAvailable)) {
+    param(
+        [scriptblock]$InputDesktopProbe = { Test-InputDesktopAvailable },
+        [scriptblock]$ForegroundProbe = { Get-ForegroundWindowInfo }
+    )
+    if (-not (& $InputDesktopProbe)) {
         throw 'The Windows session is locked or has no interactive desktop. Sign in and rerun this check on the interactive desktop.'
+    }
+
+    $foreground = & $ForegroundProbe
+    if ($foreground.Cloaked -eq $true) {
+        throw "Foreground window is DWM-cloaked: class '$($foreground.ClassName)', process '$($foreground.ProcessName)' (PID $($foreground.ProcessId)). Click a normal window to restore foreground access."
     }
 }
 
@@ -350,6 +390,20 @@ function Test-Self {
             if ((Resolve-ReleaseVersion '6.7.1' $releaseFixture.FullName) -ne '6.7.1') { throw "$($releaseFixture.Name): -Version must win over the release lookup." }
         }
 
+        $cloakedRejected = $false
+        try {
+            Assert-InteractiveDesktop -InputDesktopProbe { $true } -ForegroundProbe {
+                [pscustomobject]@{ ClassName = 'Windows.UI.Core.CoreWindow'; ProcessName = 'LockApp'; ProcessId = 4242; Cloaked = $true }
+            }
+        }
+        catch {
+            $cloakedRejected = $_.Exception.Message -like '*Windows.UI.Core.CoreWindow*LockApp*PID 4242*Click a normal window*'
+        }
+        if (-not $cloakedRejected) { throw 'A cloaked foreground window was not rejected with its class, process, and click suggestion.' }
+        Assert-InteractiveDesktop -InputDesktopProbe { $true } -ForegroundProbe {
+            [pscustomobject]@{ ClassName = 'CabinetWClass'; ProcessName = 'explorer'; ProcessId = 1234; Cloaked = $false }
+        }
+
         $existingFfmpeg = Join-Path $scratch 'ffmpeg.exe'
         [IO.File]::WriteAllBytes($existingFfmpeg, [byte[]](1, 2, 3))
         if ((Get-FfmpegPath $existingFfmpeg 'C:\on\path\ffmpeg.exe') -ne $existingFfmpeg) { throw 'FFMPEG_PATH did not win over PATH.' }
@@ -382,7 +436,7 @@ function Test-Self {
             $script:Mode = 'release'
         }
         if ($candidateShape.label -ne 'candidate' -or @($candidateShape.packages).Count -ne 1 -or $candidateShape.packages[0].sha256 -ne ('a' * 64)) { throw 'result.json did not carry the candidate label and package hashes.' }
-        return 'hash match/mismatch, verify.json v1 steps, result.json shape, candidate argument handling, ffmpeg resolution, and candidate package lookup passed offline.'
+        return 'hash match/mismatch, verify.json v1 steps, result.json shape, candidate argument handling, cloaked and normal foreground preflight, ffmpeg resolution, and candidate package lookup passed offline.'
     }
     finally { Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue }
 }

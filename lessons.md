@@ -1762,3 +1762,21 @@ Executor briefs and the `package.ps1` executor rules forbid stdin-reading comman
 ### Takeaway
 
 Never run an interpreter on stdin from an agent shell: write the script to a file and pass its path, close stdin for every child the agent starts, and when a run looks idle, list its processes before waiting longer.
+
+## A stale cloaked lock-screen window can hold the foreground of an unlocked session
+
+### Problem
+
+On 2026-10-24 `check-released-desktop.ps1 -BuildCandidate` failed on master and on a PR at the fixture's modal step (issue #307): `desktop_invoke` on the button that opens a modal took the UI Automation Invoke pattern (`InvokePending`, fixture `clickCount` 0), and the next check returned `ProviderUnavailable`. The session was unlocked and the same code had passed the day before.
+
+### Root cause
+
+The foreground window was a "Windows Default Lock Screen" CoreWindow of LockApp.exe left over from an earlier lock, DWM-cloaked and invisible, while the input desktop was open. Nothing can take the foreground from it: `SetForegroundWindow` fails, `AttachThreadInput` to its AppContainer thread fails with access denied, and the ALT trick fails. Focus failed, so the invoke fell back to the pattern, which blocks UI Automation while the modal is open (see "A pending UIA Invoke blocks every UIA client of that app").
+
+### What fixed it
+
+One real user click on a normal window cleared the stale foreground and the qualification passed. The worker now names the foreground window's class, owner process, and cloak state in `FocusFailed` and on stderr, and the qualification preflight fails early when the foreground window is cloaked.
+
+### Takeaway
+
+When focus fails on an unlocked desktop, check who holds the foreground before suspecting the code: a cloaked window can hold it indefinitely, and only real user input clears it.

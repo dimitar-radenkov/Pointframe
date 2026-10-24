@@ -69,6 +69,26 @@ public interface IDesktopInputNativeAdapter
 
     bool SetForeground(nint handle);
 
+    uint GetWindowThreadId(nint handle) => 0;
+
+    uint GetCurrentThreadId() => 0;
+
+    bool AttachThreadInput(uint attachTo, uint attachFrom, bool attach) => false;
+
+    bool IsWindowMinimized(nint handle) => false;
+
+    bool RestoreWindow(nint handle) => false;
+
+    bool BringWindowToTop(nint handle) => false;
+
+    int GetWindowProcessId(nint handle) => 0;
+
+    string GetWindowClassName(nint handle) => "unknown";
+
+    string GetWindowProcessName(nint handle) => "unknown";
+
+    bool? IsWindowCloaked(nint handle) => null;
+
     bool IsWindowValid(nint handle);
 
     bool IsWindowVisible(nint handle);
@@ -152,6 +172,8 @@ public interface IWindowsDesktopInputService
 
 public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
 {
+    private const int ForegroundAttachAttempts = 2;
+    private static readonly TimeSpan ForegroundRetryDelay = TimeSpan.FromMilliseconds(25);
     private readonly IDesktopInputNativeAdapter _native;
 
     public WindowsDesktopInputService(IDesktopInputNativeAdapterFactory? factory = null)
@@ -181,20 +203,153 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
                 _native.IsForegroundForProcess(expectedProcess)));
         }
 
-        if (!_native.SetForeground(target.Window.NativeHandle))
+        return FocusValidatedWindowAsync(target.Window.NativeHandle, expectedProcess, cancellationToken);
+    }
+
+    private async Task<DesktopInputPreflightResult> FocusValidatedWindowAsync(
+        nint targetWindow,
+        DesktopProcessIdentity expectedProcess,
+        CancellationToken cancellationToken)
+    {
+        var plainSuccess = false;
+        try
         {
-            return Task.FromResult(DesktopInputPreflightResult.Invalid(
-                "FocusFailed",
-                "The target window could not be focused.",
-                _native.IsForegroundForProcess(expectedProcess)));
+            var setForeground = _native.SetForeground(targetWindow);
+            plainSuccess = setForeground && _native.GetForegroundWindow() == targetWindow;
+        }
+        catch
+        {
+            // A native focus failure is a safe refusal; it must never escape into the input dispatch path.
         }
 
-        return Task.FromResult(_native.GetForegroundWindow() == target.Window.NativeHandle
-            ? DesktopInputPreflightResult.Valid()
-            : DesktopInputPreflightResult.Invalid(
-                "FocusFailed",
-                "The target window did not become foreground.",
-                _native.IsForegroundForProcess(expectedProcess)));
+        TraceForegroundAttempt("SetForegroundWindow", plainSuccess);
+        if (plainSuccess)
+        {
+            return DesktopInputPreflightResult.Valid();
+        }
+
+        for (var attempt = 0; attempt < ForegroundAttachAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var success = false;
+            uint workerThread = 0;
+            uint foregroundThread = 0;
+            try
+            {
+                var foregroundWindow = _native.GetForegroundWindow();
+                workerThread = _native.GetCurrentThreadId();
+                foregroundThread = _native.GetWindowThreadId(foregroundWindow);
+                try
+                {
+                    var attached = _native.AttachThreadInput(workerThread, foregroundThread, attach: true);
+                    if (attached)
+                    {
+                        if (_native.IsWindowMinimized(targetWindow))
+                        {
+                            _native.RestoreWindow(targetWindow);
+                        }
+
+                        _native.BringWindowToTop(targetWindow);
+                        _native.SetForeground(targetWindow);
+                        success = _native.GetForegroundWindow() == targetWindow;
+                    }
+                }
+                finally
+                {
+                    _native.AttachThreadInput(workerThread, foregroundThread, attach: false);
+                }
+            }
+            catch
+            {
+                // Continue only through the fixed retry budget. The final result remains FocusFailed.
+                success = false;
+            }
+
+            TraceForegroundAttempt("AttachThreadInput", success);
+            if (success)
+            {
+                return DesktopInputPreflightResult.Valid();
+            }
+
+            if (attempt + 1 < ForegroundAttachAttempts)
+            {
+                await Task.Delay(ForegroundRetryDelay, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return DesktopInputPreflightResult.Invalid(
+            "FocusFailed",
+            BuildFocusFailedMessage(),
+            _native.IsForegroundForProcess(expectedProcess));
+    }
+
+    private string BuildFocusFailedMessage()
+    {
+        var foregroundWindow = _native.GetForegroundWindow();
+        if (foregroundWindow == nint.Zero)
+        {
+            return "The target window could not be focused. The current foreground window is unavailable.";
+        }
+
+        var className = "unknown";
+        var processName = "unknown";
+        var processId = 0;
+        bool? cloaked = null;
+        try
+        {
+            className = _native.GetWindowClassName(foregroundWindow);
+        }
+        catch { }
+        try
+        {
+            processName = _native.GetWindowProcessName(foregroundWindow);
+        }
+        catch { }
+        try
+        {
+            processId = _native.GetWindowProcessId(foregroundWindow);
+        }
+        catch { }
+        try
+        {
+            cloaked = _native.IsWindowCloaked(foregroundWindow);
+        }
+        catch { }
+
+        var cloakDescription = cloaked switch
+        {
+            true => "DWM-cloaked=true. A real user click on a normal window may restore foreground access.",
+            false => "DWM-cloaked=false.",
+            _ => "DWM-cloaked=unknown.",
+        };
+        return $"The target window could not be focused. Current foreground: class '{className}', process '{processName}' (PID {processId}); {cloakDescription}";
+    }
+
+    private void TraceForegroundAttempt(string method, bool success)
+    {
+        var ownerProcessId = 0;
+        var foregroundWindow = nint.Zero;
+        var className = "unknown";
+        var processName = "unknown";
+        bool? cloaked = null;
+        try
+        {
+            foregroundWindow = _native.GetForegroundWindow();
+            ownerProcessId = foregroundWindow == nint.Zero ? 0 : _native.GetWindowProcessId(foregroundWindow);
+            if (foregroundWindow != nint.Zero)
+            {
+                className = _native.GetWindowClassName(foregroundWindow);
+                processName = _native.GetWindowProcessName(foregroundWindow);
+                cloaked = _native.IsWindowCloaked(foregroundWindow);
+            }
+        }
+        catch
+        {
+            // Diagnostics must not change whether a focus attempt is allowed to dispatch input.
+        }
+
+        var cloakValue = cloaked.HasValue ? cloaked.Value.ToString().ToLowerInvariant() : "unknown";
+        Console.Error.WriteLine($"desktop foreground method={method} success={success.ToString().ToLowerInvariant()} foregroundClass='{className}' foregroundOwnerProcess='{processName}' foregroundOwnerProcessId={ownerProcessId} foregroundDwmCloaked={cloakValue}");
     }
 
     public async Task<DesktopInputPreflightResult> ClickAsync(
@@ -479,6 +634,60 @@ internal sealed class WindowsDesktopInputNativeAdapter : IDesktopInputNativeAdap
     }
 
     public bool SetForeground(nint handle) => WindowsDesktopNativeMethods.SetForegroundWindow(handle);
+
+    public uint GetWindowThreadId(nint handle) => handle == nint.Zero
+        ? 0
+        : WindowsDesktopNativeMethods.GetWindowThreadProcessId(handle, out _);
+
+    public uint GetCurrentThreadId() => WindowsDesktopNativeMethods.GetCurrentThreadId();
+
+    public bool AttachThreadInput(uint attachTo, uint attachFrom, bool attach) =>
+        attachTo != 0 && attachFrom != 0 && WindowsDesktopNativeMethods.AttachThreadInput(attachTo, attachFrom, attach);
+
+    public bool IsWindowMinimized(nint handle) => WindowsDesktopNativeMethods.IsIconic(handle);
+
+    public bool RestoreWindow(nint handle) => WindowsDesktopNativeMethods.ShowWindow(handle, WindowsDesktopNativeMethods.ShowRestore);
+
+    public bool BringWindowToTop(nint handle) => WindowsDesktopNativeMethods.BringWindowToTop(handle);
+
+    public int GetWindowProcessId(nint handle) =>
+        WindowsDesktopNativeMethods.GetWindowThreadProcessId(handle, out var processId) == 0 ? 0 : (int)processId;
+
+    public string GetWindowClassName(nint handle)
+    {
+        var className = new System.Text.StringBuilder(256);
+        return WindowsDesktopNativeMethods.GetClassName(handle, className, className.Capacity) == 0
+            ? "unknown"
+            : className.ToString();
+    }
+
+    public string GetWindowProcessName(nint handle)
+    {
+        var processId = GetWindowProcessId(handle);
+        if (processId == 0)
+        {
+            return "unknown";
+        }
+
+        try
+        {
+            return System.Diagnostics.Process.GetProcessById(processId).ProcessName;
+        }
+        catch
+        {
+            return "unknown";
+        }
+    }
+
+    public bool? IsWindowCloaked(nint handle)
+    {
+        var result = WindowsDesktopNativeMethods.DwmGetWindowAttribute(
+            handle,
+            WindowsDesktopNativeMethods.DwmwaCloaked,
+            out var cloaked,
+            sizeof(int));
+        return result < 0 ? null : cloaked != 0;
+    }
 
     public bool IsWindowValid(nint handle) => handle != 0 && WindowsDesktopNativeMethods.IsWindow(handle);
 

@@ -44,6 +44,9 @@ internal static class WindowsDesktopNativeMethods
     internal static extern bool SetForegroundWindow(nint hWnd);
 
     [DllImport("user32.dll")]
+    internal static extern bool BringWindowToTop(nint hWnd);
+
+    [DllImport("user32.dll")]
     internal static extern bool IsWindow(nint hWnd);
 
     [DllImport("user32.dll")]
@@ -68,6 +71,13 @@ internal static class WindowsDesktopNativeMethods
     internal static extern uint GetWindowThreadProcessId(nint hWnd, out uint processId);
 
     internal const int ShowRestore = 9;
+    internal const uint DwmwaCloaked = 14;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern int GetClassName(nint hWnd, System.Text.StringBuilder className, int maxCount);
+
+    [DllImport("dwmapi.dll")]
+    internal static extern int DwmGetWindowAttribute(nint hWnd, uint attribute, out int value, int valueSize);
 
     internal delegate bool EnumWindowsProc(nint hWnd, nint lParam);
 

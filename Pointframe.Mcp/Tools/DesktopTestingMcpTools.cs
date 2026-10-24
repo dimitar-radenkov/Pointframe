@@ -339,7 +339,7 @@ internal sealed class DesktopTestingMcpTools(
             new McpCaptureError(code, message),
             DesktopTestingResponseMapper.RecoveryFor(code, sessionId));
 
-    [McpServerTool(Name = "desktop_focus_window",Title = "Focus desktop window", ReadOnly = false, Destructive = false, UseStructuredContent = true)]
+    [McpServerTool(Name = "desktop_focus_window", Title = "Focus desktop window", ReadOnly = false, Destructive = false, UseStructuredContent = true)]
     [Description("Brings one window of the application under test to the foreground and gives it keyboard focus. Call this before desktop_press_keys when the target window may not already be focused, since key input goes to whatever currently has focus.")]
     public async Task<DesktopTestingActionResponse> FocusWindowAsync(
         [Description("Session id from desktop_start_test_session.")] string sessionId,
