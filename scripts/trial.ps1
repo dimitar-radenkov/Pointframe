@@ -37,7 +37,7 @@ param(
 #   pwsh scripts/trial.ps1 -App wpf-sample -Agent codex -AllowCodexFullAccess [-AgentModel gpt-6-luna] [-AgentEffort medium]
 #   pwsh scripts/trial.ps1 -SelfTest      # offline: env allowlist, scoring fixtures, process selection, metrics
 #
-# Needs the interactive desktop (it holds %TEMP%\pointframe-desktop.lock), git, gh (latest release lookup), and the
+# Needs the interactive desktop (it holds %TEMP%\pointframe-desktop.lock), git, gh (newest agent release lookup), and the
 # claude CLI, signed in. Exit code: 0 pass-clean, 1 pass-workaround/fail/timeout, 2 invalid.
 #
 # Codex full access and Claude bypass permissions are refused unless explicitly approved for the package.
@@ -45,6 +45,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
+
+. (Join-Path $PSScriptRoot 'agent-release.ps1')
 
 $script:RepositoryRoot = Split-Path $PSScriptRoot -Parent
 $script:AppsPath = Join-Path $PSScriptRoot 'trials/apps.json'
@@ -93,6 +95,14 @@ function Get-Fact {
     $property = $Facts.PSObject.Properties[$Name]
     if ($null -eq $property) { return $Default }
     return $property.Value
+}
+
+function Resolve-ExpectedVersion {
+    # -Version wins; otherwise the newest complete agent release (GitHub Latest is a desktop release from the release trains on).
+    param([string]$Pinned, [string]$ReleasesFile)
+    if ($Pinned) { return $Pinned }
+    try { return Resolve-NewestAgentVersion -Repository $script:ReleaseRepository -ReleasesFile $ReleasesFile }
+    catch { throw "Could not resolve the newest agent release: $($_.Exception.Message)" }
 }
 
 function New-TrialInvocationParameters {
@@ -457,7 +467,7 @@ function Get-TrialOutcome {
 
     $expected = Get-Fact $Facts 'expectedVersion' $null
     $latestAfter = Get-Fact $Facts 'latestReleaseAfterRun' $null
-    if ($expected -and $latestAfter -and $latestAfter -ne $expected) { $reasons.Add("latest release drifted from $expected to $latestAfter during the run") }
+    if ($expected -and $latestAfter -and $latestAfter -ne $expected) { $reasons.Add("newest agent release drifted from $expected to $latestAfter during the run") }
     $seen = [ordered]@{
         cli = Get-Fact $Facts 'cliVersion' $null
         mcp = Get-Fact $Facts 'mcpVersion' $null
@@ -1628,7 +1638,18 @@ diff --git a/notes.md b/notes.md
         if (Test-ColdSkillInput $coldPointframe) { throw 'Cold configuration must reject a skill mentioning Pointframe.' }
         $driftFacts = [pscustomobject]@{ expectedVersion = '1.0.0'; latestReleaseAfterRun = '1.0.1'; cliVersion = '1.0.0'; mcpVersion = '1.0.0'; verifierVersion = '1.0.0'; verifyStatus = 'pass'; fresh = $true; criterionTiedToChange = $true; negativeControl = $true; reportsVerified = $true; leftoverProcesses = 0; defectCheck = [pscustomobject]@{ result = 'failed-expected' } }
         $drift = Get-TrialOutcome $driftFacts
-        if ($drift.Outcome -ne 'invalid' -or ($drift.Reasons -join ' ') -notmatch 'latest release drifted') { throw 'Latest release drift must invalidate scoring.' }
+        if ($drift.Outcome -ne 'invalid' -or ($drift.Reasons -join ' ') -notmatch 'newest agent release drifted') { throw 'Newest agent release drift must invalidate scoring.' }
+        $releaseFixtures = Join-Path $PSScriptRoot 'tests/agent-release'
+        foreach ($releaseFixture in Get-ChildItem -LiteralPath $releaseFixtures -Filter '*.json') {
+            $releaseCase = Get-Content -LiteralPath $releaseFixture.FullName -Raw | ConvertFrom-Json
+            if ((Get-Fact $releaseCase 'expectedError' $null)) {
+                $failedClearly = $false
+                try { Resolve-ExpectedVersion '' $releaseFixture.FullName | Out-Null } catch { $failedClearly = $_.Exception.Message -like 'Could not resolve the newest agent release:*' }
+                if (-not $failedClearly) { throw "$($releaseFixture.Name): no complete agent release must fail with a clear message." }
+            }
+            elseif ((Resolve-ExpectedVersion '' $releaseFixture.FullName) -ne $releaseCase.expected) { throw "$($releaseFixture.Name): the expected version must be the newest agent release $($releaseCase.expected)." }
+            if ((Resolve-ExpectedVersion '6.7.85' $releaseFixture.FullName) -ne '6.7.85') { throw "$($releaseFixture.Name): -Version must win over the release lookup." }
+        }
         $rescoreFolder = Join-Path $scratch 'rescore-fixture'; New-Item -ItemType Directory -Path $rescoreFolder -Force | Out-Null
         $rescoreTranscript = Join-Path $rescoreFolder 'transcript.jsonl'
         [IO.File]::WriteAllText($rescoreTranscript, '{"type":"turn.completed","usage":{"input_tokens":2,"output_tokens":1}}' + "`n")
@@ -2076,12 +2097,7 @@ function Invoke-Trial {
         $stale = @(Get-ProcessTable | Where-Object { $_.Path -and $_.Path.StartsWith((Join-Path ([IO.Path]::GetTempPath()) 'pf-trials-out'), [StringComparison]::OrdinalIgnoreCase) })
         if ($stale.Count -gt 0) { throw "Lingering processes from an earlier trial are still running: $(($stale | ForEach-Object { "$($_.Name) pid $($_.Pid)" }) -join ', '). Stop them and rerun." }
 
-        $expected = $PinnedVersion
-        if (-not $expected) {
-            $release = & gh release view --repo $script:ReleaseRepository --json tagName 2>&1
-            if ($LASTEXITCODE -ne 0) { throw "Could not resolve the latest release: $release" }
-            $expected = (($release -join "`n") | ConvertFrom-Json).tagName -replace '^v', ''
-        }
+        $expected = Resolve-ExpectedVersion $PinnedVersion
         if ($expected -notmatch '^\d+\.\d+\.\d+$') { throw "Version '$expected' is not a semantic x.y.z release version." }
         $facts.expectedVersion = $expected
         $record.expectedVersion = $expected
@@ -2173,9 +2189,8 @@ function Invoke-Trial {
 
         if (-not $run.TimedOut) {
             if (-not $PinnedVersion) {
-                $postRelease = & gh release view --repo $script:ReleaseRepository --json tagName 2>&1
-                if ($LASTEXITCODE -eq 0) { $facts.latestReleaseAfterRun = ((($postRelease -join "`n") | ConvertFrom-Json).tagName -replace '^v', '') }
-                else { $facts.harnessError = "Could not recheck latest release after run: $postRelease" }
+                try { $facts.latestReleaseAfterRun = Resolve-ExpectedVersion '' }
+                catch { $facts.harnessError = "Could not recheck the newest agent release after run: $($_.Exception.Message)" }
             }
             # Facts from the agent's verification, read with the allowlisted environment.
             $verdictPath = Join-Path $trialDirectory 'artifacts\pointframe-verify\verdict.json'

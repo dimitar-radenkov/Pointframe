@@ -1,5 +1,4 @@
 using System.Drawing;
-using System.IO;
 using ModelContextProtocol.Protocol;
 using Moq;
 using Pointframe.Engine;

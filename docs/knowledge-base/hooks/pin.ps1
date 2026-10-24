@@ -8,6 +8,9 @@ functions Update-PluginPin and Test-PluginPinBehind and the discovery check of T
   pin.ps1 -Action Update   -Root <worktree>   exit 0 already current, 10 pinned and committed, 1 failed (printed), 2 error
   pin.ps1 -Action Validate -Root <worktree>   exit 0 the pin files pass the offline discovery check, 1 not (last line says why)
 
+The pin follows the newest complete agent release (scripts/agent-release.ps1), never GitHub Latest, which belongs to the
+desktop train (D-019). -ReleasesFile reads a fixture of the releases list instead of GitHub (offline tests only).
+
 The kit runs it in a child process with the worktree as the working folder. Standard output lines are shown to the user as is.
 #>
 [CmdletBinding()]
@@ -16,12 +19,34 @@ param(
     [ValidateSet('Behind', 'Update', 'Validate')]
     [string]$Action,
     [Parameter(Mandatory)]
-    [string]$Root
+    [string]$Root,
+    [string]$ReleasesFile
 )
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
+
+function Get-NewestAgentVersionForPin
+{
+    param([string]$WorktreePath)
+
+    $reader = Join-Path $WorktreePath 'scripts' 'agent-release.ps1'
+    if (-not (Test-Path -LiteralPath $reader))
+    {
+        throw "Plugin pin: $reader is missing."
+    }
+
+    . $reader
+    try
+    {
+        return Resolve-NewestAgentVersion -ReleasesFile $ReleasesFile
+    }
+    catch
+    {
+        throw "Plugin pin: could not read the newest agent release: $($_.Exception.Message)"
+    }
+}
 
 function Update-PluginPin
 {
@@ -35,13 +60,7 @@ function Update-PluginPin
         throw "Plugin pin files are missing from '$root'."
     }
 
-    $latest = (gh release view --json tagName -q .tagName 2>$null)
-    if ($LASTEXITCODE -ne 0 -or -not $latest)
-    {
-        throw 'Plugin pin: could not read the latest release.'
-    }
-
-    $latest = $latest.Trim() -replace '^v', ''
+    $latest = Get-NewestAgentVersionForPin $root
     $pinned = (Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json).version
     if ($pinned -eq $latest)
     {
@@ -74,9 +93,7 @@ function Test-PluginPinBehind([string]$WorktreePath)
     $root = (Resolve-Path -LiteralPath $WorktreePath).Path
     $lockPath = Join-Path $root 'plugin' 'pointframe' 'server.lock.json'
     if (-not (Test-Path -LiteralPath $lockPath)) { return $false }
-    $latest = (& gh release view --json tagName -q .tagName 2>$null)
-    if ($LASTEXITCODE -ne 0 -or -not $latest) { throw 'Plugin pin: could not read the latest release.' }
-    $latest = $latest.Trim() -replace '^v', ''
+    $latest = Get-NewestAgentVersionForPin $root
     $pinned = [string](Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json).version
     return ([version]$pinned -lt [version]$latest)
 }

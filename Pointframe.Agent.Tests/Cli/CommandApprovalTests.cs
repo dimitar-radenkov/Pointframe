@@ -1,4 +1,3 @@
-using System.IO;
 using Moq;
 using Pointframe.Cli;
 using Xunit;

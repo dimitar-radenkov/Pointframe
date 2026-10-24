@@ -247,7 +247,7 @@ function Test-GitHubLinks([string]$Root, [System.Collections.Generic.List[string
         foreach ($match in [regex]::Matches($text, '(?i)https?://github\.com/dimitar-radenkov/[^\s"''<>)\]]*'))
         {
             $url = $match.Value
-            $pattern = '^https://github\.com/dimitar-radenkov/Pointframe(?:\.git)?(?<rest>(?:/(?:releases(?:/latest(?:/download(?:/[A-Za-z0-9._-]+)?)?|/download/v[0-9][0-9.]*/[A-Za-z0-9._-]+|/tag/v[0-9][0-9.]*)?|issues(?:/[0-9]+)?|blob/master/[A-Za-z0-9._/-]+|tree/master(?:/[A-Za-z0-9._/-]+)?))?)(?:#(?<frag>[A-Za-z0-9_-]+))?$'
+            $pattern = '^https://github\.com/dimitar-radenkov/Pointframe(?:\.git)?(?<rest>(?:/(?:releases(?:/latest(?:/download(?:/[A-Za-z0-9._-]+)?)?|/download/v(?:[0-9][0-9.]*|\$v)/[A-Za-z0-9._$-]+|/tag/v[0-9][0-9.]*)?|issues(?:/[0-9]+)?|blob/master/[A-Za-z0-9._/-]+|tree/master(?:/[A-Za-z0-9._/-]+)?))?)(?:#(?<frag>[A-Za-z0-9_-]+))?$'
             if ($url -cnotmatch $pattern)
             {
                 Add-Problem $Problems "$path has a malformed repository link: $url"
@@ -822,7 +822,8 @@ function Test-ShortPathInstall([string]$Root, [System.Collections.Generic.List[s
     {
         return
     }
-    $installLines = @(Get-TrimmedLines $guide | Where-Object { $_ -match '^pwsh -NoProfile -Command .*Pointframe\.Cli-win-x64\.zip' })
+    # The command resolves the newest agent release through the Releases API (versioned zip) and falls back to the latest/download alias.
+    $installLines = @(Get-TrimmedLines $guide | Where-Object { $_ -match '^pwsh -NoProfile -Command .*api\.github\.com/repos/.*/releases\?per_page=100.*releases/download/v.*Pointframe\.Cli-.*-win-x64\.zip.*releases/latest/download/Pointframe\.Cli-win-x64\.zip' })
     if ($installLines.Count -lt 2)
     {
         Add-Problem $Problems "$guidePath needs the CLI install command in step 1 and in the short path, but has $($installLines.Count)."
@@ -1197,6 +1198,15 @@ function Invoke-SelfTest
         if (@($installDrift | Where-Object { $_.Contains('differs from the step 1 install command') }).Count -ne 1)
         {
             $failures.Add("a drifted step 1 install command should be reported but reported: $($installDrift -join ' | ')")
+        }
+
+        [IO.File]::WriteAllText($guideFile, ([IO.File]::ReadAllText($guideFile).Replace('api.github.com/repos', 'api.example.com/repos')))
+        $cases++
+        $noApi = [System.Collections.Generic.List[string]]::new()
+        Test-ShortPathInstall $guideRoot $noApi
+        if (@($noApi | Where-Object { $_.Contains('needs the CLI install command in step 1 and in the short path') }).Count -ne 1)
+        {
+            $failures.Add("an install command without the Releases API lookup should be reported but reported: $($noApi -join ' | ')")
         }
     }
     finally

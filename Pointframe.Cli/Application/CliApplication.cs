@@ -130,7 +130,7 @@ internal sealed class CliApplication
             if (string.Equals(command.Name, "verify", StringComparison.Ordinal))
             {
                 using var httpClient = CreateHttpClient(seams);
-                var installer = new McpPackageInstaller(CreateMcpPackageSource(httpClient, seams), seams?.InstallRoot ?? McpInstallRoot());
+                var installer = new McpPackageInstaller(CreateMcpPackageSource(httpClient, seams, standardError), seams?.InstallRoot ?? McpInstallRoot());
                 var verifyApplication = CreateVerificationApplication(installer, standardOutput, standardError, seams);
                 var verifyExitCode = await verifyApplication.RunAsync(command, cancellationToken);
                 if (verifyApplication.Outcome is { } verifyOutcome)
@@ -146,7 +146,7 @@ internal sealed class CliApplication
                 // Standard output belongs to the MCP server this process hands its stdio to, so the
                 // verification code gets a writer that discards anything it would print there.
                 using var httpClient = CreateHttpClient(seams);
-                var installer = new McpPackageInstaller(CreateMcpPackageSource(httpClient, seams), seams?.InstallRoot ?? McpInstallRoot());
+                var installer = new McpPackageInstaller(CreateMcpPackageSource(httpClient, seams, standardError), seams?.InstallRoot ?? McpInstallRoot());
                 var verifyApplication = CreateVerificationApplication(installer, TextWriter.Null, standardError, seams);
                 return await verifyApplication.ServeAsync(command, Environment.CurrentDirectory, cancellationToken);
             }
@@ -161,7 +161,7 @@ internal sealed class CliApplication
                     "User",
                     "mcp.json");
                 var mcpApplication = new McpManagementApplication(
-                    new McpPackageInstaller(CreateMcpPackageSource(httpClient, seams), installRoot),
+                    new McpPackageInstaller(CreateMcpPackageSource(httpClient, seams, standardError), installRoot),
                     new VsCodeMcpConfigurator(configurationPath),
                     seams?.HealthChecker ?? new McpStdioHealthChecker(),
                     standardOutput,
@@ -349,8 +349,8 @@ internal sealed class CliApplication
     private static HttpClient CreateHttpClient(CliHostSeams? seams) =>
         seams?.Handler is { } handler ? new HttpClient(handler, disposeHandler: false) : new HttpClient();
 
-    private static GitHubMcpPackageSource CreateMcpPackageSource(HttpClient httpClient, CliHostSeams? seams) =>
-        seams is null ? CreateMcpPackageSource(httpClient) : CreateMcpPackageSource(seams.Version, seams.IsReleaseBuild, httpClient);
+    private static GitHubMcpPackageSource CreateMcpPackageSource(HttpClient httpClient, CliHostSeams? seams, TextWriter warningWriter) =>
+        seams is null ? CreateMcpPackageSource(httpClient, warningWriter) : CreateMcpPackageSource(seams.Version, seams.IsReleaseBuild, httpClient, warningWriter);
 
     private static string McpInstallRoot() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -374,21 +374,21 @@ internal sealed class CliApplication
         return $"Pointframe CLI {assemblyVersion?.ToString() ?? "0.0.0"}";
     }
 
-    internal static GitHubMcpPackageSource CreateMcpPackageSource(HttpClient httpClient)
+    internal static GitHubMcpPackageSource CreateMcpPackageSource(HttpClient httpClient, TextWriter? warningWriter = null)
     {
         var isReleaseBuild = typeof(CliApplication).Assembly
             .GetCustomAttributes(typeof(AssemblyMetadataAttribute), false)
             .Cast<AssemblyMetadataAttribute>()
             .Any(attribute => attribute.Key == "PointframeReleaseBuild" && attribute.Value == "true");
-        return CreateMcpPackageSource(GetVersion().Split(' ').LastOrDefault(), isReleaseBuild, httpClient);
+        return CreateMcpPackageSource(GetVersion().Split(' ').LastOrDefault(), isReleaseBuild, httpClient, warningWriter);
     }
 
-    internal static GitHubMcpPackageSource CreateMcpPackageSource(string? version, bool isReleaseBuild, HttpMessageHandler handler)
+    internal static GitHubMcpPackageSource CreateMcpPackageSource(string? version, bool isReleaseBuild, HttpMessageHandler handler, TextWriter? warningWriter = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
-        return CreateMcpPackageSource(version, isReleaseBuild, new HttpClient(handler, disposeHandler: false));
+        return CreateMcpPackageSource(version, isReleaseBuild, new HttpClient(handler, disposeHandler: false), warningWriter);
     }
 
-    private static GitHubMcpPackageSource CreateMcpPackageSource(string? version, bool isReleaseBuild, HttpClient httpClient) =>
-        new(httpClient, version, isReleaseBuild);
+    private static GitHubMcpPackageSource CreateMcpPackageSource(string? version, bool isReleaseBuild, HttpClient httpClient, TextWriter? warningWriter) =>
+        new(httpClient, version, isReleaseBuild, warningWriter);
 }

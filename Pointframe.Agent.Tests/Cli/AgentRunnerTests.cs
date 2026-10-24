@@ -1,4 +1,3 @@
-using System.IO;
 using System.Text.Json;
 using Pointframe.Cli;
 using Xunit;

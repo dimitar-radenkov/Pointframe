@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.IO;
 using Moq;
 using Pointframe.Cli;
 using Pointframe.Telemetry;
