@@ -20,14 +20,23 @@
       "trains": {
         "desktop": {
           "selected": true, "version": "6.7.90", "tag": "v6.7.90", "commit": "0123456789abcdef0123456789abcdef01234567", "publication": "published",
-          "assets": [ { "name": "Pointframe-6.7.90-x64-Setup.exe", "sha256": "1111111111111111111111111111111111111111111111111111111111111111" } ]
+          "aliasSourceVersion": "6.7.89",
+          "assets": [
+            { "name": "Pointframe-6.7.90-x64-Setup.exe", "sha256": "1111111111111111111111111111111111111111111111111111111111111111" },
+            { "name": "Pointframe.Cli-win-x64.zip", "sha256": "2222222222222222222222222222222222222222222222222222222222222222" },
+            { "name": "Pointframe.Cli-win-x64.zip.sha256", "sha256": "3333333333333333333333333333333333333333333333333333333333333333" },
+            { "name": "Pointframe.Mcp-win-x64.mcpb", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
+            { "name": "Pointframe.Mcp-win-x64.mcpb.sha256", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" }
+          ]
         },
         "agent": {
           "selected": true, "version": "6.7.90", "tag": "v6.7.90", "commit": "0123456789abcdef0123456789abcdef01234567", "publication": "published",
           "assets": [
             { "name": "Pointframe.Cli-6.7.90-win-x64.zip", "sha256": "2222222222222222222222222222222222222222222222222222222222222222" },
             { "name": "Pointframe.Cli-6.7.90-win-x64.zip.sha256", "sha256": "3333333333333333333333333333333333333333333333333333333333333333" },
-            { "name": "Pointframe.Mcp-6.7.90-win-x64.mcpb", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" }
+            { "name": "Pointframe.Mcp-6.7.90-win-x64.mcpb", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
+            { "name": "Pointframe.Mcp-6.7.90-win-x64.mcpb.sha256", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
+            { "name": "Pointframe.Mcp-6.7.90-win-x64.server.json", "sha256": "6666666666666666666666666666666666666666666666666666666666666666" }
           ]
         }
       }
@@ -36,12 +45,12 @@
       "release": {
         "desktop": {
           "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "cdConclusion": "success", "cdStatus": "completed",
-          "assets": ["Pointframe-6.7.90-x64-Setup.exe", "Pointframe.Cli-6.7.90-win-x64.zip", "Pointframe.Cli-6.7.90-win-x64.zip.sha256", "Pointframe.Mcp-6.7.90-win-x64.mcpb"],
+          "assets": ["Pointframe-6.7.90-x64-Setup.exe", "Pointframe.Cli-win-x64.zip", "Pointframe.Cli-win-x64.zip.sha256", "Pointframe.Mcp-win-x64.mcpb", "Pointframe.Mcp-win-x64.mcpb.sha256"],
           "digests": { "Pointframe-6.7.90-x64-Setup.exe": "1111111111111111111111111111111111111111111111111111111111111111" }
         },
         "agent": {
           "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "cdConclusion": "success", "cdStatus": "completed",
-          "assets": ["Pointframe-6.7.90-x64-Setup.exe", "Pointframe.Cli-6.7.90-win-x64.zip", "Pointframe.Cli-6.7.90-win-x64.zip.sha256", "Pointframe.Mcp-6.7.90-win-x64.mcpb"],
+          "assets": ["Pointframe.Cli-6.7.90-win-x64.zip", "Pointframe.Cli-6.7.90-win-x64.zip.sha256", "Pointframe.Mcp-6.7.90-win-x64.mcpb", "Pointframe.Mcp-6.7.90-win-x64.mcpb.sha256", "Pointframe.Mcp-6.7.90-win-x64.server.json"],
           "digests": {
             "Pointframe.Cli-6.7.90-win-x64.zip": "2222222222222222222222222222222222222222222222222222222222222222",
             "Pointframe.Cli-6.7.90-win-x64.zip.sha256": "3333333333333333333333333333333333333333333333333333333333333333",

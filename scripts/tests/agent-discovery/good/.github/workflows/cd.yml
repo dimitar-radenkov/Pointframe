@@ -1,3 +1,2 @@
-files: |
-  packaging/output/Pointframe.Mcp-win-x64.mcpb
-  packaging/output/Pointframe.Mcp-win-x64.mcpb.sha256
+- name: Create, validate, and publish selected release trains
+  run: ./scripts/publish-release.ps1 -Trains 'desktop,agent'

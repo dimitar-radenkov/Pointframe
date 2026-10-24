@@ -225,7 +225,7 @@ remove it. Once the plugin is listed in the Claude plugin directory, install it 
 claude --plugin-dir ./plugin/pointframe
 ```
 
-Each release is also published to the official
+Each agent release (a release that carries the CLI and MCP packages) is also published to the official
 [MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=pointframe)
 as `io.github.dimitar-radenkov/pointframe-mcp`, so registry-aware clients can find
 and install it. The matching `*.server.json` attached to the release pins the MCPB

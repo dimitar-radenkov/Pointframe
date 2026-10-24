@@ -84,6 +84,18 @@ function Get-DesktopAssetNames
     return @("Pointframe-$Version-x64-Setup.exe")
 }
 
+function Get-DesktopAliasAssetNames
+{
+    param([string]$Version)
+
+    return @(
+        'Pointframe.Cli-win-x64.zip'
+        'Pointframe.Cli-win-x64.zip.sha256'
+        'Pointframe.Mcp-win-x64.mcpb'
+        'Pointframe.Mcp-win-x64.mcpb.sha256'
+    )
+}
+
 function Get-AgentRequiredAssetNames
 {
     param([string]$Version)
@@ -93,6 +105,26 @@ function Get-AgentRequiredAssetNames
         "Pointframe.Cli-$Version-win-x64.zip.sha256"
         "Pointframe.Mcp-$Version-win-x64.mcpb"
     )
+}
+
+function Get-TrainAssetNames
+{
+    param([string]$Version, [string[]]$Trains)
+
+    $names = [System.Collections.Generic.List[string]]::new()
+    foreach ($train in @('desktop', 'agent'))
+    {
+        if ($train -notin $Trains) { continue }
+        $assets = if ($train -eq 'desktop') { @(Get-DesktopAssetNames $Version) + @(Get-DesktopAliasAssetNames $Version) } else {
+            @(
+                (Get-AgentRequiredAssetNames $Version)
+                "Pointframe.Mcp-$Version-win-x64.mcpb.sha256"
+                "Pointframe.Mcp-$Version-win-x64.server.json"
+            )
+        }
+        foreach ($asset in $assets) { if ($asset -notin $names) { $names.Add($asset) } }
+    }
+    return $names.ToArray()
 }
 
 function Test-TrainRelease
@@ -195,33 +227,15 @@ function Get-PreviousTrainRelease
 
 function Get-ReleaseFileList
 {
-    # The files CD uploads, from the `files: |` block of the Create GitHub Release step: path, leaf name and train.
-    param([string]$WorkflowPath, [string]$Version)
+    # Shared paths, names and train ownership for all release consumers.
+    param([string]$WorkflowPath, [string]$Version, [string[]]$Trains = @('desktop', 'agent'))
 
-    $inFiles = $false
     $files = [System.Collections.Generic.List[object]]::new()
-    foreach ($line in Get-Content -LiteralPath $WorkflowPath)
+    foreach ($name in Get-TrainAssetNames $Version $Trains)
     {
-        if (-not $inFiles)
-        {
-            if ($line -match '^\s*files:\s*\|\s*$')
-            {
-                $inFiles = $true
-            }
-
-            continue
-        }
-
-        if ($line -match '^\s+(\S+/.*\S)\s*$')
-        {
-            $path = $Matches[1].Replace('${{ steps.version.outputs.display }}', $Version)
-            $leaf = ($path -split '/')[-1]
-            $train = if ($leaf -ceq "Pointframe-$Version-x64-Setup.exe") { 'desktop' } else { 'agent' }
-            $files.Add([pscustomobject]@{ Path = $path; Name = $leaf; Train = $train })
-            continue
-        }
-
-        break
+        $train = if ($name -in (@(Get-DesktopAssetNames $Version) + @(Get-DesktopAliasAssetNames $Version))) { 'desktop' } else { 'agent' }
+        $directory = if ($train -eq 'desktop' -and $name -like 'Pointframe-*-Setup.exe') { 'installer/output' } else { 'packaging/output' }
+        $files.Add([pscustomobject]@{ Path = (Join-Path $directory $name).Replace('\', '/'); Name = $name; Train = $train })
     }
 
     return $files.ToArray()
@@ -269,7 +283,7 @@ function Test-ReleaseReceipt
             $problems.Add("trains.$name.commit must be a 40-character SHA")
         }
 
-        if ([string](Get-ModelProperty $train 'publication' '') -notin @('published', 'failed', 'draft'))
+        if ([string](Get-ModelProperty $train 'publication' '') -notin @('published', 'failed', 'draft', 'skipped'))
         {
             $problems.Add("trains.$name.publication must be published, failed or draft")
         }

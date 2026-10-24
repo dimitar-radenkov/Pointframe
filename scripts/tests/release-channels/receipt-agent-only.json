@@ -24,7 +24,9 @@
           "assets": [
             { "name": "Pointframe.Cli-6.7.92-win-x64.zip", "sha256": "2222222222222222222222222222222222222222222222222222222222222222" },
             { "name": "Pointframe.Cli-6.7.92-win-x64.zip.sha256", "sha256": null },
-            { "name": "Pointframe.Mcp-6.7.92-win-x64.mcpb", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" }
+            { "name": "Pointframe.Mcp-6.7.92-win-x64.mcpb", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
+            { "name": "Pointframe.Mcp-6.7.92-win-x64.mcpb.sha256", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
+            { "name": "Pointframe.Mcp-6.7.92-win-x64.server.json", "sha256": "6666666666666666666666666666666666666666666666666666666666666666" }
           ]
         }
       }
@@ -34,10 +36,12 @@
         "desktop": { "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "assets": ["Pointframe-6.7.92-x64-Setup.exe"], "cdConclusion": "success", "cdStatus": "completed" },
         "agent": {
           "exists": true, "draft": false, "commit": "0123456789abcdef0123456789abcdef01234567", "cdConclusion": "success", "cdStatus": "completed",
-          "assets": ["Pointframe.Cli-6.7.92-win-x64.zip", "Pointframe.Cli-6.7.92-win-x64.zip.sha256", "Pointframe.Mcp-6.7.92-win-x64.mcpb"],
+          "assets": ["Pointframe.Cli-6.7.92-win-x64.zip", "Pointframe.Cli-6.7.92-win-x64.zip.sha256", "Pointframe.Mcp-6.7.92-win-x64.mcpb", "Pointframe.Mcp-6.7.92-win-x64.mcpb.sha256", "Pointframe.Mcp-6.7.92-win-x64.server.json"],
           "digests": {
             "Pointframe.Cli-6.7.92-win-x64.zip": "2222222222222222222222222222222222222222222222222222222222222222",
-            "Pointframe.Mcp-6.7.92-win-x64.mcpb": "4444444444444444444444444444444444444444444444444444444444444444"
+            "Pointframe.Mcp-6.7.92-win-x64.mcpb": "4444444444444444444444444444444444444444444444444444444444444444",
+            "Pointframe.Mcp-6.7.92-win-x64.mcpb.sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+            "Pointframe.Mcp-6.7.92-win-x64.server.json": "6666666666666666666666666666666666666666666666666666666666666666"
           }
         }
       },

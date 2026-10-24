@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "repository": "dimitar-radenkov/Pointframe",
+  "createdUtc": "2026-10-24T10:00:00Z",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "trains": {
+    "desktop": { "selected": false },
+    "agent": { "selected": false }
+  }
+}

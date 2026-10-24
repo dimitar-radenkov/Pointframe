@@ -1,0 +1,55 @@
+name: Alias Lag Alert
+
+on:
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  inspect:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Check alias lag
+        id: lag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $resultJson = ./scripts/check-alias-lag.ps1 -Repository '${{ github.repository }}'
+          if ($LASTEXITCODE -ne 0) { throw "Alias lag check failed with exit $LASTEXITCODE." }
+          $resultJson | Set-Content alias-lag-result.json -NoNewline
+          $result = $resultJson | ConvertFrom-Json
+          $sourceLabel = if ($result.sourceVersion) { "v$($result.sourceVersion)" } else { 'unidentified' }
+          "status=$($result.status)" >> $env:GITHUB_OUTPUT
+          "source=$($result.sourceVersion)" >> $env:GITHUB_OUTPUT
+          "source_label=$sourceLabel" >> $env:GITHUB_OUTPUT
+          "newest=$($result.newestAgentVersion)" >> $env:GITHUB_OUTPUT
+          "oldest=$($result.oldestUnreflectedRelease)" >> $env:GITHUB_OUTPUT
+          "age=$($result.ageHours)" >> $env:GITHUB_OUTPUT
+          "threshold=$($result.thresholdHours)" >> $env:GITHUB_OUTPUT
+          if ($result.status -eq 'alert') { Write-Output '::warning::Legacy CLI and MCP aliases need a desktop refresh release.' }
+
+      - name: Comment on release status issue
+        if: steps.lag.outputs.status == 'alert'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $workflow = Get-Content agent-workflow.json -Raw | ConvertFrom-Json
+          $issue = [int]$workflow.status.issue
+          $source = '${{ steps.lag.outputs.source_label }}'
+          $newest = '${{ steps.lag.outputs.newest }}'
+          $oldest = '${{ steps.lag.outputs.oldest }}'
+          $age = '${{ steps.lag.outputs.age }}'
+          $threshold = '${{ steps.lag.outputs.threshold }}'
+          $body = "Legacy aliases from agent $source are behind agent v$newest (oldest unreflected v$oldest; ${age}h elapsed, ${threshold}h threshold). Coordinator: open a refresh PR that changes release/refresh-aliases.marker; the normal merge and desktop qualification publish it. This workflow only alerts."
+          gh issue comment $issue --repo '${{ github.repository }}' --body $body
+          if ($LASTEXITCODE -ne 0) { throw 'Could not comment on the release status issue.' }

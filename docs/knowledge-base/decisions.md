@@ -137,7 +137,7 @@ Decided 2026-10-21, by the owner, after a Claude-Codex consultation on repositor
 
 ## D-019 Desktop owns GitHub Latest; agents discover releases through the API
 
-Decided 2026-10-21, by the owner, on the release-trains design that D-018 required (a two-round Claude-Codex debate and a heavy review). Approved, not yet implemented: publishing changes only through the migration below.
+Decided 2026-10-21, by the owner, on the release-trains design that D-018 required (a two-round Claude-Codex debate and a heavy review). Approved and implemented through the migration below; selective publication runs since PR 3 (2026-10-24).
 
 **Context.** Every merge cuts one release carrying everything (about 39 releases from 2026-10-16 to 2026-10-21). Desktop users download and install updates for agent-only changes, and every agent change waits for desktop qualification. Two kinds of installed clients cannot learn a new contract until they update: desktop updaters (`GitHubUpdateService`) read `releases/latest`, parse only numeric `v<version>` tags, and need a `Pointframe-*-Setup.exe` asset there; released CLIs fetch their MCP bundle from their own version's release (`GitHubMcpPackageSource`). About 30 repository files, the MCP guide inside released binaries, and agents' own instructions use the `releases/latest/download` aliases.
 
@@ -154,8 +154,8 @@ Decided 2026-10-21, by the owner, on the release-trains design that D-018 requir
 
 **Migration.** PR 1 records this decision. PR 2a adds the release plan, explicit `make_latest` with the Latest check, and per-train receipts while combined releases continue, and proves `make_latest=false` with one guarded real release. PR 2b moves the readers to the Releases API. PR 3 starts selective publication, alias carry-forward and the lag alert, and changes the "every merge cuts a release" rule in the [Agent workflow](workflow.md#pr-and-merge). PR 3 is the point of no return: from then on automation cannot assume every product exists at every version, and shipped defects roll forward. The owner is notified before it merges.
 
-**Consequences.** About one extra desktop release a week while agent work is active, to refresh the aliases. Released readers make the versioned asset names permanent. If PR 3 slips, batching (one combined release a day or on demand) is the fallback.
+**Consequences.** About one extra desktop release a week while agent work is active, to refresh the aliases. Released readers make the versioned asset names permanent. Batching (one combined release a day or on demand) was the fallback had PR 3 slipped; it shipped on 2026-10-24.
 
 **Alternatives rejected.** Tag prefixes (`desktop-v*`, `agent-v*`): installed updaters read them as version 0.0.0. Carrying the installer under every agent tag: old updaters re-offer the same build. A discovery pointer file on a branch or Pages: a new endpoint to keep forever, deferred until API rate limits bite. Refreshing aliases in place: not atomic across the zip, its hash and the bundle, and it breaks the pinned URLs of released CLIs. A scheduled job that releases on its own: it bypasses the serial merge. Separate version streams: more configuration and no discovery gain.
 
-**Files.** `.github/workflows/cd.yml`, `scripts/release-impact.ps1`, `scripts/check-release-channels.ps1`, `Pointframe/Services/Update/GitHubUpdateService.cs`, `Pointframe/Services/Update/UpdateOfferPolicy.cs`, `Pointframe.Cli/McpManagement/GitHubMcpPackageSource.cs`.
+**Files.** `.github/workflows/cd.yml`, `.github/workflows/alias-lag.yml`, `scripts/release-impact.ps1`, `scripts/publish-release.ps1`, `scripts/check-alias-lag.ps1`, `scripts/check-release-channels.ps1`, `Pointframe/Services/Update/GitHubUpdateService.cs`, `Pointframe/Services/Update/UpdateOfferPolicy.cs`, `Pointframe.Cli/McpManagement/GitHubMcpPackageSource.cs`.

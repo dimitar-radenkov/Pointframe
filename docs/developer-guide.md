@@ -369,12 +369,13 @@ The process is PerMonitorV2 (`app.manifest`), so every monitor has its own scale
 
 ### CD (`cd.yml`)
 - Triggered by a successful CI run on `master` (`workflow_run`).
-- Steps: compute the version with `nbgv` → inject the Application Insights connection string and verify it → publish self-contained single-file → sign the exe when a signing certificate secret exists → build the installer → sign it → upload `Pointframe-<version>-x64-Setup` → create a GitHub Release tagged `v<version>`.
+- Steps: compute the version with `nbgv` and the release plan (which trains this merge ships) → build only the selected trains (desktop: publish, sign, installer; agent: CLI and MCP packages) → `scripts/publish-release.ps1` creates a draft `v<version>`, validates it, and publishes it → check Latest → MCP Registry for an agent release → upload the `release-plan` receipt. Docs-only merges publish nothing. See [Release qualification and versioning](knowledge-base/tooling.md#release-qualification-and-versioning).
 
 ### Other workflows
 - `desktop-automation.yml` — manually runs the required `scripts/desktop-tests.ps1` selection on a Windows runner.
 - `winget-release.yml` — submits the winget manifest after CD completes on `master`, or manually with a version.
-- `codeql.yml`, `release-drafter.yml`, `dependabot-auto-merge.yml`, and `pages.yml` (deploys `website/`).
+- `alias-lag.yml` — daily check that the legacy CLI/MCP aliases on Latest are not too far behind the newest agent release; it only alerts.
+- `codeql.yml`, `dependabot-auto-merge.yml`, and `pages.yml` (deploys `website/`).
 
 ### MCP desktop-testing driver
 

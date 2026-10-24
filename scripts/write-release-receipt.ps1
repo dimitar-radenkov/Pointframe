@@ -29,9 +29,13 @@ Exit codes: 0 written, 2 bad arguments.
 param(
     [string]$Version,
     [string]$Commit,
-    [ValidateSet('published', 'failed', 'draft')]
+    [ValidateSet('published', 'failed', 'draft', 'skipped')]
     [string]$Publication = 'published',
     [string]$Trains = 'desktop,agent',
+    [string]$AliasSourceVersion,
+    [ValidateSet('ok', 'failed')]
+    [string]$SecurityLookup = 'ok',
+    [string]$StateFile,
     [string]$Repository = 'dimitar-radenkov/Pointframe',
     [string]$ProofCreate,
     [string]$ProofUpdate,
@@ -95,11 +99,14 @@ function New-ReleaseReceipt
         [string[]]$SelectedTrains,
         [object[]]$Files,
         [string]$Publication,
+        [string]$AliasSourceVersion = '',
+        [hashtable]$TrainStates = @{},
         $ProofCreate = $null,
         $ProofUpdate = $null,
         $PromoteResult = $null,
         $LatestResult = $null,
         $Plan = $null,
+        [string]$SecurityLookup = 'ok',
         [string]$CreatedUtc
     )
 
@@ -118,8 +125,10 @@ function New-ReleaseReceipt
             tag = "v$Version"
             commit = $Commit
             publication = $Publication
+            state = $(if ($TrainStates.ContainsKey($name)) { [string]$TrainStates[$name] } else { $Publication })
             assets = @($Files | Where-Object { $_.Train -eq $name } | ForEach-Object { [ordered]@{ name = $_.Name; sha256 = $_.Sha256 } })
         }
+        if ($name -eq 'desktop' -and $AliasSourceVersion) { $trains[$name]['aliasSourceVersion'] = $AliasSourceVersion }
     }
 
     $promotion = if ($null -eq $PromoteResult) { $null } else { [ordered]@{ promoted = [bool](Get-ModelProperty $PromoteResult 'promoted' $false); reason = Get-ModelProperty $PromoteResult 'reason' $null } }
@@ -137,6 +146,7 @@ function New-ReleaseReceipt
         repository = $Repository
         createdUtc = $CreatedUtc
         commit = $Commit
+        securityLookup = $SecurityLookup
         trains = $trains
         proofs = [ordered]@{
             makeLatestOnCreate = ConvertTo-ProofRecord $ProofCreate
@@ -163,24 +173,24 @@ function Get-FileSha256
 
 function Get-ReceiptFiles
 {
-    param([string]$WorkflowPath, [string]$Version, [string]$Root)
+    param([string]$WorkflowPath, [string]$Version, [string]$Root, [string[]]$SelectedTrains = @('desktop', 'agent'), [switch]$UnknownHashes)
 
-    $files = @(Get-ReleaseFileList $WorkflowPath $Version)
-    if ($files.Count -eq 0)
+    $files = @(Get-ReleaseFileList $WorkflowPath $Version $SelectedTrains)
+    if ($files.Count -eq 0 -and $SelectedTrains.Count -gt 0)
     {
         throw "No release files were read from the 'files: |' block of $WorkflowPath."
     }
 
-    return @($files | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Train = $_.Train; Sha256 = Get-FileSha256 $Root $_.Path } })
+    return @($files | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Train = $_.Train; Sha256 = $(if ($UnknownHashes) { $null } else { Get-FileSha256 $Root $_.Path }) } })
 }
 
 function Test-SelfCases
 {
     $version = '1.2.3'
     $sha = '0123456789abcdef0123456789abcdef01234567'
-    $listed = @(Get-ReleaseFileList $WorkflowPath $version)
+    $listed = @(Get-ReleaseFileList $WorkflowPath $version @('desktop', 'agent'))
     $desktop = @($listed | Where-Object { $_.Train -eq 'desktop' })
-    if ($listed.Count -ne 10 -or $desktop.Count -ne 1 -or $desktop[0].Name -ne 'Pointframe-1.2.3-x64-Setup.exe')
+    if ($listed.Count -ne 10 -or $desktop.Count -ne 5 -or 'Pointframe-1.2.3-x64-Setup.exe' -notin @($desktop.Name))
     {
         throw "cd.yml files block: expected 10 files with the installer as the only desktop file, got $($listed.Count) files and $($desktop.Count) desktop file(s)."
     }
@@ -219,16 +229,32 @@ function Test-SelfCases
             throw "the combined receipt is not valid: $($problems -join '; ')"
         }
 
-        if (@($json.trains.desktop.assets).Count -ne 1 -or @($json.trains.agent.assets).Count -ne 9 -or $json.proofs.makeLatestOnCreate.status -ne 'passed' -or $json.latest.decision -ne 'ok' -or $json.plan.schemaVersion -ne 1)
+        if (@($json.trains.desktop.assets).Count -ne 5 -or @($json.trains.agent.assets).Count -ne 5 -or $json.proofs.makeLatestOnCreate.status -ne 'passed' -or $json.latest.decision -ne 'ok' -or $json.plan.schemaVersion -ne 1)
         {
             throw 'the combined receipt does not hold 1 desktop asset, 9 agent assets, the proofs, the latest result and the plan.'
         }
 
-        $desktopOnly = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @('desktop') -Files $files -Publication 'failed' -CreatedUtc '2026-10-23T10:00:00Z' | ConvertTo-Json -Depth 8 | ConvertFrom-Json
-        if (@(Test-ReleaseReceipt $desktopOnly).Count -gt 0 -or $desktopOnly.trains.agent.selected -or $desktopOnly.trains.desktop.publication -ne 'failed' -or $desktopOnly.proofs.makeLatestOnUpdate.status -ne 'not-run' -or $null -ne $desktopOnly.plan)
+        $desktopOnly = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @('desktop') -Files $files -Publication 'failed' -AliasSourceVersion '1.2.2' -SecurityLookup 'failed' -CreatedUtc '2026-10-23T10:00:00Z' | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+        if (@(Test-ReleaseReceipt $desktopOnly).Count -gt 0 -or $desktopOnly.trains.agent.selected -or $desktopOnly.trains.desktop.publication -ne 'failed' -or @($desktopOnly.trains.desktop.assets).Count -ne 5 -or $desktopOnly.trains.desktop.aliasSourceVersion -ne '1.2.2' -or $desktopOnly.securityLookup -ne 'failed' -or $desktopOnly.proofs.makeLatestOnUpdate.status -ne 'not-run' -or $null -ne $desktopOnly.plan)
         {
-            throw 'a desktop-only failed receipt must validate, leave the agent train unselected and record unrun proofs as not-run.'
+            throw 'a desktop-only receipt must validate, list installer and aliases, record the alias source, and leave the agent train unselected.'
         }
+
+        $agentOnly = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @('agent') -Files $files -Publication 'published' -CreatedUtc '2026-10-23T10:00:00Z' | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+        if (@(Test-ReleaseReceipt $agentOnly).Count -gt 0 -or $agentOnly.trains.desktop.selected -or @($agentOnly.trains.agent.assets).Count -ne 5) { throw 'an agent-only receipt must list exactly the five versioned agent assets.' }
+        $skippedFiles = @(Get-ReceiptFiles $WorkflowPath $version $root @('desktop', 'agent') -UnknownHashes)
+        $skippedComplete = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @('desktop', 'agent') -Files $skippedFiles -Publication 'published' -TrainStates @{ desktop = 'complete'; agent = 'complete' } -CreatedUtc '2026-10-23T10:00:00Z'
+        if (@(Test-ReleaseReceipt ($skippedComplete | ConvertTo-Json -Depth 8 | ConvertFrom-Json)).Count -gt 0 -or @($skippedFiles | Where-Object { $null -ne $_.Sha256 }).Count -gt 0)
+        {
+            throw 'a skipped-complete receipt must validate and leave rebuilt local asset hashes unknown.'
+        }
+        $skippedPublication = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @('agent') -Files $files -Publication 'skipped' -CreatedUtc '2026-10-23T10:00:00Z'
+        if (@(Test-ReleaseReceipt ($skippedPublication | ConvertTo-Json -Depth 8 | ConvertFrom-Json)).Count -gt 0 -or $skippedPublication.trains.agent.publication -ne 'skipped')
+        {
+            throw 'a skipped publication state must pass receipt self-validation.'
+        }
+        $none = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @() -Files @() -Publication 'published' -CreatedUtc '2026-10-23T10:00:00Z' | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+        if (@(Test-ReleaseReceipt $none).Count -gt 0 -or $none.trains.desktop.selected -or $none.trains.agent.selected) { throw 'a none receipt must validate with both trains unselected.' }
 
         $broken = $json | ConvertTo-Json -Depth 8 | ConvertFrom-Json
         $broken.trains.agent.tag = 'v9.9.9'
@@ -247,7 +273,7 @@ function Test-SelfCases
 if ($SelfTest)
 {
     Test-SelfCases
-    Write-Host 'write-release-receipt self-test passed: cd.yml file list (1 desktop + 9 agent), hashing, combined and desktop-only receipts, validation.'
+    Write-Host 'write-release-receipt self-test passed: shared train asset lists, hashing, skipped-complete hashes, skipped publication, desktop-only, agent-only, both, and none receipts, alias source, validation.'
     exit 0
 }
 
@@ -258,15 +284,27 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$' -or $Commit -notmatch '^[0-9a-f]{40}$' 
 }
 
 $selected = @($Trains -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-if ($selected.Count -eq 0 -or @($selected | Where-Object { $_ -notin @('desktop', 'agent') }).Count -gt 0)
+if (@($selected | Where-Object { $_ -notin @('desktop', 'agent') }).Count -gt 0)
 {
     [Console]::Error.WriteLine("-Trains must be a comma list of desktop and agent, got '$Trains'.")
     exit 2
 }
 
-$files = Get-ReceiptFiles $WorkflowPath $Version $Root
+$publicationResult = Read-JsonFile $StateFile
+$unknownHashes = [bool](Get-ModelProperty $publicationResult 'skippedComplete' $false)
+$files = Get-ReceiptFiles $WorkflowPath $Version $Root $selected -UnknownHashes:$unknownHashes
+$trainStates = @{}
+if ($null -ne $publicationResult)
+{
+    foreach ($train in @('desktop', 'agent'))
+    {
+        $state = [string](Get-ModelProperty $publicationResult.trains $train 'not-selected')
+        if ($state -ne 'not-selected') { $trainStates[$train] = $state }
+    }
+}
 $receipt = New-ReleaseReceipt -Repository $Repository -Commit $Commit -Version $Version -SelectedTrains $selected -Files $files -Publication $Publication `
-    -ProofCreate (Read-JsonFile $ProofCreate) -ProofUpdate (Read-JsonFile $ProofUpdate) -PromoteResult (Read-JsonFile $PromoteResult) `
+    -AliasSourceVersion $AliasSourceVersion -TrainStates $trainStates `
+    -SecurityLookup $SecurityLookup -ProofCreate (Read-JsonFile $ProofCreate) -ProofUpdate (Read-JsonFile $ProofUpdate) -PromoteResult (Read-JsonFile $PromoteResult) `
     -LatestResult (Read-JsonFile $LatestResult) -Plan (Read-JsonFile $PlanFile) -CreatedUtc ([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))
 
 $problems = @(Test-ReleaseReceipt ($receipt | ConvertTo-Json -Depth 12 | ConvertFrom-Json))
