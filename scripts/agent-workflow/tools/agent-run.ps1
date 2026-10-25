@@ -27,6 +27,7 @@ param(
     [string]$Sandbox,
     [string]$Task,
     [string]$LogDirectory,
+    [string]$TestCodexScript,
     [switch]$ValidateOnly,
     [string]$Root,
     [switch]$SelfTest
@@ -184,7 +185,7 @@ $resolvedWorktree = (Resolve-Path -LiteralPath $Worktree -ErrorAction SilentlyCo
 if (-not $resolvedWorktree -or -not (Test-GitWorktree $resolvedWorktree)) { Write-Host 'Refused: worktree is not a git worktree'; exit 2 }
 # The npm install puts codex.ps1/codex.cmd shims on PATH, which Start-Process cannot start with redirected streams;
 # run node on the package's codex.js instead (a real codex.exe is used as is).
-$codexResolution = Resolve-CodexCommand
+$codexResolution = Resolve-CodexCommand $TestCodexScript
 if (-not $codexResolution.Ok) { Write-Host "Refused: $($codexResolution.Reason)"; exit 2 }
 $codexFile = $codexResolution.File
 $codexPrefix = $codexResolution.Prefix
@@ -206,6 +207,42 @@ $outPath = Join-Path $LogDirectory 'out.md'
 $briefHash = (Get-FileHash -LiteralPath $briefPath -Algorithm SHA256).Hash
 $arguments = $codexPrefix + @('--ask-for-approval', 'never', 'exec', '-m', $Model, '-c', "model_reasoning_effort=$Effort", '-c', 'windows.sandbox="unelevated"', '--sandbox', $Sandbox, '--json', '-C', "`"$resolvedWorktree`"", '-o', "`"$outPath`"", '-')
 [IO.File]::WriteAllText((Join-Path $LogDirectory 'stdin.tmp'), $briefText, [Text.UTF8Encoding]::new($false))
+$limitsBefore = Get-CodexRateLimits
+Write-Host (Format-CodexRateLimits $limitsBefore)
+$limitGate = Test-CodexLimitGate -Limits $limitsBefore -Config $Context.Config
+if ($limitGate.warn)
+{
+    Write-Warning $limitGate.message
+}
+
+if ($limitGate.refuse)
+{
+    Write-Host $limitGate.message
+    $now = [DateTimeOffset]::UtcNow
+    $recordPath = Resolve-RepositoryPath ([string](Get-AwSetting $runSettings 'log' 'plan/agent-runs.jsonl'))
+    $refused = [ordered]@{
+        utcStart = $now.ToString('o')
+        utcEnd = $now.ToString('o')
+        task = $Task
+        briefPath = $briefPath
+        briefSha256 = $briefHash
+        model = $Model
+        effort = $Effort
+        escalationReason = $EscalationReason
+        sandbox = $Sandbox
+        worktree = $resolvedWorktree
+        minutes = 0
+        tokens = @{ input = $null; cached = $null; output = $null }
+        exitCode = 2
+        outcome = 'refused-limit'
+        logDirectory = $LogDirectory
+        codexLimits = @{ before = $limitsBefore; after = $null }
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path $recordPath -Parent) -Force | Out-Null
+    [IO.File]::AppendAllText($recordPath, (($refused | ConvertTo-Json -Compress -Depth 12) + "`r`n"), [Text.UTF8Encoding]::new($false))
+    exit 2
+}
 $process = Start-Process -FilePath $codexFile -ArgumentList $arguments -PassThru -NoNewWindow -RedirectStandardInput (Join-Path $LogDirectory 'stdin.tmp') -RedirectStandardOutput $eventsPath -RedirectStandardError $stderrPath
 $outcome = 'failed'
 $budget = ''
@@ -233,7 +270,26 @@ $usage = Get-TokenUsage $lines
 $exitCode = if ($budget) { $null } else { $process.ExitCode }
 if ($budget) { $outcome = 'budget-exceeded' }
 elseif ($exitCode -eq 0) { $outcome = 'completed' }
-$record = [ordered]@{ utcStart = $started.ToString('o'); utcEnd = $ended.ToString('o'); task = $Task; briefPath = $briefPath; briefSha256 = $briefHash; model = $Model; effort = $Effort; escalationReason = $EscalationReason; sandbox = $Sandbox; worktree = $resolvedWorktree; minutes = $minutes; tokens = @{ input = $usage.Input; cached = $usage.Cached; output = $usage.Output }; exitCode = $exitCode; outcome = $outcome; logDirectory = $LogDirectory }
+$limitsAfter = Get-CodexRateLimits
+Write-Host (Format-CodexRateLimits $limitsAfter)
+$record = [ordered]@{
+    utcStart = $started.ToString('o')
+    utcEnd = $ended.ToString('o')
+    task = $Task
+    briefPath = $briefPath
+    briefSha256 = $briefHash
+    model = $Model
+    effort = $Effort
+    escalationReason = $EscalationReason
+    sandbox = $Sandbox
+    worktree = $resolvedWorktree
+    minutes = $minutes
+    tokens = @{ input = $usage.Input; cached = $usage.Cached; output = $usage.Output }
+    exitCode = $exitCode
+    outcome = $outcome
+    logDirectory = $LogDirectory
+    codexLimits = @{ before = $limitsBefore; after = $limitsAfter }
+}
 $recordPath = Resolve-RepositoryPath ([string](Get-AwSetting $runSettings 'log' 'plan/agent-runs.jsonl'))
 New-Item -ItemType Directory -Path (Split-Path $recordPath -Parent) -Force | Out-Null
 [IO.File]::AppendAllText($recordPath, (($record | ConvertTo-Json -Compress -Depth 8) + "`r`n"), [Text.UTF8Encoding]::new($false))

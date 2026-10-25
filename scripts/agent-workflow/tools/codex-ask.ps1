@@ -53,12 +53,12 @@ function Get-SessionId([string[]]$Lines)
     foreach ($line in $Lines)
     {
         if (-not $line) { continue }
-        try { $event = $line | ConvertFrom-Json } catch { continue }
-        if ($null -eq $event) { continue }
-        if ($event.PSObject.Properties['thread_id'] -and $event.thread_id) { return [string]$event.thread_id }
-        if ($event.PSObject.Properties['session_id'] -and $event.session_id) { return [string]$event.session_id }
-        if ($event.PSObject.Properties['type'] -and $event.type -eq 'session.started' -and
-            $event.PSObject.Properties['sessionId'] -and $event.sessionId) { return [string]$event.sessionId }
+        try { $sessionEvent = $line | ConvertFrom-Json } catch { continue }
+        if ($null -eq $sessionEvent) { continue }
+        if ($sessionEvent.PSObject.Properties['thread_id'] -and $sessionEvent.thread_id) { return [string]$sessionEvent.thread_id }
+        if ($sessionEvent.PSObject.Properties['session_id'] -and $sessionEvent.session_id) { return [string]$sessionEvent.session_id }
+        if ($sessionEvent.PSObject.Properties['type'] -and $sessionEvent.type -eq 'session.started' -and
+            $sessionEvent.PSObject.Properties['sessionId'] -and $sessionEvent.sessionId) { return [string]$sessionEvent.sessionId }
     }
     ''
 }
@@ -126,6 +126,7 @@ function Invoke-SelfTest
     if ($strictEvent -ne 'thread-123') { $failures.Add('thread.started event did not return thread_id under strict mode') }
     $temp = Join-Path ([IO.Path]::GetTempPath()) "codex-ask-test-$([guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Path $temp | Out-Null
+    $env:CODEX_HOME = Join-Path $temp 'codex-home'
     try
     {
         $path = Join-Path $temp 'out.md'; $started = [DateTimeOffset]::UtcNow
@@ -279,8 +280,49 @@ $logPath = "$outPath.log"
 New-Item -ItemType Directory -Path (Split-Path $outPath -Parent) -Force | Out-Null
 Remove-Item -LiteralPath $outPath -Force -ErrorAction SilentlyContinue
 $prompt = [IO.File]::ReadAllText($promptPath, [Text.Encoding]::UTF8)
-$started = [DateTimeOffset]::UtcNow
 $repo = (Resolve-Path -LiteralPath $Worktree).Path
+$started = [DateTimeOffset]::UtcNow
+$limitsBefore = Get-CodexRateLimits
+Write-Host (Format-CodexRateLimits $limitsBefore)
+$limitGate = Test-CodexLimitGate -Limits $limitsBefore -Config $Context.Config
+if ($limitGate.warn)
+{
+    Write-Warning $limitGate.message
+}
+
+$recordPath = if ($RunRecordPath) { [IO.Path]::GetFullPath($RunRecordPath) } else { Join-Path $Context.Root ([string](Get-AwSetting (Get-AwSection $Context 'agentRuns') 'log' 'plan/agent-runs.jsonl')) }
+if ($limitGate.refuse)
+{
+    Write-Host $limitGate.message
+    $refused = [ordered]@{
+        utcStart = $started.ToString('o')
+        utcEnd = $started.ToString('o')
+        task = $null
+        briefPath = $promptPath
+        briefSha256 = (Get-FileHash $promptPath -Algorithm SHA256).Hash
+        model = $Model
+        effort = $Effort
+        escalationReason = $EscalationReason
+        sandbox = $Sandbox
+        worktree = $repo
+        minutes = 0
+        tokens = @{ input = $null; cached = $null; output = $null }
+        exitCode = 2
+        outcome = 'refused-limit'
+        logDirectory = Split-Path $logPath -Parent
+        kind = 'consult'
+        sessionId = $null
+        codexLimits = @{ before = $limitsBefore; after = $null }
+    }
+
+    $recordDirectory = Split-Path $recordPath -Parent
+    if (Test-Path -LiteralPath $recordDirectory -PathType Container)
+    {
+        [IO.File]::AppendAllText($recordPath, (($refused | ConvertTo-Json -Compress -Depth 12) + "`r`n"), [Text.UTF8Encoding]::new($false))
+    }
+
+    exit 2
+}
 $arguments = New-CodexArguments $codex.Prefix ([bool]$SessionId) $Model $Effort $Sandbox $SessionId $repo $outPath
 $stdin = Join-Path ([IO.Path]::GetTempPath()) "codex-ask-$([guid]::NewGuid().ToString('N')).txt"
 $stdout = Join-Path ([IO.Path]::GetTempPath()) "codex-ask-$([guid]::NewGuid().ToString('N')).jsonl"
@@ -340,10 +382,33 @@ try
         tokens = $tokenFields
     }
     [AwProcessJob]::Close($job)
-    $record = [ordered]@{ utcStart = $started.ToString('o'); utcEnd = [DateTimeOffset]::UtcNow.ToString('o'); task = $null; briefPath = $promptPath; briefSha256 = (Get-FileHash $promptPath -Algorithm SHA256).Hash; model = $Model; effort = $Effort; escalationReason = $EscalationReason; sandbox = $Sandbox; worktree = $repo; minutes = [Math]::Round(([DateTimeOffset]::UtcNow - $started).TotalMinutes, 2); tokens = @{ input = $tokenFields.inputTokens; cached = $tokenFields.cachedInputTokens; output = $tokenFields.outputTokens }; exitCode = $exit; outcome = $outcome; logDirectory = Split-Path $logPath -Parent; kind = 'consult'; sessionId = $session }
-    $recordPath = if ($RunRecordPath) { [IO.Path]::GetFullPath($RunRecordPath) } else { Join-Path $Context.Root ([string](Get-AwSetting (Get-AwSection $Context 'agentRuns') 'log' 'plan/agent-runs.jsonl')) }
+    $limitsAfter = Get-CodexRateLimits
+    Write-Host (Format-CodexRateLimits $limitsAfter)
+    $record = [ordered]@{
+        utcStart = $started.ToString('o')
+        utcEnd = [DateTimeOffset]::UtcNow.ToString('o')
+        task = $null
+        briefPath = $promptPath
+        briefSha256 = (Get-FileHash $promptPath -Algorithm SHA256).Hash
+        model = $Model
+        effort = $Effort
+        escalationReason = $EscalationReason
+        sandbox = $Sandbox
+        worktree = $repo
+        minutes = [Math]::Round(([DateTimeOffset]::UtcNow - $started).TotalMinutes, 2)
+        tokens = @{ input = $tokenFields.inputTokens; cached = $tokenFields.cachedInputTokens; output = $tokenFields.outputTokens }
+        exitCode = $exit
+        outcome = $outcome
+        logDirectory = Split-Path $logPath -Parent
+        kind = 'consult'
+        sessionId = $session
+        codexLimits = @{ before = $limitsBefore; after = $limitsAfter }
+    }
+
     if (Test-Path -LiteralPath (Split-Path $recordPath -Parent) -PathType Container)
-    { [IO.File]::AppendAllText($recordPath, (($record | ConvertTo-Json -Compress -Depth 8) + "`r`n"), [Text.UTF8Encoding]::new($false)) }
+    {
+        [IO.File]::AppendAllText($recordPath, (($record | ConvertTo-Json -Compress -Depth 8) + "`r`n"), [Text.UTF8Encoding]::new($false))
+    }
     if ($timedOut)
     {
         $stopNote = if ($terminated) { 'and was stopped' } else { "and COULD NOT be stopped (pid $($process.Id)); stop it by hand" }

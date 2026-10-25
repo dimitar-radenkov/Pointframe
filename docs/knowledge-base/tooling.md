@@ -42,7 +42,7 @@ pwsh scripts/verify.ps1 -Skip kb,format                    # leave gates out whi
 
 Status lives in plan/status.json; `scripts/status.ps1 -Publish` renders GitHub issue #186 and the owned handoff region. Publish at every stage change.
 
-Every Codex executor run goes through `scripts/agent-run.ps1`; Sonnet subagent briefs are checked with `-ValidateOnly`. Each run appends one cost record to the local, gitignored agent-runs.jsonl under plan/, the cost source for the weekly retro.
+Every Codex executor run goes through `scripts/agent-run.ps1`; Sonnet subagent briefs are checked with `-ValidateOnly`. Each run appends one cost record to the local, gitignored agent-runs.jsonl under plan/, the cost source for the weekly retro. Both launchers record Codex 5-hour and weekly use from local session logs (`codexLimits`), refuse at weekly >= 80% (W-03) and warn at 5-hour >= 80% (`codex.limits`).
 
 The format gate covers the main project only. Do not run `dotnet format` on `Pointframe.Tests` or `Pointframe.Agent.Tests`; it would rewrite many unrelated files.
 

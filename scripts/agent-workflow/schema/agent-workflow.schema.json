@@ -558,6 +558,20 @@
           "minimum": 1
         }
       }
+    },
+    "codex": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "weeklyRefusePercent": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "fiveHourWarnPercent": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        }
+      }
     }
   },
   "definitions": {
