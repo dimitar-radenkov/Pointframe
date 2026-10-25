@@ -176,7 +176,7 @@ function Get-ReceiptFiles
     param([string]$WorkflowPath, [string]$Version, [string]$Root, [string[]]$SelectedTrains = @('desktop', 'agent'), [switch]$UnknownHashes)
 
     $files = @(Get-ReleaseFileList $WorkflowPath $Version $SelectedTrains)
-    if ($files.Count -eq 0 -and $SelectedTrains.Count -gt 0)
+    if ($files.Count -eq 0 -and @($SelectedTrains).Count -gt 0)
     {
         throw "No release files were read from the 'files: |' block of $WorkflowPath."
     }
@@ -256,6 +256,20 @@ function Test-SelfCases
         $none = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @() -Files @() -Publication 'published' -CreatedUtc '2026-10-23T10:00:00Z' | ConvertTo-Json -Depth 8 | ConvertFrom-Json
         if (@(Test-ReleaseReceipt $none).Count -gt 0 -or $none.trains.desktop.selected -or $none.trains.agent.selected) { throw 'a none receipt must validate with both trains unselected.' }
 
+        $entryOut = Join-Path $root 'entry-none.json'
+        $entryPlan = Join-Path $root 'entry-plan.json'
+        $plan | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $entryPlan -Encoding utf8NoBOM
+        $entryOutput = @(& pwsh -NoProfile -File $PSCommandPath -Version '6.7.164' -Commit 'd51fd768a478a99658278deab7c802639289984a' -Repository 'dimitar-radenkov/Pointframe' -Trains '' -Publication 'published' -AliasSourceVersion '' -SecurityLookup 'ok' -StateFile (Join-Path $root 'publication.json') -ProofCreate (Join-Path $root 'create.json') -ProofUpdate (Join-Path $root 'update.json') -PromoteResult (Join-Path $root 'promote.json') -LatestResult (Join-Path $root 'latest.json') -PlanFile $entryPlan -Out $entryOut 2>&1)
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $entryOut -PathType Leaf))
+        {
+            throw "The script entry none path failed (exit $LASTEXITCODE): $($entryOutput -join ' ')"
+        }
+        $entryReceipt = Get-Content -LiteralPath $entryOut -Raw | ConvertFrom-Json
+        if (@(Test-ReleaseReceipt $entryReceipt).Count -gt 0 -or $entryReceipt.trains.desktop.selected -or $entryReceipt.trains.agent.selected -or $null -ne $entryReceipt.trains.desktop.PSObject.Properties['assets'] -or $null -ne $entryReceipt.trains.agent.PSObject.Properties['assets'] -or $entryReceipt.plan.schemaVersion -ne 1 -or $null -ne $entryReceipt.trains.desktop.PSObject.Properties['publication'] -or $null -ne $entryReceipt.trains.agent.PSObject.Properties['publication'])
+        {
+            throw 'The script entry none path must write a valid receipt with both trains unselected, no assets, and the plan included.'
+        }
+
         $broken = $json | ConvertTo-Json -Depth 8 | ConvertFrom-Json
         $broken.trains.agent.tag = 'v9.9.9'
         $broken.trains.desktop.assets[0].sha256 = 'not-a-hash'
@@ -273,7 +287,7 @@ function Test-SelfCases
 if ($SelfTest)
 {
     Test-SelfCases
-    Write-Host 'write-release-receipt self-test passed: shared train asset lists, hashing, skipped-complete hashes, skipped publication, desktop-only, agent-only, both, and none receipts, alias source, validation.'
+    Write-Host 'write-release-receipt self-test passed: shared train asset lists, hashing, skipped-complete hashes, skipped publication, desktop-only, agent-only, both, none receipts through the script entry, alias source, validation.'
     exit 0
 }
 
@@ -292,7 +306,7 @@ if (@($selected | Where-Object { $_ -notin @('desktop', 'agent') }).Count -gt 0)
 
 $publicationResult = Read-JsonFile $StateFile
 $unknownHashes = [bool](Get-ModelProperty $publicationResult 'skippedComplete' $false)
-$files = Get-ReceiptFiles $WorkflowPath $Version $Root $selected -UnknownHashes:$unknownHashes
+$files = @(Get-ReceiptFiles $WorkflowPath $Version $Root $selected -UnknownHashes:$unknownHashes)
 $trainStates = @{}
 if ($null -ne $publicationResult)
 {

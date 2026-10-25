@@ -605,7 +605,8 @@ function Test-ChannelFixtures
 
     $noneReceiptPath = Join-Path $fixtureDirectory 'cli/receipt-none-plan.json'
     $noneOutput = @(& pwsh -NoProfile -File $PSCommandPath -Receipt $noneReceiptPath 2>&1)
-    if ($LASTEXITCODE -ne 0 -or ($noneOutput -join "`n") -notmatch 'CHANNELS: ok \(no release; both trains are not applicable\)')
+    $noneText = $noneOutput -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $noneText -notmatch 'CHANNELS: ok \(no release; both trains are not applicable\)' -or ([regex]::Matches($noneText, 'CHANNEL [^\r\n]+: not-applicable')).Count -ne 6)
     {
         throw "The CLI -Receipt none path did not return its successful no-release result (exit $LASTEXITCODE): $($noneOutput -join ' ')"
     }
