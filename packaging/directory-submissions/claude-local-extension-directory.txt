@@ -2,7 +2,7 @@ DRAFT. Not submitted. Values come from the MCPB manifest that packaging/build-mc
 
 Extension name (manifest name): pointframe-mcp
 Display name: Pointframe MCP Server
-Version: the latest release version (the manifest version equals the release version; see https://github.com/dimitar-radenkov/Pointframe/releases/latest)
+Version: the MCP version from the downloaded bundle manifest (the bundle belongs to an agent release)
 Manifest version: 0.3
 Download URL: https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb
 Checksum: https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb.sha256

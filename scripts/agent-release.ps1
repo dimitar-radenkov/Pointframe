@@ -133,7 +133,7 @@ function Test-ReaderFixtures
 {
     $directory = Join-Path $PSScriptRoot 'tests/agent-release'
     $required = @(
-        'combined-today', 'newest-over-desktop-only', 'older-created-later', 'draft-and-prerelease-ignored',
+        'combined-release', 'newest-over-desktop-only', 'older-created-later', 'draft-and-prerelease-ignored',
         'incomplete-pair-skipped', 'malformed-tags-ignored', 'no-complete-agent-release'
     )
     foreach ($name in $required)

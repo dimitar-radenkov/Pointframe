@@ -9,9 +9,9 @@ the SHA-256 of every asset CD uploaded, the publication state, the Latest proofs
       [-LatestResult latest.json] [-PlanFile plan.json] [-Root <repo root>]
   pwsh scripts/write-release-receipt.ps1 -SelfTest
 
-The asset list is the `files: |` block of the Create GitHub Release step in cd.yml, so the receipt, the release and the
-channel check cannot disagree about what a release holds. The installer belongs to the desktop train, everything else to
-the agent train. A file that does not exist (a failed build) is listed with a null sha256. Proof, promote, latest and plan
+The receipt records selected-train assets: desktop carries the installer and stable agent aliases; agent carries the CLI zip,
+its checksum, and MCPB bundle. Each asset is assigned to its train by the release model, so the channel check can verify
+what each published release contains. A file that does not exist (a failed build) is listed with a null sha256. Proof, promote, latest and plan
 files that do not exist are recorded as not run / null, never as passed.
 
 Receipt, schemaVersion 1:
@@ -192,7 +192,7 @@ function Test-SelfCases
     $desktop = @($listed | Where-Object { $_.Train -eq 'desktop' })
     if ($listed.Count -ne 10 -or $desktop.Count -ne 5 -or 'Pointframe-1.2.3-x64-Setup.exe' -notin @($desktop.Name))
     {
-        throw "cd.yml files block: expected 10 files with the installer as the only desktop file, got $($listed.Count) files and $($desktop.Count) desktop file(s)."
+        throw "release asset list: expected 10 files with 5 desktop assets, including the installer and stable aliases, got $($listed.Count) files and $($desktop.Count) desktop file(s)."
     }
 
     $root = Join-Path ([IO.Path]::GetTempPath()) "receipt-$([guid]::NewGuid().ToString('N'))"
@@ -231,7 +231,7 @@ function Test-SelfCases
 
         if (@($json.trains.desktop.assets).Count -ne 5 -or @($json.trains.agent.assets).Count -ne 5 -or $json.proofs.makeLatestOnCreate.status -ne 'passed' -or $json.latest.decision -ne 'ok' -or $json.plan.schemaVersion -ne 1)
         {
-            throw 'the combined receipt does not hold 1 desktop asset, 9 agent assets, the proofs, the latest result and the plan.'
+            throw 'the combined receipt does not hold 5 desktop assets, 5 agent assets, the proofs, the latest result and the plan.'
         }
 
         $desktopOnly = New-ReleaseReceipt -Repository 'o/r' -Commit $sha -Version $version -SelectedTrains @('desktop') -Files $files -Publication 'failed' -AliasSourceVersion '1.2.2' -SecurityLookup 'failed' -CreatedUtc '2026-10-23T10:00:00Z' | ConvertTo-Json -Depth 8 | ConvertFrom-Json

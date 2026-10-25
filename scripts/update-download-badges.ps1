@@ -2,7 +2,7 @@
 <#
 Writes shields.io endpoint badges with download totals across ALL GitHub releases.
 The stock shields "github/downloads/<repo>/total" badge reads only the newest 100 releases, and the
-"latest/<asset>" badge only the newest release, so both undercount for a repo that releases on every merge.
+"latest/<asset>" badge only the newest release, so both undercount when merges selectively publish the desktop train, agent train, both, or neither.
 The Pages workflow runs this at build time; nothing is committed. -SelfTest checks the counting offline.
 #>
 [CmdletBinding()]
