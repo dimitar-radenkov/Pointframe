@@ -51,7 +51,7 @@ for a Sonnet subagent, continue the same subagent. Returning a fix to the same C
 <!-- /slot:fix-continuation -->
 
 <!-- slot:W-36 -->
-- **Allocation.** Aim for 40-60% of eligible packages to Codex as a rolling target, never a per-task quota. Capability and remaining capacity decide exceptions. Codex suits scripts and code without visual judgment; Sonnet suits visual, MCP, and cross-file work.
+- **Allocation.** Aim for 60-70% of eligible packages to Codex as a rolling target, never a per-task quota. Inventory, code search and summaries go to Codex read-only (`codex-ask.ps1`, `gpt-6-luna`) instead of Claude subagents. Capability and remaining capacity decide exceptions. Codex suits scripts and code without visual judgment; Sonnet suits visual, MCP, and cross-file work.
 <!-- /slot:W-36 -->
 
 <!-- slot:models-policy -->
