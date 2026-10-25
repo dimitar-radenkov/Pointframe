@@ -44,7 +44,7 @@ jobs:
             train: desktop
             installers-regex: 'x64-Setup\.exe$'
           # Portable zip with a `pointframe` command alias. The versioned asset only, never
-          # the stable Pointframe.Cli-win-x64.zip alias, whose content changes every release.
+          # the stable Pointframe.Cli-win-x64.zip alias, copied from an agent pair by desktop releases; copies may have identical content.
           - identifier: DimitarRadenkov.Pointframe.Cli
             train: agent
             installers-regex: 'Pointframe\.Cli-[0-9.]+-win-x64\.zip$'

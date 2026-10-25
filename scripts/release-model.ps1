@@ -11,7 +11,7 @@ plain names in fixtures). Two trains are recognised by the assets a release carr
            This is what an installed GitHubUpdateService needs from releases/latest.
   agent    published, numeric v<x.y.z> tag, Pointframe.Cli-<v>-win-x64.zip, its .sha256 and Pointframe.Mcp-<v>-win-x64.mcpb.
 
-A combined release (today's) is both. Drafts, prereleases, non-numeric tags and incomplete releases are neither. Order
+A combined release (a merge that selects both trains) is both. Drafts, prereleases, non-numeric tags and incomplete releases are neither. Order
 is the numeric version, never creation order.
 #>
 

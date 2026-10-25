@@ -1,6 +1,6 @@
 #Requires -Version 7.0
 <#
-hooks.pin of agent-workflow.json: the Claude plugin pin adapter of merge-pr.ps1. After every release the next pull request
+hooks.pin of agent-workflow.json: the Claude plugin pin adapter of merge-pr.ps1. After agent releases the next pull request
 must move the pin (the two files in pinException.paths), and the pin-only change needs no second verify.ps1. Moved from the
 functions Update-PluginPin and Test-PluginPinBehind and the discovery check of Test-MergeReceipt in scripts/merge-pr.ps1.
 

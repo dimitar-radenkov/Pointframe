@@ -863,7 +863,7 @@ function Test-ClaudePluginRepository([string]$Root, [System.Collections.Generic.
     $ci = Read-RepoFile $Root '.github/workflows/ci.yml'
     if ($null -eq $ci -or $ci -notmatch "(?s)push:.*?paths-ignore:\s*\r?\n\s*- 'plugin/\*\*'")
     {
-        Add-Problem $Problems "ci.yml does not ignore master pushes that change only plugin/**; a plugin-only merge would cut a release."
+        Add-Problem $Problems "ci.yml does not ignore master pushes that change only plugin/**; release impact may select no train for a plugin-only merge."
     }
     $merge = Read-RepoFile $Root 'docs/knowledge-base/hooks/pin.ps1'
     if ($null -eq $merge -or -not $merge.Contains('update-plugin-pin.ps1') -or -not $merge.Contains('function Update-PluginPin'))

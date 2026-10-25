@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 Tracks every downstream channel of one release: the GitHub release, the winget-pkgs submissions, the MCP Registry
-and the plugin pin. Run it after a release (CD cuts one for every merge to master).
+and the plugin pin. Run it after a release; a merge may publish the desktop train, the agent train, both, or neither.
 
   pwsh scripts/check-release-channels.ps1 -Version 6.7.87
   pwsh scripts/check-release-channels.ps1 -Version 6.7.87 -Watch -TimeoutMinutes 60 -PollSeconds 60
