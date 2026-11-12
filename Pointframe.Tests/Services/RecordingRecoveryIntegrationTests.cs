@@ -203,9 +203,18 @@ public sealed class RecordingRecoveryIntegrationTests : IDisposable
 
     internal static void AssertSeekable(string path, int seekSeconds)
     {
-        var result = Ffmpeg("-v", "error", "-ss", seekSeconds.ToString(), "-i", path, "-frames:v", "1", "-f", "null", "-");
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal(string.Empty, result.Stderr.Trim());
+        var frame = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"seek-{Guid.NewGuid():N}.png");
+        try
+        {
+            var result = Ffmpeg("-v", "error", "-ss", seekSeconds.ToString(), "-i", path, "-frames:v", "1", frame);
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal(string.Empty, result.Stderr.Trim());
+            Assert.True(File.Exists(frame) && new FileInfo(frame).Length > 0, $"No frame could be decoded at {seekSeconds} s.");
+        }
+        finally
+        {
+            File.Delete(frame);
+        }
     }
 
     internal static List<string> ReadTopLevelBoxes(string path)

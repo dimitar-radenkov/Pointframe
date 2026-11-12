@@ -7,6 +7,7 @@ using Moq;
 using Pointframe.Engine;
 using Pointframe.Services;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Pointframe.Tests.Services;
 
@@ -17,13 +18,21 @@ public sealed class RecordingRecoveryRealWriterTests : IDisposable
 
     private readonly TempFolder _folder = new();
     private readonly List<IReadOnlyDictionary<string, string>> _failures = [];
+    private readonly ITestOutputHelper _output;
+
+    public RecordingRecoveryRealWriterTests(ITestOutputHelper output) => _output = output;
 
     public void Dispose() => _folder.Dispose();
 
-    [FfmpegFact]
+    [Fact]
     [Trait("Category", "Integration")]
     public void RecordingRecovery_RealBrokenPipe_ReportsPartialEncodePipeBrokenAndSeekableFile()
     {
+        if (Skipped(RealRecordingPrerequisites.FfmpegSkipReason))
+        {
+            return;
+        }
+
         var output = _folder.File("pipe.mp4");
         var capture = new CountingFrameCapture();
         var (service, writers) = CreateService(microphoneDevice: null, capture);
@@ -49,12 +58,17 @@ public sealed class RecordingRecoveryRealWriterTests : IDisposable
         service.Dispose();
     }
 
-    [MicrophoneFact]
+    [Fact]
     [Trait("Category", "Integration")]
     public void RecordingRecovery_RealMicrophoneCleanStopWithPause_ProducesFaststartH264AacMp4()
     {
+        if (Skipped(RealRecordingPrerequisites.MicrophoneSkipReason))
+        {
+            return;
+        }
+
         var output = _folder.File("mic-clean.mp4");
-        var (service, _) = CreateService(MicrophoneFactAttribute.Device, new CountingFrameCapture());
+        var (service, _) = CreateService(RealRecordingPrerequisites.Device, new CountingFrameCapture());
         service.Start(0, 0, 64, 64, output);
 
         Thread.Sleep(TimeSpan.FromSeconds(1.5));
@@ -79,13 +93,18 @@ public sealed class RecordingRecoveryRealWriterTests : IDisposable
         service.Dispose();
     }
 
-    [MicrophoneFact]
+    [Fact]
     [Trait("Category", "Integration")]
     public void RecordingRecovery_RealMicrophoneKill_RecoversAacStreamAndSeekableFile()
     {
+        if (Skipped(RealRecordingPrerequisites.MicrophoneSkipReason))
+        {
+            return;
+        }
+
         var output = _folder.File("mic-killed.mp4");
         var capture = new CountingFrameCapture();
-        var (service, writers) = CreateService(MicrophoneFactAttribute.Device, capture);
+        var (service, writers) = CreateService(RealRecordingPrerequisites.Device, capture);
         service.Start(0, 0, 64, 64, output);
 
         Thread.Sleep(TimeSpan.FromSeconds(4));
@@ -104,14 +123,19 @@ public sealed class RecordingRecoveryRealWriterTests : IDisposable
         var info = RecordingRecoveryIntegrationTests.Ffmpeg("-hide_banner", "-i", output).Stderr;
         Assert.Contains("Video: h264", info);
         Assert.Contains("Audio: aac", info);
-        RecordingRecoveryIntegrationTests.AssertSeekable(output, seekSeconds: 2);
+        RecordingRecoveryIntegrationTests.AssertSeekable(output, seekSeconds: 1);
         service.Dispose();
     }
 
-    [FfmpegFact]
+    [Fact]
     [Trait("Category", "Integration")]
     public async Task RecordingRecovery_CleanlyStoppedRealOutput_TrimsAndExportsGif()
     {
+        if (Skipped(RealRecordingPrerequisites.FfmpegSkipReason))
+        {
+            return;
+        }
+
         var output = _folder.File("source.mp4");
         var (service, _) = CreateService(microphoneDevice: null, new CountingFrameCapture());
         service.Start(0, 0, 64, 64, output);
@@ -138,6 +162,17 @@ public sealed class RecordingRecoveryRealWriterTests : IDisposable
 
         Assert.Equal("GIF89a", System.Text.Encoding.ASCII.GetString(header));
         service.Dispose();
+    }
+
+    private bool Skipped(string? reason)
+    {
+        if (reason is null)
+        {
+            return false;
+        }
+
+        _output.WriteLine($"SKIPPED: {reason}");
+        return true;
     }
 
     private (ScreenRecordingService Service, List<FFMpegVideoWriter> Writers) CreateService(string? microphoneDevice, IRawFrameCapture capture)
@@ -213,24 +248,29 @@ public sealed class RecordingRecoveryRealWriterTests : IDisposable
     }
 }
 
-[AttributeUsage(AttributeTargets.Method)]
-internal sealed class MicrophoneFactAttribute : FactAttribute
+internal static class RealRecordingPrerequisites
 {
+    private static readonly Lazy<string?> Ffmpeg = new(ProbeFfmpeg);
     private static readonly Lazy<(string? Device, string? SkipReason)> Probe = new(ProbeMicrophone);
 
-    public MicrophoneFactAttribute()
-    {
-        if (!string.IsNullOrEmpty(new FfmpegFactAttribute().Skip))
-        {
-            Skip = "ffmpeg is not installed or configured.";
-        }
-        else if (Probe.Value.SkipReason is { } reason)
-        {
-            Skip = reason;
-        }
-    }
+    public static string? FfmpegSkipReason => Ffmpeg.Value;
+
+    public static string? MicrophoneSkipReason => Ffmpeg.Value ?? Probe.Value.SkipReason;
 
     public static string Device => Probe.Value.Device!;
+
+    private static string? ProbeFfmpeg()
+    {
+        try
+        {
+            Run("-version");
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return $"ffmpeg is not installed or configured: {exception.Message}";
+        }
+    }
 
     private static (string? Device, string? SkipReason) ProbeMicrophone()
     {

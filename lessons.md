@@ -1775,7 +1775,7 @@ A plain MP4 writes its index (moov) at the end, so ffmpeg killed or crashing at 
 
 ### What fixed it
 
-A fragmented MP4 intermediate with `-flush_packets 1`, a stream-copy remux to faststart on stop, partial recovery when a fragment exists, and `-shortest_buf_duration 0.5` on the microphone path. `-max_interleave_delta 0`, `+nobuffer`, `aresample=async` and wallclock audio timestamps did not help.
+A fragmented MP4 intermediate with `-flush_packets 1`, a stream-copy remux to faststart on stop, partial recovery when a fragment exists, and `-shortest_buf_duration 0.5` on the microphone path, added only when the `-h long` probe shows the build has it (FFmpeg 6.0+). `-max_interleave_delta 0`, `+nobuffer`, `aresample=async` and wallclock audio timestamps did not help.
 
 ### Takeaway
 

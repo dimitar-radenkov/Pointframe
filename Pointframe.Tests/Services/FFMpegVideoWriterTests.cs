@@ -231,7 +231,7 @@ public sealed class FFMpegVideoWriterTests
     public void BuildArguments_WithMicrophone_AddsDirectShowAudioInput()
     {
         var args = new List<string>();
-        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", "Studio Mic");
+        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", "Studio Mic", null, false, true);
 
         Assert.Contains("-use_wallclock_as_timestamps", args);
         Assert.Contains("dshow", args);
@@ -277,6 +277,26 @@ public sealed class FFMpegVideoWriterTests
         Assert.True(queueIndex > args.IndexOf("pipe:0"));
         Assert.Equal("512", args[queueIndex + 1]);
         Assert.True(dshowIndex > queueIndex);
+    }
+
+    [Fact]
+    public void BuildArguments_WithMicrophoneWithoutShortestBufDuration_KeepsShortestAndOmitsTheOption()
+    {
+        var args = new List<string>();
+        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", "Studio Mic", null, false, false);
+
+        Assert.Contains("-shortest", args);
+        Assert.DoesNotContain("-shortest_buf_duration", args);
+    }
+
+    [Theory]
+    [InlineData("-shortest             finish encoding within shortest input\r\n-shortest_buf_duration  maximum buffering duration (in seconds) for the -shortest option\r\n", true)]
+    [InlineData("-shortest_buf_duration <duration>  maximum buffering duration (in seconds) for the -shortest option\n", true)]
+    [InlineData("-shortest             finish encoding within shortest input\n-bitexact           bitexact mode\n", false)]
+    [InlineData("", false)]
+    public void HelpAllowsShortestBufDuration_ReadsTheOptionList(string helpText, bool expected)
+    {
+        Assert.Equal(expected, FFMpegVideoWriter.HelpAllowsShortestBufDuration(helpText));
     }
 
     [Fact]
