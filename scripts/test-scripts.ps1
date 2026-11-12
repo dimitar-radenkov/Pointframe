@@ -7,14 +7,17 @@ passed only in the worktree that created them).
   pwsh scripts/test-scripts.ps1                      # exit 0 when every self-test passes and every fixture is tracked
   pwsh scripts/test-scripts.ps1 -All                 # run the heavy self-tests in full (package.ps1 -SelfTest, about 25 minutes)
   pwsh scripts/test-scripts.ps1 -BaseRef origin/main # compare against another base (default origin/master)
+  pwsh scripts/test-scripts.ps1 -BaseSha <push-before-sha> # compare the complete push range
 
-A heavy script ($HeavyScripts, package.ps1) runs when any path under scripts/ differs between the merge base of HEAD
-and -BaseRef and the working tree (committed, staged, unstaged, and untracked files that git does not ignore all count),
-or with -All. By default it runs its quick self-test (-SelfTest -Quick, under three minutes: every command, the
-refusals and one ship path); with -All it runs the full -SelfTest (about 25 minutes). Otherwise it is skipped and
-printed as SKIP; a skip never fails the run. When the merge
-base cannot be computed (unknown ref, shallow clone, git error) everything runs. Every other self-test and the
-ignored-fixture check always run.
+The package.ps1 self-test runs when scripts/ changed; it uses -Quick unless -All was requested. It is skipped when
+scripts/ did not change. Any change to $FullRunPaths runs the full suite. This fixed repository-relative glob list is
+scripts/agent-workflow/**, agent-workflow.json, agent-workflow.lock.json, scripts/package.ps1, agent-run.ps1,
+codex-ask.ps1, merge-pr.ps1, record-review.ps1, status.ps1, verify.ps1, kb.ps1, doctor.ps1, test-scripts.ps1,
+check-workflow-scripts.ps1, docs/knowledge-base/hooks/**, docs/knowledge-base/workflow.md, kb-slots.txt,
+.github/workflows/ci.yml, script-selftests-daily.yml, .gitattributes and .gitignore. The list applies in CI only
+(-BaseSha, or GITHUB_ACTIONS=true); a local run stays -Quick, since the full suite does not fit the 30-minute verify
+gate. Unknown bases fail closed to -All.
+Timings are printed per script; -ResultFile writes a JSON record.
 
 Used by scripts/verify.ps1 (gate "scripts") and by CI (package-checks), which runs it on a clean checkout; the daily
 workflow script-selftests-daily.yml runs it with -All.
@@ -23,7 +26,14 @@ A new script with an offline -SelfTest belongs in $SelfTestScripts.
 [CmdletBinding()]
 param(
     [switch]$All,
-    [string]$BaseRef = 'origin/master'
+    [string]$BaseRef = 'origin/master',
+    [AllowEmptyString()][string]$BaseSha,
+    [string]$ResultFile,
+    [switch]$SelfTest,
+    [switch]$SelectionOnly,
+    [string]$RepoRoot,
+    [string]$ScriptsDir,
+    [string]$Scripts
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,41 +64,221 @@ $SelfTestScripts = @(
 )
 
 $HeavyScripts = @('package.ps1')
+# -ScriptsDir and -Scripts (comma-separated) exist for the -SelfTest only: they swap in stub scripts.
+if ($Scripts) { $SelfTestScripts = @($Scripts -split ',' | Where-Object { $_ }) }
+$scriptsDirPath = if ($ScriptsDir) { [IO.Path]::GetFullPath($ScriptsDir) } else { $PSScriptRoot }
+$FullRunPaths = @(
+    'scripts/agent-workflow/**', 'agent-workflow.json', 'agent-workflow.lock.json',
+    'scripts/package.ps1', 'scripts/agent-run.ps1', 'scripts/codex-ask.ps1', 'scripts/merge-pr.ps1',
+    'scripts/record-review.ps1', 'scripts/status.ps1', 'scripts/verify.ps1', 'scripts/kb.ps1',
+    'scripts/doctor.ps1', 'scripts/test-scripts.ps1', 'scripts/check-workflow-scripts.ps1',
+    'docs/knowledge-base/hooks/**', 'docs/knowledge-base/workflow.md', 'docs/knowledge-base/kb-slots.txt',
+    '.github/workflows/ci.yml', '.github/workflows/script-selftests-daily.yml', '.gitattributes', '.gitignore'
+)
 
-$repoRoot = Split-Path $PSScriptRoot -Parent
+$repoRoot = if ($RepoRoot) { [IO.Path]::GetFullPath($RepoRoot) } else { Split-Path $PSScriptRoot -Parent }
 $failures = [System.Collections.Generic.List[string]]::new()
+$useBaseSha = $PSBoundParameters.ContainsKey('BaseSha')
 
-# Returns $null when the answer is unknown (the caller then runs everything), else @{ Changed = <bool>; Base = <short sha> }.
+# Returns a closed decision and the changed paths for either a PR merge base or a push's before SHA.
 function Get-ScriptsChange
 {
-    $mergeBaseOut = @(& git -C $repoRoot merge-base HEAD $BaseRef 2>$null)
-    if ($LASTEXITCODE -ne 0) { return $null }
-    $mergeBase = "$(@($mergeBaseOut | Where-Object { "$_".Trim() })[0])".Trim()
-    if (-not $mergeBase) { return $null }
+    $base = ''
+    if ($useBaseSha)
+    {
+        if (-not $BaseSha -or $BaseSha -match '^0+$') { return @{ Mode='all'; Base=$BaseSha; Reason='empty or all-zero before SHA'; Changed=$true; Paths=@() } }
+        $resolved = @(& git -C $repoRoot rev-parse --verify "$BaseSha^{commit}" 2>$null)
+        if ($LASTEXITCODE -ne 0 -or -not $resolved) { return @{ Mode='all'; Base=$BaseSha; Reason='before SHA cannot be resolved'; Changed=$true; Paths=@() } }
+        $base = "$($resolved[0])".Trim()
+    }
+    else
+    {
+        $mergeBaseOut = @(& git -C $repoRoot merge-base HEAD $BaseRef 2>$null)
+        if ($LASTEXITCODE -ne 0 -or -not $mergeBaseOut) { return @{ Mode='all'; Base=$BaseRef; Reason='merge base cannot be computed'; Changed=$true; Paths=@() } }
+        $base = "$($mergeBaseOut[0])".Trim()
+    }
 
-    $diff = @(& git -C $repoRoot diff --name-only $mergeBase -- scripts 2>$null | Where-Object { $_ })
-    if ($LASTEXITCODE -ne 0) { return $null }
-    $committed = @(& git -C $repoRoot diff --name-only $mergeBase HEAD -- scripts 2>$null | Where-Object { $_ })
-    if ($LASTEXITCODE -ne 0) { return $null }
-    $staged = @(& git -C $repoRoot diff --cached --name-only $mergeBase -- scripts 2>$null | Where-Object { $_ })
-    if ($LASTEXITCODE -ne 0) { return $null }
-    $untracked = @(& git -C $repoRoot ls-files --others --exclude-standard -- scripts 2>$null | Where-Object { $_ })
-    if ($LASTEXITCODE -ne 0) { return $null }
-
-    $shortOut = @(& git -C $repoRoot rev-parse --short $mergeBase 2>$null)
-    $short = if ($LASTEXITCODE -eq 0) { "$(@($shortOut | Where-Object { "$_".Trim() })[0])".Trim() } else { '' }
-    if (-not $short) { $short = $mergeBase }
-    return @{ Changed = (($committed.Count + $diff.Count + $staged.Count + $untracked.Count) -gt 0); Base = $short }
+    $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($gitArgs in @(@('diff','--name-only','--no-renames',"$base..HEAD"), @('diff','--name-only','--no-renames',$base), @('diff','--cached','--name-only','--no-renames',$base), @('ls-files','--others','--exclude-standard')))
+    {
+        $found = @(& git -C $repoRoot @gitArgs 2>$null)
+        if ($LASTEXITCODE -ne 0) { return @{ Mode='all'; Base=$base; Reason='git could not enumerate changed paths'; Changed=$true; Paths=@() } }
+        foreach ($item in $found) { if ($item) { [void]$paths.Add(([string]$item).Replace('\','/')) } }
+    }
+    $shortOut = @(& git -C $repoRoot rev-parse --short $base 2>$null)
+    $short = if ($LASTEXITCODE -eq 0 -and $shortOut) { "$($shortOut[0])".Trim() } else { $base }
+    $changedPaths = @($paths | Sort-Object)
+    $scriptChanged = @($changedPaths | Where-Object { $_ -match '^scripts/' }).Count -gt 0
+    foreach ($pattern in $FullRunPaths)
+    {
+        $regex = '^' + [regex]::Escape($pattern).Replace('\*\*','.*').Replace('\*','[^/]*') + '$'
+        $match = $changedPaths | Where-Object { $_ -match $regex } | Select-Object -First 1
+        if (-not $match) { continue }
+        # The full suite (about 25 minutes) does not fit the 30-minute local verify gate, so only CI (a push's
+        # -BaseSha, or any run under GitHub Actions) honours the list; a local run stays -Quick and says so.
+        if ($useBaseSha -or $env:GITHUB_ACTIONS -eq 'true') { return @{ Mode='all'; Base=$short; Reason="full-run path: $match"; Changed=$scriptChanged; Paths=$changedPaths; Match=$match } }
+        return @{ Mode='quick'; Base=$short; Reason="full-run path $match (local run: -Quick; CI runs -All)"; Changed=$true; Paths=$changedPaths }
+    }
+    if ($scriptChanged) { return @{ Mode='quick'; Base=$short; Reason='scripts/ changed'; Changed=$true; Paths=$changedPaths } }
+    return @{ Mode='skip'; Base=$short; Reason='no change under scripts/'; Changed=$false; Paths=$changedPaths }
 }
 
-$scriptsChange = $null
-if (-not $All -and @($HeavyScripts).Count -gt 0)
+if ($SelfTest)
 {
-    try { $scriptsChange = Get-ScriptsChange } catch { $scriptsChange = $null }
+    $fixture = Join-Path ([IO.Path]::GetTempPath()) ("test-scripts-" + [guid]::NewGuid().ToString('N'))
+    $stubs = "$fixture-stubs"
+    [void](New-Item -ItemType Directory -Path $fixture)
+    try
+    {
+        $invokeGit = { param([string[]]$GitArgs) & git -C $fixture @GitArgs 2>$null; if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') failed" } }
+        & $invokeGit @('init','-q')
+        & $invokeGit @('config','user.email','fixture@example.invalid')
+        & $invokeGit @('config','user.name','Fixture')
+        [void](New-Item -ItemType Directory -Force -Path (Join-Path $fixture 'scripts'))
+        [void](New-Item -ItemType Directory -Force -Path (Join-Path $fixture 'Pointframe'))
+        Set-Content -LiteralPath (Join-Path $fixture 'scripts/base.ps1') -Value 'base'
+        Set-Content -LiteralPath (Join-Path $fixture 'Pointframe/base.txt') -Value 'base'
+        & $invokeGit @('add','.')
+        & $invokeGit @('commit','-qm','base')
+        $base = "$(& git -C $fixture rev-parse HEAD)".Trim()
+        $selection = {
+            param([string]$Sha=$base)
+            $out = @(& pwsh -NoProfile -NonInteractive -File $PSCommandPath -SelectionOnly -RepoRoot $fixture -BaseSha $Sha 2>&1)
+            if ($LASTEXITCODE -ne 0) { throw "selection command failed: $out" }
+            return (($out | Select-Object -Last 1) | ConvertFrom-Json)
+        }
+        $cases = [Collections.Generic.List[object]]::new()
+        $assert = { param([string]$Label,[string]$Expected) $actual = & $selection; if ($actual.Mode -ne $Expected) { throw "$Label expected $Expected, got $($actual.Mode)" }; $cases.Add([pscustomobject]@{case=$Label; mode=$actual.Mode; reason=$actual.Reason}) }
+        Set-Content -LiteralPath (Join-Path $fixture 'scripts/release-impact.ps1') -Value 'ordinary'
+        & $invokeGit @('add','.')
+        & $invokeGit @('commit','-qm','ordinary scripts change')
+        & $assert 'ordinary scripts change' 'quick'
+        & $invokeGit @('reset','--hard',$base)
+        Set-Content -LiteralPath (Join-Path $fixture 'Pointframe/change.txt') -Value 'product'
+        & $invokeGit @('add','.')
+        & $invokeGit @('commit','-qm','product change')
+        & $assert 'no scripts change' 'skip'
+        & $invokeGit @('reset','--hard',$base)
+        [void](New-Item -ItemType Directory -Force -Path (Join-Path $fixture 'docs/knowledge-base'))
+        Set-Content -LiteralPath (Join-Path $fixture 'docs/knowledge-base/workflow.md') -Value 'workflow'
+        & $invokeGit @('add','.')
+        & $invokeGit @('commit','-qm','full path')
+        & $assert 'full-run path' 'all'
+        $baseRefSelection = {
+            param([string]$Actions)
+            $saved = $env:GITHUB_ACTIONS
+            try
+            {
+                $env:GITHUB_ACTIONS = $Actions
+                $out = @(& pwsh -NoProfile -NonInteractive -File $PSCommandPath -SelectionOnly -RepoRoot $fixture -BaseRef $base 2>&1)
+                if ($LASTEXITCODE -ne 0) { throw "selection command failed: $out" }
+            }
+            finally { $env:GITHUB_ACTIONS = $saved }
+            return (($out | Select-Object -Last 1) | ConvertFrom-Json)
+        }
+        $localRef = & $baseRefSelection ''
+        if ($localRef.Mode -ne 'quick' -or $localRef.Reason -notmatch 'CI runs -All') { throw "local -BaseRef full-run path expected quick, got $($localRef.Mode) ($($localRef.Reason))" }
+        $cases.Add([pscustomobject]@{case='full-run path, local -BaseRef';mode=$localRef.Mode;reason=$localRef.Reason})
+        $actionsRef = & $baseRefSelection 'true'
+        if ($actionsRef.Mode -ne 'all') { throw "-BaseRef full-run path under GitHub Actions expected all, got $($actionsRef.Mode)" }
+        $cases.Add([pscustomobject]@{case='full-run path, -BaseRef in CI';mode=$actionsRef.Mode;reason=$actionsRef.Reason})
+        & $invokeGit @('reset','--hard',$base)
+        Set-Content -LiteralPath (Join-Path $fixture 'scripts/earlier.ps1') -Value 'one'
+        & $invokeGit @('add','.')
+        & $invokeGit @('commit','-qm','earlier scripts')
+        Set-Content -LiteralPath (Join-Path $fixture 'Pointframe/later.txt') -Value 'two'
+        & $invokeGit @('add','.')
+        & $invokeGit @('commit','-qm','later product')
+        & $assert 'multi-commit push range' 'quick'
+        & $invokeGit @('reset','--hard',$base)
+        Set-Content -LiteralPath (Join-Path $fixture 'scripts/rename-old.ps1') -Value 'rename'
+        & $invokeGit @('add','.')
+        & $invokeGit @('commit','-qm','rename source')
+        $renameBase = "$(& git -C $fixture rev-parse HEAD)".Trim()
+        Move-Item -LiteralPath (Join-Path $fixture 'scripts/rename-old.ps1') -Destination (Join-Path $fixture 'scripts/rename-new.ps1')
+        & $invokeGit @('add','-A')
+        & $invokeGit @('commit','-qm','rename')
+        $rename = & $selection $renameBase
+        if ($rename.Mode -ne 'quick') { throw 'rename did not select quick' }
+        $cases.Add([pscustomobject]@{case='rename';mode=$rename.Mode;reason=$rename.Reason})
+        Remove-Item -LiteralPath (Join-Path $fixture 'scripts/rename-new.ps1')
+        & $assert 'deletion' 'quick'
+        $zero = & $selection ('0' * 40)
+        if ($zero.Mode -ne 'all') { throw 'all-zero SHA did not select all' }
+        $unknown = & $selection 'not-a-real-sha'
+        if ($unknown.Mode -ne 'all') { throw 'unknown SHA did not select all' }
+        $cases.Add([pscustomobject]@{case='all-zero SHA';mode=$zero.Mode;reason=$zero.Reason})
+        $cases.Add([pscustomobject]@{case='unknown SHA';mode=$unknown.Mode;reason=$unknown.Reason})
+        & $invokeGit @('reset','--hard',$base)
+        Set-Content -LiteralPath (Join-Path $fixture 'scripts/dirty.ps1') -Value 'dirty'
+        $dirty = & $selection
+        if ($dirty.Mode -ne 'quick') { throw 'dirty file did not select quick' }
+        $cases.Add([pscustomobject]@{case='dirty';mode=$dirty.Mode;reason=$dirty.Reason})
+        & $invokeGit @('reset','--hard',$base)
+        Set-Content -LiteralPath (Join-Path $fixture 'scripts/untracked.ps1') -Value 'untracked'
+        $untracked = & $selection
+        if ($untracked.Mode -ne 'quick') { throw 'untracked file did not select quick' }
+        $cases.Add([pscustomobject]@{case='untracked';mode=$untracked.Mode;reason=$untracked.Reason})
+        $empty = & $selection ''
+        if ($empty.Mode -ne 'all') { throw 'empty SHA did not select all' }
+        $cases.Add([pscustomobject]@{case='empty SHA';mode=$empty.Mode;reason=$empty.Reason})
+
+        # -ResultFile: run the real dispatch against stub scripts outside the fixture repository.
+        & $invokeGit @('reset','-q','--hard',$base)
+        & $invokeGit @('clean','-fdq')
+        [void](New-Item -ItemType Directory -Path $stubs)
+        Set-Content -LiteralPath (Join-Path $stubs 'package.ps1') -Value 'Write-Output "stub package $args"; exit 0'
+        Set-Content -LiteralPath (Join-Path $stubs 'ok.ps1') -Value 'Write-Output "stub ok"; exit 0'
+        Set-Content -LiteralPath (Join-Path $stubs 'bad.ps1') -Value 'Write-Output "stub bad"; exit 3'
+        $runStubs = {
+            param([string]$List, [string]$Out)
+            [void](& pwsh -NoProfile -NonInteractive -File $PSCommandPath -RepoRoot $fixture -BaseSha $base -ScriptsDir $stubs -Scripts $List -ResultFile $Out 2>&1)
+            return $LASTEXITCODE
+        }
+        Set-Content -LiteralPath (Join-Path $fixture 'Pointframe/result.txt') -Value 'product'
+        & $invokeGit @('add','.')
+        & $invokeGit @('commit','-qm','product change for result file')
+        $skipOut = Join-Path $stubs 'out/skip.json'
+        $skipExit = & $runStubs 'package.ps1,ok.ps1,bad.ps1,missing.ps1' $skipOut
+        if ($skipExit -ne 1) { throw "result file run with a failing stub exited $skipExit, expected 1" }
+        $skipJson = Get-Content -LiteralPath $skipOut -Raw | ConvertFrom-Json
+        if ($skipJson.mode -ne 'skip' -or @($skipJson.scripts).Count -ne 4) { throw "skip result file: mode $($skipJson.mode), $(@($skipJson.scripts).Count) entries" }
+        $byName = @{}; foreach ($s in $skipJson.scripts) { $byName[$s.name] = $s }
+        if (-not $byName['package.ps1'].skipped -or $byName['package.ps1'].exitCode -ne 0) { throw 'skipped package.ps1 is not recorded as skipped' }
+        if ($byName['ok.ps1'].skipped -or $byName['ok.ps1'].exitCode -ne 0) { throw 'ok.ps1 is not recorded as a pass' }
+        if ($byName['bad.ps1'].exitCode -ne 3 -or $byName['missing.ps1'].exitCode -ne 1) { throw 'failing or missing scripts are not recorded with their exit codes' }
+        if ($null -eq $skipJson.totalSeconds -or -not $skipJson.reason) { throw 'skip result file lacks totalSeconds or reason' }
+        $cases.Add([pscustomobject]@{case='result file, failing stub';mode=$skipJson.mode;reason="exit 1 kept, 4 entries, package skipped"})
+        Set-Content -LiteralPath (Join-Path $fixture 'scripts/result.ps1') -Value 'scripts'
+        & $invokeGit @('add','.')
+        & $invokeGit @('commit','-qm','scripts change for result file')
+        $quickOut = Join-Path $stubs 'out/quick.json'
+        $quickExit = & $runStubs 'package.ps1,ok.ps1' $quickOut
+        if ($quickExit -ne 0) { throw "result file run with passing stubs exited $quickExit, expected 0" }
+        $quickJson = Get-Content -LiteralPath $quickOut -Raw | ConvertFrom-Json
+        $quickPackage = @($quickJson.scripts | Where-Object { $_.name -eq 'package.ps1' })[0]
+        if ($quickJson.mode -ne 'quick' -or $quickPackage.skipped -or @($quickPackage.args) -notcontains '-Quick') { throw 'quick result file does not record package.ps1 -SelfTest -Quick' }
+        $cases.Add([pscustomobject]@{case='result file, passing stubs';mode=$quickJson.mode;reason="exit 0 kept, package.ps1 $(@($quickPackage.args) -join ' ')"})
+        $cases | ForEach-Object { Write-Host ("PASS  selection {0}: {1} ({2})" -f $_.case,$_.mode,$_.reason) }
+    }
+    finally
+    {
+        Remove-Item -LiteralPath $fixture -Recurse -Force
+        if (Test-Path -LiteralPath $stubs) { Remove-Item -LiteralPath $stubs -Recurse -Force }
+    }
+    exit 0
 }
-$skipHeavy = (-not $All) -and $null -ne $scriptsChange -and -not $scriptsChange.Changed
+$decision = if ($All) { @{ Mode='all'; Base=''; Reason='-All specified'; Changed=$true; Paths=@() } } else { try { Get-ScriptsChange } catch { @{ Mode='all'; Base=''; Reason="selection error: $($_.Exception.Message)"; Changed=$true; Paths=@() } } }
+# Printed before -SelectionOnly exits, so the self-test exercises this for every decision shape.
+Write-Host "Selection: $($decision.Mode); base=$($decision.Base); reason=$($decision.Reason)"
+if ($decision.ContainsKey('Match') -and $decision['Match']) { Write-Host "Full-run path matched: $($decision['Match'])" }
+if ($SelectionOnly) { [pscustomobject]$decision | ConvertTo-Json -Compress -Depth 5; exit 0 }
+$allRun = $decision.Mode -eq 'all'
+$skipHeavy = $decision.Mode -eq 'skip'
 $ran = 0
 $skipped = 0
+$records = [Collections.Generic.List[object]]::new()
+$totalWatch = [Diagnostics.Stopwatch]::StartNew()
 
 # Fixtures that git ignores exist only in the worktree that created them; a clean checkout would not have them.
 $ignored = @(& git -C $repoRoot ls-files --others --ignored --exclude-standard -- 'scripts/tests' 2>$null | Where-Object { $_ })
@@ -99,34 +289,50 @@ foreach ($path in $ignored)
 
 foreach ($name in $SelfTestScripts)
 {
-    $path = Join-Path $PSScriptRoot $name
+    $path = Join-Path $scriptsDirPath $name
     if (-not (Test-Path -LiteralPath $path))
     {
         $failures.Add("$name is listed but does not exist")
+        $records.Add(@{ name=$name; args=@(); seconds=0; exitCode=1; skipped=$false })
+        Write-Host "FAIL  $name is listed but does not exist (0.000s)"
         continue
     }
 
     if ($skipHeavy -and $HeavyScripts -contains $name)
     {
-        Write-Host "SKIP  $name  no change under scripts/ since $($scriptsChange.Base) (run with -All to force)"
+        Write-Host "SKIP  $name  no change under scripts/ since $($decision.Base) (run with -All to force) (0.000s)"
         $skipped++
+        $records.Add(@{ name=$name; args=@(); seconds=0; exitCode=0; skipped=$true })
         continue
     }
 
-    $selfTestArgs = @(if (-not $All -and $HeavyScripts -contains $name) { '-SelfTest'; '-Quick' } else { '-SelfTest' })
+    $selfTestArgs = @(if (-not $allRun -and $HeavyScripts -contains $name) { '-SelfTest'; '-Quick' } else { '-SelfTest' })
+    $watch = [Diagnostics.Stopwatch]::StartNew()
     $output = @(& pwsh -NoProfile -NonInteractive -File $path @selfTestArgs 2>&1 | ForEach-Object { "$_" })
+    $watch.Stop()
+    $exitCode = $LASTEXITCODE
+    $records.Add(@{ name=$name; args=$selfTestArgs; seconds=[math]::Round($watch.Elapsed.TotalSeconds, 3); exitCode=$exitCode; skipped=$false })
     $last = $output | Where-Object { $_.Trim() } | Select-Object -Last 1
-    if ($LASTEXITCODE -ne 0)
+    if ($exitCode -ne 0)
     {
-        $failures.Add("$name -SelfTest failed (exit $LASTEXITCODE): $last")
+        $failures.Add(("{0} -SelfTest failed (exit {1}): {2} ({3:N3}s)" -f $name, $exitCode, $last, $watch.Elapsed.TotalSeconds))
         continue
     }
 
-    Write-Host "PASS  $name  $last"
+    Write-Host ("PASS  {0}  {1}  ({2:N3}s)" -f $name, $last, $watch.Elapsed.TotalSeconds)
     $ran++
 }
 
 $skippedText = if ($skipped -gt 0) { "$skipped skipped (no scripts/ change)" } else { '0 skipped' }
+$totalWatch.Stop()
+if ($ResultFile)
+{
+    $result = [ordered]@{ mode=$decision.Mode; base=$decision.Base; reason=$decision.Reason; scripts=@($records); totalSeconds=[math]::Round($totalWatch.Elapsed.TotalSeconds,3) }
+    $resultPath = [IO.Path]::GetFullPath($ResultFile, $repoRoot)
+    $parent = Split-Path -Parent $resultPath
+    if ($parent) { [void](New-Item -ItemType Directory -Force -Path $parent) }
+    $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $resultPath -Encoding utf8
+}
 
 if ($failures.Count -gt 0)
 {

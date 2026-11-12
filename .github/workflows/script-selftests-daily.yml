@@ -27,5 +27,13 @@ jobs:
       - name: Script self-tests (all)
         shell: pwsh
         run: |
-          ./scripts/test-scripts.ps1 -All
+          ./scripts/test-scripts.ps1 -All -ResultFile artifacts/script-selftests/result.json
           exit $LASTEXITCODE
+
+      - name: Upload script self-test timings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: script-selftest-timings-${{ github.run_id }}
+          path: artifacts/script-selftests/result.json
+          if-no-files-found: ignore
