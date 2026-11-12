@@ -20,13 +20,9 @@ public sealed class WpfUiCollectionCoverageTests
         var missingCollectionFiles = Directory
             .EnumerateFiles(projectDirectory.FullName, "*.cs", SearchOption.AllDirectories)
             .Where(path => !IsBuildOutput(path, projectDirectory))
-            .Where(path =>
-            {
-                var source = File.ReadAllText(path);
-                return WpfTestClassPattern.IsMatch(source) &&
-                    WpfUsagePattern.IsMatch(source) &&
-                    !Regex.IsMatch(source, @"\[Collection\s*\(\s*""WpfUi""\s*\)\]");
-            })
+            // This file's own test data quotes the WPF patterns; it runs no WPF code.
+            .Where(path => !string.Equals(Path.GetFileName(path), "WpfUiCollectionCoverageTests.cs", StringComparison.OrdinalIgnoreCase))
+            .Where(path => NeedsWpfUiCollection(File.ReadAllText(path)))
             .Select(path => Path.GetRelativePath(projectDirectory.FullName, path))
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
@@ -34,6 +30,33 @@ public sealed class WpfUiCollectionCoverageTests
         Assert.True(
             missingCollectionFiles.Length == 0,
             $"WPF test classes must belong to [Collection(\"WpfUi\")]:{Environment.NewLine}{string.Join(Environment.NewLine, missingCollectionFiles)}");
+    }
+
+    [Theory]
+    [InlineData("[Collection(\"WpfUi\")]\npublic class FooTests { void T() => StaTestHelper.Run(() => { }); }", false)]
+    [InlineData("public class FooTests { void T() => StaTestHelper.Run(() => { }); }", true)]
+    [InlineData("// [Collection(\"WpfUi\")]\npublic class FooTests { void T() => StaTestHelper.Run(() => { }); }", true)]
+    [InlineData("/* [Collection(\"WpfUi\")] */\npublic class FooTests { void T() => StaTestHelper.Run(() => { }); }", true)]
+    [InlineData("[Collection(\"WpfUi\")]\npublic class FooTests { // StaTestHelper.Run(\n void T() { } }", false)]
+    [InlineData("public class FooTests { // StaTestHelper.Run(\n void T() { } }", false)]
+    [InlineData("public class FooTests { void T() { var t = new Thread(() => { }); t.SetApartmentState(ApartmentState.STA); } }", true)]
+    public void NeedsWpfUiCollection_IgnoresComments(string source, bool expected)
+    {
+        Assert.Equal(expected, NeedsWpfUiCollection(source));
+    }
+
+    internal static bool NeedsWpfUiCollection(string source)
+    {
+        var code = StripComments(source);
+        return WpfTestClassPattern.IsMatch(code) &&
+            WpfUsagePattern.IsMatch(code) &&
+            !Regex.IsMatch(code, @"^\s*\[Collection\s*\(\s*""WpfUi""\s*\)\]", RegexOptions.Multiline);
+    }
+
+    private static string StripComments(string source)
+    {
+        var withoutBlocks = Regex.Replace(source, @"/\*.*?\*/", " ", RegexOptions.Singleline);
+        return Regex.Replace(withoutBlocks, @"//[^\r\n]*", string.Empty);
     }
 
     private static DirectoryInfo FindTestProjectDirectory()
