@@ -14,7 +14,9 @@ scripts/ did not change. Any change to $FullRunPaths runs the full suite. This f
 scripts/agent-workflow/**, agent-workflow.json, agent-workflow.lock.json, scripts/package.ps1, agent-run.ps1,
 codex-ask.ps1, merge-pr.ps1, record-review.ps1, status.ps1, verify.ps1, kb.ps1, doctor.ps1, test-scripts.ps1,
 check-workflow-scripts.ps1, docs/knowledge-base/hooks/**, docs/knowledge-base/workflow.md, kb-slots.txt,
-.github/workflows/ci.yml, script-selftests-daily.yml, .gitattributes and .gitignore. Unknown bases fail closed to -All.
+.github/workflows/ci.yml, script-selftests-daily.yml, .gitattributes and .gitignore. The list applies in CI only
+(-BaseSha, or GITHUB_ACTIONS=true); a local run stays -Quick, since the full suite does not fit the 30-minute verify
+gate. Unknown bases fail closed to -All.
 Timings are printed per script; -ResultFile writes a JSON record.
 
 Used by scripts/verify.ps1 (gate "scripts") and by CI (package-checks), which runs it on a clean checkout; the daily
@@ -111,7 +113,11 @@ function Get-ScriptsChange
     {
         $regex = '^' + [regex]::Escape($pattern).Replace('\*\*','.*').Replace('\*','[^/]*') + '$'
         $match = $changedPaths | Where-Object { $_ -match $regex } | Select-Object -First 1
-        if ($match) { return @{ Mode='all'; Base=$short; Reason="full-run path: $match"; Changed=$scriptChanged; Paths=$changedPaths; Match=$match } }
+        if (-not $match) { continue }
+        # The full suite (about 25 minutes) does not fit the 30-minute local verify gate, so only CI (a push's
+        # -BaseSha, or any run under GitHub Actions) honours the list; a local run stays -Quick and says so.
+        if ($useBaseSha -or $env:GITHUB_ACTIONS -eq 'true') { return @{ Mode='all'; Base=$short; Reason="full-run path: $match"; Changed=$scriptChanged; Paths=$changedPaths; Match=$match } }
+        return @{ Mode='quick'; Base=$short; Reason="full-run path $match (local run: -Quick; CI runs -All)"; Changed=$true; Paths=$changedPaths }
     }
     if ($scriptChanged) { return @{ Mode='quick'; Base=$short; Reason='scripts/ changed'; Changed=$true; Paths=$changedPaths } }
     return @{ Mode='skip'; Base=$short; Reason='no change under scripts/'; Changed=$false; Paths=$changedPaths }
@@ -158,6 +164,24 @@ if ($SelfTest)
         & $invokeGit @('add','.')
         & $invokeGit @('commit','-qm','full path')
         & $assert 'full-run path' 'all'
+        $baseRefSelection = {
+            param([string]$Actions)
+            $saved = $env:GITHUB_ACTIONS
+            try
+            {
+                $env:GITHUB_ACTIONS = $Actions
+                $out = @(& pwsh -NoProfile -NonInteractive -File $PSCommandPath -SelectionOnly -RepoRoot $fixture -BaseRef $base 2>&1)
+                if ($LASTEXITCODE -ne 0) { throw "selection command failed: $out" }
+            }
+            finally { $env:GITHUB_ACTIONS = $saved }
+            return (($out | Select-Object -Last 1) | ConvertFrom-Json)
+        }
+        $localRef = & $baseRefSelection ''
+        if ($localRef.Mode -ne 'quick' -or $localRef.Reason -notmatch 'CI runs -All') { throw "local -BaseRef full-run path expected quick, got $($localRef.Mode) ($($localRef.Reason))" }
+        $cases.Add([pscustomobject]@{case='full-run path, local -BaseRef';mode=$localRef.Mode;reason=$localRef.Reason})
+        $actionsRef = & $baseRefSelection 'true'
+        if ($actionsRef.Mode -ne 'all') { throw "-BaseRef full-run path under GitHub Actions expected all, got $($actionsRef.Mode)" }
+        $cases.Add([pscustomobject]@{case='full-run path, -BaseRef in CI';mode=$actionsRef.Mode;reason=$actionsRef.Reason})
         & $invokeGit @('reset','--hard',$base)
         Set-Content -LiteralPath (Join-Path $fixture 'scripts/earlier.ps1') -Value 'one'
         & $invokeGit @('add','.')
