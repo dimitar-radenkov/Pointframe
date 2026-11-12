@@ -166,6 +166,140 @@ public sealed class RecordingHudViewModelTests
     }
 
     [Fact]
+    public async Task StopCommand_WhenRecordingPartiallyRecovered_ShowsToastAndPublishesRecoveredArtifact()
+    {
+        var eventAggregatorMock = new Mock<IEventAggregator>();
+        eventAggregatorMock
+            .Setup(aggregator => aggregator.Publish(It.IsAny<object>()))
+            .Returns(ValueTask.CompletedTask);
+        var service = new Mock<IScreenRecordingService>();
+        service.SetupGet(item => item.LastStopResult).Returns(new RecordingStopResult(
+            RecordingStopStatus.Partial,
+            @"C:\Videos\recovered.mp4",
+            TimeSpan.FromSeconds(83)));
+        var vm = CreateVm(svcMock: service, eventAggregator: eventAggregatorMock.Object);
+        string? toast = null;
+        vm.ToastRequested += message => toast = message;
+
+        await vm.StopCommand.ExecuteAsync(null);
+
+        Assert.Equal("Recording stopped early. Saved the first 1:23.", toast);
+        eventAggregatorMock.Verify(aggregator => aggregator.Publish(It.Is<RecordingCompletedMessage>(message =>
+            message.OutputPath == @"C:\Videos\recovered.mp4"
+            && message.ElapsedDuration == TimeSpan.FromSeconds(83))), Times.Once);
+    }
+
+    [Fact]
+    public async Task StopCommand_WhenExecutedAgainAfterPartialRecovery_DoesNotCompleteTwice()
+    {
+        var eventAggregatorMock = new Mock<IEventAggregator>();
+        eventAggregatorMock
+            .Setup(aggregator => aggregator.Publish(It.IsAny<object>()))
+            .Returns(ValueTask.CompletedTask);
+        var service = new Mock<IScreenRecordingService>();
+        service.SetupGet(item => item.LastStopResult).Returns(new RecordingStopResult(
+            RecordingStopStatus.Partial,
+            @"C:\Videos\recovered.mp4",
+            TimeSpan.FromSeconds(83)));
+        var vm = CreateVm(svcMock: service, eventAggregator: eventAggregatorMock.Object);
+        var toasts = new List<string>();
+        vm.ToastRequested += toasts.Add;
+
+        await vm.StopCommand.ExecuteAsync(null);
+        await vm.StopCommand.ExecuteAsync(null);
+
+        Assert.Single(toasts);
+        service.Verify(item => item.Stop(), Times.Once);
+        eventAggregatorMock.Verify(aggregator => aggregator.Publish(It.IsAny<RecordingCompletedMessage>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task StopCommand_WhenRecoveredDurationIsUnknown_ToastsWithoutATime()
+    {
+        var eventAggregatorMock = new Mock<IEventAggregator>();
+        eventAggregatorMock
+            .Setup(aggregator => aggregator.Publish(It.IsAny<object>()))
+            .Returns(ValueTask.CompletedTask);
+        var service = new Mock<IScreenRecordingService>();
+        service.SetupGet(item => item.LastStopResult).Returns(new RecordingStopResult(
+            RecordingStopStatus.Partial,
+            @"C:\Videos\rec.recovered.mp4",
+            TimeSpan.Zero));
+        var vm = CreateVm(svcMock: service, eventAggregator: eventAggregatorMock.Object);
+        string? toast = null;
+        vm.ToastRequested += message => toast = message;
+        vm.StartElapsedTimer();
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+
+        await vm.StopCommand.ExecuteAsync(null);
+
+        Assert.Equal("Recording stopped early. Saved what was captured.", toast);
+        eventAggregatorMock.Verify(aggregator => aggregator.Publish(It.Is<RecordingCompletedMessage>(message =>
+            message.OutputPath == @"C:\Videos\rec.recovered.mp4"
+            && message.ElapsedDuration == TimeSpan.Zero
+            && message.ElapsedText == "--:--")), Times.Once);
+    }
+
+    [Fact]
+    public async Task StopCommand_WhenRecordingIsLongerThanAnHour_ToastsWithHours()
+    {
+        var service = new Mock<IScreenRecordingService>();
+        service.SetupGet(item => item.LastStopResult).Returns(new RecordingStopResult(
+            RecordingStopStatus.Partial,
+            @"C:\Videos\long.mp4",
+            new TimeSpan(1, 2, 3)));
+        var vm = CreateVm(svcMock: service);
+        string? toast = null;
+        vm.ToastRequested += message => toast = message;
+
+        await vm.StopCommand.ExecuteAsync(null);
+
+        Assert.Equal("Recording stopped early. Saved the first 1:02:03.", toast);
+    }
+
+    [Fact]
+    public async Task StopCommand_WhenRecordingCompletes_PublishesTheFinalArtifactWithoutAToast()
+    {
+        var eventAggregatorMock = new Mock<IEventAggregator>();
+        eventAggregatorMock
+            .Setup(aggregator => aggregator.Publish(It.IsAny<object>()))
+            .Returns(ValueTask.CompletedTask);
+        var service = new Mock<IScreenRecordingService>();
+        service.SetupGet(item => item.LastStopResult).Returns(new RecordingStopResult(
+            RecordingStopStatus.Complete,
+            @"C:\Videos\final.mp4",
+            TimeSpan.FromSeconds(42)));
+        var vm = CreateVm(svcMock: service, eventAggregator: eventAggregatorMock.Object);
+        string? toast = null;
+        vm.ToastRequested += message => toast = message;
+
+        await vm.StopCommand.ExecuteAsync(null);
+
+        Assert.Null(toast);
+        eventAggregatorMock.Verify(aggregator => aggregator.Publish(It.Is<RecordingCompletedMessage>(message =>
+            message.OutputPath == @"C:\Videos\final.mp4"
+            && message.ElapsedText == "00:42"
+            && message.ElapsedDuration == TimeSpan.FromSeconds(42))), Times.Once);
+    }
+
+    [Fact]
+    public async Task StopCommand_WhenResultIsFailed_ShowsTheServiceMessageAndDoesNotPublish()
+    {
+        var eventAggregatorMock = new Mock<IEventAggregator>();
+        var service = new Mock<IScreenRecordingService>();
+        service.SetupGet(item => item.LastStopResult).Returns(new RecordingStopResult(RecordingStopStatus.Failed, null, TimeSpan.Zero));
+        service.SetupGet(item => item.LastStopError).Returns("Recording failed and was not saved.");
+        var vm = CreateVm(svcMock: service, eventAggregator: eventAggregatorMock.Object);
+        string? toast = null;
+        vm.ToastRequested += message => toast = message;
+
+        await vm.StopCommand.ExecuteAsync(null);
+
+        Assert.Equal("Recording failed and was not saved.", toast);
+        eventAggregatorMock.Verify(item => item.Publish(It.IsAny<RecordingCompletedMessage>()), Times.Never);
+    }
+
+    [Fact]
     public async Task StopCommand_WhenServiceThrows_ContainsFailureAndDoesNotPublishCompletion()
     {
         var eventAggregatorMock = new Mock<IEventAggregator>();

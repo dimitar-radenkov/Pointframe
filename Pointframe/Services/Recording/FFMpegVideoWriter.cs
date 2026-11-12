@@ -5,10 +5,10 @@ using System.Globalization;
 
 namespace Pointframe.Services;
 
-public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnostics
+public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnostics, IRecoverableVideoWriter
 {
     private static readonly ConcurrentDictionary<string, bool> DrawtextSupportCache = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly ConcurrentDictionary<string, bool> InputThreadQueueSizeSupportCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, FfmpegOptionSupport> OptionSupportCache = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly Process _ffmpeg;
     private readonly Stream _stdin;
@@ -18,6 +18,8 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
     private readonly ConcurrentQueue<string> _recentStandardError = new();
     public int? FfmpegExitCode { get; private set; }
     public string RecentStandardError => string.Join(Environment.NewLine, _recentStandardError);
+    public string? FailureReason { get; private set; }
+    public string IntermediatePath { get; }
 
     public FFMpegVideoWriter(
         int width,
@@ -30,11 +32,13 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         DateTimeOffset? watermarkTimestamp = null)
     {
         _logger = logger;
+        IntermediatePath = RecordingRecovery.GetIntermediatePath(outputPath);
 
         var ffmpegPath = FfmpegResolver.ResolveRequired("Screen recording");
         var drawtextFilter = TryBuildDrawtextFilter(ffmpegPath, videoWatermark, watermarkTimestamp ?? DateTimeOffset.Now, logger);
-        var microphoneThreadQueueSize = !string.IsNullOrWhiteSpace(microphoneDeviceName) &&
-            HasInputThreadQueueSize(ffmpegPath, logger);
+        var optionSupport = !string.IsNullOrWhiteSpace(microphoneDeviceName)
+            ? GetOptionSupport(ffmpegPath, logger)
+            : default;
 
         var psi = new ProcessStartInfo
         {
@@ -44,7 +48,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
             RedirectStandardInput = true,
             RedirectStandardError = true,
         };
-        BuildArguments(psi.ArgumentList, width, height, fps, outputPath, microphoneDeviceName, drawtextFilter, microphoneThreadQueueSize);
+        BuildArguments(psi.ArgumentList, width, height, fps, IntermediatePath, microphoneDeviceName, drawtextFilter, optionSupport.ThreadQueueSize, optionSupport.ShortestBufDuration);
 
         _ffmpeg = new Process { StartInfo = psi };
 
@@ -75,7 +79,8 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         string outputPath,
         string? microphoneDeviceName,
         string? drawtextFilter,
-        bool microphoneThreadQueueSize)
+        bool microphoneThreadQueueSize,
+        bool shortestBufDuration = false)
     {
         var hasMicrophone = !string.IsNullOrWhiteSpace(microphoneDeviceName);
 
@@ -136,6 +141,12 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         // Keyframe every second so stream-copy trims can cut close to the requested point.
         args.Add("-g");
         args.Add($"{fps}");
+        // Fragmented so a killed ffmpeg still leaves a playable file; RecordingRecovery remuxes it to a faststart MP4.
+        args.Add("-movflags");
+        args.Add("+frag_keyframe+empty_moov+default_base_moof");
+        // Without this, ffmpeg keeps finished fragments in its 32 KB output buffer, so a killed process can lose seconds of a quiet screen.
+        args.Add("-flush_packets");
+        args.Add("1");
 
         if (hasMicrophone)
         {
@@ -144,6 +155,14 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
             args.Add("-b:a");
             args.Add("128k");
             args.Add("-shortest");
+
+            // Default 10 s of -shortest buffering holds all video until the pipe closes, so a killed mic recording had no fragments.
+            // The option exists only since FFmpeg 6.0.
+            if (shortestBufDuration)
+            {
+                args.Add("-shortest_buf_duration");
+                args.Add("0.5");
+            }
         }
 
         args.Add(outputPath);
@@ -262,12 +281,27 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         return false;
     }
 
-    private static bool HasInputThreadQueueSize(string ffmpegPath, ILogger logger)
+    internal static bool HelpAllowsShortestBufDuration(string helpText)
     {
-        return InputThreadQueueSizeSupportCache.GetOrAdd(ffmpegPath, path => ProbeHasInputThreadQueueSize(path, logger));
+        foreach (var line in helpText.Split('\n'))
+        {
+            if (line.TrimStart().StartsWith("-shortest_buf_duration", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    private static bool ProbeHasInputThreadQueueSize(string ffmpegPath, ILogger logger)
+    private static FfmpegOptionSupport GetOptionSupport(string ffmpegPath, ILogger logger)
+    {
+        return OptionSupportCache.GetOrAdd(ffmpegPath, path => ProbeOptionSupport(path, logger));
+    }
+
+    private readonly record struct FfmpegOptionSupport(bool ThreadQueueSize, bool ShortestBufDuration);
+
+    private static FfmpegOptionSupport ProbeOptionSupport(string ffmpegPath, ILogger logger)
     {
         try
         {
@@ -291,16 +325,17 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
             if (!process.WaitForExit(3000) || !helpTask.Wait(1000))
             {
                 process.Kill();
-                logger.LogWarning("Timed out while probing ffmpeg options; microphone input queue size not set.");
-                return false;
+                logger.LogWarning("Timed out while probing ffmpeg options; optional microphone options not set.");
+                return default;
             }
 
-            return HelpAllowsInputThreadQueueSize(helpTask.Result);
+            var helpText = helpTask.Result;
+            return new FfmpegOptionSupport(HelpAllowsInputThreadQueueSize(helpText), HelpAllowsShortestBufDuration(helpText));
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to probe ffmpeg options; microphone input queue size not set.");
-            return false;
+            logger.LogWarning(ex, "Failed to probe ffmpeg options; optional microphone options not set.");
+            return default;
         }
     }
 
@@ -399,6 +434,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         }
         catch (Exception exception)
         {
+            FailureReason = "pipe_broken";
             closeFailure = exception;
         }
 
@@ -406,6 +442,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         {
             if (!_ffmpeg.WaitForExit(TimeSpan.FromSeconds(10)))
             {
+                FailureReason = "timeout";
                 _logger.LogWarning("ffmpeg did not exit within 10 s — killing");
                 _ffmpeg.Kill(entireProcessTree: true);
                 _ffmpeg.WaitForExit();
@@ -434,6 +471,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
 
         if (FfmpegExitCode != 0)
         {
+            FailureReason ??= "ffmpeg_exited";
             throw new InvalidOperationException($"ffmpeg exited with code {FfmpegExitCode} while finalizing the recording.");
         }
     }

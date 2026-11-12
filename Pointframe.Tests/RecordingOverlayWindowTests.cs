@@ -38,6 +38,44 @@ public sealed class RecordingOverlayWindowTests
     }
 
     [Fact]
+    public void HudCloseRequested_WhileToastIsShowing_KeepsTheWindowOpenForTheToast()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var context = CreateContext();
+            var closed = false;
+            context.Window.Closed += (_, _) => closed = true;
+            try
+            {
+                InvokePrivate(context.Window, "ShowRecordingFailureToast", "Recording stopped early. Saved the first 1:23.");
+
+                InvokePrivate(context.Window, "OnRecordingHudCloseRequested");
+
+                Assert.False(closed);
+            }
+            finally
+            {
+                context.Window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void HudCloseRequested_WithoutToast_ClosesTheWindow()
+    {
+        StaTestHelper.Run(() =>
+        {
+            var context = CreateContext();
+            var closed = false;
+            context.Window.Closed += (_, _) => closed = true;
+
+            InvokePrivate(context.Window, "OnRecordingHudCloseRequested");
+
+            Assert.True(closed);
+        });
+    }
+
+    [Fact]
     public void ToggleRecordingAnnotationInput_TogglesInputStateAndCursor()
     {
         StaTestHelper.Run(() =>

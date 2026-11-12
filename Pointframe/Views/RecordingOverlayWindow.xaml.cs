@@ -531,7 +531,14 @@ public partial class RecordingOverlayWindow : Window
 
     private void OnRecordingHudCloseRequested()
     {
-        Dispatcher.Invoke(Close);
+        Dispatcher.Invoke(() =>
+        {
+            // The toast timer closes the window once the message has been readable.
+            if (RecordingFailureToast.Visibility != Visibility.Visible)
+            {
+                Close();
+            }
+        });
     }
 
     private void RecordingHudPanel_SizeChanged(object sender, SizeChangedEventArgs e)

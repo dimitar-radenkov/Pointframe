@@ -38,6 +38,8 @@ public static class TelemetryPropertyKeys
     public const string Source = "source";
     public const string Phase = "phase";
     public const string Reason = "reason";
+    public const string Recovered = "recovered";
+    public const string RecoveredDurationBucket = "recovered_duration_bucket";
     public const string StopReason = "stop_reason";
     public const string State = "state";
     public const string Success = "success";
@@ -194,7 +196,7 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.RecordingHudToolSelected] = Product(TelemetryEvents.RecordingHudToolSelected, TelemetryPropertyKeys.AnnotationTool),
             [TelemetryEvents.RecordingHudUndoAnnotations] = Product(TelemetryEvents.RecordingHudUndoAnnotations),
             [TelemetryEvents.RecordingCompleted] = Product(TelemetryEvents.RecordingCompleted).WithOptional(TelemetryPropertyKeys.DurationSeconds),
-            [TelemetryEvents.RecordingFailed] = Diagnostic(TelemetryEvents.RecordingFailed, TelemetryPropertyKeys.Phase, TelemetryPropertyKeys.Reason, TelemetryPropertyKeys.InnerTypes).WithOptional(TelemetryPropertyKeys.FfmpegExitCode),
+            [TelemetryEvents.RecordingFailed] = Diagnostic(TelemetryEvents.RecordingFailed, TelemetryPropertyKeys.Phase, TelemetryPropertyKeys.Reason, TelemetryPropertyKeys.InnerTypes).WithOptional(TelemetryPropertyKeys.FfmpegExitCode, TelemetryPropertyKeys.Recovered, TelemetryPropertyKeys.RecoveredDurationBucket),
             [TelemetryEvents.RecordingStarted] = Product(TelemetryEvents.RecordingStarted, TelemetryPropertyKeys.Type),
             [TelemetryEvents.TranscriptCompleted] = Product(TelemetryEvents.TranscriptCompleted, TelemetryPropertyKeys.Success, TelemetryPropertyKeys.DurationSeconds).WithOptional(TelemetryPropertyKeys.SegmentCount, TelemetryPropertyKeys.SkipReason),
             [TelemetryEvents.TranscriptFailed] = Diagnostic(TelemetryEvents.TranscriptFailed, TelemetryPropertyKeys.ExceptionType),
@@ -251,6 +253,25 @@ public static class TelemetryEventCatalog
             .Where(key => !definition.AllowsProperty(key))
             .OrderBy(key => key, StringComparer.Ordinal)
             .ToArray();
+
+        // The recovery properties are closed value sets, so a free-text value is reported like an undeclared key.
+        if (string.Equals(eventName, TelemetryEvents.RecordingFailed, StringComparison.Ordinal) && properties is not null)
+        {
+            var invalidValues = new List<string>();
+            if (properties.TryGetValue(TelemetryPropertyKeys.Recovered, out var recovered)
+                && recovered is not ("true" or "false"))
+            {
+                invalidValues.Add(TelemetryPropertyKeys.Recovered);
+            }
+
+            if (properties.TryGetValue(TelemetryPropertyKeys.RecoveredDurationBucket, out var bucket)
+                && bucket is not ("<10s" or "10-60s" or "1-5m" or "5-30m" or ">30m"))
+            {
+                invalidValues.Add(TelemetryPropertyKeys.RecoveredDurationBucket);
+            }
+
+            unknown = unknown.Concat(invalidValues).OrderBy(key => key, StringComparer.Ordinal).ToArray();
+        }
 
         return missing.Length == 0 && unknown.Length == 0
             ? TelemetrySchemaValidationResult.Valid(definition)

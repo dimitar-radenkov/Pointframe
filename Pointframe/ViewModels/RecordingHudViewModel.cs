@@ -23,6 +23,8 @@ public partial class RecordingHudViewModel : ObservableObject
     [ObservableProperty]
     private string _pauseResumeLabel = "⏸ Pause";
 
+    private bool _completionPublished;
+
     [ObservableProperty]
     private bool _canPauseResume = true;
 
@@ -152,6 +154,12 @@ public partial class RecordingHudViewModel : ObservableObject
     [RelayCommand]
     private async Task Stop()
     {
+        if (_completionPublished)
+        {
+            _logger.LogDebug("Stop ignored: the recording was already completed");
+            return;
+        }
+
         _logger.LogInformation("Stop command executed");
         CanPauseResume = false;
         CancelElapsedTimer();
@@ -167,24 +175,38 @@ public partial class RecordingHudViewModel : ObservableObject
             stopFailed = true;
         }
 
-        if (stopFailed || _svc.LastStopFailed)
+        var result = _svc.LastStopResult;
+        if (stopFailed || _svc.LastStopFailed || result.Status == RecordingStopStatus.Failed)
         {
             ToastRequested?.Invoke(_svc.LastStopError ?? "Recording failed and was not saved.");
             return;
         }
 
-        _logger.LogInformation("Recording saved to {Path}", OutputPath);
+        var artifactPath = result.ArtifactPath ?? OutputPath;
+        _completionPublished = true;
+        var isPartial = result.Status == RecordingStopStatus.Partial;
+        var durationKnown = result.Duration > TimeSpan.Zero || !isPartial;
+        var duration = result.Duration > TimeSpan.Zero || isPartial ? result.Duration : GetElapsedDuration();
+        var elapsedText = durationKnown ? duration.ToString(@"mm\:ss") : "--:--";
+        if (isPartial)
+        {
+            ToastRequested?.Invoke(durationKnown
+                ? $"Recording stopped early. Saved the first {FormatSavedDuration(duration)}."
+                : "Recording stopped early. Saved what was captured.");
+        }
+
+        _logger.LogInformation("Recording saved to {Path}", artifactPath);
         _telemetry.TrackEvent(TelemetryEvents.RecordingHudStopped, new Dictionary<string, string>
         {
-            [TelemetryPropertyKeys.DurationSeconds] = GetElapsedSeconds().ToString(),
+            [TelemetryPropertyKeys.DurationSeconds] = ((int)(durationKnown ? duration : GetElapsedDuration()).TotalSeconds).ToString(),
         });
 
         CloseRequested?.Invoke();
         await _eventAggregator.Publish(new RecordingCompletedMessage(
-            OutputPath,
-            ElapsedText,
+            artifactPath,
+            elapsedText,
             hadMicrophoneAudio,
-            GetElapsedDuration(),
+            duration,
             _recordingSessionGeometry,
             _svc.EventTrackSummary)).ConfigureAwait(true);
     }
@@ -319,9 +341,11 @@ public partial class RecordingHudViewModel : ObservableObject
         _telemetry.TrackEvent(TelemetryEvents.RecordingHudClearAnnotations);
     }
 
-    private int GetElapsedSeconds()
+    private static string FormatSavedDuration(TimeSpan duration)
     {
-        return (int)GetElapsedDuration().TotalSeconds;
+        return duration.TotalHours >= 1
+            ? duration.ToString(@"h\:mm\:ss")
+            : duration.ToString(@"m\:ss");
     }
 
     private TimeSpan GetElapsedDuration()
