@@ -7,6 +7,7 @@ using Rectangle = System.Windows.Shapes.Rectangle;
 
 namespace Pointframe.Tests.Services.Handlers;
 
+[Collection("WpfUi")]
 public sealed class HighlightShapeHandlerTests
 {
     [Fact]

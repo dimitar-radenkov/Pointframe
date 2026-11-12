@@ -9,6 +9,7 @@ using Xunit;
 
 namespace Pointframe.Tests.Services;
 
+[Collection("WpfUi")]
 public sealed class RecordingCursorEffectsServiceTests
 {
     private static readonly RecordingSessionGeometry Geometry = new(

@@ -6,6 +6,7 @@ using Forms = System.Windows.Forms;
 
 namespace Pointframe.Tests.Services;
 
+[Collection("WpfUi")]
 public sealed class DialogServiceTests
 {
     [Fact]

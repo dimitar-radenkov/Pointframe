@@ -13,6 +13,7 @@ using Xunit;
 
 namespace Pointframe.Tests;
 
+[Collection("WpfUi")]
 public sealed class SettingsWindowTests
 {
     [Fact]

@@ -10,6 +10,7 @@ using Xunit;
 
 namespace Pointframe.Tests.Services;
 
+[Collection("WpfUi")]
 public sealed class TrayIconManagerTests
 {
     [Fact]

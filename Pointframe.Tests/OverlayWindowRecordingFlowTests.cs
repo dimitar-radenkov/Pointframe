@@ -14,7 +14,7 @@ using Xunit;
 
 namespace Pointframe.Tests;
 
-[Collection("OverlayWindowUi")]
+[Collection("WpfUi")]
 public sealed class OverlayWindowRecordingFlowTests
 {
     [Fact]

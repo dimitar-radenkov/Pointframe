@@ -10,6 +10,7 @@ using Rectangle = System.Windows.Shapes.Rectangle;
 
 namespace Pointframe.Tests.Services;
 
+[Collection("WpfUi")]
 public sealed class OverlayBitmapCaptureTests
 {
     [Fact]
