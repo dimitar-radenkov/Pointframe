@@ -190,6 +190,30 @@ public sealed class RecordingHudViewModelTests
     }
 
     [Fact]
+    public async Task StopCommand_WhenExecutedAgainAfterPartialRecovery_DoesNotCompleteTwice()
+    {
+        var eventAggregatorMock = new Mock<IEventAggregator>();
+        eventAggregatorMock
+            .Setup(aggregator => aggregator.Publish(It.IsAny<object>()))
+            .Returns(ValueTask.CompletedTask);
+        var service = new Mock<IScreenRecordingService>();
+        service.SetupGet(item => item.LastStopResult).Returns(new RecordingStopResult(
+            RecordingStopStatus.Partial,
+            @"C:\Videos\recovered.mp4",
+            TimeSpan.FromSeconds(83)));
+        var vm = CreateVm(svcMock: service, eventAggregator: eventAggregatorMock.Object);
+        var toasts = new List<string>();
+        vm.ToastRequested += toasts.Add;
+
+        await vm.StopCommand.ExecuteAsync(null);
+        await vm.StopCommand.ExecuteAsync(null);
+
+        Assert.Single(toasts);
+        service.Verify(item => item.Stop(), Times.Once);
+        eventAggregatorMock.Verify(aggregator => aggregator.Publish(It.IsAny<RecordingCompletedMessage>()), Times.Once);
+    }
+
+    [Fact]
     public async Task StopCommand_WhenRecoveredDurationIsUnknown_ToastsWithoutATime()
     {
         var eventAggregatorMock = new Mock<IEventAggregator>();

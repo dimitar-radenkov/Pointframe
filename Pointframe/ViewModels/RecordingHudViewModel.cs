@@ -23,6 +23,8 @@ public partial class RecordingHudViewModel : ObservableObject
     [ObservableProperty]
     private string _pauseResumeLabel = "⏸ Pause";
 
+    private bool _completionPublished;
+
     [ObservableProperty]
     private bool _canPauseResume = true;
 
@@ -152,6 +154,12 @@ public partial class RecordingHudViewModel : ObservableObject
     [RelayCommand]
     private async Task Stop()
     {
+        if (_completionPublished)
+        {
+            _logger.LogDebug("Stop ignored: the recording was already completed");
+            return;
+        }
+
         _logger.LogInformation("Stop command executed");
         CanPauseResume = false;
         CancelElapsedTimer();
@@ -175,6 +183,7 @@ public partial class RecordingHudViewModel : ObservableObject
         }
 
         var artifactPath = result.ArtifactPath ?? OutputPath;
+        _completionPublished = true;
         var isPartial = result.Status == RecordingStopStatus.Partial;
         var durationKnown = result.Duration > TimeSpan.Zero || !isPartial;
         var duration = result.Duration > TimeSpan.Zero || isPartial ? result.Duration : GetElapsedDuration();
