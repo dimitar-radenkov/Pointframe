@@ -206,25 +206,39 @@ jobs:
           ./scripts/check-agent-discovery.ps1
           exit $LASTEXITCODE
 
+      - name: Script selection self-test
+        # Exercises the selector against temporary Git repositories without running the script suite.
+        shell: pwsh
+        run: ./scripts/test-scripts.ps1 -SelfTest
+
       - name: Script self-tests
         # Every coordinator and release script's offline -SelfTest on a clean checkout, so a fixture that git
-        # ignores (and only exists in the worktree that wrote it) fails here. The package.ps1 quick self-test (under three
-        # minutes) runs on a pull request only when it changes something under scripts/ (against the base branch); a
-        # master push runs the full self-test (about 25 minutes); script-selftests-daily.yml runs the full set once a day.
+        # ignores (and only exists in the worktree that wrote it) fails here. package.ps1 runs quick for ordinary
+        # scripts changes, skips when scripts/ is untouched, and runs full when a fixed kit or workflow path changes.
         shell: pwsh
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+          RESULT_FILE: artifacts/script-selftests/result.json
         run: |
           if ($env:EVENT_NAME -eq 'pull_request')
           {
-              ./scripts/test-scripts.ps1 -BaseRef "origin/$env:BASE_REF"
+              ./scripts/test-scripts.ps1 -BaseRef "origin/$env:BASE_REF" -ResultFile $env:RESULT_FILE
           }
           else
           {
-              ./scripts/test-scripts.ps1 -All
+              ./scripts/test-scripts.ps1 -BaseSha $env:BEFORE_SHA -ResultFile $env:RESULT_FILE
           }
           exit $LASTEXITCODE
+
+      - name: Upload script self-test timings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: script-selftest-timings-${{ github.run_id }}
+          path: artifacts/script-selftests/result.json
+          if-no-files-found: ignore
 
   # Not a required check: a Codecov outage or slow upload must not delay or fail a merge.
   coverage:
