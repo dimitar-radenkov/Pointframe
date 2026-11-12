@@ -153,6 +153,9 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
             args.Add("-b:a");
             args.Add("128k");
             args.Add("-shortest");
+            // Default 10 s of -shortest buffering holds all video until the pipe closes, so a killed mic recording had no fragments.
+            args.Add("-shortest_buf_duration");
+            args.Add("0.5");
         }
 
         args.Add(outputPath);

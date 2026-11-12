@@ -1763,6 +1763,24 @@ Executor briefs and the `package.ps1` executor rules forbid stdin-reading comman
 
 Never run an interpreter on stdin from an agent shell: write the script to a file and pass its path, close stdin for every child the agent starts, and when a run looks idle, list its processes before waiting longer.
 
+## A killed ffmpeg loses a plain MP4, and -shortest hides microphone recordings from recovery
+
+### Problem
+
+Telemetry showed `recording_failed` at `finalize` (`pipe_broken`, `timeout`, `ffmpeg_exited`) up to 6.7.163, and every such recording was lost: the HUD said "not saved". After a fragmented-MP4 fix, a real-microphone test still recovered nothing: the intermediate held only the header after 9 s of recording.
+
+### Root cause
+
+A plain MP4 writes its index (moov) at the end, so ffmpeg killed or crashing at finalize leaves an unplayable file. With a microphone, `-shortest` (needed so ffmpeg ends with the video) buffers up to `-shortest_buf_duration` (10 s by default) of video, so no fragment reached the disk before the pipe closed. ffmpeg also holds 32 KB of output on a seekable file, so a quiet screen flushes late.
+
+### What fixed it
+
+A fragmented MP4 intermediate with `-flush_packets 1`, a stream-copy remux to faststart on stop, partial recovery when a fragment exists, and `-shortest_buf_duration 0.5` on the microphone path. `-max_interleave_delta 0`, `+nobuffer`, `aresample=async` and wallclock audio timestamps did not help.
+
+### Takeaway
+
+Write live media to a crash-tolerant container and publish by remux. Test recovery with the real writer and a real microphone, not a hand-built ffmpeg command: the buffering that defeats recovery lives in the options only the real path uses.
+
 ## A stale cloaked lock-screen window can hold the foreground of an unlocked session
 
 ### Problem

@@ -240,6 +240,7 @@ public sealed class FFMpegVideoWriterTests
         Assert.Contains("1:a:0", args);
         Assert.Contains("aac", args);
         Assert.Contains("-shortest", args);
+        Assert.Equal("0.5", args[args.IndexOf("-shortest_buf_duration") + 1]);
     }
 
     [Fact]
