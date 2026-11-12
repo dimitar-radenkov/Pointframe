@@ -29,7 +29,9 @@ param(
     [string]$ResultFile,
     [switch]$SelfTest,
     [switch]$SelectionOnly,
-    [string]$RepoRoot
+    [string]$RepoRoot,
+    [string]$ScriptsDir,
+    [string]$Scripts
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,6 +62,9 @@ $SelfTestScripts = @(
 )
 
 $HeavyScripts = @('package.ps1')
+# -ScriptsDir and -Scripts (comma-separated) exist for the -SelfTest only: they swap in stub scripts.
+if ($Scripts) { $SelfTestScripts = @($Scripts -split ',' | Where-Object { $_ }) }
+$scriptsDirPath = if ($ScriptsDir) { [IO.Path]::GetFullPath($ScriptsDir) } else { $PSScriptRoot }
 $FullRunPaths = @(
     'scripts/agent-workflow/**', 'agent-workflow.json', 'agent-workflow.lock.json',
     'scripts/package.ps1', 'scripts/agent-run.ps1', 'scripts/codex-ask.ps1', 'scripts/merge-pr.ps1',
@@ -115,6 +120,7 @@ function Get-ScriptsChange
 if ($SelfTest)
 {
     $fixture = Join-Path ([IO.Path]::GetTempPath()) ("test-scripts-" + [guid]::NewGuid().ToString('N'))
+    $stubs = "$fixture-stubs"
     [void](New-Item -ItemType Directory -Path $fixture)
     try
     {
@@ -192,9 +198,50 @@ if ($SelfTest)
         $empty = & $selection ''
         if ($empty.Mode -ne 'all') { throw 'empty SHA did not select all' }
         $cases.Add([pscustomobject]@{case='empty SHA';mode=$empty.Mode;reason=$empty.Reason})
+
+        # -ResultFile: run the real dispatch against stub scripts outside the fixture repository.
+        & $invokeGit @('reset','-q','--hard',$base)
+        & $invokeGit @('clean','-fdq')
+        [void](New-Item -ItemType Directory -Path $stubs)
+        Set-Content -LiteralPath (Join-Path $stubs 'package.ps1') -Value 'Write-Output "stub package $args"; exit 0'
+        Set-Content -LiteralPath (Join-Path $stubs 'ok.ps1') -Value 'Write-Output "stub ok"; exit 0'
+        Set-Content -LiteralPath (Join-Path $stubs 'bad.ps1') -Value 'Write-Output "stub bad"; exit 3'
+        $runStubs = {
+            param([string]$List, [string]$Out)
+            [void](& pwsh -NoProfile -NonInteractive -File $PSCommandPath -RepoRoot $fixture -BaseSha $base -ScriptsDir $stubs -Scripts $List -ResultFile $Out 2>&1)
+            return $LASTEXITCODE
+        }
+        Set-Content -LiteralPath (Join-Path $fixture 'Pointframe/result.txt') -Value 'product'
+        & $invokeGit @('add','.')
+        & $invokeGit @('commit','-qm','product change for result file')
+        $skipOut = Join-Path $stubs 'out/skip.json'
+        $skipExit = & $runStubs 'package.ps1,ok.ps1,bad.ps1,missing.ps1' $skipOut
+        if ($skipExit -ne 1) { throw "result file run with a failing stub exited $skipExit, expected 1" }
+        $skipJson = Get-Content -LiteralPath $skipOut -Raw | ConvertFrom-Json
+        if ($skipJson.mode -ne 'skip' -or @($skipJson.scripts).Count -ne 4) { throw "skip result file: mode $($skipJson.mode), $(@($skipJson.scripts).Count) entries" }
+        $byName = @{}; foreach ($s in $skipJson.scripts) { $byName[$s.name] = $s }
+        if (-not $byName['package.ps1'].skipped -or $byName['package.ps1'].exitCode -ne 0) { throw 'skipped package.ps1 is not recorded as skipped' }
+        if ($byName['ok.ps1'].skipped -or $byName['ok.ps1'].exitCode -ne 0) { throw 'ok.ps1 is not recorded as a pass' }
+        if ($byName['bad.ps1'].exitCode -ne 3 -or $byName['missing.ps1'].exitCode -ne 1) { throw 'failing or missing scripts are not recorded with their exit codes' }
+        if ($null -eq $skipJson.totalSeconds -or -not $skipJson.reason) { throw 'skip result file lacks totalSeconds or reason' }
+        $cases.Add([pscustomobject]@{case='result file, failing stub';mode=$skipJson.mode;reason="exit 1 kept, 4 entries, package skipped"})
+        Set-Content -LiteralPath (Join-Path $fixture 'scripts/result.ps1') -Value 'scripts'
+        & $invokeGit @('add','.')
+        & $invokeGit @('commit','-qm','scripts change for result file')
+        $quickOut = Join-Path $stubs 'out/quick.json'
+        $quickExit = & $runStubs 'package.ps1,ok.ps1' $quickOut
+        if ($quickExit -ne 0) { throw "result file run with passing stubs exited $quickExit, expected 0" }
+        $quickJson = Get-Content -LiteralPath $quickOut -Raw | ConvertFrom-Json
+        $quickPackage = @($quickJson.scripts | Where-Object { $_.name -eq 'package.ps1' })[0]
+        if ($quickJson.mode -ne 'quick' -or $quickPackage.skipped -or @($quickPackage.args) -notcontains '-Quick') { throw 'quick result file does not record package.ps1 -SelfTest -Quick' }
+        $cases.Add([pscustomobject]@{case='result file, passing stubs';mode=$quickJson.mode;reason="exit 0 kept, package.ps1 $(@($quickPackage.args) -join ' ')"})
         $cases | ForEach-Object { Write-Host ("PASS  selection {0}: {1} ({2})" -f $_.case,$_.mode,$_.reason) }
     }
-    finally { Remove-Item -LiteralPath $fixture -Recurse -Force }
+    finally
+    {
+        Remove-Item -LiteralPath $fixture -Recurse -Force
+        if (Test-Path -LiteralPath $stubs) { Remove-Item -LiteralPath $stubs -Recurse -Force }
+    }
     exit 0
 }
 $decision = if ($All) { @{ Mode='all'; Base=''; Reason='-All specified'; Changed=$true; Paths=@() } } else { try { Get-ScriptsChange } catch { @{ Mode='all'; Base=''; Reason="selection error: $($_.Exception.Message)"; Changed=$true; Paths=@() } } }
@@ -218,7 +265,7 @@ foreach ($path in $ignored)
 
 foreach ($name in $SelfTestScripts)
 {
-    $path = Join-Path $PSScriptRoot $name
+    $path = Join-Path $scriptsDirPath $name
     if (-not (Test-Path -LiteralPath $path))
     {
         $failures.Add("$name is listed but does not exist")
