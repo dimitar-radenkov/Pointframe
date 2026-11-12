@@ -199,12 +199,20 @@ function Get-ScriptsChange
     }
 
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($gitArgs in @(@('diff','--name-only','--no-renames',"$base..HEAD"), @('diff','--name-only','--no-renames',$base), @('diff','--cached','--name-only','--no-renames',$base), @('ls-files','--others','--exclude-standard')))
+    # -z gives raw, NUL-separated paths: without it git quotes names with non-ASCII or special characters, and a
+    # quoted name would match no dependency glob and no unmapped-path rule.
+    $savedEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+    try
     {
-        $found = @(& git -C $repoRoot @gitArgs 2>$null)
-        if ($LASTEXITCODE -ne 0) { return @{ Mode='all'; Base=$base; Reason='git could not enumerate changed paths'; Changed=$true; Paths=@() } }
-        foreach ($item in $found) { if ($item) { [void]$paths.Add(([string]$item).Replace('\','/')) } }
+        foreach ($gitArgs in @(@('diff','--name-only','--no-renames','-z',"$base..HEAD"), @('diff','--name-only','--no-renames','-z',$base), @('diff','--cached','--name-only','--no-renames','-z',$base), @('ls-files','--others','--exclude-standard','-z')))
+        {
+            $raw = @(& git -C $repoRoot -c core.quotepath=off @gitArgs 2>$null) -join "`n"
+            if ($LASTEXITCODE -ne 0) { return @{ Mode='all'; Base=$base; Reason='git could not enumerate changed paths'; Changed=$true; Paths=@() } }
+            foreach ($item in $raw.Split([char]0)) { if ($item) { [void]$paths.Add($item.Replace('\','/')) } }
+        }
     }
+    finally { [Console]::OutputEncoding = $savedEncoding }
     $shortOut = @(& git -C $repoRoot rev-parse --short $base 2>$null)
     $short = if ($LASTEXITCODE -eq 0 -and $shortOut) { "$($shortOut[0])".Trim() } else { $base }
     $changedPaths = @($paths | Sort-Object)
@@ -384,6 +392,18 @@ if ($SelfTest)
         & $check 'scripts: unmapped new file' $newLib 'quick' $allNames
         foreach ($entry in $newLib.scripts) { if ($entry.reason -notmatch 'unmapped scripts path: scripts/newlib\.ps1') { throw "unmapped new file: $($entry.name) reason does not name the path: $($entry.reason)" } }
         if ($newLib.Reason -notmatch 'scripts/newlib\.ps1') { throw "unmapped new file: the selection reason does not name the path: $($newLib.Reason)" }
+
+        # Names git quotes by default (non-ASCII; Windows forbids the other quoted characters): committed and untracked.
+        & $reset
+        & $write "scripts/tests/alias-lag/$([char]0x0434)ata q.json"
+        & $commitAll 'quoted name in a fixture folder'
+        & $check 'scripts: quoted name in a mapped folder' (& $selection) 'quick' (@('check-alias-lag.ps1') + $quickAlways)
+
+        & $reset
+        & $write "scripts/$([char]0x043D)ew lib.ps1"
+        $quotedLib = & $selection
+        & $check 'scripts: quoted unmapped untracked file' $quotedLib 'quick' $allNames
+        if ($quotedLib.Reason -notmatch "scripts/$([char]0x043D)ew lib\.ps1") { throw "quoted unmapped file: the reason does not name the raw path: $($quotedLib.Reason)" }
 
         & $reset
         & $write 'scripts/sync-agent-guides.ps1'
