@@ -175,19 +175,21 @@ public partial class RecordingHudViewModel : ObservableObject
         }
 
         var artifactPath = result.ArtifactPath ?? OutputPath;
-        var duration = result.Duration > TimeSpan.Zero ? result.Duration : GetElapsedDuration();
-        var elapsedText = duration.ToString(@"mm\:ss");
-        if (result.Status == RecordingStopStatus.Partial)
+        var isPartial = result.Status == RecordingStopStatus.Partial;
+        var durationKnown = result.Duration > TimeSpan.Zero || !isPartial;
+        var duration = result.Duration > TimeSpan.Zero || isPartial ? result.Duration : GetElapsedDuration();
+        var elapsedText = durationKnown ? duration.ToString(@"mm\:ss") : "--:--";
+        if (isPartial)
         {
-            ToastRequested?.Invoke(result.Duration > TimeSpan.Zero
-                ? $"Recording stopped early. Saved the first {FormatSavedDuration(result.Duration)}."
+            ToastRequested?.Invoke(durationKnown
+                ? $"Recording stopped early. Saved the first {FormatSavedDuration(duration)}."
                 : "Recording stopped early. Saved what was captured.");
         }
 
         _logger.LogInformation("Recording saved to {Path}", artifactPath);
         _telemetry.TrackEvent(TelemetryEvents.RecordingHudStopped, new Dictionary<string, string>
         {
-            [TelemetryPropertyKeys.DurationSeconds] = ((int)duration.TotalSeconds).ToString(),
+            [TelemetryPropertyKeys.DurationSeconds] = ((int)(durationKnown ? duration : GetElapsedDuration()).TotalSeconds).ToString(),
         });
 
         CloseRequested?.Invoke();

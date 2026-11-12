@@ -204,12 +204,16 @@ public sealed class RecordingHudViewModelTests
         var vm = CreateVm(svcMock: service, eventAggregator: eventAggregatorMock.Object);
         string? toast = null;
         vm.ToastRequested += message => toast = message;
+        vm.StartElapsedTimer();
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
 
         await vm.StopCommand.ExecuteAsync(null);
 
         Assert.Equal("Recording stopped early. Saved what was captured.", toast);
         eventAggregatorMock.Verify(aggregator => aggregator.Publish(It.Is<RecordingCompletedMessage>(message =>
-            message.OutputPath == @"C:\Videos\rec.recovered.mp4")), Times.Once);
+            message.OutputPath == @"C:\Videos\rec.recovered.mp4"
+            && message.ElapsedDuration == TimeSpan.Zero
+            && message.ElapsedText == "--:--")), Times.Once);
     }
 
     [Fact]
