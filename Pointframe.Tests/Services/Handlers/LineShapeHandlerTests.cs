@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Pointframe.Tests.Services.Handlers;
 
+[Collection("WpfUi")]
 public sealed class LineShapeHandlerTests
 {
     [Fact]

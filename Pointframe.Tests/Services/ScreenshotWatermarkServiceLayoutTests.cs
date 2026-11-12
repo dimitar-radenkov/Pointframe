@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Pointframe.Tests.Services;
 
+[Collection("WpfUi")]
 public sealed class ScreenshotWatermarkServiceLayoutTests
 {
     [Fact]

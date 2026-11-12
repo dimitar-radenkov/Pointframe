@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Pointframe.Tests;
 
+[Collection("WpfUi")]
 public sealed class PinnedScreenshotWindowTests
 {
     private const int WmNchittest = 0x0084;

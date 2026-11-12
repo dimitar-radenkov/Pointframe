@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Pointframe.Tests.Views;
 
+[Collection("WpfUi")]
 public sealed class ScrollingCaptureProgressWindowTests
 {
     [Theory]

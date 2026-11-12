@@ -10,6 +10,7 @@ using Xunit;
 
 namespace Pointframe.Tests.Services;
 
+[Collection("WpfUi")]
 public sealed class UpdateDownloadWindowServiceTests : IDisposable
 {
     private readonly string _destPath = Path.Combine(Path.GetTempPath(), $"snip-update-{Guid.NewGuid():N}.bin");
