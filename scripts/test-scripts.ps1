@@ -17,6 +17,11 @@ check-workflow-scripts.ps1, docs/knowledge-base/hooks/**, docs/knowledge-base/wo
 .github/workflows/ci.yml, script-selftests-daily.yml, .gitattributes and .gitignore. The list applies in CI only
 (-BaseSha, or GITHUB_ACTIONS=true); a local run stays -Quick, since the full suite does not fit the 30-minute verify
 gate. Unknown bases fail closed to -All.
+Unless the mode is all (-All, a CI full-run path, an unknown base), each other script runs only when a changed path matches
+its dependency globs in $SelfTestDependencies (the script, the libraries it dot-sources, its scripts/tests folders, the
+repository files its self-test reads); '*' always runs. A changed scripts/ path that no entry, no full-run path and no
+$NotReadBySelfTests rule explains runs every script. A listed script without an entry fails the run. -SelectionOnly prints
+the decision as JSON, with a scripts array of { name, run, reason }.
 Timings are printed per script; -ResultFile writes a JSON record.
 
 Used by scripts/verify.ps1 (gate "scripts") and by CI (package-checks), which runs it on a clean checkout; the daily
@@ -64,6 +69,49 @@ $SelfTestScripts = @(
 )
 
 $HeavyScripts = @('package.ps1')
+
+# What each self-test reads, as repository-relative globs (same semantics as $FullRunPaths). A script runs when a changed
+# path matches one of its globs. '*' means the script always runs. Each entry lists the script, the libraries it
+# dot-sources (transitively: agent-release.ps1 loads release-model.ps1), the scripts/tests folders it reads, and the
+# repository files its -SelfTest reads outside scripts/. A script without an entry fails the run.
+$kitWrapper = { param([string]$Name) @("scripts/$Name", 'scripts/agent-workflow/**', 'agent-workflow*.json') }  # wrapper -> vendored kit
+$SelfTestDependencies = [ordered]@{
+    'merge-pr.ps1' = & $kitWrapper 'merge-pr.ps1'
+    'record-review.ps1' = & $kitWrapper 'record-review.ps1'
+    'codex-ask.ps1' = & $kitWrapper 'codex-ask.ps1'
+    'status.ps1' = & $kitWrapper 'status.ps1'
+    'agent-run.ps1' = & $kitWrapper 'agent-run.ps1'
+    # Runs by its own rule ($HeavyScripts), never by this map; the globs only stop its files counting as unmapped.
+    'package.ps1' = & $kitWrapper 'package.ps1'
+    # '*': Test-TrackedTree classifies `git ls-files` of the whole repository, so any added or renamed tracked file can fail it.
+    # The globs after the marker only keep its own files from counting as unmapped.
+    'release-impact.ps1' = @('*', 'scripts/release-impact.ps1', 'scripts/release-model.ps1', 'scripts/tests/release-impact/**')
+    'publish-release.ps1' = @('scripts/publish-release.ps1', 'scripts/release-model.ps1', 'scripts/tests/publish-release/**')
+    'check-alias-lag.ps1' = @('scripts/check-alias-lag.ps1', 'scripts/release-model.ps1', 'scripts/tests/alias-lag/**')
+    'check-latest-release.ps1' = @('scripts/check-latest-release.ps1', 'scripts/release-model.ps1', 'scripts/tests/latest-release/**')
+    # Test-PinHook runs docs/knowledge-base/hooks/pin.ps1 (which loads the copied agent-release.ps1); Test-InstallOneLiner reads the MCP guide.
+    'agent-release.ps1' = @('scripts/agent-release.ps1', 'scripts/release-model.ps1', 'scripts/tests/agent-release/**', 'docs/knowledge-base/hooks/pin.ps1', 'Pointframe.Mcp/Guides/verify-desktop-work.md')
+    # The cd.yml path is passed to Get-ReleaseFileList, which ignores it today; kept so a future read stays covered.
+    'write-release-receipt.ps1' = @('scripts/write-release-receipt.ps1', 'scripts/release-model.ps1', '.github/workflows/cd.yml')
+    # Test-ChannelFixtures reads winget-release.yml and packaging/build-mcp-package.ps1; cd.yml is passed but ignored.
+    'check-release-channels.ps1' = @('scripts/check-release-channels.ps1', 'scripts/release-model.ps1', 'scripts/tests/release-channels/**', '.github/workflows/winget-release.yml', '.github/workflows/cd.yml', 'packaging/build-mcp-package.ps1')
+    'check-released-desktop.ps1' = @('scripts/check-released-desktop.ps1', 'scripts/agent-release.ps1', 'scripts/release-model.ps1', 'scripts/tests/agent-release/**')
+    'usage-report.ps1' = @('scripts/usage-report.ps1', 'scripts/tests/usage-report/**')
+    'update-download-badges.ps1' = @('scripts/update-download-badges.ps1')
+    'measure-mcp-payloads.ps1' = @('scripts/measure-mcp-payloads.ps1')
+    # Invoke-PluginSelfTest copies plugin/pointframe and runs its launcher.
+    'test-agent-onboarding.ps1' = @('scripts/test-agent-onboarding.ps1', 'scripts/agent-release.ps1', 'scripts/release-model.ps1', 'scripts/tests/agent-release/**', 'plugin/pointframe/**')
+    # Test-Self reads scripts/trials/apps.json and copies the wpf-sample localPath (samples/verify/wpf) through New-TrialClone.
+    'trial.ps1' = @('scripts/trial.ps1', 'scripts/agent-release.ps1', 'scripts/release-model.ps1', 'scripts/tests/trial/**', 'scripts/tests/agent-release/**', 'scripts/trials/apps.json', 'samples/verify/wpf/**')
+    # Every resolver and the trial runner are faked; it loads agent-release.ps1 for Resolve-NewestAgentVersion only.
+    'weekly-trial.ps1' = @('scripts/weekly-trial.ps1', 'scripts/agent-release.ps1', 'scripts/release-model.ps1', 'scripts/tests/weekly-trial/**', 'scripts/tests/agent-release/**')
+}
+# scripts/ files that no listed self-test loads, runs or reads (checked by searching every listed script and the kit for
+# their names; agent-release.ps1 only writes a stub update-plugin-pin.ps1 into a temporary root). Changing one runs no self-test.
+$NotReadBySelfTests = @(
+    'scripts/check-agent-discovery.ps1', 'scripts/desktop-tests.ps1', 'scripts/sync-agent-guides.ps1',
+    'scripts/update-plugin-pin.ps1', 'scripts/tests/agent-discovery/**'
+)
 # -ScriptsDir and -Scripts (comma-separated) exist for the -SelfTest only: they swap in stub scripts.
 if ($Scripts) { $SelfTestScripts = @($Scripts -split ',' | Where-Object { $_ }) }
 $scriptsDirPath = if ($ScriptsDir) { [IO.Path]::GetFullPath($ScriptsDir) } else { $PSScriptRoot }
@@ -79,6 +127,58 @@ $FullRunPaths = @(
 $repoRoot = if ($RepoRoot) { [IO.Path]::GetFullPath($RepoRoot) } else { Split-Path $PSScriptRoot -Parent }
 $failures = [System.Collections.Generic.List[string]]::new()
 $useBaseSha = $PSBoundParameters.ContainsKey('BaseSha')
+
+# Returns the first glob in $Patterns that matches $Path, or $null. The '*' marker is not a glob.
+function Test-PathGlob
+{
+    param([string]$Path, [string[]]$Patterns)
+    foreach ($pattern in $Patterns)
+    {
+        if ($pattern -eq '*') { continue }
+        if ($Path -match ('^' + [regex]::Escape($pattern).Replace('\*\*','.*').Replace('\*','[^/]*') + '$')) { return $pattern }
+    }
+    return $null
+}
+
+# The first changed path under scripts/ that no dependency map entry, full-run path or not-read rule explains (for example a new library).
+function Get-UnmappedScriptsPath
+{
+    param([string[]]$ChangedPaths)
+    $known = @($FullRunPaths) + @($NotReadBySelfTests) + @($SelfTestDependencies.Values | ForEach-Object { $_ })
+    foreach ($changed in $ChangedPaths)
+    {
+        if ($changed -like 'scripts/*' -and -not (Test-PathGlob $changed $known)) { return $changed }
+    }
+    return $null
+}
+
+# One { name, run, reason } per script. Mode all runs everything; otherwise a script runs when a changed path matches its
+# dependency globs. A script with no entry, or '*', always runs; an unmapped scripts/ path runs every script. package.ps1
+# keeps its own rule: it runs unless the mode is skip.
+function Get-ScriptSelection
+{
+    param($Decision, [string[]]$Names)
+    foreach ($name in $Names)
+    {
+        $run = $true
+        if ($Decision.Mode -eq 'all') { $reason = "full run: $($Decision.Reason)" }
+        elseif ($Decision.Unmapped) { $reason = "unmapped scripts path: $($Decision.Unmapped)" }
+        elseif ($HeavyScripts -contains $name) { $run = $Decision.Mode -ne 'skip'; $reason = if ($run) { 'heavy script: runs when scripts/ changed' } else { 'heavy script: no change under scripts/' } }
+        elseif (-not $SelfTestDependencies.Contains($name)) { $reason = 'no dependency map entry' }
+        elseif ($SelfTestDependencies[$name] -contains '*') { $reason = "always runs ('*' in the dependency map)" }
+        else
+        {
+            $run = $false
+            $reason = 'no dependency changed'
+            foreach ($changed in $Decision.Paths)
+            {
+                $hit = Test-PathGlob $changed $SelfTestDependencies[$name]
+                if ($hit) { $run = $true; $reason = "dependency changed: $changed ($hit)"; break }
+            }
+        }
+        [pscustomobject]@{ name=$name; run=$run; reason=$reason }
+    }
+}
 
 # Returns a closed decision and the changed paths for either a PR merge base or a push's before SHA.
 function Get-ScriptsChange
@@ -99,16 +199,26 @@ function Get-ScriptsChange
     }
 
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($gitArgs in @(@('diff','--name-only','--no-renames',"$base..HEAD"), @('diff','--name-only','--no-renames',$base), @('diff','--cached','--name-only','--no-renames',$base), @('ls-files','--others','--exclude-standard')))
+    # -z gives raw, NUL-separated paths: without it git quotes names with non-ASCII or special characters, and a
+    # quoted name would match no dependency glob and no unmapped-path rule.
+    $savedEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+    try
     {
-        $found = @(& git -C $repoRoot @gitArgs 2>$null)
-        if ($LASTEXITCODE -ne 0) { return @{ Mode='all'; Base=$base; Reason='git could not enumerate changed paths'; Changed=$true; Paths=@() } }
-        foreach ($item in $found) { if ($item) { [void]$paths.Add(([string]$item).Replace('\','/')) } }
+        foreach ($gitArgs in @(@('diff','--name-only','--no-renames','-z',"$base..HEAD"), @('diff','--name-only','--no-renames','-z',$base), @('diff','--cached','--name-only','--no-renames','-z',$base), @('ls-files','--others','--exclude-standard','-z')))
+        {
+            $raw = @(& git -C $repoRoot -c core.quotepath=off @gitArgs 2>$null) -join "`n"
+            if ($LASTEXITCODE -ne 0) { return @{ Mode='all'; Base=$base; Reason='git could not enumerate changed paths'; Changed=$true; Paths=@() } }
+            foreach ($item in $raw.Split([char]0)) { if ($item) { [void]$paths.Add($item.Replace('\','/')) } }
+        }
     }
+    finally { [Console]::OutputEncoding = $savedEncoding }
     $shortOut = @(& git -C $repoRoot rev-parse --short $base 2>$null)
     $short = if ($LASTEXITCODE -eq 0 -and $shortOut) { "$($shortOut[0])".Trim() } else { $base }
     $changedPaths = @($paths | Sort-Object)
     $scriptChanged = @($changedPaths | Where-Object { $_ -match '^scripts/' }).Count -gt 0
+    $unmapped = Get-UnmappedScriptsPath $changedPaths
+    $unmappedNote = if ($unmapped) { "; unmapped scripts path: $unmapped (every self-test runs)" } else { '' }
     foreach ($pattern in $FullRunPaths)
     {
         $regex = '^' + [regex]::Escape($pattern).Replace('\*\*','.*').Replace('\*','[^/]*') + '$'
@@ -117,10 +227,10 @@ function Get-ScriptsChange
         # The full suite (about 25 minutes) does not fit the 30-minute local verify gate, so only CI (a push's
         # -BaseSha, or any run under GitHub Actions) honours the list; a local run stays -Quick and says so.
         if ($useBaseSha -or $env:GITHUB_ACTIONS -eq 'true') { return @{ Mode='all'; Base=$short; Reason="full-run path: $match"; Changed=$scriptChanged; Paths=$changedPaths; Match=$match } }
-        return @{ Mode='quick'; Base=$short; Reason="full-run path $match (local run: -Quick; CI runs -All)"; Changed=$true; Paths=$changedPaths }
+        return @{ Mode='quick'; Base=$short; Reason="full-run path $match (local run: -Quick; CI runs -All)$unmappedNote"; Changed=$true; Paths=$changedPaths; Unmapped=$unmapped }
     }
-    if ($scriptChanged) { return @{ Mode='quick'; Base=$short; Reason='scripts/ changed'; Changed=$true; Paths=$changedPaths } }
-    return @{ Mode='skip'; Base=$short; Reason='no change under scripts/'; Changed=$false; Paths=$changedPaths }
+    if ($scriptChanged) { return @{ Mode='quick'; Base=$short; Reason="scripts/ changed$unmappedNote"; Changed=$true; Paths=$changedPaths; Unmapped=$unmapped } }
+    return @{ Mode='skip'; Base=$short; Reason='no change under scripts/'; Changed=$false; Paths=$changedPaths; Unmapped=$null }
 }
 
 if ($SelfTest)
@@ -138,6 +248,11 @@ if ($SelfTest)
         [void](New-Item -ItemType Directory -Force -Path (Join-Path $fixture 'Pointframe'))
         Set-Content -LiteralPath (Join-Path $fixture 'scripts/base.ps1') -Value 'base'
         Set-Content -LiteralPath (Join-Path $fixture 'Pointframe/base.txt') -Value 'base'
+        foreach ($tracked in @('scripts/release-model.ps1', 'scripts/agent-release.ps1', 'scripts/update-download-badges.ps1', 'scripts/trials/apps.json', 'scripts/tests/alias-lag/a.json', 'scripts/tests/latest-release/x.json', 'scripts/tests/usage-report/x.json'))
+        {
+            [void](New-Item -ItemType Directory -Force -Path (Split-Path (Join-Path $fixture $tracked) -Parent))
+            Set-Content -LiteralPath (Join-Path $fixture $tracked) -Value 'base'
+        }
         & $invokeGit @('add','.')
         & $invokeGit @('commit','-qm','base')
         $base = "$(& git -C $fixture rev-parse HEAD)".Trim()
@@ -223,42 +338,161 @@ if ($SelfTest)
         if ($empty.Mode -ne 'all') { throw 'empty SHA did not select all' }
         $cases.Add([pscustomobject]@{case='empty SHA';mode=$empty.Mode;reason=$empty.Reason})
 
-        # -ResultFile: run the real dispatch against stub scripts outside the fixture repository.
-        & $invokeGit @('reset','-q','--hard',$base)
-        & $invokeGit @('clean','-fdq')
+        # Per-script selection on the real dependency map. Only paths are compared, so the fixture needs no script bodies.
+        $allNames = @('merge-pr.ps1','record-review.ps1','codex-ask.ps1','status.ps1','agent-run.ps1','package.ps1','release-impact.ps1','publish-release.ps1','check-alias-lag.ps1','check-latest-release.ps1','agent-release.ps1','write-release-receipt.ps1','check-release-channels.ps1','check-released-desktop.ps1','usage-report.ps1','update-download-badges.ps1','measure-mcp-payloads.ps1','test-agent-onboarding.ps1','trial.ps1','weekly-trial.ps1')
+        $quickAlways = @('package.ps1','release-impact.ps1')
+        $modelDependents = @('publish-release.ps1','check-alias-lag.ps1','check-latest-release.ps1','agent-release.ps1','write-release-receipt.ps1','check-release-channels.ps1','check-released-desktop.ps1','test-agent-onboarding.ps1','trial.ps1','weekly-trial.ps1')
+        $agentReleaseDependents = @('agent-release.ps1','check-released-desktop.ps1','test-agent-onboarding.ps1','trial.ps1','weekly-trial.ps1')
+        $kitWrappers = @('merge-pr.ps1','record-review.ps1','codex-ask.ps1','status.ps1','agent-run.ps1')
+        $reset = { & $invokeGit @('reset','-q','--hard',$base); & $invokeGit @('clean','-fdq') }
+        $commitAll = { param([string]$Message) & $invokeGit @('add','-A'); & $invokeGit @('commit','-qm',$Message) }
+        $write = { param([string]$Relative, [string]$Text = 'changed') $target = Join-Path $fixture $Relative; [void](New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent)); Set-Content -LiteralPath $target -Value $Text }
+        $check = {
+            param([string]$Label, $Actual, [string]$ExpectedMode, [string[]]$ExpectedRun)
+            if ($Actual.Mode -ne $ExpectedMode) { throw "$Label expected mode $ExpectedMode, got $($Actual.Mode) ($($Actual.Reason))" }
+            if (@($Actual.scripts).Count -ne $allNames.Count) { throw "$Label listed $(@($Actual.scripts).Count) scripts, expected $($allNames.Count)" }
+            $ran = @($Actual.scripts | Where-Object { $_.run } | ForEach-Object { $_.name } | Sort-Object)
+            $want = @($ExpectedRun | Sort-Object)
+            if (($ran -join ',') -ne ($want -join ',')) { throw "$Label ran [$($ran -join ', ')], expected [$($want -join ', ')]" }
+            $cases.Add([pscustomobject]@{case=$Label; mode=$Actual.Mode; reason="$($ran.Count) of $($allNames.Count) run: $($ran -join ', ')"})
+        }
+
+        & $reset
+        & $write 'Pointframe/change.txt'
+        & $commitAll 'product only'
+        & $check 'scripts: product-only change' (& $selection) 'skip' @('release-impact.ps1')
+        $productOnly = & $selection
+        $skippedCount = @($productOnly.scripts | Where-Object { -not $_.run }).Count
+        if ($skippedCount -ne 19) { throw "scripts: product-only change expected 19 skipped scripts, got $skippedCount" }
+
+        & $reset
+        & $write 'scripts/update-download-badges.ps1'
+        & $commitAll 'one script'
+        & $check 'scripts: one script changed' (& $selection) 'quick' (@('update-download-badges.ps1') + $quickAlways)
+
+        & $reset
+        & $write 'scripts/tests/alias-lag/b.json'
+        & $commitAll 'fixture folder'
+        & $check 'scripts: fixture folder changed' (& $selection) 'quick' (@('check-alias-lag.ps1') + $quickAlways)
+
+        & $reset
+        & $write 'scripts/release-model.ps1'
+        & $commitAll 'release model'
+        & $check 'scripts: release-model.ps1 changed' (& $selection) 'quick' ($modelDependents + $quickAlways)
+
+        & $reset
+        & $write 'scripts/agent-release.ps1'
+        & $commitAll 'agent release'
+        & $check 'scripts: agent-release.ps1 changed (transitive)' (& $selection) 'quick' ($agentReleaseDependents + $quickAlways)
+
+        & $reset
+        & $write 'scripts/newlib.ps1'
+        & $commitAll 'new library'
+        $newLib = & $selection
+        & $check 'scripts: unmapped new file' $newLib 'quick' $allNames
+        foreach ($entry in $newLib.scripts) { if ($entry.reason -notmatch 'unmapped scripts path: scripts/newlib\.ps1') { throw "unmapped new file: $($entry.name) reason does not name the path: $($entry.reason)" } }
+        if ($newLib.Reason -notmatch 'scripts/newlib\.ps1') { throw "unmapped new file: the selection reason does not name the path: $($newLib.Reason)" }
+
+        # Names git quotes by default (non-ASCII; Windows forbids the other quoted characters): committed and untracked.
+        & $reset
+        & $write "scripts/tests/alias-lag/$([char]0x0434)ata q.json"
+        & $commitAll 'quoted name in a fixture folder'
+        & $check 'scripts: quoted name in a mapped folder' (& $selection) 'quick' (@('check-alias-lag.ps1') + $quickAlways)
+
+        & $reset
+        & $write "scripts/$([char]0x043D)ew lib.ps1"
+        $quotedLib = & $selection
+        & $check 'scripts: quoted unmapped untracked file' $quotedLib 'quick' $allNames
+        if ($quotedLib.Reason -notmatch "scripts/$([char]0x043D)ew lib\.ps1") { throw "quoted unmapped file: the reason does not name the raw path: $($quotedLib.Reason)" }
+
+        & $reset
+        & $write 'scripts/sync-agent-guides.ps1'
+        & $commitAll 'script no self-test reads'
+        & $check 'scripts: script no self-test reads' (& $selection) 'quick' $quickAlways
+
+        & $reset
+        & $write 'scripts/release-impact.ps1'
+        & $commitAll "own file of the '*' script"
+        & $check "scripts: own file of the '*' script is not unmapped" (& $selection) 'quick' $quickAlways
+
+        & $reset
+        & $invokeGit @('mv','scripts/tests/alias-lag/a.json','scripts/tests/alias-lag/c.json')
+        & $commitAll 'rename inside a fixture folder'
+        & $check 'scripts: rename inside a mapped folder' (& $selection) 'quick' (@('check-alias-lag.ps1') + $quickAlways)
+
+        & $reset
+        & $invokeGit @('mv','scripts/tests/usage-report/x.json','Pointframe/x.json')
+        & $commitAll 'rename out of a fixture folder'
+        & $check 'scripts: rename out of a mapped folder' (& $selection) 'quick' (@('usage-report.ps1') + $quickAlways)
+
+        & $reset
+        Remove-Item -LiteralPath (Join-Path $fixture 'scripts/tests/latest-release/x.json')
+        & $commitAll 'delete a fixture'
+        & $check 'scripts: deleted mapped file' (& $selection) 'quick' (@('check-latest-release.ps1') + $quickAlways)
+
+        & $reset
+        & $write 'scripts/trials/apps.json'
+        & $check 'scripts: dirty mapped file' (& $selection) 'quick' (@('trial.ps1') + $quickAlways)
+
+        & $reset
+        & $write 'scripts/tests/publish-release/new.json'
+        & $check 'scripts: untracked mapped file' (& $selection) 'quick' (@('publish-release.ps1') + $quickAlways)
+
+        & $reset
+        & $write 'scripts/tests/weekly-trial/staged.json'
+        & $invokeGit @('add','-A')
+        & $check 'scripts: staged mapped file' (& $selection) 'quick' (@('weekly-trial.ps1') + $quickAlways)
+
+        & $reset
+        & $write 'scripts/agent-workflow/lib/x.ps1'
+        & $commitAll 'kit file'
+        & $check 'scripts: kit file, local run' (& $baseRefSelection '') 'quick' ($kitWrappers + $quickAlways)
+
+        & $reset
+        & $check 'scripts: unknown base runs everything' (& $selection 'not-a-real-sha') 'all' $allNames
+
+        # -ResultFile: run the real dispatch against stub scripts (real names, so the real map applies) outside the fixture repository.
+        & $reset
         [void](New-Item -ItemType Directory -Path $stubs)
         Set-Content -LiteralPath (Join-Path $stubs 'package.ps1') -Value 'Write-Output "stub package $args"; exit 0'
-        Set-Content -LiteralPath (Join-Path $stubs 'ok.ps1') -Value 'Write-Output "stub ok"; exit 0'
-        Set-Content -LiteralPath (Join-Path $stubs 'bad.ps1') -Value 'Write-Output "stub bad"; exit 3'
+        Set-Content -LiteralPath (Join-Path $stubs 'update-download-badges.ps1') -Value 'Write-Output "stub ok"; exit 0'
+        Set-Content -LiteralPath (Join-Path $stubs 'release-impact.ps1') -Value 'Write-Output "stub bad"; exit 3'
+        Set-Content -LiteralPath (Join-Path $stubs 'check-alias-lag.ps1') -Value 'Write-Output "stub ok"; exit 0'
+        Set-Content -LiteralPath (Join-Path $stubs 'unlisted.ps1') -Value 'Write-Output "stub unlisted"; exit 0'
         $runStubs = {
             param([string]$List, [string]$Out)
-            [void](& pwsh -NoProfile -NonInteractive -File $PSCommandPath -RepoRoot $fixture -BaseSha $base -ScriptsDir $stubs -Scripts $List -ResultFile $Out 2>&1)
-            return $LASTEXITCODE
+            $output = @(& pwsh -NoProfile -NonInteractive -File $PSCommandPath -RepoRoot $fixture -BaseSha $base -ScriptsDir $stubs -Scripts $List -ResultFile $Out 2>&1 | ForEach-Object { "$_" })
+            return [pscustomobject]@{ Exit=$LASTEXITCODE; Output=($output -join "`n") }
         }
-        Set-Content -LiteralPath (Join-Path $fixture 'Pointframe/result.txt') -Value 'product'
-        & $invokeGit @('add','.')
-        & $invokeGit @('commit','-qm','product change for result file')
+        & $write 'Pointframe/result.txt' 'product'
+        & $commitAll 'product change for result file'
         $skipOut = Join-Path $stubs 'out/skip.json'
-        $skipExit = & $runStubs 'package.ps1,ok.ps1,bad.ps1,missing.ps1' $skipOut
-        if ($skipExit -ne 1) { throw "result file run with a failing stub exited $skipExit, expected 1" }
+        $skipRun = & $runStubs 'package.ps1,update-download-badges.ps1,release-impact.ps1,usage-report.ps1,unlisted.ps1' $skipOut
+        if ($skipRun.Exit -ne 1) { throw "result file run with a failing stub exited $($skipRun.Exit), expected 1" }
         $skipJson = Get-Content -LiteralPath $skipOut -Raw | ConvertFrom-Json
-        if ($skipJson.mode -ne 'skip' -or @($skipJson.scripts).Count -ne 4) { throw "skip result file: mode $($skipJson.mode), $(@($skipJson.scripts).Count) entries" }
+        if ($skipJson.mode -ne 'skip' -or @($skipJson.scripts).Count -ne 5) { throw "skip result file: mode $($skipJson.mode), $(@($skipJson.scripts).Count) entries" }
         $byName = @{}; foreach ($s in $skipJson.scripts) { $byName[$s.name] = $s }
         if (-not $byName['package.ps1'].skipped -or $byName['package.ps1'].exitCode -ne 0) { throw 'skipped package.ps1 is not recorded as skipped' }
-        if ($byName['ok.ps1'].skipped -or $byName['ok.ps1'].exitCode -ne 0) { throw 'ok.ps1 is not recorded as a pass' }
-        if ($byName['bad.ps1'].exitCode -ne 3 -or $byName['missing.ps1'].exitCode -ne 1) { throw 'failing or missing scripts are not recorded with their exit codes' }
+        if (-not $byName['update-download-badges.ps1'].skipped -or $byName['update-download-badges.ps1'].exitCode -ne 0) { throw 'a script with no changed dependency is not recorded as skipped' }
+        if ($byName['release-impact.ps1'].skipped -or $byName['release-impact.ps1'].exitCode -ne 3) { throw "the '*' script did not run on a product-only change or lost its exit code" }
+        if ($byName['usage-report.ps1'].exitCode -ne 1 -or $byName['unlisted.ps1'].exitCode -ne 1 -or $byName['unlisted.ps1'].skipped) { throw 'a missing script or a script without a map entry is not recorded as a failure' }
+        if ($skipRun.Output -notmatch 'SKIP  update-download-badges\.ps1  no dependency changed \(1 path\(s\) changed\)') { throw "the dependency skip line is missing: $($skipRun.Output)" }
+        if ($skipRun.Output -notmatch 'FAIL  unlisted\.ps1 has no dependency map entry') { throw "the missing map entry is not reported: $($skipRun.Output)" }
+        if ($skipRun.Output -match 'stub unlisted') { throw 'a script without a map entry must not run' }
         if ($null -eq $skipJson.totalSeconds -or -not $skipJson.reason) { throw 'skip result file lacks totalSeconds or reason' }
-        $cases.Add([pscustomobject]@{case='result file, failing stub';mode=$skipJson.mode;reason="exit 1 kept, 4 entries, package skipped"})
-        Set-Content -LiteralPath (Join-Path $fixture 'scripts/result.ps1') -Value 'scripts'
-        & $invokeGit @('add','.')
-        & $invokeGit @('commit','-qm','scripts change for result file')
+        $cases.Add([pscustomobject]@{case='result file, failing stubs';mode=$skipJson.mode;reason='exit 1 kept, 5 entries, package and update-download-badges skipped, "*" script ran, unlisted script reported'})
+        Set-Content -LiteralPath (Join-Path $stubs 'release-impact.ps1') -Value 'Write-Output "stub ok"; exit 0'
+        & $write 'scripts/update-download-badges.ps1'
+        & $commitAll 'scripts change for result file'
         $quickOut = Join-Path $stubs 'out/quick.json'
-        $quickExit = & $runStubs 'package.ps1,ok.ps1' $quickOut
-        if ($quickExit -ne 0) { throw "result file run with passing stubs exited $quickExit, expected 0" }
+        $quickRun = & $runStubs 'package.ps1,update-download-badges.ps1,check-alias-lag.ps1,release-impact.ps1' $quickOut
+        if ($quickRun.Exit -ne 0) { throw "result file run with passing stubs exited $($quickRun.Exit), expected 0: $($quickRun.Output)" }
         $quickJson = Get-Content -LiteralPath $quickOut -Raw | ConvertFrom-Json
-        $quickPackage = @($quickJson.scripts | Where-Object { $_.name -eq 'package.ps1' })[0]
+        $quickByName = @{}; foreach ($s in $quickJson.scripts) { $quickByName[$s.name] = $s }
+        $quickPackage = $quickByName['package.ps1']
         if ($quickJson.mode -ne 'quick' -or $quickPackage.skipped -or @($quickPackage.args) -notcontains '-Quick') { throw 'quick result file does not record package.ps1 -SelfTest -Quick' }
-        $cases.Add([pscustomobject]@{case='result file, passing stubs';mode=$quickJson.mode;reason="exit 0 kept, package.ps1 $(@($quickPackage.args) -join ' ')"})
+        if ($quickByName['update-download-badges.ps1'].skipped -or -not $quickByName['check-alias-lag.ps1'].skipped -or $quickByName['release-impact.ps1'].skipped) { throw 'quick result file does not run the changed script and skip the unrelated one' }
+        $cases.Add([pscustomobject]@{case='result file, passing stubs';mode=$quickJson.mode;reason="exit 0 kept, package.ps1 $(@($quickPackage.args) -join ' '), changed script ran, unrelated script skipped"})
         $cases | ForEach-Object { Write-Host ("PASS  selection {0}: {1} ({2})" -f $_.case,$_.mode,$_.reason) }
     }
     finally
@@ -269,6 +503,8 @@ if ($SelfTest)
     exit 0
 }
 $decision = if ($All) { @{ Mode='all'; Base=''; Reason='-All specified'; Changed=$true; Paths=@() } } else { try { Get-ScriptsChange } catch { @{ Mode='all'; Base=''; Reason="selection error: $($_.Exception.Message)"; Changed=$true; Paths=@() } } }
+$scriptSelection = @(Get-ScriptSelection $decision $SelfTestScripts)
+$decision['scripts'] = $scriptSelection
 # Printed before -SelectionOnly exits, so the self-test exercises this for every decision shape.
 Write-Host "Selection: $($decision.Mode); base=$($decision.Base); reason=$($decision.Reason)"
 if ($decision.ContainsKey('Match') -and $decision['Match']) { Write-Host "Full-run path matched: $($decision['Match'])" }
@@ -289,6 +525,12 @@ foreach ($path in $ignored)
 
 foreach ($name in $SelfTestScripts)
 {
+    if (-not $SelfTestDependencies.Contains($name))
+    {
+        $failures.Add("$name has no dependency map entry")
+        $records.Add(@{ name=$name; args=@(); seconds=0; exitCode=1; skipped=$false })
+        continue
+    }
     $path = Join-Path $scriptsDirPath $name
     if (-not (Test-Path -LiteralPath $path))
     {
@@ -301,6 +543,15 @@ foreach ($name in $SelfTestScripts)
     if ($skipHeavy -and $HeavyScripts -contains $name)
     {
         Write-Host "SKIP  $name  no change under scripts/ since $($decision.Base) (run with -All to force) (0.000s)"
+        $skipped++
+        $records.Add(@{ name=$name; args=@(); seconds=0; exitCode=0; skipped=$true })
+        continue
+    }
+
+    $selected = @($scriptSelection | Where-Object { $_.name -eq $name })[0]
+    if (-not $selected.run)
+    {
+        Write-Host ("SKIP  {0}  no dependency changed ({1} path(s) changed)" -f $name, @($decision.Paths).Count)
         $skipped++
         $records.Add(@{ name=$name; args=@(); seconds=0; exitCode=0; skipped=$true })
         continue
@@ -323,7 +574,7 @@ foreach ($name in $SelfTestScripts)
     $ran++
 }
 
-$skippedText = if ($skipped -gt 0) { "$skipped skipped (no scripts/ change)" } else { '0 skipped' }
+$skippedText = if ($skipped -gt 0) { "$skipped skipped (no dependency changed)" } else { '0 skipped' }
 $totalWatch.Stop()
 if ($ResultFile)
 {
