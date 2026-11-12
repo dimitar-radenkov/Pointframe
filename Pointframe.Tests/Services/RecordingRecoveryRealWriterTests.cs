@@ -103,12 +103,12 @@ public sealed class RecordingRecoveryRealWriterTests : IDisposable
         }
 
         var output = _folder.File("mic-killed.mp4");
-        var capture = new CountingFrameCapture();
-        var (service, writers) = CreateService(RealRecordingPrerequisites.Device, capture);
+        var (service, writers) = CreateService(RealRecordingPrerequisites.Device, new CountingFrameCapture());
         service.Start(0, 0, 64, 64, output);
 
-        Thread.Sleep(TimeSpan.FromSeconds(4));
-        var capturedAtKill = capture.Count;
+        var encodedSeconds = WaitForEncodedSeconds(writers.Single(), minimumSeconds: 3, timeout: TimeSpan.FromSeconds(20));
+        Assert.True(encodedSeconds >= 3, $"ffmpeg encoded only {encodedSeconds:0.00} s within the timeout although the microphone prerequisite passed.");
+        _output.WriteLine($"Encoded length at kill: {encodedSeconds:0.00} s");
         KillFfmpeg(writers.Single());
         Thread.Sleep(TimeSpan.FromSeconds(1));
         service.Stop();
@@ -117,7 +117,7 @@ public sealed class RecordingRecoveryRealWriterTests : IDisposable
         Assert.Equal(output, service.LastStopResult.ArtifactPath);
         var failure = Assert.Single(_failures);
         Assert.Equal("true", failure[TelemetryPropertyKeys.Recovered]);
-        var expectedSeconds = capturedAtKill / (double)Fps;
+        var expectedSeconds = encodedSeconds;
         Assert.InRange(service.LastStopResult.Duration.TotalSeconds, expectedSeconds - 1.5, expectedSeconds + 1.5);
         Assert.False(File.Exists(RecordingRecovery.GetIntermediatePath(output)));
         var info = RecordingRecoveryIntegrationTests.Ffmpeg("-hide_banner", "-i", output).Stderr;
@@ -219,6 +219,29 @@ public sealed class RecordingRecoveryRealWriterTests : IDisposable
             telemetry.Object,
             new RecordingRecovery(new FfmpegRecordingRemuxer(NullLogger<FfmpegRecordingRemuxer>.Instance), NullLogger<RecordingRecovery>.Instance));
         return (service, writers);
+    }
+
+    private static double WaitForEncodedSeconds(FFMpegVideoWriter writer, double minimumSeconds, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        var encoded = 0d;
+        while (DateTime.UtcNow < deadline)
+        {
+            var matches = Regex.Matches(writer.RecentStandardError, @"frame=\s*\d+.*?time=(\d+):(\d+):(\d+(?:\.\d+)?)");
+            if (matches.Count > 0)
+            {
+                var last = matches[^1];
+                encoded = (int.Parse(last.Groups[1].Value) * 3600) + (int.Parse(last.Groups[2].Value) * 60) + double.Parse(last.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture);
+                if (encoded >= minimumSeconds)
+                {
+                    return encoded;
+                }
+            }
+
+            Thread.Sleep(100);
+        }
+
+        return encoded;
     }
 
     private static void KillFfmpeg(FFMpegVideoWriter writer)
