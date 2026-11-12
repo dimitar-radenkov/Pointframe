@@ -122,7 +122,15 @@ public sealed class RawFrameRecordingPipeline : IDisposable
             throw failure;
         }
 
-        PadToElapsedDuration(targetElapsed);
+        try
+        {
+            PadToElapsedDuration(targetElapsed);
+        }
+        catch (Exception exception)
+        {
+            throw new RawFrameRecordingWorkerException("encode", "pipe_broken", exception);
+        }
+
         return GetStatistics();
     }
 

@@ -5,7 +5,7 @@ using System.Globalization;
 
 namespace Pointframe.Services;
 
-public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnostics
+public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnostics, IRecoverableVideoWriter
 {
     private static readonly ConcurrentDictionary<string, bool> DrawtextSupportCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, bool> InputThreadQueueSizeSupportCache = new(StringComparer.OrdinalIgnoreCase);
@@ -18,6 +18,8 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
     private readonly ConcurrentQueue<string> _recentStandardError = new();
     public int? FfmpegExitCode { get; private set; }
     public string RecentStandardError => string.Join(Environment.NewLine, _recentStandardError);
+    public string? FailureReason { get; private set; }
+    public string IntermediatePath { get; }
 
     public FFMpegVideoWriter(
         int width,
@@ -30,6 +32,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         DateTimeOffset? watermarkTimestamp = null)
     {
         _logger = logger;
+        IntermediatePath = RecordingRecovery.GetIntermediatePath(outputPath);
 
         var ffmpegPath = FfmpegResolver.ResolveRequired("Screen recording");
         var drawtextFilter = TryBuildDrawtextFilter(ffmpegPath, videoWatermark, watermarkTimestamp ?? DateTimeOffset.Now, logger);
@@ -44,7 +47,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
             RedirectStandardInput = true,
             RedirectStandardError = true,
         };
-        BuildArguments(psi.ArgumentList, width, height, fps, outputPath, microphoneDeviceName, drawtextFilter, microphoneThreadQueueSize);
+        BuildArguments(psi.ArgumentList, width, height, fps, IntermediatePath, microphoneDeviceName, drawtextFilter, microphoneThreadQueueSize);
 
         _ffmpeg = new Process { StartInfo = psi };
 
@@ -136,6 +139,12 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         // Keyframe every second so stream-copy trims can cut close to the requested point.
         args.Add("-g");
         args.Add($"{fps}");
+        // Fragmented so a killed ffmpeg still leaves a playable file; RecordingRecovery remuxes it to a faststart MP4.
+        args.Add("-movflags");
+        args.Add("+frag_keyframe+empty_moov+default_base_moof");
+        // Without this, ffmpeg keeps finished fragments in its 32 KB output buffer, so a killed process can lose seconds of a quiet screen.
+        args.Add("-flush_packets");
+        args.Add("1");
 
         if (hasMicrophone)
         {
@@ -399,6 +408,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         }
         catch (Exception exception)
         {
+            FailureReason = "pipe_broken";
             closeFailure = exception;
         }
 
@@ -406,6 +416,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         {
             if (!_ffmpeg.WaitForExit(TimeSpan.FromSeconds(10)))
             {
+                FailureReason = "timeout";
                 _logger.LogWarning("ffmpeg did not exit within 10 s — killing");
                 _ffmpeg.Kill(entireProcessTree: true);
                 _ffmpeg.WaitForExit();
@@ -434,6 +445,7 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
 
         if (FfmpegExitCode != 0)
         {
+            FailureReason ??= "ffmpeg_exited";
             throw new InvalidOperationException($"ffmpeg exited with code {FfmpegExitCode} while finalizing the recording.");
         }
     }

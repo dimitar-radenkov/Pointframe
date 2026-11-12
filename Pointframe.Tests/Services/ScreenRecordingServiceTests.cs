@@ -360,6 +360,7 @@ public sealed class ScreenRecordingServiceTests
     public void Stop_WhenCaptureWorkerFails_ContainsFailureAndEmitsRecordingFailedOnce()
     {
         var writer = new Mock<IVideoWriter>();
+        writer.Setup(item => item.Dispose()).Throws(new IOException("finalize also failed"));
         var factory = new Mock<IVideoWriterFactory>();
         factory.Setup(item => item.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>())).Returns(writer.Object);
         var microphone = new Mock<IMicrophoneDeviceService>();

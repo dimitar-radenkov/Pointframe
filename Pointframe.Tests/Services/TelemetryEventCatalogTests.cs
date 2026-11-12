@@ -170,6 +170,61 @@ public sealed class TelemetryEventCatalogTests
         Assert.Equal(TelemetryChannel.Diagnostic, exception.Channel);
         Assert.Equal(TelemetryChannel.Diagnostic, recordingFailed.Channel);
         Assert.Equal([TelemetryPropertyKeys.Phase, TelemetryPropertyKeys.Reason, TelemetryPropertyKeys.InnerTypes], recordingFailed.RequiredProperties);
+        Assert.Equal([TelemetryPropertyKeys.FfmpegExitCode, TelemetryPropertyKeys.Recovered, TelemetryPropertyKeys.RecoveredDurationBucket], recordingFailed.OptionalProperties);
+    }
+
+    [Theory]
+    [InlineData("<10s")]
+    [InlineData("10-60s")]
+    [InlineData("1-5m")]
+    [InlineData("5-30m")]
+    [InlineData(">30m")]
+    public void RecordingFailed_AcceptsEveryRecoveredDurationBucket(string bucket)
+    {
+        var properties = new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Phase] = "encode",
+            [TelemetryPropertyKeys.Reason] = "pipe_broken",
+            [TelemetryPropertyKeys.InnerTypes] = "IOException",
+            [TelemetryPropertyKeys.Recovered] = "false",
+            [TelemetryPropertyKeys.RecoveredDurationBucket] = bucket,
+        };
+
+        Assert.True(TelemetryEventCatalog.Validate(TelemetryEvents.RecordingFailed, properties).IsValid);
+    }
+
+    [Fact]
+    public void RecordingFailed_RejectsPropertiesOutsideTheRecoveryContract()
+    {
+        var properties = new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Phase] = "finalize",
+            [TelemetryPropertyKeys.Reason] = "timeout",
+            [TelemetryPropertyKeys.InnerTypes] = "TimeoutException",
+            ["recovered_path"] = @"C:\Videos\a.mp4",
+        };
+
+        Assert.False(TelemetryEventCatalog.Validate(TelemetryEvents.RecordingFailed, properties).IsValid);
+    }
+
+    [Fact]
+    public void RecordingFailed_AllowsOnlyRecoveryBucketsAndBooleanValues()
+    {
+        var properties = new Dictionary<string, string>
+        {
+            [TelemetryPropertyKeys.Phase] = "finalize",
+            [TelemetryPropertyKeys.Reason] = "timeout",
+            [TelemetryPropertyKeys.InnerTypes] = "TimeoutException",
+            [TelemetryPropertyKeys.Recovered] = "true",
+            [TelemetryPropertyKeys.RecoveredDurationBucket] = "10-60s",
+        };
+
+        Assert.True(TelemetryEventCatalog.Validate(TelemetryEvents.RecordingFailed, properties).IsValid);
+        properties[TelemetryPropertyKeys.RecoveredDurationBucket] = "60-120s";
+        Assert.False(TelemetryEventCatalog.Validate(TelemetryEvents.RecordingFailed, properties).IsValid);
+        properties[TelemetryPropertyKeys.RecoveredDurationBucket] = "10-60s";
+        properties[TelemetryPropertyKeys.Recovered] = "yes";
+        Assert.False(TelemetryEventCatalog.Validate(TelemetryEvents.RecordingFailed, properties).IsValid);
     }
 
     [Fact]

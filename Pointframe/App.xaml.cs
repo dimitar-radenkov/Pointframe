@@ -94,6 +94,10 @@ public partial class App : Application
         _logger = _host.Services.GetRequiredService<ILogger<App>>();
         _messageBox = _host.Services.GetRequiredService<IMessageBoxService>();
         _userSettings = _host.Services.GetRequiredService<IUserSettingsService>();
+        var recordingRecovery = _host.Services.GetRequiredService<RecordingRecovery>();
+        var recordingsFolder = _userSettings.Current.RecordingOutputPath;
+        var sessionStartedUtc = DateTime.UtcNow;
+        _ = Task.Run(() => recordingRecovery.RecoverLeftovers(recordingsFolder, sessionStartedUtc));
         _updateState = _host.Services.GetRequiredService<IUpdateStateService>();
         _autoUpdateService = _host.Services.GetRequiredService<IAutoUpdateService>();
         _themeService = _host.Services.GetRequiredService<IThemeService>();

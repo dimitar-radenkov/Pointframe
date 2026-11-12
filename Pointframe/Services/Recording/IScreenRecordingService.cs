@@ -2,6 +2,15 @@ using System.Windows;
 
 namespace Pointframe.Services;
 
+public enum RecordingStopStatus
+{
+    Complete,
+    Partial,
+    Failed,
+}
+
+public readonly record struct RecordingStopResult(RecordingStopStatus Status, string? ArtifactPath, TimeSpan Duration);
+
 public interface IScreenRecordingService : IDisposable
 {
     bool IsRecording { get; }
@@ -12,6 +21,7 @@ public interface IScreenRecordingService : IDisposable
     RecordingEventTrackSummary? EventTrackSummary { get; }
     bool LastStopFailed { get; }
     string? LastStopError { get; }
+    RecordingStopResult LastStopResult { get; }
     void Start(
         int x,
         int y,

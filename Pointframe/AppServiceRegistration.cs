@@ -65,6 +65,8 @@ internal static class AppServiceRegistration
         services.AddTransient<IScrollInputService, ScrollInputService>();
         services.AddTransient<IScrollingCaptureService, ScrollingCaptureService>();
         services.AddTransient<IVideoWriterFactory, VideoWriterFactory>();
+        services.AddSingleton<IRecordingRemuxer, FfmpegRecordingRemuxer>();
+        services.AddSingleton<RecordingRecovery>();
         services.AddTransient<IScreenRecordingService, ScreenRecordingService>();
         services.AddSingleton<IGifExportService, GifExportService>();
         services.AddSingleton<IVideoTrimService, VideoTrimService>();

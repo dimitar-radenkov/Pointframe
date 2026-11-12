@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Windows;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pointframe.Engine;
 
 namespace Pointframe.Services;
@@ -12,6 +13,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private readonly IVideoWriterFactory _writerFactory;
     private readonly IRawFrameCapture? _frameCapture;
     private readonly ITelemetryService _telemetry;
+    private readonly RecordingRecovery _recovery;
     private IVideoWriter? _writer;
     private RawFrameRecordingPipeline? _pipeline;
     private int _fps;
@@ -19,6 +21,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private Stopwatch? _sessionStopwatch;
     private IRecordingEventTrack? _eventTrack;
     private IRecordingRedactionSession? _redactionSession;
+    private string? _outputPath;
+    private string? _intermediatePath;
 
     public bool IsRecording { get; private set; }
     public bool IsPaused { get; private set; }
@@ -28,10 +32,14 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     public RecordingEventTrackSummary? EventTrackSummary { get; private set; }
     public bool LastStopFailed { get; private set; }
     public string? LastStopError { get; private set; }
+    public RecordingStopResult LastStopResult { get; private set; } = new(RecordingStopStatus.Failed, null, TimeSpan.Zero);
 
-    public ScreenRecordingService(ILogger<ScreenRecordingService> logger, IMicrophoneDeviceService microphoneDeviceService, IUserSettingsService settings, IVideoWriterFactory writerFactory, IRawFrameCapture? frameCapture = null, ITelemetryService? telemetry = null)
+    public ScreenRecordingService(ILogger<ScreenRecordingService> logger, IMicrophoneDeviceService microphoneDeviceService, IUserSettingsService settings, IVideoWriterFactory writerFactory, IRawFrameCapture? frameCapture = null, ITelemetryService? telemetry = null, RecordingRecovery? recovery = null)
     {
         _logger = logger;
+        _recovery = recovery ?? new RecordingRecovery(
+            new FfmpegRecordingRemuxer(NullLogger<FfmpegRecordingRemuxer>.Instance),
+            NullLogger<RecordingRecovery>.Instance);
         _microphoneDeviceService = microphoneDeviceService;
         _settings = settings;
         _writerFactory = writerFactory;
@@ -60,12 +68,16 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _fps = fps;
         LastStopFailed = false;
         LastStopError = null;
+        LastStopResult = new RecordingStopResult(RecordingStopStatus.Failed, null, TimeSpan.Zero);
+        _intermediatePath = null;
         _sessionStopwatch = Stopwatch.StartNew();
+        _outputPath = outputPath;
         EventTrackSummary = null;
         try
         {
             var microphoneDeviceName = ResolveMicrophoneDeviceName();
             _writer = _writerFactory.Create(width, height, fps, outputPath, microphoneDeviceName);
+            _intermediatePath = (_writer as IRecoverableVideoWriter)?.IntermediatePath;
             _microphoneSession = new RecordingMicrophoneSession(_microphoneDeviceService, _logger, microphoneDeviceName);
             IsRecordingMicrophoneEnabled = _microphoneSession.IsEnabled;
             CanToggleMicrophone = _microphoneSession.CanToggleMute;
@@ -90,6 +102,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _pipeline = null;
             _writer?.Dispose();
             _writer = null;
+            _outputPath = null;
+            _intermediatePath = null;
             _microphoneSession = null;
             CompleteEventTrack();
             ReleaseSessionReferences();
@@ -109,6 +123,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         IsRecording = false;
         LastStopFailed = false;
         LastStopError = null;
+        LastStopResult = new RecordingStopResult(RecordingStopStatus.Failed, null, TimeSpan.Zero);
         var elapsed = _sessionStopwatch?.Elapsed ?? TimeSpan.Zero;
         RawFrameRecordingStatistics? statistics = null;
         Exception? failure = null;
@@ -151,7 +166,6 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             catch (Exception exception)
             {
                 failure ??= exception;
-                phase = "finalize";
             }
             finally
             {
@@ -171,20 +185,68 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             }
         }
 
-        if (failure is not null)
-        {
-            ReportFailure(failure, phase, failureDiagnostics);
-        }
+        FinishStop(failure, phase, failureDiagnostics, elapsed);
     }
 
-    private void ReportFailure(Exception exception, string phase, IRecordingFailureDiagnostics? diagnostics)
+    private void FinishStop(Exception? failure, string phase, IRecordingFailureDiagnostics? diagnostics, TimeSpan elapsed)
     {
-        LastStopFailed = true;
-        var ffmpegUnavailableOrExited = diagnostics?.FfmpegExitCode is not null
-            || GetInnerExceptions(exception).Any(inner => inner is FileNotFoundException);
-        LastStopError = ffmpegUnavailableOrExited
-            ? "Recording failed and was not saved. Check that ffmpeg is installed and working."
-            : "Recording failed and was not saved.";
+        var outputPath = _outputPath;
+        var intermediatePath = _intermediatePath;
+        _outputPath = null;
+        _intermediatePath = null;
+        if (outputPath is null || intermediatePath is null)
+        {
+            if (failure is null)
+            {
+                LastStopResult = new RecordingStopResult(RecordingStopStatus.Complete, outputPath, elapsed);
+            }
+            else
+            {
+                ReportFailure(failure, phase, diagnostics, null);
+            }
+
+            return;
+        }
+
+        var recovered = _recovery.Recover(intermediatePath, outputPath);
+        if (recovered is null)
+        {
+            ReportFailure(failure ?? new RecordingStopException("no_data", "The recording contained no complete video fragment."), failure is null ? "finalize" : phase, diagnostics, null);
+            return;
+        }
+
+        if (failure is null && recovered.Remuxed)
+        {
+            LastStopResult = new RecordingStopResult(RecordingStopStatus.Complete, recovered.FilePath, recovered.Duration);
+            return;
+        }
+
+        ReportFailure(
+            failure ?? new RecordingStopException("remux_failed", "The finished recording could not be remuxed to its final MP4."),
+            failure is null ? "finalize" : phase,
+            diagnostics,
+            recovered);
+    }
+
+    private void ReportFailure(Exception exception, string phase, IRecordingFailureDiagnostics? diagnostics, RecoveredRecording? recovered = null)
+    {
+        if (recovered is null)
+        {
+            var ffmpegUnavailableOrExited = diagnostics?.FfmpegExitCode is not null
+                || GetInnerExceptions(exception).Any(inner => inner is FileNotFoundException);
+            LastStopFailed = true;
+            LastStopError = ffmpegUnavailableOrExited
+                ? "Recording failed and was not saved. Check that ffmpeg is installed and working."
+                : "Recording failed and was not saved.";
+            LastStopResult = new RecordingStopResult(RecordingStopStatus.Failed, null, TimeSpan.Zero);
+        }
+        else
+        {
+            LastStopFailed = false;
+            LastStopError = null;
+            LastStopResult = new RecordingStopResult(RecordingStopStatus.Partial, recovered.FilePath, recovered.Duration);
+        }
+
         var innerTypes = GetInnerExceptions(exception)
             .Select(inner => inner.GetType().Name)
             .Distinct(StringComparer.Ordinal)
@@ -192,11 +254,20 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         var properties = new Dictionary<string, string>
         {
             [TelemetryPropertyKeys.Phase] = phase,
-            [TelemetryPropertyKeys.Reason] = exception is RawFrameRecordingWorkerException worker
-                ? worker.Reason
-                : diagnostics?.FfmpegExitCode is not null ? "ffmpeg_exited" : exception is TimeoutException ? "timeout" : "unknown",
+            [TelemetryPropertyKeys.Reason] = exception switch
+            {
+                RawFrameRecordingWorkerException worker => worker.Reason,
+                RecordingStopException stop => stop.Reason,
+                _ => diagnostics?.FailureReason ?? (diagnostics?.FfmpegExitCode is not null ? "ffmpeg_exited" : exception is TimeoutException ? "timeout" : "unknown"),
+            },
             [TelemetryPropertyKeys.InnerTypes] = string.Join(",", innerTypes),
+            [TelemetryPropertyKeys.Recovered] = recovered is null ? "false" : "true",
         };
+        if (recovered is { Duration.Ticks: > 0 })
+        {
+            properties[TelemetryPropertyKeys.RecoveredDurationBucket] = GetDurationBucket(recovered.Duration);
+        }
+
         _logger.LogError(exception, "Recording failed during {Phase}; ffmpeg stderr tail: {FfmpegStderr}", phase, diagnostics?.RecentStandardError);
         if (diagnostics?.FfmpegExitCode is int exitCode)
         {
@@ -211,6 +282,18 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         {
             _logger.LogWarning(telemetryException, "Could not emit recording_failed telemetry");
         }
+    }
+
+    private static string GetDurationBucket(TimeSpan duration)
+    {
+        return duration.TotalSeconds switch
+        {
+            < 10 => "<10s",
+            < 60 => "10-60s",
+            < 300 => "1-5m",
+            < 1800 => "5-30m",
+            _ => ">30m",
+        };
     }
 
     private static IEnumerable<Exception> GetInnerExceptions(Exception exception)
@@ -385,6 +468,11 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         var outputDuration = TimeSpan.FromSeconds((double)statistics.WrittenFrameCount / _fps);
         var droppedDuration = TimeSpan.FromSeconds((double)statistics.DroppedFrameCount / _fps);
         _logger.LogInformation("Recording session stats: elapsed={ElapsedMs} ms, attemptedFrames={AttemptedFrames}, writtenFrames={WrittenFrames}, droppedFrames={DroppedFrames}, firstWriteDelayMs={FirstWriteDelayMs}, outputDuration={OutputDuration:c}, droppedDuration={DroppedDuration:c}", (long)elapsed.TotalMilliseconds, statistics.AttemptedFrameCount, statistics.WrittenFrameCount, statistics.DroppedFrameCount, statistics.FirstFrameWriteDelay?.TotalMilliseconds ?? -1, outputDuration, droppedDuration);
+    }
+
+    private sealed class RecordingStopException(string reason, string message) : Exception(message)
+    {
+        public string Reason { get; } = reason;
     }
 
     private sealed class VideoWriterRawFrameWriter(IVideoWriter writer) : IRawFrameWriter

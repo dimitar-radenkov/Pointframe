@@ -95,6 +95,67 @@ public sealed class FFMpegVideoWriterTests
 
         Assert.Contains("code 1", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(1, writer.FfmpegExitCode);
+        Assert.Equal("ffmpeg_exited", writer.FailureReason);
+    }
+
+    [Fact]
+    public void Dispose_WhenStdinCannotBeClosed_ReportsPipeBroken()
+    {
+        var writer = CreateDetachedWriter(exitCode: 0, out _);
+        SetField(writer, "_stdin", new ThrowingOnCloseStream());
+
+        var exception = Assert.Throws<IOException>(writer.Dispose);
+
+        Assert.Equal("pipe_broken", writer.FailureReason);
+        Assert.IsType<InvalidOperationException>(exception.InnerException);
+    }
+
+    [Fact]
+    public void Dispose_AfterCleanExit_LeavesNoFailureReason()
+    {
+        var writer = CreateDetachedWriter(exitCode: 0, out _);
+
+        writer.Dispose();
+
+        Assert.Null(writer.FailureReason);
+        Assert.Equal(0, writer.FfmpegExitCode);
+    }
+
+    [Fact]
+    public void Constructor_WritesToAnIntermediateNextToTheOutput()
+    {
+        var fakeFfmpeg = Path.Combine(Path.GetTempPath(), $"ffmpeg-{Guid.NewGuid()}.exe");
+        File.Copy(Path.Combine(Environment.SystemDirectory, "cmd.exe"), fakeFfmpeg, overwrite: true);
+        using var overrideScope = UseFfmpegPathOverride(fakeFfmpeg);
+        var output = Path.Combine(Path.GetTempPath(), "SnipRec-20260101-000000.mp4");
+
+        try
+        {
+            using var writer = new FFMpegVideoWriter(2, 2, 30, output, NullLogger.Instance);
+            writer.Dispose();
+
+            Assert.Equal(Path.Combine(Path.GetTempPath(), ".SnipRec-20260101-000000.recording.mp4"), writer.IntermediatePath);
+            Assert.False(File.Exists(output));
+        }
+        finally
+        {
+            File.Delete(fakeFfmpeg);
+        }
+    }
+
+    private sealed class ThrowingOnCloseStream : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) { }
+        public override void Close() => throw new InvalidOperationException("broken pipe");
     }
 
     [Fact]
@@ -149,6 +210,21 @@ public sealed class FFMpegVideoWriterTests
         var gopIndex = args.IndexOf("-g");
         Assert.True(gopIndex >= 0);
         Assert.Equal("20", args[gopIndex + 1]);
+    }
+
+    [Fact]
+    public void BuildArguments_UsesFragmentedMp4ForCrashRecovery()
+    {
+        var args = new List<string>();
+        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", null);
+
+        var movFlagsIndex = args.IndexOf("-movflags");
+        Assert.True(movFlagsIndex >= 0);
+        Assert.Equal("+frag_keyframe+empty_moov+default_base_moof", args[movFlagsIndex + 1]);
+        var flushIndex = args.IndexOf("-flush_packets");
+        Assert.True(flushIndex > movFlagsIndex);
+        Assert.Equal("1", args[flushIndex + 1]);
+        Assert.Equal("capture.mp4", args[^1]);
     }
 
     [Fact]

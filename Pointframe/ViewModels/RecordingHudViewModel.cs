@@ -167,24 +167,35 @@ public partial class RecordingHudViewModel : ObservableObject
             stopFailed = true;
         }
 
-        if (stopFailed || _svc.LastStopFailed)
+        var result = _svc.LastStopResult;
+        if (stopFailed || _svc.LastStopFailed || result.Status == RecordingStopStatus.Failed)
         {
             ToastRequested?.Invoke(_svc.LastStopError ?? "Recording failed and was not saved.");
             return;
         }
 
-        _logger.LogInformation("Recording saved to {Path}", OutputPath);
+        var artifactPath = result.ArtifactPath ?? OutputPath;
+        var duration = result.Duration > TimeSpan.Zero ? result.Duration : GetElapsedDuration();
+        var elapsedText = duration.ToString(@"mm\:ss");
+        if (result.Status == RecordingStopStatus.Partial)
+        {
+            ToastRequested?.Invoke(result.Duration > TimeSpan.Zero
+                ? $"Recording stopped early. Saved the first {FormatSavedDuration(result.Duration)}."
+                : "Recording stopped early. Saved what was captured.");
+        }
+
+        _logger.LogInformation("Recording saved to {Path}", artifactPath);
         _telemetry.TrackEvent(TelemetryEvents.RecordingHudStopped, new Dictionary<string, string>
         {
-            [TelemetryPropertyKeys.DurationSeconds] = GetElapsedSeconds().ToString(),
+            [TelemetryPropertyKeys.DurationSeconds] = ((int)duration.TotalSeconds).ToString(),
         });
 
         CloseRequested?.Invoke();
         await _eventAggregator.Publish(new RecordingCompletedMessage(
-            OutputPath,
-            ElapsedText,
+            artifactPath,
+            elapsedText,
             hadMicrophoneAudio,
-            GetElapsedDuration(),
+            duration,
             _recordingSessionGeometry,
             _svc.EventTrackSummary)).ConfigureAwait(true);
     }
@@ -319,9 +330,11 @@ public partial class RecordingHudViewModel : ObservableObject
         _telemetry.TrackEvent(TelemetryEvents.RecordingHudClearAnnotations);
     }
 
-    private int GetElapsedSeconds()
+    private static string FormatSavedDuration(TimeSpan duration)
     {
-        return (int)GetElapsedDuration().TotalSeconds;
+        return duration.TotalHours >= 1
+            ? duration.ToString(@"h\:mm\:ss")
+            : duration.ToString(@"m\:ss");
     }
 
     private TimeSpan GetElapsedDuration()

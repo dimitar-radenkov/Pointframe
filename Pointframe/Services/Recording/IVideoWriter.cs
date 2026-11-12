@@ -9,4 +9,10 @@ public interface IRecordingFailureDiagnostics
 {
     int? FfmpegExitCode { get; }
     string RecentStandardError { get; }
+    string? FailureReason { get; }
+}
+
+public interface IRecoverableVideoWriter
+{
+    string IntermediatePath { get; }
 }
