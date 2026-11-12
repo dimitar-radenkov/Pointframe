@@ -198,11 +198,12 @@ if ($SelfTest)
     exit 0
 }
 $decision = if ($All) { @{ Mode='all'; Base=''; Reason='-All specified'; Changed=$true; Paths=@() } } else { try { Get-ScriptsChange } catch { @{ Mode='all'; Base=''; Reason="selection error: $($_.Exception.Message)"; Changed=$true; Paths=@() } } }
+# Printed before -SelectionOnly exits, so the self-test exercises this for every decision shape.
+Write-Host "Selection: $($decision.Mode); base=$($decision.Base); reason=$($decision.Reason)"
+if ($decision.ContainsKey('Match') -and $decision['Match']) { Write-Host "Full-run path matched: $($decision['Match'])" }
 if ($SelectionOnly) { [pscustomobject]$decision | ConvertTo-Json -Compress -Depth 5; exit 0 }
 $allRun = $decision.Mode -eq 'all'
 $skipHeavy = $decision.Mode -eq 'skip'
-Write-Host "Selection: $($decision.Mode); base=$($decision.Base); reason=$($decision.Reason)"
-if ($decision.Match) { Write-Host "Full-run path matched: $($decision.Match)" }
 $ran = 0
 $skipped = 0
 $records = [Collections.Generic.List[object]]::new()
