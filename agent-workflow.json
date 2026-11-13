@@ -267,7 +267,28 @@
       "gate": "discovery"
     },
     {
+      "id": "scripts-selftest",
+      "gate": "scripts",
+      "log": "scripts",
+      "continueOnFail": true,
+      "exe": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "scripts/test-scripts.ps1",
+        "-SelfTest"
+      ],
+      "cwd": ".",
+      "timeoutMinutes": 10,
+      "dependsOn": [],
+      "failSummary": "The script self-test selector failed its own self-test (CI step \"Script self-tests\" runs it first).",
+      "detailPattern": "\\S"
+    },
+    {
       "id": "scripts",
+      "log": "scripts",
+      "gate": "scripts",
       "exe": "pwsh",
       "args": [
         "-NoProfile",
@@ -277,7 +298,9 @@
       ],
       "cwd": ".",
       "timeoutMinutes": 30,
-      "dependsOn": [],
+      "dependsOn": [
+        "scripts-selftest"
+      ],
       "passSummary": "{lastLine}",
       "failSummary": "{count} script self-test problem(s).",
       "fixHint": "Fix the script or its fixtures, then run pwsh scripts/test-scripts.ps1.",

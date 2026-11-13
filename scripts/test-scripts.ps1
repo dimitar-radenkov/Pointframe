@@ -342,7 +342,7 @@ if ($SelfTest)
         $cases.Add([pscustomobject]@{case='empty SHA';mode=$empty.Mode;reason=$empty.Reason})
 
         # Per-script selection on the real dependency map. Only paths are compared, so the fixture needs no script bodies.
-        $allNames = @('merge-pr.ps1','record-review.ps1','codex-ask.ps1','status.ps1','agent-run.ps1','package.ps1','release-impact.ps1','publish-release.ps1','check-alias-lag.ps1','check-latest-release.ps1','agent-release.ps1','write-release-receipt.ps1','check-release-channels.ps1','check-released-desktop.ps1','usage-report.ps1','update-download-badges.ps1','measure-mcp-payloads.ps1','test-agent-onboarding.ps1','trial.ps1','weekly-trial.ps1')
+        $allNames = @('merge-pr.ps1','record-review.ps1','codex-ask.ps1','status.ps1','agent-run.ps1','package.ps1','release-impact.ps1','publish-release.ps1','check-alias-lag.ps1','check-latest-release.ps1','agent-release.ps1','write-release-receipt.ps1','check-release-channels.ps1','check-released-desktop.ps1','usage-report.ps1','update-download-badges.ps1','measure-mcp-payloads.ps1','test-agent-onboarding.ps1','trial.ps1','weekly-trial.ps1','run-integration-tests.ps1')
         $quickAlways = @('package.ps1','release-impact.ps1')
         $modelDependents = @('publish-release.ps1','check-alias-lag.ps1','check-latest-release.ps1','agent-release.ps1','write-release-receipt.ps1','check-release-channels.ps1','check-released-desktop.ps1','test-agent-onboarding.ps1','trial.ps1','weekly-trial.ps1')
         $agentReleaseDependents = @('agent-release.ps1','check-released-desktop.ps1','test-agent-onboarding.ps1','trial.ps1','weekly-trial.ps1')
@@ -366,7 +366,7 @@ if ($SelfTest)
         & $check 'scripts: product-only change' (& $selection) 'skip' @('release-impact.ps1')
         $productOnly = & $selection
         $skippedCount = @($productOnly.scripts | Where-Object { -not $_.run }).Count
-        if ($skippedCount -ne 19) { throw "scripts: product-only change expected 19 skipped scripts, got $skippedCount" }
+        if ($skippedCount -ne 20) { throw "scripts: product-only change expected 20 skipped scripts, got $skippedCount" }
 
         & $reset
         & $write 'scripts/update-download-badges.ps1'
