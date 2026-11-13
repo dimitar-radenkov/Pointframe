@@ -14,6 +14,7 @@ public sealed class AutomationApp : IDisposable
     private const string AutomationSettingsPathEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH";
     private const string AutomationDataDirectoryEnvironmentVariable = "SNIPPINGTOOL_AUTOMATION_DATA_DIRECTORY";
     private static readonly TimeSpan WindowTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan PropertyNotSupportedGrace = TimeSpan.FromSeconds(1);
     private readonly int _processId;
     private readonly UIA3Automation _automation;
     private Exception? _lastFindFailure;
@@ -141,24 +142,30 @@ public sealed class AutomationApp : IDisposable
     internal static bool ProcessHasWindowAutomationId(int processId, UIA3Automation automation, string automationId)
     {
         var stopwatch = Stopwatch.StartNew();
+        var tracker = new PropertyReadTracker();
         Exception? lastFailure = null;
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            var windows = GetProcessWindowsChecked(processId, automation, out var enumerationFailure);
+            var windows = GetProcessWindowHandles(processId, automation, out var enumerationFailure);
             var allKnown = enumerationFailure is null;
             lastFailure = enumerationFailure ?? lastFailure;
-            foreach (var window in windows)
+            foreach (var (handle, window) in windows)
             {
-                if (!TryReadAutomationId(window, out var value, out var failure))
+                switch (tracker.Evaluate(handle, window, ReadAutomationIdProperty, out var value, out var failure))
                 {
-                    allKnown = false;
-                    lastFailure = failure;
-                    continue;
-                }
+                    case ReadResolution.Value:
+                        if (string.Equals(value, automationId, StringComparison.Ordinal))
+                        {
+                            return true;
+                        }
 
-                if (string.Equals(value, automationId, StringComparison.Ordinal))
-                {
-                    return true;
+                        break;
+                    case ReadResolution.NoProperty:
+                        break;
+                    default:
+                        allKnown = false;
+                        lastFailure = failure ?? lastFailure;
+                        break;
                 }
             }
 
@@ -171,65 +178,100 @@ public sealed class AutomationApp : IDisposable
         }
 
         throw new TimeoutException(
-            $"Could not read every window AutomationId within the timeout while checking for '{automationId}'. Last UIA failure: {Describe(lastFailure)}",
+            $"Could not read every window AutomationId within the timeout while checking for '{automationId}'. Last UIA failure: {Describe(lastFailure)}{tracker.DescribeClassified()}",
             lastFailure);
     }
 
-    internal static bool TryReadName(AutomationElement element, out string? value, out Exception? failure)
-    {
-        try
-        {
-            value = element.Properties.Name.Value;
-            failure = null;
-            return true;
-        }
-        catch (Exception exception) when (IsTransientUiaFailure(exception))
-        {
-            value = null;
-            failure = exception;
-            return false;
-        }
-    }
+    private static string? ReadNameProperty(AutomationElement element) => element.Properties.Name.Value;
 
-    internal static bool TryReadAutomationId(AutomationElement element, out string? value, out Exception? failure)
-    {
-        try
-        {
-            value = element.Properties.AutomationId.Value;
-            failure = null;
-            return true;
-        }
-        catch (Exception exception) when (IsTransientUiaFailure(exception))
-        {
-            value = null;
-            failure = exception;
-            return false;
-        }
-    }
+    private static string? ReadAutomationIdProperty(AutomationElement element) => element.Properties.AutomationId.Value;
 
     private static string Describe(Exception? exception) =>
         exception is null ? "none" : $"{exception.GetType().Name}: {exception.Message}";
 
-    private static bool IsTransientUiaFailure(Exception exception) =>
-        exception is PropertyNotSupportedException or ElementNotAvailableException or COMException;
+    private enum ReadResolution
+    {
+        Value,
+        NoProperty,
+        Unknown,
+    }
+
+    private sealed class PropertyReadTracker
+    {
+        private readonly Dictionary<IntPtr, (Stopwatch Since, int Reads)> _notSupported = [];
+        private readonly Dictionary<IntPtr, string> _classified = [];
+
+        public ReadResolution Evaluate(
+            IntPtr handle,
+            AutomationElement element,
+            Func<AutomationElement, string?> read,
+            out string? value,
+            out Exception? failure)
+        {
+            value = null;
+            failure = null;
+            try
+            {
+                value = read(element);
+                _notSupported.Remove(handle);
+                return ReadResolution.Value;
+            }
+            catch (PropertyNotSupportedException exception)
+            {
+                failure = exception;
+                if (!_notSupported.TryGetValue(handle, out var entry))
+                {
+                    entry = (Stopwatch.StartNew(), 0);
+                }
+
+                entry.Reads++;
+                _notSupported[handle] = entry;
+                if (entry.Reads >= 2 && entry.Since.Elapsed >= PropertyNotSupportedGrace && IsWindow(handle))
+                {
+                    _classified[handle] = $"0x{handle.ToInt64():X} class '{GetWindowClassName(handle)}'";
+                    return ReadResolution.NoProperty;
+                }
+
+                return ReadResolution.Unknown;
+            }
+            catch (Exception exception) when (exception is ElementNotAvailableException or COMException)
+            {
+                _notSupported.Remove(handle);
+                failure = exception;
+                return ReadResolution.Unknown;
+            }
+        }
+
+        public string DescribeClassified() =>
+            _classified.Count == 0 ? string.Empty : $" Windows without the property: [{string.Join("; ", _classified.Values)}].";
+    }
+
+    private static string GetWindowClassName(IntPtr handle)
+    {
+        var buffer = new System.Text.StringBuilder(256);
+        return GetClassName(handle, buffer, buffer.Capacity) > 0 ? buffer.ToString() : "?";
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder className, int maxCount);
 
     public void WaitForWindowTitle(string title)
     {
         var stopwatch = Stopwatch.StartNew();
+        var tracker = new PropertyReadTracker();
         Exception? lastFailure = null;
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            var windows = GetProcessWindowsChecked(_processId, _automation, out var enumerationFailure);
+            var windows = GetProcessWindowHandles(_processId, _automation, out var enumerationFailure);
             lastFailure = enumerationFailure ?? lastFailure;
-            foreach (var window in windows)
+            foreach (var (handle, window) in windows)
             {
-                if (!TryReadName(window, out var name, out var failure))
+                var resolution = tracker.Evaluate(handle, window, ReadNameProperty, out var name, out var failure);
+                if (resolution == ReadResolution.Unknown)
                 {
-                    lastFailure = failure;
-                    continue;
+                    lastFailure = failure ?? lastFailure;
                 }
-
-                if (string.Equals(name, title, StringComparison.Ordinal))
+                else if (resolution == ReadResolution.Value && string.Equals(name, title, StringComparison.Ordinal))
                 {
                     MainWindow = window.AsWindow();
                     return;
@@ -239,32 +281,52 @@ public sealed class AutomationApp : IDisposable
             Thread.Sleep(100);
         }
 
-        var seen = string.Join(", ", GetProcessWindows(_processId, _automation)
-            .Select(window => TryReadName(window, out var name, out _) ? $"'{name}'" : "<unreadable>"));
+        var seen = string.Join(", ", GetProcessWindows(_processId, _automation).Select(window =>
+        {
+            try
+            {
+                return $"'{ReadNameProperty(window)}'";
+            }
+            catch (Exception exception) when (IsTransientUiaFailure(exception))
+            {
+                return "<unreadable>";
+            }
+        }));
         throw new TimeoutException(
-            $"Timed out waiting for window '{title}'. Process windows: [{seen}]. Last UIA failure: {Describe(lastFailure)}",
+            $"Timed out waiting for window '{title}'. Process windows: [{seen}]. Last UIA failure: {Describe(lastFailure)}{tracker.DescribeClassified()}",
             lastFailure);
     }
+
+    private static bool IsTransientUiaFailure(Exception exception) =>
+        exception is PropertyNotSupportedException or ElementNotAvailableException or COMException;
 
     public void WaitForWindowTitleToClose(string title)
     {
         var stopwatch = Stopwatch.StartNew();
+        var tracker = new PropertyReadTracker();
         Exception? lastFailure = null;
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            var windows = GetProcessWindowsChecked(_processId, _automation, out var enumerationFailure);
+            var windows = GetProcessWindowHandles(_processId, _automation, out var enumerationFailure);
             var possiblyOpen = enumerationFailure is not null;
             lastFailure = enumerationFailure ?? lastFailure;
-            foreach (var window in windows)
+            foreach (var (handle, window) in windows)
             {
-                if (!TryReadName(window, out var name, out var failure))
+                switch (tracker.Evaluate(handle, window, ReadNameProperty, out var name, out var failure))
                 {
-                    possiblyOpen = true;
-                    lastFailure = failure;
-                }
-                else if (string.Equals(name, title, StringComparison.Ordinal))
-                {
-                    possiblyOpen = true;
+                    case ReadResolution.Value:
+                        if (string.Equals(name, title, StringComparison.Ordinal))
+                        {
+                            possiblyOpen = true;
+                        }
+
+                        break;
+                    case ReadResolution.NoProperty:
+                        break;
+                    default:
+                        possiblyOpen = true;
+                        lastFailure = failure ?? lastFailure;
+                        break;
                 }
             }
 
@@ -277,7 +339,7 @@ public sealed class AutomationApp : IDisposable
         }
 
         throw new TimeoutException(
-            $"Window '{title}' did not close within the expected timeout. Last UIA failure: {Describe(lastFailure)}",
+            $"Window '{title}' did not close within the expected timeout. Last UIA failure: {Describe(lastFailure)}{tracker.DescribeClassified()}",
             lastFailure);
     }
 
@@ -492,17 +554,17 @@ public sealed class AutomationApp : IDisposable
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
     internal static AutomationElement[] GetProcessWindows(int processId, UIA3Automation automation) =>
-        GetProcessWindowsChecked(processId, automation, out _);
+        [.. GetProcessWindowHandles(processId, automation, out _).Select(entry => entry.Window)];
 
-    internal static AutomationElement[] GetProcessWindowsChecked(int processId, UIA3Automation automation, out Exception? incompleteFailure)
+    internal static List<(IntPtr Handle, AutomationElement Window)> GetProcessWindowHandles(int processId, UIA3Automation automation, out Exception? incompleteFailure)
     {
         incompleteFailure = null;
-        var windows = new List<AutomationElement>();
+        var windows = new List<(IntPtr, AutomationElement)>();
         foreach (var handle in GetTopLevelWindowHandles(processId))
         {
             try
             {
-                windows.Add(automation.FromHandle(handle));
+                windows.Add((handle, automation.FromHandle(handle)));
             }
             catch (Exception exception) when (exception is ElementNotAvailableException or COMException)
             {
@@ -513,7 +575,7 @@ public sealed class AutomationApp : IDisposable
             }
         }
 
-        return [.. windows];
+        return windows;
     }
 
     [DllImport("user32.dll")]
