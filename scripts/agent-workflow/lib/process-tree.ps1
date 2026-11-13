@@ -5,7 +5,12 @@ function Initialize-ProcessJob
     # ends children and grandchildren, closing the last handle (even when the owner crashes) ends them too, and the
     # active-process count says whether the tree is really gone. The executor is created suspended and assigned to the
     # job before its first instruction runs, so it cannot spawn a child outside the job.
-    if ('AwProcessJob' -as [type]) { return }
+    if ('AwProcessJob' -as [type])
+    {
+        # A type loaded earlier in this process cannot be replaced; a copy without KillIfCreated is stale.
+        if (-not ([AwProcessJob].GetMethod('KillIfCreated'))) { throw 'AwProcessJob was loaded from an older process-tree.ps1; start a new pwsh session.' }
+        return
+    }
     Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -46,6 +51,8 @@ public static class AwProcessJob
     [DllImport("kernel32.dll")] static extern uint ResumeThread(IntPtr thread);
     [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
     [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(uint access, bool inherit, int processId);
+    [DllImport("kernel32.dll")] static extern bool GetProcessTimes(IntPtr process, out long created, out long exited, out long kernel, out long user);
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     static extern bool CreateProcessW(string application, StringBuilder commandLine, IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles,
         uint flags, IntPtr environment, string directory, ref STARTUPINFO startup, out PROCESS_INFORMATION info);
@@ -144,6 +151,30 @@ public static class AwProcessJob
         return GetExitCodeProcess(process, out code) ? (long)(int)code : long.MinValue;
     }
     public static void CloseProcess(IntPtr process) { CloseHandle(process); }
+    // Identity check and termination on one handle, so a reused id can never be hit between the two. The expected creation
+    // time is a FILETIME in whole microseconds (a multiple of 10 ticks, CIM's precision); the process's own is truncated the
+    // same way and must be equal.
+    // 0 = gone (not running, or terminated and confirmed); 1 = unverified (access denied on a live process, a read failed):
+    // never killed; 2 = terminated but not yet gone within the wait (retry); 3 = a different process holds the id, so the
+    // target is gone: the holder is never touched.
+    public static int KillIfCreated(int processId, long expectedCreatedFileTime, long waitMilliseconds)
+    {
+        IntPtr h = OpenProcess(0x0001 | 0x1000 | 0x00100000, false, processId); // TERMINATE | QUERY_LIMITED_INFORMATION | SYNCHRONIZE
+        if (h == IntPtr.Zero) { return Marshal.GetLastWin32Error() == 87 ? 0 : 1; } // ERROR_INVALID_PARAMETER: no such process
+        try
+        {
+            long created, exited, kernel, user;
+            if (!GetProcessTimes(h, out created, out exited, out kernel, out user)) { return 1; }
+            if (created - (created % 10) != expectedCreatedFileTime) { return 3; }
+            if (WaitForSingleObject(h, 0) != 0)
+            {
+                if (!TerminateProcess(h, 1) && WaitForSingleObject(h, 0) != 0) { return 1; }
+            }
+            uint wait = waitMilliseconds >= uint.MaxValue ? 0xFFFFFFFEu : (uint)(waitMilliseconds < 0 ? 0 : waitMilliseconds);
+            return WaitForSingleObject(h, wait) == 0 ? 0 : 2;
+        }
+        finally { CloseHandle(h); }
+    }
     public static bool Resume(IntPtr thread)
     {
         bool ok = ResumeThread(thread) != 0xFFFFFFFFu;
@@ -221,45 +252,111 @@ function Test-ProcessIdentityAlive([int]$ProcessId, [string]$StartUtc)
     (Get-ProcessStartIdentity $ProcessId) -eq $StartUtc
 }
 
-function Get-ProcessTreeSnapshot([int]$RootPid)
+function Resolve-ProcessTreeEx($Processes, [int]$RootPid)
 {
-    # The root and every descendant alive now, each with its creation time so that a reused id is not mistaken for it.
-    $all = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate -ErrorAction Stop)
+    # Pure: the root and its descendants from a process list (Id, ParentId, Created). Windows never clears a recorded
+    # parent id when the parent exits, so an id reused by a newer process makes older, unrelated processes look like its
+    # children. A real child is never older than its parent, so an entry counts only when its Created is not earlier
+    # than its parent's, at every level. This narrows adoption; it cannot prove ancestry (an equal or newer time proves
+    # nothing). Incomplete is set when a process that names a target as its parent has no readable creation time (or the
+    # target has none): such a process can be neither adopted nor ignored safely.
+    $all = @($Processes)
     $byParent = @{}
-    foreach ($p in $all) { if (-not $byParent.ContainsKey([int]$p.ParentProcessId)) { $byParent[[int]$p.ParentProcessId] = @() }; $byParent[[int]$p.ParentProcessId] += @($p) }
-    $found = [Collections.Generic.List[object]]::new()
-    $queue = [Collections.Generic.Queue[int]]::new()
-    $root = $all | Where-Object { [int]$_.ProcessId -eq $RootPid } | Select-Object -First 1
-    if ($root) { $found.Add([pscustomobject]@{ Id = $RootPid; Created = $root.CreationDate }); $queue.Enqueue($RootPid) }
+    foreach ($p in $all) { $k = [int]$p.ParentId; if (-not $byParent.ContainsKey($k)) { $byParent[$k] = [Collections.Generic.List[object]]::new() }; $byParent[$k].Add($p) }
+    $targets = [Collections.Generic.List[object]]::new()
+    $seen = [Collections.Generic.HashSet[int]]::new()
+    $queue = [Collections.Generic.Queue[object]]::new()
+    $incomplete = $false
+    $root = $all | Where-Object { [int]$_.Id -eq $RootPid } | Select-Object -First 1
+    if ($root)
+    {
+        $entry = [pscustomobject]@{ Id = $RootPid; Created = $root.Created }
+        $targets.Add($entry); [void]$seen.Add($RootPid); $queue.Enqueue($entry)
+    }
     while ($queue.Count)
     {
         $parent = $queue.Dequeue()
-        foreach ($child in @($byParent[$parent])) { if ($child -and [int]$child.ProcessId -ne $parent) { $found.Add([pscustomobject]@{ Id = [int]$child.ProcessId; Created = $child.CreationDate }); $queue.Enqueue([int]$child.ProcessId) } }
+        if (-not $byParent.ContainsKey([int]$parent.Id)) { continue }
+        foreach ($child in $byParent[[int]$parent.Id])
+        {
+            $id = [int]$child.Id
+            if ($seen.Contains($id)) { continue }
+            if ($null -eq $parent.Created -or $null -eq $child.Created) { $incomplete = $true; continue }
+            if (([datetime]$child.Created).ToUniversalTime() -lt ([datetime]$parent.Created).ToUniversalTime()) { continue }
+            [void]$seen.Add($id)
+            $entry = [pscustomobject]@{ Id = $id; Created = $child.Created }
+            $targets.Add($entry); $queue.Enqueue($entry)
+        }
     }
-    @($found)
+    [pscustomobject]@{ Targets = @($targets); Incomplete = $incomplete }
 }
 
-function Test-SnapshotProcessAlive($Entry)
+function Resolve-ProcessTree($Processes, [int]$RootPid) { (Resolve-ProcessTreeEx $Processes $RootPid).Targets }
+
+function Get-ProcessListFromCim([int]$TimeoutSeconds = 0)
 {
-    $live = Get-Process -Id $Entry.Id -ErrorAction SilentlyContinue
-    if (-not $live) { return $false }
-    try { [Math]::Abs(($live.StartTime.ToUniversalTime() - ([datetime]$Entry.Created).ToUniversalTime()).TotalSeconds) -lt 2 } catch { $true }
+    $arguments = @{ Property = @('ProcessId', 'ParentProcessId', 'CreationDate'); ErrorAction = 'Stop' }
+    if ($TimeoutSeconds -gt 0) { $arguments.OperationTimeoutSec = $TimeoutSeconds }
+    @(Get-CimInstance Win32_Process @arguments |
+        ForEach-Object { [pscustomobject]@{ Id = [int]$_.ProcessId; ParentId = [int]$_.ParentProcessId; Created = $_.CreationDate } })
 }
 
-function Stop-ProcessTreeById([int]$ProcessId, [int]$WaitSeconds = 10)
+function Get-ProcessList([scriptblock]$ListSource = $null, [int]$Attempts = 3, [int]$DelayMilliseconds = 200, [int]$TimeoutSeconds = 0)
 {
-    # Fallback without a job object (a surviving executor found by recovery). True only when the root and every
-    # descendant recorded at kill time are gone (taskkill's own exit code is not trusted over that check). Descendants
-    # whose parent already died cannot be found this way.
-    try { $targets = @(Get-ProcessTreeSnapshot $ProcessId) } catch { return $false }
-    if ($targets.Count -eq 0) { return $true }
-    & taskkill.exe /PID $ProcessId /T /F 2>&1 | Out-Null
-    $deadline = [DateTime]::UtcNow.AddSeconds($WaitSeconds)
-    do
+    # A CIM query can fail transiently under load, so it is retried a bounded number of times before the error is thrown.
+    $source = if ($ListSource) { $ListSource } else { { Get-ProcessListFromCim $TimeoutSeconds } }
+    for ($attempt = 1; ; $attempt++)
     {
-        $alive = @($targets | Where-Object { Test-SnapshotProcessAlive $_ })
-        if ($alive.Count -eq 0) { return $true }
-        Start-Sleep -Milliseconds 100
-    } while ([DateTime]::UtcNow -lt $deadline)
-    $false
+        try { return @(& $source) }
+        catch
+        {
+            if ($attempt -ge $Attempts) { throw }
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+}
+
+function Get-ProcessTreeSnapshot([int]$RootPid, [scriptblock]$ListSource = $null, [int]$Attempts = 3, [int]$DelayMilliseconds = 200)
+{
+    # The root and every descendant alive now, each with its creation time so that a reused id is not mistaken for it.
+    Resolve-ProcessTree (Get-ProcessList $ListSource $Attempts $DelayMilliseconds) $RootPid
+}
+
+function Stop-ProcessIfSame($Entry, [long]$WaitMilliseconds)
+{
+    # Code as AwProcessJob.KillIfCreated: 0 gone, 1 unverified (never killed), 2 terminated but still alive, 3 the id now
+    # belongs to a different process (target gone, holder untouched). Identity is the creation time compared exactly at
+    # CIM's precision (whole microseconds, UTC); a conversion error is "unverified".
+    Initialize-ProcessJob
+    try { $expected = ([datetime]$Entry.Created).ToUniversalTime().ToFileTimeUtc() } catch { return 1 }
+    [AwProcessJob]::KillIfCreated([int]$Entry.Id, ($expected - ($expected % 10)), $WaitMilliseconds)
+}
+
+function Stop-ProcessTreeById([int]$ProcessId, [int]$WaitSeconds = 10, [scriptblock]$ListSource = $null)
+{
+    # Fallback without a job object (a surviving executor found by recovery). One snapshot of the root and its descendants,
+    # then each target is terminated through one handle that first confirms its identity (id plus creation time), no
+    # taskkill /T. Guarantees: (a) a process that is not a snapshot target is never terminated; (b) true only when every
+    # snapshot target is verified gone, or its id is verified to be held by a different process; any doubt (missing or
+    # unreadable creation time, access denied, failed or overrun enumeration, targets still pending at the deadline) gives false. Not a goal:
+    # descendants created after the snapshot, or whose parent died before it, are not found; only a job object contains them.
+    $deadline = [DateTime]::UtcNow.AddSeconds($WaitSeconds)
+    try { $tree = Resolve-ProcessTreeEx (Get-ProcessList $ListSource 3 200 ([Math]::Max(1, $WaitSeconds))) $ProcessId } catch { return $false }
+    if ([DateTime]::UtcNow -ge $deadline) { return $false }
+    if ($tree.Incomplete) { return $false }
+    $pending = [Collections.Generic.List[object]]::new()
+    foreach ($t in $tree.Targets) { $pending.Add($t) }
+    while ($pending.Count -gt 0)
+    {
+        foreach ($entry in @($pending))
+        {
+            $remaining = [long][Math]::Max(0, ($deadline - [DateTime]::UtcNow).TotalMilliseconds)
+            $code = Stop-ProcessIfSame $entry ([Math]::Min(2000, $remaining))
+            if ($code -eq 1) { return $false }
+            if ($code -eq 0 -or $code -eq 3) { [void]$pending.Remove($entry) }
+            if ($pending.Count -gt 0 -and [DateTime]::UtcNow -ge $deadline) { return $false }
+        }
+        if ($pending.Count -gt 0) { Start-Sleep -Milliseconds 100 }
+    }
+    $true
 }
