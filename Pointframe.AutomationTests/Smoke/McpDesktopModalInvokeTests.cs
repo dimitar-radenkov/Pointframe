@@ -43,7 +43,10 @@ public sealed class McpDesktopModalInvokeTests
             element.TryGetProperty("name", out var name) && name.GetString() == "OK"
             && element.GetProperty("windowRef").GetString() == modalText.GetProperty("windowRef").GetString());
         var dismiss = await harness.InvokeAsync(okButton.GetProperty("elementRef").GetString()!);
-        Assert.Equal("Complete", dismiss.GetProperty("structuredContent").GetProperty("dispatch").GetString());
+        var dismissResult = dismiss.GetProperty("structuredContent");
+        Assert.Equal("click", dismissResult.GetProperty("method").GetString());
+        Assert.Equal("Complete", dismissResult.GetProperty("dispatch").GetString());
+        Assert.False(dismissResult.TryGetProperty("error", out var dismissError) && dismissError.ValueKind != JsonValueKind.Null, $"Dismiss reported {dismissResult}.");
         await WaitForElementAbsentAsync(harness, display, "name", "Modal OK");
 
         var (_, saveButton) = await WaitForElementAsync(harness, display, "automationId", "saveButton");

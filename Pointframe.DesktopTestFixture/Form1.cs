@@ -201,7 +201,16 @@ public partial class Form1 : Form
         // button that follows it makes that input disappear. With a 250 ms timer against gestures a
         // few milliseconds wide, that showed up as a roughly one-in-four flake in the driver's own
         // tests -- a fault in the fixture, misread as a fault in the driver.
-        if (NativeMethods.GetForegroundWindow() == handle)
+        var current = NativeMethods.GetForegroundWindow();
+        if (current == handle)
+        {
+            return;
+        }
+
+        // The same holds while one of this process's own windows is foreground, such as the modal
+        // dialog: re-asserting the disabled owner there disturbed the click on the dialog's OK (#319).
+        NativeMethods.GetWindowThreadProcessId(current, out var foregroundProcessId);
+        if (foregroundProcessId == (uint)Environment.ProcessId)
         {
             return;
         }
