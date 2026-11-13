@@ -343,22 +343,48 @@ function Write-CandidateHashes {
 }
 
 function Assert-CandidateHashes {
-    # Without candidate-hashes.json a candidate directory is trusted as today; with it every listed package must match.
+    # Without candidate-hashes.json a candidate directory is trusted as today. With it, the file must list exactly the
+    # CLI and MCP packages the run selects (same names, nothing else), and each selected package must match its hash.
     param([Parameter(Mandatory)][string]$Directory)
     $path = Join-Path $Directory 'candidate-hashes.json'
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
     $pinned = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
     $entries = @($pinned.packages)
-    if ($entries.Count -eq 0) { throw "candidate-hashes.json lists no packages: $path" }
-    foreach ($entry in $entries) {
-        $package = Join-Path $Directory ([string]$entry.name)
-        if (-not (Test-Path -LiteralPath $package -PathType Leaf)) { throw "Candidate package $($entry.name) listed in candidate-hashes.json is missing." }
+    $selected = @(foreach ($filter in @('Pointframe.Cli-*-win-x64.zip', 'Pointframe.Mcp-*-win-x64.mcpb')) { Find-CandidatePackage $Directory $filter })
+    $names = @($entries | ForEach-Object { [string]$_.name })
+    if ($entries.Count -ne $selected.Count -or @($names | Select-Object -Unique).Count -ne $names.Count) {
+        throw "candidate-hashes.json must list exactly the selected CLI and MCP packages once each; it lists [$($names -join ', ')]: $path"
+    }
+    foreach ($package in $selected) {
+        $name = [IO.Path]::GetFileName($package)
+        $entry = @($entries | Where-Object { [string]$_.name -ceq $name })
+        if ($entry.Count -ne 1) { throw "Candidate package $name has no entry in candidate-hashes.json: the candidate is stale or was altered. Rebuild it with -BuildCandidate -PackageOnly." }
         $actual = Get-Sha256Hex -Path $package
-        if ($actual -ne ([string]$entry.sha256).ToLowerInvariant()) {
-            throw "Candidate package $($entry.name) differs from candidate-hashes.json (expected $($entry.sha256), got $actual): the candidate is stale or was altered. Rebuild it with -BuildCandidate -PackageOnly."
+        if ($actual -ne ([string]$entry[0].sha256).ToLowerInvariant()) {
+            throw "Candidate package $name differs from candidate-hashes.json (expected $($entry[0].sha256), got $actual): the candidate is stale or was altered. Rebuild it with -BuildCandidate -PackageOnly."
         }
     }
     return $true
+}
+
+function Get-StepOrderProblem {
+    # Reads the Invoke-Step calls of a script's source (not string literals) and names what breaks the rule that the
+    # package hash check, the fixture build and the project creation all run before the desktop lock is taken.
+    param([Parameter(Mandatory)][string]$Source)
+    $tokens = $null
+    $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseInput($Source, [ref]$tokens, [ref]$errors)
+    $offsets = @{}
+    foreach ($command in $ast.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Invoke-Step' }, $true)) {
+        $first = $command.CommandElements[1]
+        if ($first -is [Management.Automation.Language.StringConstantExpressionAst] -and -not $offsets.ContainsKey($first.Value)) { $offsets[$first.Value] = $command.Extent.StartOffset }
+    }
+    $order = @('locate and hash candidate packages', 'build and stage fixture', 'create committed verification project', 'acquire desktop lock')
+    foreach ($step in $order) { if (-not $offsets.ContainsKey($step)) { return "step '$step' was not found" } }
+    for ($i = 1; $i -lt $order.Count; $i++) {
+        if ($offsets[$order[$i - 1]] -ge $offsets[$order[$i]]) { return "step '$($order[$i - 1])' must come before '$($order[$i])'" }
+    }
+    return ''
 }
 function Test-Self {
     $scratch = Join-Path ([IO.Path]::GetTempPath()) ("pointframe-released-desktop-selftest-" + [guid]::NewGuid().ToString('N'))
@@ -470,13 +496,24 @@ function Test-Self {
         try { Assert-CandidateHashes $pinDirectory | Out-Null } catch { $tampered = $_.Exception.Message -like '*Pointframe.Mcp-0.0.0-candidate-win-x64.mcpb*differs from candidate-hashes.json*' }
         if (-not $tampered) { throw 'A tampered candidate package was not rejected by name.' }
 
-        $source = Get-Content -LiteralPath $PSCommandPath -Raw
-        $hashCheck = $source.IndexOf("Invoke-Step 'locate and hash candidate packages'")
-        $fixtureStep = $source.IndexOf("Invoke-Step 'build and stage fixture'")
-        $projectStep = $source.IndexOf("Invoke-Step 'create committed verification project'")
-        $lockStep = $source.IndexOf("Invoke-Step 'acquire desktop lock'")
-        if ($hashCheck -lt 0 -or $fixtureStep -lt 0 -or $projectStep -lt 0 -or $lockStep -lt 0) { throw 'A step needed for the step-order check was not found.' }
-        if (-not ($hashCheck -lt $fixtureStep -and $fixtureStep -lt $projectStep -and $projectStep -lt $lockStep)) { throw 'The fixture build and project creation must precede the desktop lock, after the package hash check.' }
+        [IO.File]::WriteAllBytes((Join-Path $pinDirectory 'Pointframe.Mcp-0.0.0-candidate-win-x64.mcpb'), [byte[]](3, 4))
+        $cliOnly = [ordered]@{ version = 1; packages = @(@($pinned.packages) | Where-Object { $_.name -like 'Pointframe.Cli-*' }) }
+        ($cliOnly | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $pinFile -Encoding utf8NoBOM
+        $missing = $false
+        try { Assert-CandidateHashes $pinDirectory | Out-Null } catch { $missing = $_.Exception.Message -like '*must list exactly the selected*' }
+        if (-not $missing) { throw 'candidate-hashes.json without the MCP entry was accepted.' }
+        $renamed = [ordered]@{ version = 1; packages = @(@($pinned.packages)[0], [ordered]@{ name = 'Pointframe.Mcp-9.9.9-win-x64.mcpb'; sha256 = @($pinned.packages)[1].sha256 }) }
+        ($renamed | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $pinFile -Encoding utf8NoBOM
+        $unlisted = $false
+        try { Assert-CandidateHashes $pinDirectory | Out-Null } catch { $unlisted = $_.Exception.Message -like '*Pointframe.Mcp-0.0.0-candidate-win-x64.mcpb has no entry*' }
+        if (-not $unlisted) { throw 'A selected package without its own entry in candidate-hashes.json was accepted.' }
+
+        $orderProblem = Get-StepOrderProblem (Get-Content -LiteralPath $PSCommandPath -Raw)
+        if ($orderProblem) { throw "Step order: $orderProblem." }
+        $lockFirst = "Invoke-Step 'locate and hash candidate packages' { 1 }`nInvoke-Step 'acquire desktop lock' { 1 }`nInvoke-Step 'build and stage fixture' { 1 }`nInvoke-Step 'create committed verification project' { 1 }"
+        if (-not (Get-StepOrderProblem $lockFirst)) { throw 'The step-order check accepted a lock taken before the fixture build.' }
+        $literalOnly = "`$x = `"Invoke-Step 'locate and hash candidate packages' Invoke-Step 'build and stage fixture' Invoke-Step 'create committed verification project' Invoke-Step 'acquire desktop lock'`"`n" + $lockFirst
+        if (-not (Get-StepOrderProblem $literalOnly)) { throw 'The step-order check was satisfied by string literals instead of Invoke-Step calls.' }
         $script:Mode = 'candidate'
         $script:Packages.Add([pscustomobject]@{ name = 'pkg.zip'; sha256 = ('a' * 64) })
         try {
@@ -639,7 +676,7 @@ else {
         }
 
         if ($PackageOnly -and $runMode -eq 'build-candidate') {
-            Write-Host "NEXT: pwsh scripts/check-released-desktop.ps1 -CandidateDirectory '$CandidateDirectory'"
+            Write-Host "NEXT: pwsh scripts/check-released-desktop.ps1 -CandidateDirectory '$($CandidateDirectory.Replace("'", "''"))'"
         }
 
         if (-not $PackageOnly) {
