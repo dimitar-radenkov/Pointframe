@@ -103,7 +103,7 @@ public sealed class DesktopEvidenceRecorder(
             }
 
             using var png = new MemoryStream();
-            bitmap.Save(png, ImageFormat.Png);
+            ImageEncoders.SavePng(bitmap, png);
             var bytes = png.ToArray();
             var fileName = $"{sequence:D4}-{kind}.png";
             Directory.CreateDirectory(directory);

@@ -42,7 +42,7 @@ public static class CapturePreviewImage
         if (longestEdge <= maxLongestEdgePixels)
         {
             using var direct = new MemoryStream();
-            source.Save(direct, ImageFormat.Png);
+            ImageEncoders.SavePng(source, direct);
             return (direct.ToArray(), source.Width, source.Height);
         }
 
@@ -60,7 +60,7 @@ public static class CapturePreviewImage
         }
 
         using var output = new MemoryStream();
-        resized.Save(output, ImageFormat.Png);
+        ImageEncoders.SavePng(resized, output);
         return (output.ToArray(), width, height);
     }
 
@@ -92,7 +92,7 @@ public static class CapturePreviewImage
             graphics.DrawImage(source, 0, 0, width, height);
         }
 
-        var codec = ImageCodecInfo.GetImageEncoders().First(encoder => encoder.FormatID == ImageFormat.Jpeg.Guid);
+        var codec = ImageEncoders.Jpeg;
         using var parameters = new EncoderParameters(1);
         parameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, (long)quality);
         using var output = new MemoryStream();
@@ -129,7 +129,7 @@ public static class CapturePreviewImage
         }
 
         using var output = new MemoryStream();
-        resized.Save(output, ImageFormat.Png);
+        ImageEncoders.SavePng(resized, output);
         return output.ToArray();
     }
 }

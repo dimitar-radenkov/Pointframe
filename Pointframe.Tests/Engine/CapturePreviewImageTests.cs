@@ -50,7 +50,7 @@ public sealed class CapturePreviewImageTests : IDisposable
     {
         var path = Path.Combine(_directory, $"{width}x{height}.png");
         using var bitmap = new Bitmap(width, height);
-        bitmap.Save(path, ImageFormat.Png);
+        ImageEncoders.SavePng(bitmap, path);
         return path;
     }
 

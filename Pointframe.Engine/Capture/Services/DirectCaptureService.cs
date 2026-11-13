@@ -101,7 +101,7 @@ public sealed class DirectCaptureService : IDirectCaptureService
         var createdUtc = _timeProvider.GetUtcNow();
         var artifactId = Guid.NewGuid().ToString("N");
         var path = ResolveArtifactPath(outputPath, createdUtc, artifactId);
-        capturedMonitor.Bitmap.Save(path, ImageFormat.Png);
+        ImageEncoders.SavePng(capturedMonitor.Bitmap, path);
 
         var recognizedText = recognizeText
             ? await _ocrEngineService.RecognizeAsync(capturedMonitor.Bitmap, cancellationToken).ConfigureAwait(false)
@@ -196,7 +196,7 @@ public sealed class DirectCaptureService : IDirectCaptureService
         var createdUtc = _timeProvider.GetUtcNow();
         var artifactId = Guid.NewGuid().ToString("N");
         var path = ResolveArtifactPath(outputPath, createdUtc, artifactId);
-        bitmap.Save(path, ImageFormat.Png);
+        ImageEncoders.SavePng(bitmap, path);
 
         var recognizedText = recognizeText
             ? await _ocrEngineService.RecognizeAsync(bitmap, cancellationToken).ConfigureAwait(false)
