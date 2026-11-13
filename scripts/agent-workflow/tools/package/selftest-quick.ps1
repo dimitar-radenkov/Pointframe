@@ -78,7 +78,21 @@ switch ($env:AW_PKG_TEST_CHANNELMODE)
     default { Write-Host 'CHANNEL plugin-pin: accepted - pinned'; Write-Host 'CHANNELS: ok'; exit 0 }
 }
 '@
-    [ordered]@{ pin = $pin + "`r`n"; qualify = $qualify + "`r`n"; channels = $channels + "`r`n" }
+    $releaseExpected = @'
+# aw-selftest-stub
+param([string]$Root, [string]$MergeCommit, [string]$Base)
+Add-Content -LiteralPath $env:AW_PKG_TEST_SHIPLOG -Value "releaseExpected -MergeCommit $MergeCommit -Base $Base"
+switch ($env:AW_PKG_TEST_RELEASE_EXPECTED)
+{
+    'none' { Write-Output 'RELEASE none - CI changes do not publish a release'; exit 0 }
+    'garbage' { Write-Output 'maybe'; exit 0 }
+    'wrongcase' { Write-Output 'release NONE - wrong case'; exit 0 }
+    'blankreason' { Write-Output 'RELEASE none -   '; exit 0 }
+    'fail' { Write-Output 'RELEASE none - ignored because hook failed'; exit 1 }
+    default { Write-Output 'RELEASE expected'; exit 0 }
+}
+'@
+    [ordered]@{ pin = $pin + "`r`n"; qualify = $qualify + "`r`n"; channels = $channels + "`r`n"; 'release-expected' = $releaseExpected + "`r`n" }
 }
 
 
@@ -107,10 +121,15 @@ function Invoke-QuickSelfTest
     $res = & $pkg @('new', '-Id', 'pk', '-Brief', $briefFile)
     & $expect ($res.Exit -ne 0 -and $res.Text -match 'already exists') 'a second new for the same slug was accepted'
 
-    $res = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', (Join-Path $stubDir 'ok.ps1'), '-CodexVersion', '9.9.9-test')
+    $repairPromptLog = Join-Path $root 'executor-prompt.md'
+    $repairStub = Join-Path $stubDir 'check-repair.ps1'
+    [IO.File]::WriteAllText($repairStub, $prelude + "`$a = @(`$args); `$i = [Array]::IndexOf(`$a, '-Brief'); [IO.File]::WriteAllText(`$env:AW_PKG_TEST_REPAIR_PROMPT, (Get-Content -LiteralPath `$a[`$i + 1] -Raw)); Set-Content -LiteralPath (Join-Path `$log 'out.md') 'repair invoked'; exit 0`r`n")
+    $env:AW_PKG_TEST_REPAIR_PROMPT = $repairPromptLog
+    $res = & $pkg @('run', '-Id', 'pk', '-AgentRunScript', $repairStub, '-CodexVersion', '9.9.9-test')
     $state = & $stateFile 'pk'
     $run = $state.runs[-1]
     & $expect ($res.Exit -eq 0 -and $run.outcome -eq 'completed' -and $run.provider -eq 'codex' -and $run.model -eq 'gpt-6-luna' -and $run.sessionId -eq 'stub-session' -and $run.artifacts.outMd.sha256 -eq (Get-Sha256 $run.artifacts.outMd.path) -and $run.mainCheckoutBefore.treeHash -eq $run.mainCheckoutAfter.treeHash -and -not $state.guard.mainCheckoutMutated) "completed run not recorded: $($res.Text)"
+    & $expect ((Get-Content -LiteralPath $repairPromptLog -Raw) -match 'does not run build, format or test commands that the check manifest owns') 'the generated Codex executor prompt omits the runner-owned checks rule'
 
     [IO.File]::WriteAllText((Join-Path $state.worktree 'lf.txt'), "one`ntwo`n")
     $res = & $pkg @('check', '-Id', 'pk')
@@ -118,6 +137,48 @@ function Invoke-QuickSelfTest
     $check = $state.checks[-1]
     $named = @{}; foreach ($c in $check.commands) { $named[$c.name] = $c }
     & $expect ($res.Exit -eq 1 -and -not $check.ok -and $named['passes'].exitCode -eq 0 -and $named['fails'].exitCode -eq 3 -and $state.stage -eq 'checks-failed' -and (($check.commands | ForEach-Object { $_.name }) -join ',') -eq 'mutator,crlf normalization,passes,fails' -and [IO.File]::ReadAllText((Join-Path $state.worktree 'lf.txt')) -eq "one`r`ntwo`r`n") "check results not recorded, in order, or the changed text file was not normalized: $($res.Text)"
+    $repairPromptLog = Join-Path $root 'check-repair-prompt.md'
+    $env:AW_PKG_TEST_REPAIR_PROMPT = $repairPromptLog
+    $env:AW_PKG_TEST_REPAIR_PROMPT = $repairPromptLog
+    $reviewRoundsBeforeCheckFix = [int]$state.repair.roundsUsed
+    $runCountBeforeCheckFix = @($state.runs).Count
+    $res = & $pkg @('fix', '-Id', 'pk', '-CheckFailure', '-AgentRunScript', $repairStub)
+    $state = & $stateFile 'pk'
+    $repairPrompt = if (Test-Path $repairPromptLog) { Get-Content -LiteralPath $repairPromptLog -Raw } else { '' }
+    & $expect ($res.Exit -eq 0 -and $state.stage -eq 'executor-completed' -and @($state.runs).Count -eq $runCountBeforeCheckFix + 1 -and $state.repair.checkRoundsUsed -eq 1 -and $state.repair.roundsUsed -eq $reviewRoundsBeforeCheckFix -and $repairPrompt -match '## fails' -and $repairPrompt -match 'Exit code: 3' -and $repairPrompt -match 'Program.cs: missing using System.IO' -and $repairPrompt -match 'does not run build, format or test commands') "fix -CheckFailure did not send the failed command, exit code and log tail to the executor or stop after run: $($res.Text)"
+    $shownRepair = (& $pkg @('show', '-Id', 'pk')).Text
+    & $expect ($shownRepair -match 'check repairs: 1 of 2') 'show does not print the independent check repair budget'
+    $res = & $pkg @('fix', '-Id', 'pk', '-CheckFailure', '-AgentRunScript', $repairStub)
+    & $expect ($res.Exit -ne 0 -and $res.Text -match "only in stage 'checks-failed'" -and (& $stateFile 'pk').repair.checkRoundsUsed -eq 1) "fix -CheckFailure was not refused from executor-completed without a new check: $($res.Text)"
+    $capDir = Join-Path $root 'check-repair-caps'
+    New-Item -ItemType Directory -Path $capDir -Force | Out-Null
+    $capCommands = @(foreach ($n in 1..6)
+        {
+            $capLog = Join-Path $capDir "cmd$n.log"
+            [IO.File]::WriteAllText($capLog, ((1..100 | ForEach-Object { "cmd$n line $_" }) -join "`n") + "`n")
+            @{ name = "cmd$n"; exitCode = $n; command = "run $n"; log = $capLog }
+        })
+    $capLines = @(Get-CheckRepairFailureLines $capCommands)
+    $tailLines = @($capLines | Where-Object { $_ -match '^cmd\d line \d+$' })
+    $firstTail = @($tailLines | Where-Object { $_ -like 'cmd1 line *' })
+    & $expect ($tailLines.Count -eq 400 -and $firstTail.Count -eq 80 -and $firstTail[0] -eq 'cmd1 line 21' -and $firstTail[-1] -eq 'cmd1 line 100' -and -not ($tailLines -like 'cmd6 *') -and ($capLines -contains '## cmd6') -and ($capLines -contains 'Exit code: 6') -and ($capLines -match 'omitted to keep the combined log tails within 400 lines')) "the check repair log tails are not capped at 80 per command and 400 in total: $($tailLines.Count) tail lines"
+    Update-State $packagesRoot 'pk' 'test-review-failed' { param($s) $s.stage = 'review-failed' } | Out-Null
+    $res = & $pkg @('fix', '-Id', 'pk', '-CheckFailure', '-AgentRunScript', $repairStub)
+    & $expect ($res.Exit -ne 0 -and $res.Text -match "only in stage 'checks-failed'") "fix -CheckFailure was not refused from review-failed: $($res.Text)"
+    Update-State $packagesRoot 'pk' 'test-checks-passed' { param($s) $s.stage = 'checks-passed' } | Out-Null
+    $res = & $pkg @('fix', '-Id', 'pk', '-CheckFailure', '-AgentRunScript', $repairStub)
+    & $expect ($res.Exit -ne 0 -and $res.Text -match "only in stage 'checks-failed'") "fix -CheckFailure was not refused from checks-passed: $($res.Text)"
+    Update-State $packagesRoot 'pk' 'test-back-to-check-failure' { param($s) $s.stage = 'checks-failed' } | Out-Null
+    [IO.File]::WriteAllText((Join-Path $state.worktree 'stale-check.txt'), 'changed')
+    $res = & $pkg @('fix', '-Id', 'pk', '-CheckFailure', '-AgentRunScript', $repairStub)
+    & $expect ($res.Exit -ne 0 -and $res.Text -match 'stale' -and $res.Text -match "run 'check'") "a stale failed check was not refused with check as the next step: $($res.Text)"
+    Remove-Item -LiteralPath (Join-Path $state.worktree 'stale-check.txt')
+    Update-State $packagesRoot 'pk' 'test-check-budget-exhausted' { param($s) $s.repair.checkRoundsUsed = 2 } | Out-Null
+    $res = & $pkg @('fix', '-Id', 'pk', '-CheckFailure', '-AgentRunScript', $repairStub)
+    & $expect ($res.Exit -ne 0 -and $res.Text -match 'budget is used up' -and $res.Text -match '-ResetBudget -Reason') 'an exhausted check repair budget was not refused with its reset hint'
+    $res = & $pkg @('fix', '-Id', 'pk', '-CheckFailure', '-ResetBudget', '-Reason', 'self-test reset', '-AgentRunScript', $repairStub)
+    $state = & $stateFile 'pk'
+    & $expect ($res.Exit -eq 0 -and $state.repair.checkRoundsUsed -eq 1 -and $state.repair.roundsUsed -eq $reviewRoundsBeforeCheckFix -and @($state.repair.checkResets).Count -eq 1) "-ResetBudget did not reset only the check repair count: $($res.Text)"
     $res = & $pkg @('show', '-Id', 'pk', '-Json')
     $view = $res.Text | ConvertFrom-Json
     & $expect ($res.Exit -eq 0 -and $view.checks[-1].fresh -eq $true -and $view.nextTransitions -contains 'run' -and @($view.snapshotProblems).Count -eq 0) "a check on an unchanged tree was not fresh: $($res.Text)"

@@ -10,6 +10,7 @@ fast-forward of the base branch). merge-pr.ps1 keeps the merge gate.
   pwsh scripts/package.ps1 review -Id <slug> -Level light|heavy [-Reviewer codex-sol|codex-luna|claude-opus|claude-sonnet] [-ResetBudget -Reason <text>]
   pwsh scripts/package.ps1 disposition -Id <slug> -Finding <id> -Accept|-Reject -Reason <text>
   pwsh scripts/package.ps1 fix -Id <slug> [-Executor same] [-ResetBudget -Reason <text>] [-Findings <file>]
+  pwsh scripts/package.ps1 fix -Id <slug> -CheckFailure [-ResetBudget -Reason <text>]
   pwsh scripts/package.ps1 accept -Id <slug> -Reason <text>
   pwsh scripts/package.ps1 new -Id <slug> -Brief <file> [-Checks <manifest.json>] [-DryRun]
   pwsh scripts/package.ps1 run -Id <slug> [-Executor codex|claude-sonnet|claude-haiku] [-Effort medium|high -EscalationReason <text>] [-MaxMinutes 30]
@@ -55,7 +56,8 @@ review  runs a read-only reviewer of the other provider (Codex through codex-ask
         package: a third refundable failure is charged, with the reason recorded (REFUND DENIED), and show prints "n refund(s) of 2 allowed".
 disposition  the coordinator's accept or reject (with a reason) of one finding of the latest review.
 fix     builds a fix request from the accepted findings, resumes the same executor (Claude -Resume; Codex: a new run with the
-        previous report appended), then runs check, commit and review again. A FAIL verdict that carries no finding at all has nothing to
+        previous report appended), then runs check, commit and review again. With -CheckFailure, a fresh failed runner check and its bounded log tails
+        go to the recorded executor under package.checkRepairRounds; it stops after the executor run, with check next. A FAIL verdict that carries no finding at all has nothing to
         accept: -Findings <file> (a JSON array of {file, line, summary, scenario[, id, severity]} the coordinator wrote) is recorded,
         hashed and used as the findings of that fix.
 recover the audited way out of blocked-main-mutated: -Reason is required. It records the reason, the main checkout as it is now and the
@@ -81,7 +83,7 @@ ship    resumable, one repository-wide ship lock (git common dir <namespace>/shi
         "What was not tested" section), merge (merge-pr.ps1 -Auto -NoPluginPin -WaitMerged, only for a head that the verify receipt, the
         qualification decision and the pull request all name; an auto-merge already enabled for that head is waited for, never
         enabled again; a head moved by the pin after the push is re-verified, pushed and gated again; -NoWait always stops at
-        auto-merge-enabled; merged only when GitHub reports MERGED), channels (hooks.channels for the release cut for the merge commit, a bounded wait; a null hook is recorded as not configured;
+        auto-merge-enabled; merged only when GitHub reports MERGED), channels (hooks.releaseExpected may skip the bounded wait when no release is expected; otherwise hooks.channels reports the release cut for the merge commit; null hooks are recorded as not configured;
         failed channels and a stale plugin pin are reported, no pin PR is ever opened). merge-pr.ps1 removes the worktree on merge,
         so no step after it uses it.
         Without a remote ("repository": { "remote": null }) there is no fetch, no push, no pull request and no channels: base, pin, verify,
@@ -94,9 +96,9 @@ The check manifest is JSON: { "build": ["<project path>"], "tests": [{ "project"
 "<filter expression>" }], "format": ["<project path>"], "extra": [{ "name": "x", "exe": "pwsh", "args": ["-File", "x.ps1"],
 "mutates": false }], "allowedPaths": ["docs/x.md", "scripts/lib/", "docs/*.md"], "allowedScripts": ["scripts/x.ps1"] }.
 allowedPaths globs: * stays inside one path segment, ** crosses segments, ? is one character, a trailing / is a directory.
-allowedScripts are the only scripts besides kb.ps1 (init|read|check|changed|selftest) and verify.ps1 a Claude executor may run.
+allowedScripts are the only scripts besides kb.ps1 (init|read|check|changed|selftest) and verify.ps1 a Claude executor may run; build, format and test commands belong to the runner.
 Configuration (agent-workflow.json, read from the main checkout of the repository): state.commonDirNamespace (<namespace> below),
-repository.baseRef, pinException.paths (the pin files), hooks.pin (-Action Validate), hooks.qualify (-Action Impact|Run), hooks.channels,
+repository.baseRef, pinException.paths (the pin files), hooks.pin (-Action Validate), hooks.qualify (-Action Impact|Run), hooks.channels, hooks.releaseExpected,
 package.commands and package.testFilter (the build, format and test commands), package.minCliVersions (model -> minimum Claude CLI version,
 over the kit's own table), verify.outputDir (the receipt folder).
 -SelfTest runs offline against marked stubs and temporary repositories; AW_PKG_SELFTEST_CASES=1 prints one CASE line per check and a
@@ -134,6 +136,7 @@ param(
     [switch]$Reject,
     [string]$Reason,
     [switch]$ResetBudget,
+    [switch]$CheckFailure,
     [string]$CodexAskScript = (Join-Path $PSScriptRoot 'codex-ask.ps1'),
     [string]$CodexTestScript,
     [string]$RecordReviewScript = (Join-Path $PSScriptRoot 'record-review.ps1'),
@@ -193,6 +196,7 @@ $script:PackageScriptPath = $PSCommandPath
 
 $SchemaVersion = 1
 $script:RepairLimit = 3
+$script:CheckRepairLimit = 2
 # A review round lost to an environment failure is given back (refunded) at most this often per package; the next such failure is charged.
 $script:RefundLimit = 2
 $script:BriefOverride = $null
@@ -217,6 +221,7 @@ function Initialize-PackageContext([string]$Target)
     $script:Repo = [string]$script:Ctx.Worktree
     $script:Namespace = [string]$script:Ctx.Config.state.commonDirNamespace
     $script:PinFiles = @($script:Ctx.PinFiles)
+    $script:CheckRepairLimit = if ($script:Ctx.Config.Contains('package') -and $script:Ctx.Config.package.Contains('checkRepairRounds')) { [int]$script:Ctx.Config.package.checkRepairRounds } else { 2 }
     if (-not $BaseRef) { $script:BaseRef = [string]$script:Ctx.BaseRef }
 }
 

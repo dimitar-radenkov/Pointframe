@@ -110,7 +110,7 @@ function Invoke-NewLocked($info, $paths, [string]$wt, [string]$branch, [string]$
         commit = $null
         commits = @()
         reviews = @()
-        repair = @{ limit = $script:RepairLimit; roundsUsed = 0; resets = @() }
+        repair = @{ limit = $script:RepairLimit; roundsUsed = 0; resets = @(); checkRoundsUsed = 0; checkResets = @() }
         pendingFix = $null
         acceptance = $null
         history = @(@{ utc = (Get-Now); event = 'new'; from = ''; to = 'creating' })

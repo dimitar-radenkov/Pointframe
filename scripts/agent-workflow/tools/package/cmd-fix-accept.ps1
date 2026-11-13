@@ -81,9 +81,100 @@ function Read-CoordinatorFindings([string]$Path, $Review, [string]$PackageDir)
     @{ utc = (Get-Now); reviewId = [string]$Review.reviewId; round = $Review.round; source = ([IO.Path]::GetFullPath($Path)); path = $kept; sha256 = (Get-Sha256 $kept); findings = @($items) }
 }
 
+# One block per failed check command: name, exit code, command and the tail of its log, at most 80 lines per command
+# and 400 lines across all commands.
+function Get-CheckRepairFailureLines([object[]]$Failed)
+{
+    $lines = @()
+    $remaining = 400
+    foreach ($command in $Failed)
+    {
+        $lines += @("## $($command.name)", "Exit code: $($command.exitCode)", "Command: $($command.command)")
+        $logPath = [string](Get-Field $command 'log')
+        if ($logPath -and (Test-Path -LiteralPath $logPath -PathType Leaf) -and $remaining -gt 0)
+        {
+            $tail = @(Get-Content -LiteralPath $logPath -Tail ([Math]::Min(80, $remaining)))
+            $lines += @('Log tail:', '```text') + $tail + @('```')
+            $remaining -= $tail.Count
+        }
+        elseif ($logPath -and (Test-Path -LiteralPath $logPath -PathType Leaf)) { $lines += @('Log tail: omitted to keep the combined log tails within 400 lines') }
+        else { $lines += @('Log tail: (no log available)') }
+        $lines += @('')
+    }
+    return $lines
+}
+
+function Invoke-CheckFailureFix
+{
+    $info = Get-RepoInfo $Repo
+    $paths = Get-PackagePaths $info.StateRoot $Id
+    $lock = Enter-StateLock $info.StateRoot $Id
+    try
+    {
+        Sync-Invalidation $info $Id
+        $state = Read-State $info.StateRoot $Id
+        Assert-StateConsistent $state $info
+        $problems = @(Test-SnapshotsIntact $state)
+        if ($problems.Count) { throw ($problems -join '; ') }
+        if ([string]$state.stage -ne 'checks-failed') { throw "fix -CheckFailure is allowed only in stage 'checks-failed' (current stage '$($state.stage)')" }
+        $tree = Get-TreeHash ([string]$state.worktree)
+        $checks = @(Get-List $state.checks)
+        if (-not $checks.Count) { throw "there is no check to repair; run 'check'" }
+        $check = $checks[-1]
+        if ($check.ok) { throw "the latest check passed; run 'check' after the worktree changes" }
+        if ([string]$check.treeHash -ne $tree) { throw "the latest failed check is stale for the current worktree tree; run 'check'" }
+        $evidenceProblems = @(Get-CheckEvidenceProblems $check @(Get-CheckCommands (Read-Manifest $state.manifest.path)))
+        if ($evidenceProblems.Count) { throw "the latest failed check is incomplete evidence: $($evidenceProblems -join '; '); run 'check'" }
+        if ($ResetBudget)
+        {
+            if ([string]::IsNullOrWhiteSpace($Reason)) { throw '-ResetBudget needs -Reason' }
+            Update-State $info.StateRoot $Id 'check-repair-budget-reset' { param($s) $s.repair.checkRoundsUsed = 0; $s.repair.checkResets = @(Get-List $s.repair.checkResets) + @(@{ utc = (Get-Now); reason = $Reason.Trim() }) } -Locked | Out-Null
+            $state = Read-State $info.StateRoot $Id
+        }
+        $used = [int](Get-Field $state.repair 'checkRoundsUsed')
+        if ($used -ge $script:CheckRepairLimit) { throw "the check repair budget is used up ($used of $script:CheckRepairLimit). Resume with -ResetBudget -Reason <text>" }
+        $failed = @($check.commands | Where-Object { $null -ne $_.exitCode -and [int]$_.exitCode -ne 0 })
+        $fixLines = @("# Check failure repair request for work package $($state.slug)", '', 'The runner check failed on the current worktree tree. Fix the reported failures only. Do not commit or push. The executor does not run build, format or test commands that the check manifest owns; it finishes edits and the runner checks.', '')
+        $fixLines += @(Get-CheckRepairFailureLines $failed)
+        if (-not $failed.Count) { $fixLines += @('The check failed without a nonzero command exit code.', "Raw byte problems: $((Get-List $check.rawBytesProblems) -join ', ')", '') }
+        $fixDir = Join-Path $paths.Dir "fixes/check-$([guid]::NewGuid().ToString('N'))"
+        New-Item -ItemType Directory -Path $fixDir -Force | Out-Null
+        $fixPath = Join-Path $fixDir 'fix-request.md'
+        [IO.File]::WriteAllText($fixPath, ($fixLines -join "`r`n"), [Text.UTF8Encoding]::new($false))
+        $executorInfo = Get-ExecutorIdentity $state
+        $kind = $executorInfo.kind
+        if (-not $kind) { $kind = if ($executorInfo.provider -eq 'codex') { 'codex' } else { throw 'the executor kind of the last run is unknown' } }
+        $lastRun = $executorInfo.run
+        $model = [string](Get-Field $lastRun 'model')
+        $effort = [string](Get-Field $lastRun 'effort')
+        $escalation = [string](Get-Field $lastRun 'escalationReason')
+        if ($kind -eq 'codex')
+        {
+            $previous = if ($lastRun.artifacts -and $lastRun.artifacts.outMd -and $lastRun.artifacts.outMd.path -and (Test-Path -LiteralPath $lastRun.artifacts.outMd.path -PathType Leaf)) { Get-Content -LiteralPath $lastRun.artifacts.outMd.path -Raw } else { '(no earlier report was kept)' }
+            $briefOverride = Join-Path $fixDir 'brief.md'
+            [IO.File]::WriteAllText($briefOverride, ((Get-Content -LiteralPath $state.brief.path -Raw).TrimEnd() + "`r`n`r`n# Previous report`r`n`r`n$previous`r`n`r`n$([IO.File]::ReadAllText($fixPath))"), [Text.UTF8Encoding]::new($false))
+            $script:BriefOverride = $briefOverride
+        }
+        $script:Executor = $kind
+        if ($model) { $script:Model = $model; $script:ModelBound = $true }
+        if ($kind -eq 'codex') { if ($effort) { $script:Effort = $effort }; if ($escalation) { $script:EscalationReason = $escalation } }
+        if ($kind -ne 'codex') { $script:Resume = $true; $script:PromptFile = $fixPath }
+        Update-State $info.StateRoot $Id 'check-repair-started' { param($s) $s.repair.checkRoundsUsed = [int](Get-Field $s.repair 'checkRoundsUsed') + 1; $s.pendingFix = @{ checkFailure = $true; checkId = $check.checkId; fixRequest = $fixPath; utc = (Get-Now) } } -Locked | Out-Null
+    }
+    finally { $lock.Dispose() }
+    Write-Host "fix -CheckFailure: check $($check.checkId); executor $kind$(if ($kind -eq 'codex') { ' (new run with the previous report)' } else { ' (resumed)' })"
+    Invoke-Run
+}
+
 function Invoke-FixCore
 {
     if ($script:ExecutorBound -and $Executor -ne 'same') { throw "fix resumes the same executor; -Executor $Executor is not supported" }
+    if ($CheckFailure)
+    {
+        if ($Findings) { throw '-CheckFailure cannot be combined with -Findings' }
+        Invoke-CheckFailureFix
+        return
+    }
     $info = Get-RepoInfo $Repo
     $paths = Get-PackagePaths $info.StateRoot $Id
     $stateLock = Enter-StateLock $info.StateRoot $Id
@@ -137,7 +228,7 @@ function Invoke-FixCore
         if (-not $kind) { $kind = if ($executorInfo.provider -eq 'codex') { 'codex' } else { throw 'the executor kind of the last run is unknown' } }
         $fixDir = Join-Path $paths.Dir "fixes/$([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Path $fixDir -Force | Out-Null
-        $fixLines = @("# Fix request for work package $($state.slug)", '', "The independent review of commit $($review.commit) (round $($review.round)) found the problems below, and the coordinator accepted them. Fix exactly these and keep everything else unchanged. Do not commit or push. Run the checks your environment allows and end with your report.", '')
+        $fixLines = @("# Fix request for work package $($state.slug)", '', "The independent review of commit $($review.commit) (round $($review.round)) found the problems below, and the coordinator accepted them. Fix exactly these and keep everything else unchanged. Do not commit or push. The executor does not run build, format or test commands that the check manifest owns; it finishes edits and the runner checks. End with your report.", '')
         foreach ($f in $accepted)
         {
             $fixLines += @("## $($f.id) ($($f.severity)) $($f.file):$($f.line)", "Summary: $($f.summary)", "Scenario: $($f.scenario)", "Coordinator: $($f.disposition.reason)", '')

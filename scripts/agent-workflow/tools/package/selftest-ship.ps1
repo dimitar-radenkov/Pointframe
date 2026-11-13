@@ -174,7 +174,7 @@ exit 1
         [IO.File]::WriteAllText($stubPath[$name], "# aw-selftest-stub`r`n" + $stubBodies[$name] + "`r`n")
     }
     $shipCommon = @('-GhScript', $stubPath['gh'], '-MergePrScript', $stubPath['mergepr'], '-VerifyScript', $stubPath['verify'], '-ChannelMinutes', '0', '-ReleasePollSeconds', '1')
-    $defaults = @{ VERMODE = 'pass'; IMPACT = 'not-required'; DESKTOPMODE = 'pass'; DESKTOP = 'unlocked'; PINMODE = 'none'; MERGEMODE = 'merged'; CHANNELMODE = 'ok'; GH_FAIL = ''; SHIP_CRASH = ''; MERGE_AFTER = '' }
+    $defaults = @{ VERMODE = 'pass'; IMPACT = 'not-required'; DESKTOPMODE = 'pass'; DESKTOP = 'unlocked'; PINMODE = 'none'; MERGEMODE = 'merged'; CHANNELMODE = 'ok'; RELEASE_EXPECTED = ''; GH_FAIL = ''; SHIP_CRASH = ''; MERGE_AFTER = '' }
     $setEnv = {
         param([hashtable]$Set = @{})
         $all = $defaults.Clone()
@@ -325,6 +325,50 @@ exit 1
         & $kitCase ($r.Exit -eq 0 -and $state.stage -eq 'merged' -and $nq.status -eq 'not-configured' -and $nq.configured -eq $false -and $state.ship.steps.base.status -eq 'done' -and ([string](& git -C $main rev-parse HEAD)).Trim() -eq ([string](& git -C $main rev-parse origin/master)).Trim()) 'item 17: with the main checkout at origin/master and hooks.qualify null in its current configuration, ship still records qualify as not-configured' "exit $($r.Exit) stage $($state.stage) qualify $($nq | ConvertTo-Json -Compress)"
     }
     finally { [IO.File]::WriteAllText($configPath, $configText) }
+    $releaseConfigText = [IO.File]::ReadAllText($configPath)
+    try
+    {
+        $releaseConfig = $releaseConfigText | ConvertFrom-Json -AsHashtable
+        $Id = 'sn'
+        $ChannelMinutes = 0
+        $GhScript = $stubPath['gh']
+        $releaseConfig.hooks.releaseExpected = $null
+        [IO.File]::WriteAllText($configPath, ($releaseConfig | ConvertTo-Json -Depth 20))
+        $script:Ctx.Config.hooks['releaseExpected'] = $null
+        & $setEnv @{}
+        & $resetLog
+        Step-ShipChannels $info | Out-Null
+        $state = & $stateFile 'sn'
+        & $kitCase ((& $calls '^releaseExpected') -eq 0 -and (& $calls '^gh release list') -ge 1 -and (Get-ShipStep $state 'channels').status -eq 'pending') 'hook contract: releaseExpected null keeps the existing release wait' "channels $((Get-ShipStep $state 'channels') | ConvertTo-Json -Compress)"
+        $releaseConfig.hooks.releaseExpected = 'hooks/release-expected.ps1'
+        [IO.File]::WriteAllText($configPath, ($releaseConfig | ConvertTo-Json -Depth 20))
+        $script:Ctx.Config.hooks['releaseExpected'] = 'hooks/release-expected.ps1'
+        & $setEnv @{ RELEASE_EXPECTED = 'none' }
+        & $resetLog
+        $noneResult = Step-ShipChannels $info
+        $state = & $stateFile 'sn'
+        $channels = Get-ShipStep $state 'channels'
+        & $kitCase ($noneResult -eq $true -and $channels.status -eq 'not-applicable' -and $channels.reason -eq 'CI changes do not publish a release' -and (& $calls '^releaseExpected') -eq 1 -and (& $calls '^gh release') -eq 0) 'hook contract: releaseExpected none' "channels $($channels | ConvertTo-Json -Compress)"
+        & $setEnv @{ RELEASE_EXPECTED = 'garbage' }
+        & $resetLog
+        Step-ShipChannels $info | Out-Null
+        $state = & $stateFile 'sn'
+        & $kitCase ((& $calls '^releaseExpected') -eq 1 -and (& $calls '^gh release list') -ge 1 -and (Get-ShipStep $state 'channels').status -eq 'pending') 'hook contract: releaseExpected malformed output falls back to wait' "channels $((Get-ShipStep $state 'channels') | ConvertTo-Json -Compress)"
+        foreach ($badDecision in @('wrongcase', 'blankreason'))
+        {
+            & $setEnv @{ RELEASE_EXPECTED = $badDecision }
+            & $resetLog
+            Step-ShipChannels $info | Out-Null
+            $state = & $stateFile 'sn'
+            & $kitCase ((& $calls '^releaseExpected') -eq 1 -and (& $calls '^gh release list') -ge 1 -and (Get-ShipStep $state 'channels').status -eq 'pending') "hook contract: releaseExpected $badDecision falls back to wait" "channels $((Get-ShipStep $state 'channels') | ConvertTo-Json -Compress)"
+        }
+        & $setEnv @{ RELEASE_EXPECTED = 'fail' }
+        & $resetLog
+        Step-ShipChannels $info | Out-Null
+        $state = & $stateFile 'sn'
+        & $kitCase ((& $calls '^releaseExpected') -eq 1 -and (& $calls '^gh release list') -ge 1 -and (Get-ShipStep $state 'channels').status -eq 'pending') 'hook contract: releaseExpected nonzero exit falls back to wait' "channels $((Get-ShipStep $state 'channels') | ConvertTo-Json -Compress)"
+    }
+    finally { [IO.File]::WriteAllText($configPath, $releaseConfigText); $script:Ctx.Config.hooks.Remove('releaseExpected'); & $setEnv @{} }
     & $setEnv @{}
     & $resetLog
 

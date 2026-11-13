@@ -498,6 +498,27 @@ function Step-ShipChannels($Info)
         if ($view) { $mergeCommit = $view.MergeCommit }
     }
     if (-not $mergeCommit) { Set-ShipStep $Info 'channels' @{ status = 'pending'; reason = 'the merge commit is unknown' }; Write-Host 'NOTE the merge commit is unknown, so the release cannot be found yet. Run ship again.'; return $false }
+    $releaseHook = Resolve-PackageHook 'releaseExpected'
+    if ($releaseHook)
+    {
+        $baseStep = Get-ShipStep $state 'base'
+        $baseSha = [string](Get-Field $baseStep 'baseSha')
+        if (-not $baseSha) { $baseSha = [string]$state.baseSha }
+        $expectLog = Join-Path (Get-ShipPaths $Info).Dir 'release-expected.log'
+        $expectCode = Invoke-Logged 'pwsh' @('-NoProfile', '-File', $releaseHook, '-Root', $Info.MainCheckout, '-MergeCommit', $mergeCommit, '-Base', $baseSha) $Info.MainCheckout $expectLog
+        $expectLines = @(if (Test-Path -LiteralPath $expectLog -PathType Leaf) { Get-Content -LiteralPath $expectLog })
+        if ($expectCode -eq 0 -and $expectLines.Count -eq 1 -and $expectLines[0] -cmatch '^RELEASE none - (.*\S.*)$')
+        {
+            $reason = $Matches[1].Trim()
+            Set-ShipStep $Info 'channels' @{ status = 'not-applicable'; configured = $true; reason = $reason; mergeCommit = $mergeCommit; releaseExpected = $releaseHook }
+            Write-Host "ship: no release expected: $reason"
+            return $true
+        }
+        if (-not ($expectCode -eq 0 -and $expectLines.Count -eq 1 -and $expectLines[0] -ceq 'RELEASE expected'))
+        {
+            Write-Host "NOTE hooks.releaseExpected returned an invalid decision (exit $expectCode); continuing with the bounded release wait"
+        }
+    }
     $waitMinutes = if ($NoWait) { 0 } else { $ChannelMinutes }
     $deadline = (Get-Date).AddMinutes($waitMinutes)
     $version = $null

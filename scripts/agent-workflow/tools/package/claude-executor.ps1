@@ -229,16 +229,17 @@ function Get-ClaudeExecutorRules([string]$Worktree, [string]$Role = 'executor')
 {
     @(
         "You are the executor of one work package. Work only in the worktree $Worktree.",
+        'The executor does not run build, format or test commands that the check manifest owns; it finishes edits and the runner checks.',
         "Start with: pwsh scripts/kb.ps1 init -Role $Role",
         'Your working directory is already the package worktree: run git commands there without -C.',
-        ('Use the Bash tool for every shell command, including `pwsh scripts/...` and `' + (Get-PackageCommand 'build').exe + ' ...`.'),
+        'Use the Bash tool for every shell command, including `pwsh scripts/...`.',
         'Use absolute paths inside the worktree and set an explicit working directory for every process.',
         'Never run a command that reads stdin in the background (for example python -).',
         'Never commit, push or open a pull request, and never write outside the worktree.',
         'If a tool call is denied, do not look for a way around it: report it.',
         'If a check cannot run in this environment, report it on its own line as ENV-BLOCKED: <command>: <error> and stop retrying it.',
         $(if ($Role -eq 'helper') { 'You are a read-only helper: you have no Edit or Write tool and must not change any file.' } else { '' }),
-        "Accepted limitation: the command allowlist guards against accidental actions (commit, push, gh, network); the worktree is writable and $((Get-PackageCommand 'build').exe) $((Get-PackageCommand 'build').args[0]) and $((Get-PackageCommand 'test').exe) $((Get-PackageCommand 'test').args[0]) run code an executor authors, so it is not a sandbox. The main-checkout guard, job containment and review are the real controls.",
+        'Accepted limitation: the command allowlist guards against accidental actions (commit, push, gh, network), but the writable worktree and allowed scripts mean it is not a sandbox. The main-checkout guard, job containment and review are the real controls.',
         'End with a report: what changed, the checks you ran and their results, and what you could not check.'
     ) | Where-Object { $_ } | ForEach-Object { $_ } | Join-String -Separator ' '
 }
@@ -246,7 +247,7 @@ function Get-ClaudeExecutorRules([string]$Worktree, [string]$Role = 'executor')
 function New-ClaudeSettings([string]$Path, [string]$Worktree, [bool]$ReadOnly, [string[]]$Scripts = @())
 {
     # Allowlist, nothing else: git reads (also as git -C <this worktree>), the kb script's read commands, the verify script
-    # and the scripts the brief names (executors only), dotnet build/test/format (executors only). A helper has no Edit or
+    # and the scripts the brief names (executors only). A helper has no Edit or
     # Write tool and no mutating shell rule.
     $shell = @('git status:*', 'git diff:*', 'git log:*', 'git show:*')
     $forward = ($Worktree -replace '\\', '/').TrimEnd('/')
@@ -262,7 +263,6 @@ function New-ClaudeSettings([string]$Path, [string]$Worktree, [bool]$ReadOnly, [
     if (-not $ReadOnly)
     {
         foreach ($sub in @('check', 'selftest')) { $shell += @("pwsh scripts/kb.ps1 ${sub}:*", "pwsh -NoProfile -File scripts/kb.ps1 ${sub}:*") }
-        foreach ($kind in @('build', 'test', 'format')) { $c = Get-PackageCommand $kind; $shell += "$($c.exe) $($c.args[0]):*" }
         $shell += @('pwsh scripts/verify.ps1:*', 'pwsh -NoProfile -File scripts/verify.ps1:*')
         foreach ($script in @($Scripts)) { $shell += @("pwsh ${script}:*", "pwsh -NoProfile -File ${script}:*") }
     }

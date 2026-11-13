@@ -89,7 +89,7 @@ function Get-ShipView($State)
                 'push' { "head $(Get-Field $record 'head')" }
                 'pr' { "#$(Get-Field $record 'number') $(Get-Field $record 'url')" }
                 'merge' { "#$(Get-Field $record 'number'), merge-pr calls $(Get-Field $record 'calls'), merge commit $(Get-Field $record 'mergeCommit')" }
-                'channels' { if ((Get-Field $record 'status') -eq 'not-configured') { 'not configured (hooks.channels is null)' } else { "release $(Get-Field $record 'version'): $(Get-Field $record 'final')" } }
+                'channels' { if ((Get-Field $record 'status') -eq 'not-configured') { 'not configured (hooks.channels is null)' } elseif ((Get-Field $record 'status') -eq 'not-applicable') { "not applicable: $(Get-Field $record 'reason')" } else { "release $(Get-Field $record 'version'): $(Get-Field $record 'final')" } }
             }
             $why = Get-Field $record 'reason'
             if ($why) { $detail += " - $why" }
