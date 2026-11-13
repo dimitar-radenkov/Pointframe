@@ -16,6 +16,7 @@ public sealed class AutomationApp : IDisposable
     private static readonly TimeSpan WindowTimeout = TimeSpan.FromSeconds(10);
     private readonly int _processId;
     private readonly UIA3Automation _automation;
+    private Exception? _lastFindFailure;
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
@@ -134,37 +135,218 @@ public sealed class AutomationApp : IDisposable
         return Process.Start(startInfo) ?? throw new InvalidOperationException("Pointframe did not start.");
     }
 
-    public bool HasWindowAutomationId(string automationId) => GetProcessWindows(_processId, _automation)
-        .Any(window => string.Equals(window.Properties.AutomationId.ValueOrDefault, automationId, StringComparison.Ordinal));
+    public bool HasWindowAutomationId(string automationId, string expectedTitle) =>
+        ProcessHasWindowAutomationId(_processId, _automation, automationId, expectedTitle);
+
+    internal static bool ProcessHasWindowAutomationId(int processId, UIA3Automation automation, string automationId, string expectedTitle)
+    {
+        // Absence is reported only from a complete pass: every live window either read its AutomationId or, when UIA
+        // cannot read it, read its Win32 title. A native failure is retried until the deadline, never taken as absence.
+        var stopwatch = Stopwatch.StartNew();
+        Exception? lastFailure = null;
+        while (true)
+        {
+            var complete = TryGetTopLevelWindowHandles(processId, out var handles, out var enumerationFailure);
+            lastFailure = enumerationFailure ?? lastFailure;
+            foreach (var handle in handles)
+            {
+                if (!IsWindow(handle))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var value = automation.FromHandle(handle).Properties.AutomationId.Value;
+                    if (string.Equals(value, automationId, StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+                }
+                catch (Exception exception) when (IsTransientUiaFailure(exception))
+                {
+                    switch (TryGetWindowTitle(handle, out var title, out var titleFailure))
+                    {
+                        case TitleRead.Read when string.Equals(title, expectedTitle, StringComparison.Ordinal):
+                            return true;
+                        case TitleRead.Failed:
+                            complete = false;
+                            lastFailure = titleFailure;
+                            break;
+                    }
+                }
+            }
+
+            if (complete)
+            {
+                return false;
+            }
+
+            if (stopwatch.Elapsed >= WindowTimeout)
+            {
+                throw new TimeoutException(
+                    $"Could not establish whether a window '{automationId}' ('{expectedTitle}') exists. Process windows: [{DescribeProcessWindows(processId)}]. Last failure: {Describe(lastFailure)}",
+                    lastFailure);
+            }
+
+            Thread.Sleep(100);
+        }
+    }
+
+    private enum TitleRead
+    {
+        Read,
+        Gone,
+        Failed,
+    }
+
+    private static TitleRead TryGetWindowTitle(IntPtr handle, out string title, out Exception? failure)
+    {
+        // GetWindowTextLength and GetWindowText return 0 both for an empty title and on failure; only the last error
+        // tells them apart. A failure on a handle that is no longer a window means the window is gone.
+        title = string.Empty;
+        failure = null;
+        Marshal.SetLastPInvokeError(0);
+        var length = GetWindowTextLengthW(handle);
+        if (length == 0)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            if (error == 0)
+            {
+                return TitleRead.Read;
+            }
+
+            if (!IsWindow(handle))
+            {
+                return TitleRead.Gone;
+            }
+
+            failure = new Win32Exception(error, $"GetWindowTextLengthW failed for window 0x{handle.ToInt64():X}");
+            return TitleRead.Failed;
+        }
+
+        var buffer = new System.Text.StringBuilder(length + 1);
+        Marshal.SetLastPInvokeError(0);
+        var copied = GetWindowTextW(handle, buffer, buffer.Capacity);
+        if (copied == 0)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            if (!IsWindow(handle))
+            {
+                return TitleRead.Gone;
+            }
+
+            failure = new Win32Exception(error, $"GetWindowTextW failed for window 0x{handle.ToInt64():X}");
+            return TitleRead.Failed;
+        }
+
+        title = buffer.ToString();
+        return TitleRead.Read;
+    }
+
+    private static string Describe(Exception? exception) =>
+        exception is null ? "none" : $"{exception.GetType().Name}: {exception.Message}";
+
+    private static bool IsTransientUiaFailure(Exception exception) =>
+        exception is PropertyNotSupportedException or ElementNotAvailableException or COMException;
+
+    private static string GetWindowTitle(IntPtr handle) =>
+        TryGetWindowTitle(handle, out var title, out _) == TitleRead.Read ? title : "<unreadable>";
+
+    private static string GetWindowClassName(IntPtr handle)
+    {
+        var buffer = new System.Text.StringBuilder(256);
+        return GetClassName(handle, buffer, buffer.Capacity) > 0 ? buffer.ToString() : "?";
+    }
+
+    private static string DescribeProcessWindows(int processId) =>
+        string.Join(", ", GetTopLevelWindowHandles(processId).Select(handle =>
+            $"0x{handle.ToInt64():X} class '{GetWindowClassName(handle)}' title '{GetWindowTitle(handle)}'"));
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder className, int maxCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetWindowTextW(IntPtr hWnd, System.Text.StringBuilder text, int maxCount);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int GetWindowTextLengthW(IntPtr hWnd);
 
     public void WaitForWindowTitle(string title)
     {
         var stopwatch = Stopwatch.StartNew();
+        Exception? lastFailure = null;
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            var candidate = GetProcessWindows(_processId, _automation)
-                .FirstOrDefault(window => string.Equals(window.Name, title, StringComparison.Ordinal));
-            if (candidate is not null)
+            TryGetTopLevelWindowHandles(_processId, out var handles, out var enumerationFailure);
+            lastFailure = enumerationFailure ?? lastFailure;
+            foreach (var handle in handles)
             {
-                MainWindow = candidate.AsWindow();
-                return;
+                if (!IsWindow(handle))
+                {
+                    continue;
+                }
+
+                var read = TryGetWindowTitle(handle, out var windowTitle, out var titleFailure);
+                if (read == TitleRead.Failed)
+                {
+                    lastFailure = titleFailure;
+                }
+
+                if (read != TitleRead.Read || !string.Equals(windowTitle, title, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    MainWindow = _automation.FromHandle(handle).AsWindow();
+                    return;
+                }
+                catch (Exception exception) when (exception is ElementNotAvailableException or COMException)
+                {
+                    lastFailure = exception;
+                }
             }
 
             Thread.Sleep(100);
         }
 
-        var seen = string.Join(", ", GetProcessWindows(_processId, _automation).Select(window => $"'{window.Properties.Name.ValueOrDefault}'"));
-        throw new TimeoutException($"Timed out waiting for window '{title}'. Process windows: [{seen}].");
+        throw new TimeoutException(
+            $"Timed out waiting for window '{title}'. Process windows: [{DescribeProcessWindows(_processId)}]. Last UIA failure: {Describe(lastFailure)}",
+            lastFailure);
     }
 
     public void WaitForWindowTitleToClose(string title)
     {
+        // Closed only when a complete enumeration finds no live window with that title; a window whose title cannot be
+        // read may be the one we wait for.
         var stopwatch = Stopwatch.StartNew();
+        Exception? lastFailure = null;
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            var isOpen = GetProcessWindows(_processId, _automation)
-                .Any(window => string.Equals(window.Name, title, StringComparison.Ordinal));
-            if (!isOpen)
+            var possiblyOpen = !TryGetTopLevelWindowHandles(_processId, out var handles, out var enumerationFailure);
+            lastFailure = enumerationFailure ?? lastFailure;
+            foreach (var handle in handles)
+            {
+                if (!IsWindow(handle))
+                {
+                    continue;
+                }
+
+                var read = TryGetWindowTitle(handle, out var windowTitle, out var titleFailure);
+                if (read == TitleRead.Failed)
+                {
+                    possiblyOpen = true;
+                    lastFailure = titleFailure;
+                }
+                else if (read == TitleRead.Read && string.Equals(windowTitle, title, StringComparison.Ordinal))
+                {
+                    possiblyOpen = true;
+                }
+            }
+
+            if (!possiblyOpen)
             {
                 return;
             }
@@ -172,7 +354,9 @@ public sealed class AutomationApp : IDisposable
             Thread.Sleep(100);
         }
 
-        throw new TimeoutException($"Window '{title}' did not close within the expected timeout.");
+        throw new TimeoutException(
+            $"Window '{title}' did not close within the expected timeout. Process windows: [{DescribeProcessWindows(_processId)}]. Last failure: {Describe(lastFailure)}",
+            lastFailure);
     }
 
     public static AutomationApp LaunchSettingsWindow(string settingsPath)
@@ -379,48 +563,66 @@ public sealed class AutomationApp : IDisposable
 
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
-    internal static AutomationElement[] GetProcessWindows(int processId, UIA3Automation automation)
+    internal static AutomationElement[] GetProcessWindows(int processId, UIA3Automation automation) =>
+        [.. GetProcessWindowHandles(processId, automation, out _).Select(entry => entry.Window)];
+
+    internal static List<(IntPtr Handle, AutomationElement Window)> GetProcessWindowHandles(int processId, UIA3Automation automation, out Exception? incompleteFailure)
     {
-        var windows = new List<AutomationElement>();
+        incompleteFailure = null;
+        var windows = new List<(IntPtr, AutomationElement)>();
         foreach (var handle in GetTopLevelWindowHandles(processId))
         {
             try
             {
-                windows.Add(automation.FromHandle(handle));
+                windows.Add((handle, automation.FromHandle(handle)));
             }
-            catch (ElementNotAvailableException)
+            catch (Exception exception) when (exception is ElementNotAvailableException or COMException)
             {
-            }
-            catch (COMException)
-            {
+                if (IsWindow(handle))
+                {
+                    incompleteFailure = exception;
+                }
             }
         }
 
-        return [.. windows];
+        return windows;
     }
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
 
     private static List<IntPtr> GetTopLevelWindowHandles(int processId)
     {
-        var handles = new List<IntPtr>();
-        EnumWindows(
+        TryGetTopLevelWindowHandles(processId, out var handles, out _);
+        return handles;
+    }
+
+    // False when EnumWindows reports a failure: the list may then be incomplete and must not be read as absence.
+    private static bool TryGetTopLevelWindowHandles(int processId, out List<IntPtr> handles, out Exception? failure)
+    {
+        var found = new List<IntPtr>();
+        Marshal.SetLastPInvokeError(0);
+        var ok = EnumWindows(
             (handle, _) =>
             {
                 GetWindowThreadProcessId(handle, out var owner);
                 if (owner == (uint)processId)
                 {
-                    handles.Add(handle);
+                    found.Add(handle);
                 }
 
                 return true;
             },
             IntPtr.Zero);
-        return handles;
+        handles = found;
+        failure = ok ? null : new Win32Exception(Marshal.GetLastPInvokeError(), "EnumWindows failed; the window list may be incomplete");
+        return ok;
     }
 
     private static Window WaitForMainWindow(Application application, UIA3Automation automation)
@@ -525,6 +727,7 @@ public sealed class AutomationApp : IDisposable
         }
 
         var stopwatch = Stopwatch.StartNew();
+        _lastFindFailure = null;
 
         while (stopwatch.Elapsed < WindowTimeout)
         {
@@ -540,13 +743,24 @@ public sealed class AutomationApp : IDisposable
             Thread.Sleep(100);
         }
 
-        throw new TimeoutException($"Timed out waiting for automation element '{string.Join("' or '", automationIds)}'.");
+        throw new TimeoutException(
+            $"Timed out waiting for automation element '{string.Join("' or '", automationIds)}'."
+            + (_lastFindFailure is null ? string.Empty : $" Last UIA failure: {_lastFindFailure.GetType().Name}: {_lastFindFailure.Message}"),
+            _lastFindFailure);
     }
 
     public AutomationElement? TryFindElement(string automationId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(automationId);
-        return MainWindow.FindFirstDescendant(criteria => criteria.ByAutomationId(automationId));
+        try
+        {
+            return MainWindow.FindFirstDescendant(criteria => criteria.ByAutomationId(automationId));
+        }
+        catch (Exception exception) when (exception is COMException or ElementNotAvailableException)
+        {
+            _lastFindFailure = exception;
+            return null;
+        }
     }
 
     private bool TryGetRunningProcess(out Process? process)

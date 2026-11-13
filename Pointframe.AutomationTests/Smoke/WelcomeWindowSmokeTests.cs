@@ -30,7 +30,7 @@ public sealed class WelcomeWindowSmokeTests : IClassFixture<DesktopAutomationFix
             Assert.NotNull(app.FindRequiredElement(AutomationIds.WelcomeWindowCapture));
             app.ClickButton(AutomationIds.WelcomeWindowCapture);
             app.WaitForWindowTitle("SelectionMonitorWindow");
-            Assert.False(app.HasWindowAutomationId(AutomationIds.WelcomeWindowRoot));
+            Assert.False(app.HasWindowAutomationId(AutomationIds.WelcomeWindowRoot, "Welcome to Pointframe"));
             Keyboard.Press(VirtualKeyShort.ESC);
             app.WaitForWindowTitleToClose("SelectionMonitorWindow");
         }
@@ -53,9 +53,7 @@ public sealed class WelcomeWindowSmokeTests : IClassFixture<DesktopAutomationFix
 
             Assert.False(process.HasExited);
             using var desktopAutomation = new FlaUI.UIA3.UIA3Automation();
-            var processWindows = desktopAutomation.GetDesktop()
-                .FindAllChildren(criteria => criteria.ByProcessId(process.Id));
-            Assert.DoesNotContain(processWindows, window => window.AutomationId == AutomationIds.WelcomeWindowRoot);
+            Assert.False(AutomationApp.ProcessHasWindowAutomationId(process.Id, desktopAutomation, AutomationIds.WelcomeWindowRoot, "Welcome to Pointframe"));
         }
         finally
         {
