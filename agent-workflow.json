@@ -268,9 +268,6 @@
     },
     {
       "id": "scripts-selftest",
-      "gate": "scripts",
-      "log": "scripts",
-      "continueOnFail": true,
       "exe": "pwsh",
       "args": [
         "-NoProfile",
@@ -287,8 +284,6 @@
     },
     {
       "id": "scripts",
-      "log": "scripts",
-      "gate": "scripts",
       "exe": "pwsh",
       "args": [
         "-NoProfile",
@@ -298,9 +293,7 @@
       ],
       "cwd": ".",
       "timeoutMinutes": 30,
-      "dependsOn": [
-        "scripts-selftest"
-      ],
+      "dependsOn": [],
       "passSummary": "{lastLine}",
       "failSummary": "{count} script self-test problem(s).",
       "fixHint": "Fix the script or its fixtures, then run pwsh scripts/test-scripts.ps1.",
