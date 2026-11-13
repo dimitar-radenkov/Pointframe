@@ -144,8 +144,10 @@ public sealed class AutomationApp : IDisposable
         Exception? lastFailure = null;
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            var allKnown = true;
-            foreach (var window in GetProcessWindows(processId, automation))
+            var windows = GetProcessWindowsChecked(processId, automation, out var enumerationFailure);
+            var allKnown = enumerationFailure is null;
+            lastFailure = enumerationFailure ?? lastFailure;
+            foreach (var window in windows)
             {
                 if (!TryReadAutomationId(window, out var value, out var failure))
                 {
@@ -177,7 +179,7 @@ public sealed class AutomationApp : IDisposable
     {
         try
         {
-            value = element.Properties.Name.ValueOrDefault;
+            value = element.Properties.Name.Value;
             failure = null;
             return true;
         }
@@ -193,7 +195,7 @@ public sealed class AutomationApp : IDisposable
     {
         try
         {
-            value = element.Properties.AutomationId.ValueOrDefault;
+            value = element.Properties.AutomationId.Value;
             failure = null;
             return true;
         }
@@ -248,8 +250,10 @@ public sealed class AutomationApp : IDisposable
         Exception? lastFailure = null;
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            var possiblyOpen = false;
-            foreach (var window in GetProcessWindows(_processId, _automation))
+            var windows = GetProcessWindowsChecked(_processId, _automation, out var enumerationFailure);
+            var possiblyOpen = enumerationFailure is not null;
+            lastFailure = enumerationFailure ?? lastFailure;
+            foreach (var window in windows)
             {
                 if (!TryReadName(window, out var name, out var failure))
                 {
@@ -485,8 +489,12 @@ public sealed class AutomationApp : IDisposable
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
-    internal static AutomationElement[] GetProcessWindows(int processId, UIA3Automation automation)
+    internal static AutomationElement[] GetProcessWindows(int processId, UIA3Automation automation) =>
+        GetProcessWindowsChecked(processId, automation, out _);
+
+    internal static AutomationElement[] GetProcessWindowsChecked(int processId, UIA3Automation automation, out Exception? incompleteFailure)
     {
+        incompleteFailure = null;
         var windows = new List<AutomationElement>();
         foreach (var handle in GetTopLevelWindowHandles(processId))
         {
@@ -494,16 +502,20 @@ public sealed class AutomationApp : IDisposable
             {
                 windows.Add(automation.FromHandle(handle));
             }
-            catch (ElementNotAvailableException)
+            catch (Exception exception) when (exception is ElementNotAvailableException or COMException)
             {
-            }
-            catch (COMException)
-            {
+                if (IsWindow(handle))
+                {
+                    incompleteFailure = exception;
+                }
             }
         }
 
         return [.. windows];
     }
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
 
     private static List<IntPtr> GetTopLevelWindowHandles(int processId)
     {
