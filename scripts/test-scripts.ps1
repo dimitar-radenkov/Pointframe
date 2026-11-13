@@ -204,18 +204,24 @@ function Get-ScriptsChange
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     # -z gives raw, NUL-separated paths: without it git quotes names with non-ASCII or special characters, and a
     # quoted name would match no dependency glob and no unmapped-path rule.
-    $savedEncoding = [Console]::OutputEncoding
-    [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-    try
+    # git's output is read as UTF-8 through a Process: [Console]::OutputEncoding has no effect in a process without a
+    # console (verify.ps1 starts its gates that way), so a native call would turn non-ASCII path characters into '?'.
+    foreach ($gitArgs in @(@('diff','--name-only','--no-renames','-z',"$base..HEAD"), @('diff','--name-only','--no-renames','-z',$base), @('diff','--cached','--name-only','--no-renames','-z',$base), @('ls-files','--others','--exclude-standard','-z')))
     {
-        foreach ($gitArgs in @(@('diff','--name-only','--no-renames','-z',"$base..HEAD"), @('diff','--name-only','--no-renames','-z',$base), @('diff','--cached','--name-only','--no-renames','-z',$base), @('ls-files','--others','--exclude-standard','-z')))
-        {
-            $raw = @(& git -C $repoRoot -c core.quotepath=off @gitArgs 2>$null) -join "`n"
-            if ($LASTEXITCODE -ne 0) { return @{ Mode='all'; Base=$base; Reason='git could not enumerate changed paths'; Changed=$true; Paths=@() } }
-            foreach ($item in $raw.Split([char]0)) { if ($item) { [void]$paths.Add($item.Replace('\','/')) } }
-        }
+        $psi = [Diagnostics.ProcessStartInfo]::new('git')
+        foreach ($argument in @('-C', $repoRoot, '-c', 'core.quotepath=off') + $gitArgs) { $psi.ArgumentList.Add($argument) }
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+        $process = [Diagnostics.Process]::Start($psi)
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $raw = $process.StandardOutput.ReadToEnd()
+        $process.WaitForExit()
+        [void]$stderrTask.Result
+        if ($process.ExitCode -ne 0) { return @{ Mode='all'; Base=$base; Reason='git could not enumerate changed paths'; Changed=$true; Paths=@() } }
+        foreach ($item in $raw.Split([char]0)) { if ($item) { [void]$paths.Add($item.Replace('\','/')) } }
     }
-    finally { [Console]::OutputEncoding = $savedEncoding }
     $shortOut = @(& git -C $repoRoot rev-parse --short $base 2>$null)
     $short = if ($LASTEXITCODE -eq 0 -and $shortOut) { "$($shortOut[0])".Trim() } else { $base }
     $changedPaths = @($paths | Sort-Object)
