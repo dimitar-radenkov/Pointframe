@@ -137,21 +137,81 @@ public sealed class DesktopInvokeTests
         fixture.UiAutomation.Verify(provider => provider.TryInvoke(It.IsAny<string>()), Times.Never);
     }
 
+    [Fact]
+    public async Task ClickWarningFromTheInputServiceIsReportedAndDispatchStaysComplete()
+    {
+        var fixture = new InvokeFixture(Bounds);
+        const string warning = "The click was sent, but the foreground window changed while it was sent, so its effect is unconfirmed.";
+        fixture.Input
+            .Setup(input => input.ClickAsync(It.IsAny<DesktopClickRequest>(), It.IsAny<DesktopProcessIdentity>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DesktopInputPreflightResult.Valid() with { Warning = warning });
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), ElementRef);
+
+        Assert.Equal("Complete", response.Dispatch);
+        Assert.Equal("click", response.Method);
+        Assert.Equal(warning, response.Warning);
+    }
+
+    [Fact]
+    public async Task CleanClickCarriesNoWarning()
+    {
+        var fixture = new InvokeFixture(Bounds);
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), ElementRef);
+
+        Assert.Equal("Complete", response.Dispatch);
+        Assert.Null(response.Warning);
+    }
+
+    [Fact]
+    public async Task ElementRefWhoseElementNoLongerOwnsThePointSendsNoClick()
+    {
+        var fixture = new InvokeFixture(Bounds, hitTestOwnsPoint: false);
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), ElementRef);
+
+        Assert.Equal("TargetOccluded", response.Error?.Code);
+        Assert.Equal("NotStarted", response.Dispatch);
+        fixture.HitTest!.Verify(hit => hit.ElementOwnsPoint(ElementRef, 120, 210), Times.Once);
+        fixture.Input.Verify(input => input.ClickAsync(It.IsAny<DesktopClickRequest>(), It.IsAny<DesktopProcessIdentity>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.UiAutomation.Verify(provider => provider.TryInvoke(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ElementRefWhoseElementOwnsThePointStillClicks()
+    {
+        var fixture = new InvokeFixture(Bounds, hitTestOwnsPoint: true);
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), ElementRef);
+
+        Assert.Equal("Complete", response.Dispatch);
+        fixture.Input.Verify(input => input.ClickAsync(It.IsAny<DesktopClickRequest>(), It.IsAny<DesktopProcessIdentity>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private sealed class InvokeFixture
     {
         public Mock<IWindowsDesktopInputService> Input { get; } = new();
         public Mock<IWindowsUiAutomationActionProvider> UiAutomation { get; } = new();
+        public Mock<IWindowsUiAutomationHitTestProvider>? HitTest { get; }
         public DesktopTestingMcpTools Tools { get; } = null!;
 
-        public InvokeFixture(PixelBounds bounds)
+        public InvokeFixture(PixelBounds bounds, bool? hitTestOwnsPoint = null)
         {
-            Tools = CreateTools(bounds, Input, UiAutomation);
+            if (hitTestOwnsPoint is { } owns)
+            {
+                HitTest = new Mock<IWindowsUiAutomationHitTestProvider>();
+                HitTest.Setup(provider => provider.ElementOwnsPoint(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>())).Returns(owns);
+            }
+
+            Tools = CreateTools(bounds, Input, UiAutomation, HitTest);
         }
 
         private static DesktopTestingMcpTools CreateTools(
             PixelBounds elementBounds,
             Mock<IWindowsDesktopInputService> input,
-            Mock<IWindowsUiAutomationActionProvider> uiAutomation)
+            Mock<IWindowsUiAutomationActionProvider> uiAutomation,
+            Mock<IWindowsUiAutomationHitTestProvider>? hitTest)
         {
             var process = new DesktopProcessIdentity(ProcessRef, 1, DateTimeOffset.UtcNow, "target.exe", "hash");
             var sessions = new Mock<IDesktopTestSessionService>();
@@ -187,7 +247,8 @@ public sealed class DesktopInvokeTests
                             execution.Dispatch,
                             execution.Verification,
                             execution.ObservationStatus,
-                            execution.Error);
+                            execution.Error,
+                            execution.Warning);
                     });
 
             var reports = new Mock<IDesktopTestReportService>();
@@ -209,7 +270,8 @@ public sealed class DesktopInvokeTests
                 reports.Object,
                 new Mock<IDesktopEvidenceRecorder>().Object,
                 new DesktopTestingPolicyLoader(),
-                new DesktopTestingHostOptions(Enabled: true, WorkerMode: false, PolicyPath: null, WorkerPipeName: null, ParentProcessId: null));
+                new DesktopTestingHostOptions(Enabled: true, WorkerMode: false, PolicyPath: null, WorkerPipeName: null, ParentProcessId: null),
+                hitTest: hitTest?.Object);
         }
     }
 }

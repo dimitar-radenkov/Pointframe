@@ -111,7 +111,8 @@ public sealed record DesktopTestingActionResponse(
     IReadOnlyList<DesktopAppSummary>? Apps = null,
     string? Method = null,
     string? ActionId = null,
-    DesktopNextStep? NextStep = null);
+    DesktopNextStep? NextStep = null,
+    string? Warning = null);
 
 public sealed record DesktopAppSummary(string Id, string ExecutableName, int AllowedActionCount);
 

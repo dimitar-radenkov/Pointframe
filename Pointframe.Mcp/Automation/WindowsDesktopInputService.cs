@@ -3,6 +3,14 @@ using Pointframe.Engine.Automation.Models;
 
 namespace Pointframe.Mcp.Automation;
 
+public enum DesktopClickSendOutcome
+{
+    Sent,
+    Failed,
+    Aborted,
+    Interfered,
+}
+
 public enum DesktopInputMethod
 {
     Physical,
@@ -52,6 +60,8 @@ public sealed record DesktopInputPreflightResult(
     string Message,
     bool ApprovedProcessForeground = false)
 {
+    public string? Warning { get; init; }
+
     public static DesktopInputPreflightResult Valid() => new(true, "Ok", "Input preflight passed.");
 
     public static DesktopInputPreflightResult Invalid(string code, string message, bool approvedProcessForeground = false) =>
@@ -100,12 +110,20 @@ public interface IDesktopInputNativeAdapter
 
     bool IsPointVisible(PixelBounds bounds, int x, int y);
 
+    nint GetRootWindowFromPoint(int x, int y) => nint.Zero;
+
     bool IsPointVisible(PixelBounds bounds, int x, int y, nint expectedWindow) => IsPointVisible(bounds, x, y);
 
     bool IsPointVisibleForProcess(PixelBounds bounds, int x, int y, int processId, nint expectedWindow) =>
         IsPointVisible(bounds, x, y, expectedWindow);
 
     bool SendClick(int x, int y, bool rightButton, int count);
+
+    // The guard is asked before each SendInput step (move, press, release); false means the target the
+    // preflight checked changed. Before a press nothing more is sent (Aborted); with a button held the
+    // release is still sent and the click reports Interfered.
+    DesktopClickSendOutcome SendClickGuarded(int x, int y, bool rightButton, int count, Func<bool> targetUnchanged) =>
+        SendClick(x, y, rightButton, count) ? DesktopClickSendOutcome.Sent : DesktopClickSendOutcome.Failed;
 
     bool SendKeys(IReadOnlyList<ushort> virtualKeys);
 
@@ -392,9 +410,42 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
 
         await Task.Yield();
         cancellationToken.ThrowIfCancellationRequested();
-        return _native.SendClick(request.X, request.Y, request.RightButton, request.Count)
-            ? DesktopInputPreflightResult.Valid()
-            : DesktopInputPreflightResult.Invalid("InputDispatchFailed", "The native click was not accepted.");
+        // The preflight target: compared again before each step of the gesture, never after the last
+        // release, because a click that opens a dialog legitimately moves the foreground then.
+        var foregroundBefore = _native.GetForegroundWindow();
+        var rootBefore = _native.GetRootWindowFromPoint(request.X, request.Y);
+        var foregroundChanged = false;
+        var rootChanged = false;
+        var outcome = _native.SendClickGuarded(
+            request.X,
+            request.Y,
+            request.RightButton,
+            request.Count,
+            () =>
+            {
+                foregroundChanged |= _native.GetForegroundWindow() != foregroundBefore;
+                rootChanged |= _native.GetRootWindowFromPoint(request.X, request.Y) != rootBefore;
+                return !foregroundChanged && !rootChanged;
+            });
+        switch (outcome)
+        {
+            case DesktopClickSendOutcome.Failed:
+                return DesktopInputPreflightResult.Invalid("InputDispatchFailed", "The native click was not accepted.");
+            case DesktopClickSendOutcome.Aborted:
+                return foregroundChanged
+                    ? DesktopInputPreflightResult.Invalid("FocusRequired", "The target window is no longer foreground. No input was sent.")
+                    : DesktopInputPreflightResult.Invalid("OccludedOrOutOfBounds", "The click point is no longer visible within the approved target. No input was sent.");
+            case DesktopClickSendOutcome.Interfered:
+                var changed = foregroundChanged && rootChanged
+                    ? "the foreground window and the window under the click point"
+                    : foregroundChanged ? "the foreground window" : "the window under the click point";
+                return DesktopInputPreflightResult.Valid() with
+                {
+                    Warning = $"{char.ToUpperInvariant(changed[0])}{changed[1..]} changed while the click was being sent, so its effect is unconfirmed. Verify with desktop_check_ui before relying on it.",
+                };
+            default:
+                return DesktopInputPreflightResult.Valid();
+        }
     }
 
     public Task<DesktopInputPreflightResult> PressKeysAsync(
@@ -719,6 +770,14 @@ internal sealed class WindowsDesktopInputNativeAdapter : IDesktopInputNativeAdap
             && WindowsDesktopNativeMethods.GetAncestor(hitWindow, WindowsDesktopNativeMethods.GetAncestorRoot) == expectedWindow;
     }
 
+    public nint GetRootWindowFromPoint(int x, int y)
+    {
+        var hitWindow = WindowsDesktopNativeMethods.WindowFromPoint(new WindowsDesktopNativeMethods.POINT(x, y));
+        return hitWindow == nint.Zero
+            ? nint.Zero
+            : WindowsDesktopNativeMethods.GetAncestor(hitWindow, WindowsDesktopNativeMethods.GetAncestorRoot);
+    }
+
     public bool IsPointVisibleForProcess(PixelBounds bounds, int x, int y, int processId, nint expectedWindow)
     {
         if (expectedWindow == nint.Zero || !IsPointVisible(bounds, x, y))
@@ -744,7 +803,10 @@ internal sealed class WindowsDesktopInputNativeAdapter : IDesktopInputNativeAdap
     internal const int ButtonHoldMilliseconds = 50;
     internal const int ClickGapMilliseconds = 40;
 
-    public bool SendClick(int x, int y, bool rightButton, int count)
+    public bool SendClick(int x, int y, bool rightButton, int count) =>
+        SendClickGuarded(x, y, rightButton, count, static () => true) is DesktopClickSendOutcome.Sent or DesktopClickSendOutcome.Interfered;
+
+    public DesktopClickSendOutcome SendClickGuarded(int x, int y, bool rightButton, int count, Func<bool> targetUnchanged)
     {
         var up = rightButton
             ? WindowsDesktopNativeMethods.MouseEventRightUp
@@ -753,21 +815,49 @@ internal sealed class WindowsDesktopInputNativeAdapter : IDesktopInputNativeAdap
             ? WindowsDesktopNativeMethods.MouseEventRightDown
             : WindowsDesktopNativeMethods.MouseEventLeftDown;
 
+        var interfered = false;
+        var pressed = false;
+        var buttonHeld = false;
         foreach (var (flags, delay) in BuildClickSteps(rightButton, count))
         {
+            if (!interfered && !targetUnchanged())
+            {
+                if (!buttonHeld)
+                {
+                    // Before a press: stop cleanly. After a completed first click of a double click the
+                    // gesture is partial, which is reported as interference rather than as nothing sent.
+                    return pressed ? DesktopClickSendOutcome.Interfered : DesktopClickSendOutcome.Aborted;
+                }
+
+                // A button is down: the release below is still sent, and then the gesture ends.
+                interfered = true;
+            }
+
+            if (interfered && flags != up)
+            {
+                continue;
+            }
+
             if (!Send([Mouse(x, y, flags)]))
             {
-                return false;
+                return DesktopClickSendOutcome.Failed;
             }
 
             if (flags == down)
             {
                 // Owned from press to release, so a failure mid-click cannot leave the button held.
                 _ownedMouseButtons.Add(up);
+                buttonHeld = true;
+                pressed = true;
             }
             else if (flags == up)
             {
                 _ownedMouseButtons.Remove(up);
+                buttonHeld = false;
+                if (interfered)
+                {
+                    return DesktopClickSendOutcome.Interfered;
+                }
             }
 
             if (delay > 0)
@@ -776,7 +866,7 @@ internal sealed class WindowsDesktopInputNativeAdapter : IDesktopInputNativeAdap
             }
         }
 
-        return true;
+        return DesktopClickSendOutcome.Sent;
     }
 
     internal static IReadOnlyList<(uint Flags, int DelayAfterMilliseconds)> BuildClickSteps(bool rightButton, int count)

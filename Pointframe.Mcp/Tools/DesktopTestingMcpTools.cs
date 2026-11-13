@@ -523,6 +523,21 @@ internal sealed class DesktopTestingMcpTools(
                         && focus.ApprovedProcessForeground;
                     var released = (focus.IsValid || clickWithoutFocusingPopup) && input.TryReleaseOwnedInput();
                     var clickElement = element;
+                    if (selector is null && released && hitTest is not null
+                        && !hitTest.ElementOwnsPoint(
+                            invokeRef!,
+                            element!.BoundsPixels.X + element.BoundsPixels.Width / 2,
+                            element.BoundsPixels.Y + element.BoundsPixels.Height / 2))
+                    {
+                        // The bounds come from an earlier observation. Same refusal as a selector whose
+                        // click point no longer lands on the element: nothing is sent.
+                        return new DesktopActionExecution(
+                            DesktopDispatchStatus.NotStarted,
+                            DesktopVerificationStatus.Failed,
+                            DesktopObservationStatus.NotRequested,
+                            new DesktopOperationError("TargetOccluded", "The click point does not land on the selected element (another control, popup, or dialog covers it). No input was sent."));
+                    }
+
                     if (selector is not null && released)
                     {
                         // Foregrounding can move things and an app modal can cover the point, so the target is
@@ -558,7 +573,7 @@ internal sealed class DesktopTestingMcpTools(
                     if (click.IsValid)
                     {
                         method = "click";
-                        return new DesktopActionExecution(DesktopDispatchStatus.Complete);
+                        return new DesktopActionExecution(DesktopDispatchStatus.Complete, Warning: click.Warning);
                     }
 
                     if (!CanFallBackToPattern(click.Code))
@@ -1712,7 +1727,7 @@ internal sealed class DesktopTestingMcpTools(
             {
                 var preflight = await dispatch().ConfigureAwait(false);
                 return preflight.IsValid
-                    ? new DesktopActionExecution(DesktopDispatchStatus.Complete)
+                    ? new DesktopActionExecution(DesktopDispatchStatus.Complete, Warning: preflight.Warning)
                     : new DesktopActionExecution(
                         DesktopDispatchStatus.NotStarted,
                         DesktopVerificationStatus.Failed,
