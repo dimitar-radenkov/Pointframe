@@ -6,7 +6,8 @@ public sealed record DesktopActionExecution(
     DesktopDispatchStatus Dispatch,
     DesktopVerificationStatus Verification = DesktopVerificationStatus.NotRequested,
     DesktopObservationStatus ObservationStatus = DesktopObservationStatus.NotRequested,
-    DesktopOperationError? Error = null);
+    DesktopOperationError? Error = null,
+    string? Warning = null);
 
 public interface IDesktopActionCoordinator
 {
@@ -101,7 +102,8 @@ public sealed class DesktopActionCoordinator : IDesktopActionCoordinator
                     execution.Dispatch,
                     execution.Verification,
                     execution.ObservationStatus,
-                    execution.Error);
+                    execution.Error,
+                    execution.Warning);
             }
             catch (OperationCanceledException)
             {

@@ -143,6 +143,66 @@ public sealed class DesktopProofServiceTests : IDisposable
     }
 
     [Fact]
+    public void ActionResultWithoutAWarningSerializesToTheOldBytes()
+    {
+        var actionId = "6f9619ff-8b86-d011-b42d-00c04fc964ff";
+        var result = new DesktopActionResult(
+            DesktopTestingLimits.SchemaVersion,
+            actionId,
+            DesktopOperationStatus.Completed,
+            DesktopDispatchStatus.Complete,
+            DesktopVerificationStatus.NotRequested,
+            DesktopObservationStatus.NotRequested);
+
+        var json = JsonSerializer.Serialize(result, DesktopProofService.CanonicalJson);
+
+        Assert.Equal(
+            $"{{\"schemaVersion\":{DesktopTestingLimits.SchemaVersion},\"actionId\":\"{actionId}\",\"operationStatus\":\"Completed\",\"dispatch\":\"Complete\",\"verification\":\"NotRequested\",\"observationStatus\":\"NotRequested\",\"error\":null}}",
+            json);
+    }
+
+    [Fact]
+    public async Task SealedReportWithoutWarningsHasNoWarningPropertyAndStillVerifiesFromItsJson()
+    {
+        var json = JsonSerializer.Serialize(await SealedReportAsync(), DesktopProofService.CanonicalJson);
+
+        Assert.DoesNotContain("\"warning\"", json);
+        Assert.True(DesktopProofService.Verify(json, _evidence).IsValid);
+    }
+
+    [Fact]
+    public async Task ReportWrittenByMasterWithoutAWarningPropertyVerifiesUnchanged()
+    {
+        var report = await SealedReportAsync();
+        var legacy = JsonSerializer.Serialize(report, DesktopProofService.CanonicalJson);
+        Assert.DoesNotContain("warning", legacy, StringComparison.OrdinalIgnoreCase);
+
+        var loaded = JsonSerializer.Deserialize<DesktopTestReport>(legacy, DesktopProofService.CanonicalJson)!;
+
+        Assert.All(loaded.Actions, action => Assert.Null(action.Result.Warning));
+        Assert.True(DesktopProofService.Verify(loaded, _evidence).IsValid);
+    }
+
+    [Fact]
+    public void ActionResultWarningRoundTripsWhenPresent()
+    {
+        var actionId = Guid.NewGuid().ToString();
+        var result = new DesktopActionResult(
+            DesktopTestingLimits.SchemaVersion,
+            actionId,
+            DesktopOperationStatus.Completed,
+            DesktopDispatchStatus.Complete,
+            DesktopVerificationStatus.NotRequested,
+            DesktopObservationStatus.NotRequested,
+            warning: "unconfirmed");
+
+        var json = JsonSerializer.Serialize(result, DesktopProofService.CanonicalJson);
+
+        Assert.Contains("\"warning\":\"unconfirmed\"", json);
+        Assert.Equal("unconfirmed", JsonSerializer.Deserialize<DesktopActionResult>(json, DesktopProofService.CanonicalJson)!.Warning);
+    }
+
+    [Fact]
     public void UnreadableJsonIsNotValid()
     {
         Assert.False(DesktopProofService.Verify("{ not json").IsValid);

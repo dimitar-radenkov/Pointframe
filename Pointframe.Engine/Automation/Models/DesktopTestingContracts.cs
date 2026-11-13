@@ -410,7 +410,8 @@ public sealed record DesktopActionResult
         DesktopDispatchStatus dispatch,
         DesktopVerificationStatus verification,
         DesktopObservationStatus observationStatus,
-        DesktopOperationError? error = null)
+        DesktopOperationError? error = null,
+        string? warning = null)
     {
         DesktopTestingLimits.ValidateSchemaVersion(schemaVersion);
 
@@ -431,6 +432,7 @@ public sealed record DesktopActionResult
         Verification = verification;
         ObservationStatus = observationStatus;
         Error = error;
+        Warning = warning;
     }
 
     public int SchemaVersion { get; }
@@ -446,4 +448,8 @@ public sealed record DesktopActionResult
     public DesktopObservationStatus ObservationStatus { get; }
 
     public DesktopOperationError? Error { get; }
+
+    // Omitted when null so the canonical JSON that signed reports hash stays byte-identical to older reports.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Warning { get; }
 }

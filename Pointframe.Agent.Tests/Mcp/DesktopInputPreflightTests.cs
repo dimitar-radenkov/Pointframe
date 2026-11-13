@@ -25,6 +25,203 @@ public sealed class DesktopInputPreflightTests
     }
 
     [Fact]
+    public async Task ClickWhoseForegroundChangesBeforeThePressSendsNothingAndFailsLikeThePreflight()
+    {
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), ChangeBeforeStep = "down", ForegroundOnChange = new nint(20) };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("FocusRequired", result.Code);
+        Assert.DoesNotContain("down", adapter.SentSteps);
+        Assert.DoesNotContain("up", adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task ClickWhoseWindowUnderThePointChangesBeforeThePressSendsNoPress()
+    {
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), ChangeBeforeStep = "down", RootOnChange = new nint(30) };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("OccludedOrOutOfBounds", result.Code);
+        Assert.Empty(adapter.SentSteps.Where(step => step != "move"));
+    }
+
+    [Fact]
+    public async Task ClickWhoseForegroundChangesBetweenPressAndReleaseStillReleasesAndWarns()
+    {
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), ChangeBeforeStep = "up", ForegroundOnChange = new nint(20) };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(["move", "down", "up"], adapter.SentSteps);
+        Assert.Contains("foreground window", result.Warning);
+        Assert.Contains("while the click was being sent", result.Warning);
+        Assert.Contains("desktop_check_ui", result.Warning);
+    }
+
+    [Fact]
+    public async Task ClickWhoseForegroundChangesOnlyAfterTheReleaseCarriesNoWarning()
+    {
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), ChangeBeforeStep = "afterUp", ForegroundOnChange = new nint(20) };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.True(result.IsValid);
+        Assert.Null(result.Warning);
+        Assert.Equal(["move", "down", "up"], adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task ClickWhoseCoverVanishesDuringValidationAndReturnsBeforeDispatchSendsNoPress()
+    {
+        // B covers A when a baseline would have been sampled, is gone while IsPointVisible validates A,
+        // and is back before the press.
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(30), VisibleCheckClearsCoverThenCoverReturns = true };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("OccludedOrOutOfBounds", result.Code);
+        Assert.DoesNotContain("down", adapter.SentSteps);
+    }
+
+    private static async Task<(DesktopInputPreflightResult Result, FakeAdapter Adapter)> ClickWithScriptAsync(string step, params nint[] script)
+    {
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), ChangeBeforeStep = step, ForegroundScript = [.. script] };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+        return (result, adapter);
+    }
+
+    [Fact]
+    public async Task TransientZeroForegroundThatResolvesToTheTargetClicksWithoutWarning()
+    {
+        var (result, adapter) = await ClickWithScriptAsync("down", nint.Zero, nint.Zero, new nint(10));
+
+        Assert.True(result.IsValid);
+        Assert.Null(result.Warning);
+        Assert.Equal(["move", "down", "up"], adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task PersistentZeroForegroundBeforeThePressSendsNoPress()
+    {
+        var (result, adapter) = await ClickWithScriptAsync("down", nint.Zero);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("FocusRequired", result.Code);
+        Assert.Contains("could not be verified", result.Message);
+        Assert.DoesNotContain("down", adapter.SentSteps);
+        Assert.DoesNotContain("up", adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task ZeroForegroundThenAnotherWindowBeforeThePressSendsNoPress()
+    {
+        var (result, adapter) = await ClickWithScriptAsync("down", nint.Zero, new nint(20));
+
+        Assert.False(result.IsValid);
+        Assert.Equal("FocusRequired", result.Code);
+        Assert.DoesNotContain("down", adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task PersistentZeroForegroundWhileTheButtonIsHeldStillReleasesAndWarns()
+    {
+        var (result, adapter) = await ClickWithScriptAsync("up", nint.Zero);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(["move", "down", "up"], adapter.SentSteps);
+        Assert.Contains("could not be verified", result.Warning);
+        Assert.Contains("desktop_check_ui", result.Warning);
+    }
+
+    [Fact]
+    public async Task ClickOnAChildWindowUnderAnUnchangedTopLevelTargetClicksWithoutWarning()
+    {
+        // The point hits a child control; the root under it is the validated top-level target throughout.
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10) };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.True(result.IsValid);
+        Assert.Null(result.Warning);
+        Assert.Equal(["move", "down", "up"], adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task ClickWhoseWindowIsCoveredAfterThePreflightChecksSendsNoPress()
+    {
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), CoverAfterPointVisibleCheck = new nint(30) };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("OccludedOrOutOfBounds", result.Code);
+        Assert.DoesNotContain("down", adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task ClickWithUnchangedForegroundAndPointCarriesNoWarning()
+    {
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10) };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.True(result.IsValid);
+        Assert.Null(result.Warning);
+        Assert.Equal(1, adapter.Clicks);
+    }
+
+    [Fact]
     public async Task ClickRejectsUnfocusedOrOutOfBoundsPoint()
     {
         var adapter = new FakeAdapter { Foreground = new nint(10) };
@@ -66,6 +263,7 @@ public sealed class DesktopInputPreflightTests
         var adapter = new FakeAdapter
         {
             Foreground = new nint(20),
+            RootAtPoint = new nint(20),
             ProcessForeground = true,
             ProcessPointVisible = true,
         };
@@ -164,7 +362,7 @@ public sealed class DesktopInputPreflightTests
     [Fact]
     public async Task FocusRetriesWithAttachedForegroundInputAndThenAllowsPhysicalClick()
     {
-        var adapter = new FakeAdapter { Foreground = new nint(20), SetForegroundOnlyWhileAttached = true };
+        var adapter = new FakeAdapter { Foreground = new nint(20), RootAtPoint = new nint(10), SetForegroundOnlyWhileAttached = true };
         var service = new WindowsDesktopInputService(new FakeFactory(adapter));
         var process = Process("approved");
         var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
@@ -314,7 +512,26 @@ public sealed class DesktopInputPreflightTests
         public bool Attached { get; private set; }
         public List<(uint AttachTo, uint AttachFrom, bool Attach)> AttachCalls { get; } = [];
 
-        public nint GetForegroundWindow() => Foreground;
+        public string? ChangeBeforeStep { get; set; }
+        public nint? ForegroundOnChange { get; set; }
+        public nint? RootOnChange { get; set; }
+        public nint RootAtPoint { get; set; }
+        public List<string> SentSteps { get; } = [];
+
+        public List<nint>? ForegroundScript { get; set; }
+        private Queue<nint>? _foregroundScript;
+
+        public nint GetForegroundWindow()
+        {
+            // Once armed, successive reads walk the script and then repeat its last value.
+            if (_foregroundScript is { Count: > 0 } script)
+            {
+                return script.Count > 1 ? script.Dequeue() : script.Peek();
+            }
+
+            return Foreground;
+        }
+        public nint GetRootWindowFromPoint(int x, int y) => RootAtPoint;
         // Unset keeps the interface default (any foreground window counts), which older tests rely on.
         public bool IsForegroundForProcess(DesktopProcessIdentity expectedProcess) => ProcessForeground ?? Foreground != nint.Zero;
         public bool SetForeground(nint handle)
@@ -366,12 +583,74 @@ public sealed class DesktopInputPreflightTests
         public bool? IsWindowCloaked(nint handle) => ForegroundCloaked;
         public bool IsWindowValid(nint handle) => true;
         public bool IsWindowVisible(nint handle) => true;
-        public bool IsPointVisible(PixelBounds bounds, int x, int y) => x >= bounds.X && y >= bounds.Y && x < bounds.X + bounds.Width && y < bounds.Y + bounds.Height;
+        public nint? CoverAfterPointVisibleCheck { get; set; }
+        public bool VisibleCheckClearsCoverThenCoverReturns { get; set; }
+        public bool IsPointVisible(PixelBounds bounds, int x, int y)
+        {
+            var visible = x >= bounds.X && y >= bounds.Y && x < bounds.X + bounds.Width && y < bounds.Y + bounds.Height;
+            if (VisibleCheckClearsCoverThenCoverReturns)
+            {
+                // The overlay is absent at the moment of validation and back right after.
+                RootAtPoint = new nint(30);
+            }
+
+            if (CoverAfterPointVisibleCheck is { } cover)
+            {
+                RootAtPoint = cover;
+            }
+
+            return visible;
+        }
         public bool IsPointVisibleForProcess(PixelBounds bounds, int x, int y, int processId, nint expectedWindow) => ProcessPointVisible && IsPointVisible(bounds, x, y);
         public bool SendClick(int x, int y, bool rightButton, int count)
         {
             Clicks += count;
             return true;
+        }
+        public DesktopClickSendOutcome SendClickGuarded(int x, int y, bool rightButton, int count, Func<bool, bool> targetUnchanged)
+        {
+            // Runs the shipping gesture loop; only the native sends and the scripted desktop changes are fake.
+            var steps = WindowsDesktopInputNativeAdapter.BuildClickSteps(rightButton, count);
+            var down = rightButton ? WindowsDesktopNativeMethods.MouseEventRightDown : WindowsDesktopNativeMethods.MouseEventLeftDown;
+            var up = rightButton ? WindowsDesktopNativeMethods.MouseEventRightUp : WindowsDesktopNativeMethods.MouseEventLeftUp;
+            var names = new[] { "move", "down", "up" };
+            var guardCalls = 0;
+            var outcome = DesktopClickGesture.Run(
+                steps,
+                down,
+                up,
+                held =>
+                {
+                    var step = guardCalls < names.Length ? names[guardCalls] : "later";
+                    guardCalls++;
+                    if (ChangeBeforeStep == step)
+                    {
+                        Foreground = ForegroundOnChange ?? Foreground;
+                        RootAtPoint = RootOnChange ?? RootAtPoint;
+                        if (ForegroundScript is not null)
+                        {
+                            _foregroundScript = new Queue<nint>(ForegroundScript);
+                        }
+                    }
+
+                    return targetUnchanged(held);
+                },
+                flags =>
+                {
+                    SentSteps.Add(flags == down ? "down" : flags == up ? "up" : "move");
+                    return true;
+                },
+                _ => { });
+            if (outcome is DesktopClickSendOutcome.Sent)
+            {
+                Clicks += count;
+                if (ChangeBeforeStep == "afterUp")
+                {
+                    Foreground = ForegroundOnChange ?? Foreground;
+                }
+            }
+
+            return outcome;
         }
         public bool SendKeys(IReadOnlyList<ushort> virtualKeys) => true;
         public bool SendDrag(IReadOnlyList<PixelBounds> points, int durationMilliseconds) => true;

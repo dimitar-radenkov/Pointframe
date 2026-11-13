@@ -137,6 +137,33 @@ public sealed class DesktopInvokeTests
         fixture.UiAutomation.Verify(provider => provider.TryInvoke(It.IsAny<string>()), Times.Never);
     }
 
+    [Fact]
+    public async Task ClickWarningFromTheInputServiceIsReportedAndDispatchStaysComplete()
+    {
+        var fixture = new InvokeFixture(Bounds);
+        const string warning = "The click was sent, but the foreground window changed while it was sent, so its effect is unconfirmed.";
+        fixture.Input
+            .Setup(input => input.ClickAsync(It.IsAny<DesktopClickRequest>(), It.IsAny<DesktopProcessIdentity>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DesktopInputPreflightResult.Valid() with { Warning = warning });
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), ElementRef);
+
+        Assert.Equal("Complete", response.Dispatch);
+        Assert.Equal("click", response.Method);
+        Assert.Equal(warning, response.Warning);
+    }
+
+    [Fact]
+    public async Task CleanClickCarriesNoWarning()
+    {
+        var fixture = new InvokeFixture(Bounds);
+
+        var response = await fixture.Tools.InvokeAsync(SessionId, Guid.NewGuid().ToString(), ElementRef);
+
+        Assert.Equal("Complete", response.Dispatch);
+        Assert.Null(response.Warning);
+    }
+
     private sealed class InvokeFixture
     {
         public Mock<IWindowsDesktopInputService> Input { get; } = new();
@@ -187,7 +214,8 @@ public sealed class DesktopInvokeTests
                             execution.Dispatch,
                             execution.Verification,
                             execution.ObservationStatus,
-                            execution.Error);
+                            execution.Error,
+                            execution.Warning);
                     });
 
             var reports = new Mock<IDesktopTestReportService>();

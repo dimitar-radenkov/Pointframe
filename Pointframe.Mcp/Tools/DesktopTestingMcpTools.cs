@@ -432,7 +432,7 @@ internal sealed class DesktopTestingMcpTools(
         EnterTextCoreAsync(sessionId, actionId, observationRef, imageRef, x, y, text, semanticValue, elementRef, automationId, role, name, windowRef, cancellationToken);
 
     [McpServerTool(Name = "desktop_invoke", Title = "Invoke desktop element", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
-    [Description("Clicks the center of the element like a user. Name the element with elementRef from a recent desktop_observe_app, or with a selector (automationId, or role and name, optionally scoped by windowRef) and no observation at all: a selector is resolved against a fresh inspection when the action runs and must match exactly one element, otherwise nothing is clicked and the call fails with ElementNotFound, AmbiguousTarget (add windowRef or narrow the selector) or InspectionIncomplete (retry with a new actionId). Pass exactly one way to name the element. If its window cannot be foregrounded while another visible window of the app is already foreground (for example, a popup menu), it clicks only after same-process hit-test preflight. If click preflight cannot target it, falls back to its UI Automation invoke or toggle pattern.")]
+    [Description("Clicks the center of the element like a user. Name the element with elementRef from a recent desktop_observe_app, or with a selector (automationId, or role and name, optionally scoped by windowRef) and no observation at all: a selector is resolved against a fresh inspection when the action runs and must match exactly one element, otherwise nothing is clicked and the call fails with ElementNotFound, AmbiguousTarget (add windowRef or narrow the selector) or InspectionIncomplete (retry with a new actionId). Pass exactly one way to name the element. If its window cannot be foregrounded while another visible window of the app is already foreground (for example, a popup menu), it clicks only after same-process hit-test preflight. If click preflight cannot target it, falls back to its UI Automation invoke or toggle pattern. dispatch Complete means the input was accepted, not that the app reacted; verify with desktop_check_ui. An optional warning says the foreground or the window under the click changed while the click was being sent (a press that legitimately activates another window also warns).")]
     public async Task<DesktopTestingActionResponse> InvokeAsync(
         [Description("Session id from desktop_start_test_session.")] string sessionId,
         [Description("A UUID action identifier.")] string actionId,
@@ -558,7 +558,7 @@ internal sealed class DesktopTestingMcpTools(
                     if (click.IsValid)
                     {
                         method = "click";
-                        return new DesktopActionExecution(DesktopDispatchStatus.Complete);
+                        return new DesktopActionExecution(DesktopDispatchStatus.Complete, Warning: click.Warning);
                     }
 
                     if (!CanFallBackToPattern(click.Code))
@@ -1712,7 +1712,7 @@ internal sealed class DesktopTestingMcpTools(
             {
                 var preflight = await dispatch().ConfigureAwait(false);
                 return preflight.IsValid
-                    ? new DesktopActionExecution(DesktopDispatchStatus.Complete)
+                    ? new DesktopActionExecution(DesktopDispatchStatus.Complete, Warning: preflight.Warning)
                     : new DesktopActionExecution(
                         DesktopDispatchStatus.NotStarted,
                         DesktopVerificationStatus.Failed,

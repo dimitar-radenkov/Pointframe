@@ -164,7 +164,8 @@ public static class DesktopTestingResponseMapper
             sessionRef,
             targetRef,
             ActionId: result.ActionId,
-            NextStep: RecoveryFor(result.Error?.Code, sessionRef));
+            NextStep: RecoveryFor(result.Error?.Code, sessionRef),
+            Warning: result.Warning);
     }
 
     // A hint with arguments is a complete, schema-valid call. Where a valid call needs input only the agent
