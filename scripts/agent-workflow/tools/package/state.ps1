@@ -31,6 +31,8 @@ function Read-State([string]$Root, [string]$Slug)
     # coordinator wrote for a FAIL verdict that had none, and the review rounds refunded for a host-detected environment failure.
     foreach ($key in @('recoveries', 'coordinatorFindings')) { if (-not $state.ContainsKey($key) -or $null -eq $state[$key]) { $state[$key] = @() } }
     if (-not $state.repair.ContainsKey('refunds') -or $null -eq $state.repair['refunds']) { $state.repair['refunds'] = @() }
+    if (-not $state.repair.ContainsKey('checkRoundsUsed') -or $null -eq $state.repair['checkRoundsUsed']) { $state.repair['checkRoundsUsed'] = 0 }
+    if (-not $state.repair.ContainsKey('checkResets') -or $null -eq $state.repair['checkResets']) { $state.repair['checkResets'] = @() }
     $state
 }
 

@@ -116,7 +116,7 @@ function Invoke-RunCore
     if (-not $before.treeHash) { throw "the main checkout cannot be fingerprinted (unreadable: $($before.unreadable -join ', ')); the run was not started" }
     $scopeBefore = if ($isClaude -and $claude.Scope) { Get-WorktreeSnapshot $wt } else { $null }
     $started = Get-Now
-    $permissions = if ($isClaude) { @{ mode = 'default'; bypass = $false; settingsFile = $claude.Settings; settingSources = 'none (only the runner settings file)'; mcp = 'strict, empty'; tools = $claude.Tools; shell = 'git reads, kb.ps1 init|read|check|changed|selftest, verify.ps1, brief-named scripts, ' + (Get-PackageCommandSummary) + ' (executors)' } }
+    $permissions = if ($isClaude) { @{ mode = 'default'; bypass = $false; settingsFile = $claude.Settings; settingSources = 'none (only the runner settings file)'; mcp = 'strict, empty'; tools = $claude.Tools; shell = 'git reads, kb.ps1 init|read|check|changed|selftest, verify.ps1 and brief-named scripts; runner-owned build, format and test commands excluded' } }
     else { @{ sandbox = 'workspace-write'; approval = 'never'; windowsSandbox = 'unelevated' } }
     $cliVersion = if ($isClaude) { $null } else { Get-CodexCliVersion }
     $self = @{ pid = $PID; startUtc = (Get-ProcessStartIdentity $PID) }
@@ -150,6 +150,15 @@ function Invoke-RunCore
     } | Out-Null
 
     $briefForRun = if ($script:BriefOverride) { $script:BriefOverride } else { [string]$state.brief.path }
+    if (-not $isClaude)
+    {
+        $codexPrompt = Get-Content -LiteralPath $briefForRun -Raw
+        $noBuildRule = 'The executor does not run build, format or test commands that the check manifest owns; it finishes edits and the runner checks.'
+        if ($codexPrompt -notmatch [regex]::Escape($noBuildRule)) { $codexPrompt = "$noBuildRule`r`n`r`n$codexPrompt" }
+        $briefForRun = Join-Path $runDir 'executor-prompt.md'
+        New-Item -ItemType Directory -Path $runDir -Force | Out-Null
+        [IO.File]::WriteAllText($briefForRun, $codexPrompt, [Text.UTF8Encoding]::new($false))
+    }
     $agentArgs = @('-NoProfile', '-File', "`"$AgentRunScript`"", '-Brief', "`"$briefForRun`"", '-Worktree', "`"$wt`"", '-Model', $Model, '-Effort', $Effort,
         '-MaxMinutes', ([string][int][Math]::Ceiling($MaxMinutes)), '-MaxInputTokens', ([string]$MaxInputTokens), '-Sandbox', $(if ($isClaude) { '' } else { $permissions.sandbox }),
         '-Task', $Id, '-LogDirectory', "`"$runDir`"")

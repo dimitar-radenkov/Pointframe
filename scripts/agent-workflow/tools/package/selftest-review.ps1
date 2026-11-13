@@ -328,7 +328,7 @@ exit 0
     & $expect ($r.Exit -eq 0 -and $state.stage -eq 'review-passed' -and @($state.runs).Count -eq $runsBefore + 1 -and $state.runs[-1].outcome -eq 'completed' -and $head3 -ne $head2 -and $rev2.commit -eq $head3 -and $rev2.verdict -eq 'PASS' -and $rev2.status -eq 'valid' -and $rev2.round -eq 2 -and $state.repair.roundsUsed -eq 2 -and $null -eq $state.pendingFix) "fix did not run executor, check, commit and review: $($r.Text)"
     & $expect ($state.runs[-1].effort -eq 'high' -and $state.runs[-1].escalationReason -eq 'selftest' -and $state.runs[-1].model -eq 'gpt-6-luna') 'fix did not restore the model, effort and escalation reason of the run it continued'
     $fixBrief = if (Test-Path (Join-Path $rrecordDir 'fix-brief.md')) { Get-Content -LiteralPath (Join-Path $rrecordDir 'fix-brief.md') -Raw } else { '' }
-    & $expect ($fixBrief -match '# Previous report' -and $fixBrief -match 'it broke|done|fixed|ok' -and $fixBrief -match 'F1 \(blocking\) feature\.txt:1' -and $fixBrief -match 'the reviewer is right: v2 is required' -and $fixBrief -notmatch 'disputed') 'the Codex fix brief lacks the previous report or the accepted finding'
+    & $expect ($fixBrief -match '# Previous report' -and $fixBrief -match 'it broke|done|fixed|ok' -and $fixBrief -match 'F1 \(blocking\) feature\.txt:1' -and $fixBrief -match 'the reviewer is right: v2 is required' -and $fixBrief -match 'does not run build, format or test commands that the check manifest owns' -and $fixBrief -notmatch 'disputed') 'the Codex fix brief lacks the previous report or the accepted finding'
     $calls2 = @(& $rcalls)
     $c2 = if ($calls2.Count -ge 1) { & $readCall $calls2[-1] } else { $null }
     $c2args = @($c2.args)

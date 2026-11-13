@@ -49,7 +49,7 @@ function Invoke-Show
     }
     $view = [ordered]@{
         slug = $state.slug; packageId = $state.packageId; stage = $state.stage; worktree = $wt; branch = $state.branch; baseSha = $state.baseSha
-        commit = $state.commit; repair = [ordered]@{ roundsUsed = $state.repair.roundsUsed; limit = $script:RepairLimit; resets = @(Get-List $state.repair.resets); refunds = @(Get-List $state.repair.refunds); refundLimit = $script:RefundLimit }; reviews = $reviews; acceptance = $acceptance
+        commit = $state.commit; repair = [ordered]@{ roundsUsed = $state.repair.roundsUsed; limit = $script:RepairLimit; checkRoundsUsed = [int](Get-Field $state.repair 'checkRoundsUsed'); checkLimit = $script:CheckRepairLimit; resets = @(Get-List $state.repair.resets); refunds = @(Get-List $state.repair.refunds); refundLimit = $script:RefundLimit }; reviews = $reviews; acceptance = $acceptance
         recoveries = @(Get-List $state.recoveries | ForEach-Object { [ordered]@{ utc = $_.utc; reason = $_.reason; fromStage = $_.fromStage; toStage = $_.toStage; mainCheckout = $_.mainCheckout; mainStatus = @($_.mainStatus); invalidated = $_.invalidated; reviewRecords = @(Get-List (Get-Field $_ 'reviewRecords')) } })
         coordinatorFindings = @(Get-List $state.coordinatorFindings | ForEach-Object { [ordered]@{ utc = $_.utc; reviewId = $_.reviewId; path = $_.path; sha256 = $_.sha256; findings = @($_.findings) } })
         ship = (Get-ShipView $state)
@@ -72,6 +72,7 @@ function Invoke-Show
     }
     if ($state.commit) { Write-Host "  commit: $($state.commit.sha) tree $($state.commit.tree) ($($state.commit.message))" }
     Write-Host "  reviews: $($reviews.Count), repair rounds used $($view.repair.roundsUsed) of $script:RepairLimit$(if ($view.repair.resets.Count) { ", $($view.repair.resets.Count) reset(s)" }), $($view.repair.refunds.Count) refund(s) of $($view.repair.refundLimit) allowed"
+    Write-Host "  check repairs: $($view.repair.checkRoundsUsed) of $($view.repair.checkLimit)"
     foreach ($refund in $view.repair.refunds) { Write-Host "    refunded round $($refund.round) ($($refund.utc)): $($refund.reason)" }
     foreach ($recovery in $view.recoveries) { Write-Host "  recovered $($recovery.utc): $($recovery.reason) (main checkout: $(if ($recovery.mainCheckout.unknown) { 'unreadable' } else { "HEAD $($recovery.mainCheckout.head)" }), $(@($recovery.mainStatus).Count) changed path(s))$(if (@($recovery.reviewRecords).Count) { ", $(@($recovery.reviewRecords).Count) review record(s) moved to reviews/invalidated" })" }
     foreach ($review in $reviews)

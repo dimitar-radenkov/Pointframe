@@ -316,7 +316,8 @@
     "pin": "docs/knowledge-base/hooks/pin.ps1",
     "qualify": "docs/knowledge-base/hooks/qualify.ps1",
     "postMerge": null,
-    "channels": "docs/knowledge-base/hooks/channels.ps1"
+    "channels": "docs/knowledge-base/hooks/channels.ps1",
+    "releaseExpected": "docs/knowledge-base/hooks/release-expected.ps1"
   },
   "pinException": {
     "paths": [
@@ -325,6 +326,7 @@
     ]
   },
   "package": {
+    "checkRepairRounds": 2,
     "commands": {
       "format": {
         "exe": "dotnet",

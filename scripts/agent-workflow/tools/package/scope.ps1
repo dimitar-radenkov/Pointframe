@@ -154,7 +154,7 @@ function Initialize-ClaudeRun($State, [string]$RunId, [string]$RunDir)
     New-ClaudeSettings $settingsPath $wt $readOnly $scripts
     [IO.File]::WriteAllText($mcpPath, "{`"mcpServers`":{}}`r`n", [Text.UTF8Encoding]::new($false))
     $promptText = if ($Resume) { Get-Content -LiteralPath $PromptFile -Raw }
-    else { "You are the executor for the work package below. The worktree is $wt; work only there. Deliver the brief completely, run the checks it lists that your environment allows, and end with your report. The brief follows.`r`n`r`n$briefText" }
+    else { "You are the executor for the work package below. The worktree is $wt; work only there. Deliver the brief completely, and end with your report. The executor does not run build, format or test commands that the check manifest owns; it finishes edits and the runner checks. The brief follows.`r`n`r`n$briefText" }
     [IO.File]::WriteAllText($promptPath, $promptText, [Text.UTF8Encoding]::new($false))
 
     $rules = Get-ClaudeExecutorRules $wt $(if ($readOnly) { 'helper' } else { 'executor' })
@@ -212,7 +212,7 @@ function Get-NextTransitions($State, [bool]$SnapshotsOk = $true)
         'desktop-required' { @('ship -AllowDesktop') }
         'no-remote' { @('ship -LocalMerge') }
         'auto-merge-enabled' { @('ship (waits for the merge, then reports the channels)') }
-        'merged' { if ($State.ship -and (Get-Field (Get-Field $State.ship 'steps') 'channels') -and (Get-Field (Get-Field (Get-Field $State.ship 'steps') 'channels') 'status') -in @('done', 'not-configured')) { @() } else { @('ship (reports the release channels)') } }
+        'merged' { if ($State.ship -and (Get-Field (Get-Field $State.ship 'steps') 'channels') -and (Get-Field (Get-Field (Get-Field $State.ship 'steps') 'channels') 'status') -in @('done', 'not-configured', 'not-applicable')) { @() } else { @('ship (reports the release channels)') } }
         default { @('run', 'check') }
     }
 }

@@ -33,7 +33,7 @@ function Get-ExecutorIdentity($State)
 {
     # The executors of the reviewed content: every run recorded at commit time (any run since the base that started, whatever its
     # outcome). The latest of them names the executor in the review record.
-    $recorded = if ($State.commit) { @(Get-List (Get-Field $State.commit 'executors')) } else { @() }
+    $recorded = @(if ($State.commit) { @(Get-List (Get-Field $State.commit 'executors')) } else { @() })
     $set = @(if ($recorded.Count) { $recorded } else { @(Get-List $State.runs | Where-Object { (Get-Field $_ 'termination') -ne 'launch-failed' } | ForEach-Object { @{ runId = [string]$_.runId; provider = [string]$_.provider; model = [string]$_.model; executorKind = [string](Get-Field $_ 'executorKind'); outcome = [string]$_.outcome } }) })
     if ($set.Count -eq 0) { throw 'no executor run is recorded for this package' }
     $latest = $set[-1]
