@@ -65,7 +65,8 @@ $SelfTestScripts = @(
     'measure-mcp-payloads.ps1',
     'test-agent-onboarding.ps1',
     'trial.ps1',
-    'weekly-trial.ps1'
+    'weekly-trial.ps1',
+    'run-integration-tests.ps1'
 )
 
 $HeavyScripts = @('package.ps1')
@@ -105,6 +106,8 @@ $SelfTestDependencies = [ordered]@{
     'trial.ps1' = @('scripts/trial.ps1', 'scripts/agent-release.ps1', 'scripts/release-model.ps1', 'scripts/tests/trial/**', 'scripts/tests/agent-release/**', 'scripts/trials/apps.json', 'samples/verify/wpf/**')
     # Every resolver and the trial runner are faked; it loads agent-release.ps1 for Resolve-NewestAgentVersion only.
     'weekly-trial.ps1' = @('scripts/weekly-trial.ps1', 'scripts/agent-release.ps1', 'scripts/release-model.ps1', 'scripts/tests/weekly-trial/**', 'scripts/tests/agent-release/**')
+    # Reads only its own TRX fixtures; dotnet test is never invoked by -SelfTest.
+    'run-integration-tests.ps1' = @('scripts/run-integration-tests.ps1', 'scripts/tests/run-integration-tests/**')
 }
 # scripts/ files that no listed self-test loads, runs or reads (checked by searching every listed script and the kit for
 # their names; agent-release.ps1 only writes a stub update-plugin-pin.ps1 into a temporary root). Changing one runs no self-test.

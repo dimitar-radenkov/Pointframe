@@ -86,7 +86,7 @@ no privacy, security, lifecycle, packaging, persistence, or workflow-gate impact
 <!-- /slot:lifecycle-cases -->
 
 <!-- slot:exact-checks -->
-Sandbox-safe: `dotnet format Pointframe/Pointframe.csproj --no-restore`, and every `dotnet test --filter` adds `&Category!=Integration`
+Sandbox-safe: `dotnet format Pointframe/Pointframe.csproj --no-restore`, and every `dotnet test --filter` adds `&Category!=Integration`; integration tests run only through a manifest `extra` entry calling `scripts/run-integration-tests.ps1`
 <!-- /slot:exact-checks -->
 
 <!-- slot:brief-lessons -->
