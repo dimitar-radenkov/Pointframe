@@ -139,7 +139,8 @@ public sealed class FFMpegVideoWriterTests
         }
         finally
         {
-            File.Delete(fakeFfmpeg);
+            // The writer may still be releasing the fake ffmpeg process when Dispose returns (#322).
+            FfmpegFileScope.DeleteWithRetry(fakeFfmpeg);
         }
     }
 
@@ -184,7 +185,8 @@ public sealed class FFMpegVideoWriterTests
         }
         finally
         {
-            File.Delete(fakeFfmpeg);
+            // The writer may still be releasing the fake ffmpeg process when Dispose returns (#322).
+            FfmpegFileScope.DeleteWithRetry(fakeFfmpeg);
         }
     }
 
@@ -452,7 +454,7 @@ public sealed class FFMpegVideoWriterTests
             }
         }
 
-        private static void DeleteWithRetry(string path)
+        internal static void DeleteWithRetry(string path)
         {
             for (var attempt = 0; attempt < 50; attempt++)
             {
