@@ -13,7 +13,8 @@ publication failed, or that has no complete release yet, is selected again). It 
   RELEASE none - <reason>   no train is selected
   RELEASE expected          a train is selected
 
-A release (not a draft) whose target_commitish is the merge commit already exists (ship resumed after CD published) -> RELEASE expected,
+A release (not a draft) whose target_commitish is the merge commit, or whose tag (git ls-remote --tags origin, peeled) points at it,
+already exists (ship resumed after CD published) -> RELEASE expected,
 before any plan. -CurrentVersion is not passed: CD uses it only to mark a stale rerun (which can only unselect a train) and to reselect the
 trains of a release already published at this version, which is the case the target_commitish check answers first; so without it "none"
 is never printed when CD selects a train. Any failure (gh, git, an unclassified path, an unreadable plan) exits 1 without a decision, and the kit keeps its
@@ -57,7 +58,20 @@ try
     }
     finally { Pop-Location }
 
-    $published = @($all | Where-Object { -not [bool]$_.draft -and ([string]$_.target_commitish) -ieq $MergeCommit })
+    $tagCommits = @{}
+    $remoteTags = @(& git -C $Root ls-remote --tags origin 2>&1 | ForEach-Object { [string]$_ })
+    if ($LASTEXITCODE -ne 0) { throw "git ls-remote --tags failed: $(($remoteTags | Select-Object -Last 2) -join ' ')" }
+    foreach ($line in $remoteTags)
+    {
+        if ($line -match '^([0-9a-f]{40})\trefs/tags/(.+?)(\^\{\})?$')
+        {
+            # A peeled line (tag^{}) names the commit of an annotated tag and wins over the tag object.
+            if ($Matches[3] -or -not $tagCommits.ContainsKey($Matches[2])) { $tagCommits[$Matches[2]] = $Matches[1] }
+        }
+    }
+    $published = @($all | Where-Object {
+            -not [bool]$_.draft -and (([string]$_.target_commitish) -ieq $MergeCommit -or $tagCommits[[string]$_.tag_name] -ieq $MergeCommit)
+        })
     if ($published.Count -gt 0)
     {
         Write-Output 'RELEASE expected'
