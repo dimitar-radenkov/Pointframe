@@ -13,9 +13,10 @@ publication failed, or that has no complete release yet, is selected again). It 
   RELEASE none - <reason>   no train is selected
   RELEASE expected          a train is selected
 
--CurrentVersion is not passed: CD uses it only to mark a stale rerun (which can only unselect a train) and to reselect the trains of a
-release already published at this version (which cannot exist yet for a fresh merge commit), so without it "none" is never printed when
-CD selects a train. Any failure (gh, git, an unclassified path, an unreadable plan) exits 1 without a decision, and the kit keeps its
+A release (not a draft) whose target_commitish is the merge commit already exists (ship resumed after CD published) -> RELEASE expected,
+before any plan. -CurrentVersion is not passed: CD uses it only to mark a stale rerun (which can only unselect a train) and to reselect the
+trains of a release already published at this version, which is the case the target_commitish check answers first; so without it "none"
+is never printed when CD selects a train. Any failure (gh, git, an unclassified path, an unreadable plan) exits 1 without a decision, and the kit keeps its
 bounded release wait.
 #>
 [CmdletBinding()]
@@ -56,6 +57,12 @@ try
     }
     finally { Pop-Location }
 
+    $published = @($all | Where-Object { -not [bool]$_.draft -and ([string]$_.target_commitish) -ieq $MergeCommit })
+    if ($published.Count -gt 0)
+    {
+        Write-Output 'RELEASE expected'
+        exit 0
+    }
     $releasesFile = Join-Path $work 'releases.json'
     $planFile = Join-Path $work 'plan.json'
     ConvertTo-Json -InputObject $all.ToArray() -Depth 10 | Set-Content -LiteralPath $releasesFile -Encoding utf8NoBOM
