@@ -330,6 +330,36 @@ function Build-CandidatePackages {
     }
 }
 
+function Write-CandidateHashes {
+    # candidate-hashes.json pins the built packages so a later -CandidateDirectory run can tell stale or altered ones.
+    param([Parameter(Mandatory)][string]$Directory)
+    $entries = @(foreach ($filter in @('Pointframe.Cli-*-win-x64.zip', 'Pointframe.Mcp-*-win-x64.mcpb')) {
+        $package = Find-CandidatePackage $Directory $filter
+        [ordered]@{ name = [IO.Path]::GetFileName($package); sha256 = Get-Sha256Hex -Path $package }
+    })
+    $path = Join-Path $Directory 'candidate-hashes.json'
+    ([ordered]@{ version = 1; packages = $entries } | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $path -Encoding utf8NoBOM
+    return $path
+}
+
+function Assert-CandidateHashes {
+    # Without candidate-hashes.json a candidate directory is trusted as today; with it every listed package must match.
+    param([Parameter(Mandatory)][string]$Directory)
+    $path = Join-Path $Directory 'candidate-hashes.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+    $pinned = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    $entries = @($pinned.packages)
+    if ($entries.Count -eq 0) { throw "candidate-hashes.json lists no packages: $path" }
+    foreach ($entry in $entries) {
+        $package = Join-Path $Directory ([string]$entry.name)
+        if (-not (Test-Path -LiteralPath $package -PathType Leaf)) { throw "Candidate package $($entry.name) listed in candidate-hashes.json is missing." }
+        $actual = Get-Sha256Hex -Path $package
+        if ($actual -ne ([string]$entry.sha256).ToLowerInvariant()) {
+            throw "Candidate package $($entry.name) differs from candidate-hashes.json (expected $($entry.sha256), got $actual): the candidate is stale or was altered. Rebuild it with -BuildCandidate -PackageOnly."
+        }
+    }
+    return $true
+}
 function Test-Self {
     $scratch = Join-Path ([IO.Path]::GetTempPath()) ("pointframe-released-desktop-selftest-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $scratch -Force | Out-Null
@@ -426,6 +456,27 @@ function Test-Self {
         try { Find-CandidatePackage $candidates 'Pointframe.Cli-*-win-x64.zip' | Out-Null } catch { $ambiguous = $_.Exception.Message -like 'Several *' }
         if (-not $ambiguous) { throw 'Two candidate packages were not reported as ambiguous.' }
 
+        $pinDirectory = Join-Path $scratch 'pinned'
+        New-Item -ItemType Directory -Path $pinDirectory -Force | Out-Null
+        if (Assert-CandidateHashes $pinDirectory) { throw 'A directory without candidate-hashes.json must behave as before.' }
+        [IO.File]::WriteAllBytes((Join-Path $pinDirectory 'Pointframe.Cli-0.0.0-candidate-win-x64.zip'), [byte[]](1, 2))
+        [IO.File]::WriteAllBytes((Join-Path $pinDirectory 'Pointframe.Mcp-0.0.0-candidate-win-x64.mcpb'), [byte[]](3, 4))
+        $pinFile = Write-CandidateHashes $pinDirectory
+        $pinned = Get-Content -LiteralPath $pinFile -Raw | ConvertFrom-Json
+        if (@($pinned.packages).Count -ne 2 -or $pinned.packages[0].sha256 -ne (Get-Sha256Hex (Join-Path $pinDirectory $pinned.packages[0].name))) { throw 'candidate-hashes.json did not record both package hashes.' }
+        if (-not (Assert-CandidateHashes $pinDirectory)) { throw 'Matching candidate hashes were not accepted.' }
+        [IO.File]::WriteAllBytes((Join-Path $pinDirectory 'Pointframe.Mcp-0.0.0-candidate-win-x64.mcpb'), [byte[]](9, 9))
+        $tampered = $false
+        try { Assert-CandidateHashes $pinDirectory | Out-Null } catch { $tampered = $_.Exception.Message -like '*Pointframe.Mcp-0.0.0-candidate-win-x64.mcpb*differs from candidate-hashes.json*' }
+        if (-not $tampered) { throw 'A tampered candidate package was not rejected by name.' }
+
+        $source = Get-Content -LiteralPath $PSCommandPath -Raw
+        $hashCheck = $source.IndexOf("Invoke-Step 'locate and hash candidate packages'")
+        $fixtureStep = $source.IndexOf("Invoke-Step 'build and stage fixture'")
+        $projectStep = $source.IndexOf("Invoke-Step 'create committed verification project'")
+        $lockStep = $source.IndexOf("Invoke-Step 'acquire desktop lock'")
+        if ($hashCheck -lt 0 -or $fixtureStep -lt 0 -or $projectStep -lt 0 -or $lockStep -lt 0) { throw 'A step needed for the step-order check was not found.' }
+        if (-not ($hashCheck -lt $fixtureStep -and $fixtureStep -lt $projectStep -and $projectStep -lt $lockStep)) { throw 'The fixture build and project creation must precede the desktop lock, after the package hash check.' }
         $script:Mode = 'candidate'
         $script:Packages.Add([pscustomobject]@{ name = 'pkg.zip'; sha256 = ('a' * 64) })
         try {
@@ -436,7 +487,7 @@ function Test-Self {
             $script:Mode = 'release'
         }
         if ($candidateShape.label -ne 'candidate' -or @($candidateShape.packages).Count -ne 1 -or $candidateShape.packages[0].sha256 -ne ('a' * 64)) { throw 'result.json did not carry the candidate label and package hashes.' }
-        return 'hash match/mismatch, verify.json v1 steps, result.json shape, candidate argument handling, cloaked and normal foreground preflight, ffmpeg resolution, and candidate package lookup passed offline.'
+        return 'hash match/mismatch, verify.json v1 steps, result.json shape, candidate argument handling, cloaked and normal foreground preflight, ffmpeg resolution, and candidate package lookup, candidate hash pinning, and the lock-after-build step order passed offline.'
     }
     finally { Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue }
 }
@@ -571,27 +622,28 @@ else {
                 $CandidateDirectory = Join-Path $script:WorkDirectory 'candidate'
                 Invoke-Step 'build candidate packages' {
                     Build-CandidatePackages $CandidateDirectory
-                    "built version $($script:CandidateVersion) from the current checkout into $CandidateDirectory"
+                    $null = Write-CandidateHashes $CandidateDirectory
+                    "built version $($script:CandidateVersion) from the current checkout into $CandidateDirectory; wrote candidate-hashes.json"
                 } | Out-Null
             }
 
             Invoke-Step 'locate and hash candidate packages' {
+                $pinned = Assert-CandidateHashes $CandidateDirectory
                 $cliPackage = Find-CandidatePackage $CandidateDirectory 'Pointframe.Cli-*-win-x64.zip'
                 $mcpPackage = Find-CandidatePackage $CandidateDirectory 'Pointframe.Mcp-*-win-x64.mcpb'
                 $cliHash = Register-Package $cliPackage
                 $mcpHash = Register-Package $mcpPackage
                 Install-Packages $cliPackage $mcpPackage 'the candidate packages'
-                "candidate cli=$([IO.Path]::GetFileName($cliPackage)) sha256=$cliHash mcp=$([IO.Path]::GetFileName($mcpPackage)) sha256=$mcpHash"
+                "candidate cli=$([IO.Path]::GetFileName($cliPackage)) sha256=$cliHash mcp=$([IO.Path]::GetFileName($mcpPackage)) sha256=$mcpHash; candidate-hashes.json verified=$pinned"
             } | Out-Null
         }
 
-        if (-not $PackageOnly) {
-            Invoke-Step 'acquire desktop lock' { Enter-DesktopLock; "Held $($script:DesktopLockPath)" } | Out-Null
-            Invoke-Step 'released MCP stdio desktop smoke' {
-                $smoke = Join-Path $script:RepositoryRoot 'packaging/test-mcp-stdio.ps1'
-                Invoke-NativeChecked 'pwsh' @('-NoProfile', '-File', $smoke, '-ExecutablePath', $script:McpExe) 'Released MCP stdio smoke'
-            } | Out-Null
+        if ($PackageOnly -and $runMode -eq 'build-candidate') {
+            Write-Host "NEXT: pwsh scripts/check-released-desktop.ps1 -CandidateDirectory '$CandidateDirectory'"
+        }
 
+        if (-not $PackageOnly) {
+            # Nothing here needs the desktop: build and stage before the lock so the owner's screen is held only by the interactive steps.
             Invoke-Step 'build and stage fixture' {
                 $project = Join-Path $script:RepositoryRoot 'Pointframe.DesktopTestFixture/Pointframe.DesktopTestFixture.csproj'
                 Invoke-NativeChecked 'dotnet' @('build', $project, '--configuration', 'Release', '--nologo', '-v', 'q') 'Build Pointframe.DesktopTestFixture Release' | Out-Null
@@ -624,6 +676,12 @@ else {
                     'Committed .pointframe/verify.json and the staged fixture to the isolated project.'
                 }
                 finally { Pop-Location }
+            } | Out-Null
+
+            Invoke-Step 'acquire desktop lock' { Enter-DesktopLock; "Held $($script:DesktopLockPath)" } | Out-Null
+            Invoke-Step 'released MCP stdio desktop smoke' {
+                $smoke = Join-Path $script:RepositoryRoot 'packaging/test-mcp-stdio.ps1'
+                Invoke-NativeChecked 'pwsh' @('-NoProfile', '-File', $smoke, '-ExecutablePath', $script:McpExe) 'Released MCP stdio smoke'
             } | Out-Null
 
             Invoke-Step 'released CLI verify run' {

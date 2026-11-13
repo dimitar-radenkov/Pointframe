@@ -140,7 +140,7 @@ Every behavior change gets an independent review from a different agent than its
 <!-- rule:W-24 roles=coordinator,executor -->
 - **Real-environment check.** When runtime behavior changes, run the real app: `pwsh scripts/desktop-tests.ps1` for the regression selection, with `-Repeat N` for stress. The desktop is announced and kept to 30 minutes at a time; check the input desktop is not locked first.
 <!-- rule:W-25 roles=coordinator -->
-- **Release qualification.** Run `pwsh scripts/release-impact.ps1` before merging; when it prints `desktop-qualification: required`, run `scripts/check-released-desktop.ps1 -BuildCandidate`. After each merge run `scripts/check-release-channels.ps1 -Receipt <release-plan.json> -Watch` with its CD run's receipt and report a failed channel at once.
+- **Release qualification.** Run `pwsh scripts/release-impact.ps1` before merging; when it prints `desktop-qualification: required`, run `scripts/check-released-desktop.ps1 -BuildCandidate -PackageOnly`, then the `-CandidateDirectory` command it prints. After each merge run `scripts/check-release-channels.ps1 -Receipt <release-plan.json> -Watch` with its CD run's receipt and report a failed channel at once.
 <!-- rule:W-26 roles=all -->
 - **Report what was not tested.** A report that omits an untested path claims it passed.
 

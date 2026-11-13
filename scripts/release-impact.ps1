@@ -55,7 +55,7 @@ $script:RepositoryRoot = Split-Path $PSScriptRoot -Parent
 # train work, plus the release marker (a refresh PR must be qualified on the desktop like any desktop release).
 $script:Rules = @(
     [pscustomobject]@{ Name = 'shipping project'; Pattern = '^(Pointframe\.Mcp|Pointframe\.Cli|Pointframe\.Engine|Pointframe\.Automation[^/]*)/' }
-    [pscustomobject]@{ Name = 'packaging'; Pattern = '^packaging/' }
+    [pscustomobject]@{ Name = 'packaging'; Pattern = '^packaging/(?!directory-submissions/|test-mcp-stdio\.ps1$)' }
     [pscustomobject]@{ Name = 'CD workflow'; Pattern = '^\.github/workflows/cd\.yml$' }
     [pscustomobject]@{ Name = 'project file'; Pattern = '\.csproj$' }
     [pscustomobject]@{ Name = 'central build configuration'; Pattern = '(^|/)(Directory\.Build\.[^/]+|Directory\.Packages\.props|global\.json|NuGet\.config)$' }
@@ -390,6 +390,9 @@ function Test-QualificationCases
         @{ Paths = @('Pointframe.Engine/Capture/Foo.cs'); Expected = $true }
         @{ Paths = @('Pointframe.AutomationTests/Smoke/X.cs'); Expected = $true }
         @{ Paths = @('packaging/build-mcp-package.ps1'); Expected = $true }
+        @{ Paths = @('packaging/build-cli-package.ps1'); Expected = $true }
+        @{ Paths = @('packaging/directory-submissions/x.md'); Expected = $false }
+        @{ Paths = @('packaging/test-mcp-stdio.ps1'); Expected = $false }
         @{ Paths = @('.github/workflows/cd.yml'); Expected = $true }
         @{ Paths = @('Pointframe.Data/Pointframe.Data.csproj'); Expected = $true }
         @{ Paths = @('Directory.Build.props'); Expected = $true }
