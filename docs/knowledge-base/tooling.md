@@ -121,3 +121,4 @@ The rules:
 - Lesson: workflow_run checks out the default branch HEAD, not the commit that triggered it
 - Lesson: PowerShell reads "$name:" inside a string as a scoped variable
 - Lesson: A pwsh step fails with the last native exit code unless the script exits 0
+- Lesson: A pwsh started without a console writes stdout in the OEM code page

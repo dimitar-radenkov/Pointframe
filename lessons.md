@@ -1816,3 +1816,57 @@ When focus fails on an unlocked desktop, check who holds the foreground before s
 ### Takeaway
 
 Never call `Save` with an `ImageFormat` in this repo, product or test code; use `ImageEncoders.SavePng` or `ImageEncoders.Jpeg`, and never call `GetImageEncoders()` anywhere else.
+
+## A pwsh started without a console writes stdout in the OEM code page
+
+### Problem
+
+`scripts/test-scripts.ps1 -SelfTest` passed in a terminal and in CI but failed under `verify.ps1`: a fixture path with a Cyrillic letter came back as `?` in the selection reason.
+
+### Root cause
+
+`verify.ps1` starts its gates without a console. In such a process `[Console]::OutputEncoding` is the OEM code page (ibm850 here) and setting it has no effect on a console that does not exist, so a child pwsh writing JSON to stdout and a parent reading it both lose every character outside that code page.
+
+### What fixed it
+
+The child prints its JSON with `ConvertTo-Json -EscapeHandling EscapeNonAscii`, and `git` output is read through a `Process` with `StandardOutputEncoding` UTF-8 (#326).
+
+### Takeaway
+
+When one script reads another process's stdout, never rely on the console encoding: escape non-ASCII in what you print, or read through a `Process` with an explicit encoding. Reproduce gate-only failures by starting the script with `CreateNoWindow` and redirected output.
+
+## GetForegroundWindow briefly returns no window while activation changes
+
+### Problem
+
+After `desktop_invoke` and `desktop_click` began checking the foreground window and the window under the point before each step of a click (#334), the real desktop selection regressed: ordinary clicks were refused and fell back to the UIA pattern, while every unit test passed.
+
+### Root cause
+
+Windows reports no foreground window (zero) for a moment while activation moves between windows. The guard read that zero as "a different window" and aborted.
+
+### What fixed it
+
+A zero reading is re-read for a bounded time (150 ms before a press, 50 ms with the button held). It continues only if it resolves to the validated target; an unresolved zero aborts before the press, and with the button held the release is still sent and the result carries a warning.
+
+### Takeaway
+
+Treat a zero foreground or window-from-point reading as unknown and re-read it with a bound, never as proof of change or of no change. Input-path changes need the real desktop selection (`scripts/desktop-tests.ps1`), not only unit fakes.
+
+## The desktop fixture's foreground timer must stand down while its own dialog is open
+
+### Problem
+
+`McpDesktopModalInvokeTests` left the fixture's "Modal OK" dialog open in about one run in two or three, although the OK click reported Complete (#319).
+
+### Root cause
+
+`Form1.TakeForeground` runs every 250 ms and returned early only when `Form1` itself was foreground. With the MessageBox open it re-asserted topmost and activation on the disabled owner on every tick, and a tick inside the synthesized OK click made the click disappear.
+
+### What fixed it
+
+`TakeForeground` also returns when any window of the fixture's own process is foreground, and the test asserts the dismiss was a `click` with no error, so a pattern fallback cannot hide it (#331).
+
+### Takeaway
+
+A test fixture that fights for foreground must stop as soon as any of its own windows is in front; a z-order or activation change inside a synthesized gesture loses input.
