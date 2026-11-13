@@ -27,7 +27,7 @@ public sealed class DesktopInputPreflightTests
     [Fact]
     public async Task ClickWhoseForegroundChangesBeforeThePressSendsNothingAndFailsLikeThePreflight()
     {
-        var adapter = new FakeAdapter { Foreground = new nint(10), ChangeBeforeStep = "down", ForegroundOnChange = new nint(20) };
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), ChangeBeforeStep = "down", ForegroundOnChange = new nint(20) };
         var service = new WindowsDesktopInputService(new FakeFactory(adapter));
         var process = Process("approved");
         var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
@@ -62,7 +62,7 @@ public sealed class DesktopInputPreflightTests
     [Fact]
     public async Task ClickWhoseForegroundChangesBetweenPressAndReleaseStillReleasesAndWarns()
     {
-        var adapter = new FakeAdapter { Foreground = new nint(10), ChangeBeforeStep = "up", ForegroundOnChange = new nint(20) };
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), ChangeBeforeStep = "up", ForegroundOnChange = new nint(20) };
         var service = new WindowsDesktopInputService(new FakeFactory(adapter));
         var process = Process("approved");
         var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
@@ -93,6 +93,25 @@ public sealed class DesktopInputPreflightTests
         Assert.True(result.IsValid);
         Assert.Null(result.Warning);
         Assert.Equal(["move", "down", "up"], adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task ClickWhoseCoverVanishesDuringValidationAndReturnsBeforeDispatchSendsNoPress()
+    {
+        // B covers A when a baseline would have been sampled, is gone while IsPointVisible validates A,
+        // and is back before the press.
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(30), VisibleCheckClearsCoverThenCoverReturns = true };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("OccludedOrOutOfBounds", result.Code);
+        Assert.DoesNotContain("down", adapter.SentSteps);
     }
 
     [Fact]
@@ -269,7 +288,7 @@ public sealed class DesktopInputPreflightTests
     [Fact]
     public async Task FocusRetriesWithAttachedForegroundInputAndThenAllowsPhysicalClick()
     {
-        var adapter = new FakeAdapter { Foreground = new nint(20), SetForegroundOnlyWhileAttached = true };
+        var adapter = new FakeAdapter { Foreground = new nint(20), RootAtPoint = new nint(10), SetForegroundOnlyWhileAttached = true };
         var service = new WindowsDesktopInputService(new FakeFactory(adapter));
         var process = Process("approved");
         var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
@@ -479,9 +498,16 @@ public sealed class DesktopInputPreflightTests
         public bool IsWindowValid(nint handle) => true;
         public bool IsWindowVisible(nint handle) => true;
         public nint? CoverAfterPointVisibleCheck { get; set; }
+        public bool VisibleCheckClearsCoverThenCoverReturns { get; set; }
         public bool IsPointVisible(PixelBounds bounds, int x, int y)
         {
             var visible = x >= bounds.X && y >= bounds.Y && x < bounds.X + bounds.Width && y < bounds.Y + bounds.Height;
+            if (VisibleCheckClearsCoverThenCoverReturns)
+            {
+                // The overlay is absent at the moment of validation and back right after.
+                RootAtPoint = new nint(30);
+            }
+
             if (CoverAfterPointVisibleCheck is { } cover)
             {
                 RootAtPoint = cover;

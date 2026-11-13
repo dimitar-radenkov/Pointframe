@@ -383,13 +383,13 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
             return DesktopInputPreflightResult.Invalid("InvalidClickCount", "Click count must be one or two.");
         }
 
-        // The target the preflight validates, read before any check so a window that covers the point
-        // between the checks and the press cannot become the new baseline. A strict window target must be
-        // the foreground window, so that handle is the baseline itself.
-        var expectedForeground = request.Target.Window is { } strictWindow && !request.AcceptAnyVisibleWindowInProcess
-            ? strictWindow.NativeHandle
-            : _native.GetForegroundWindow();
-        var expectedRoot = _native.GetRootWindowFromPoint(request.X, request.Y);
+        // The target the preflight validates. A strict window target must be the foreground window and the
+        // root window under the point (IsPointVisible confirms both), so that handle is the baseline itself
+        // and a window that covers the point at any moment cannot become it. Other targets can only be
+        // sampled, just before the checks.
+        var strict = request.Target.Window is not null && !request.AcceptAnyVisibleWindowInProcess;
+        var expectedForeground = strict ? request.Target.Window!.NativeHandle : _native.GetForegroundWindow();
+        var expectedRoot = strict ? request.Target.Window!.NativeHandle : _native.GetRootWindowFromPoint(request.X, request.Y);
         var validation = ValidateTarget(
             request.Target,
             expectedProcess,
