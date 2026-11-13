@@ -19,7 +19,7 @@ public sealed class DesktopClickGestureTests
     {
         var sent = new List<uint>();
 
-        var outcome = Run(right, count, () => true, flags => { sent.Add(flags); return true; });
+        var outcome = Run(right, count, _ => true, flags => { sent.Add(flags); return true; });
 
         Assert.Equal(DesktopClickSendOutcome.Sent, outcome);
         var down = right ? RightDown : LeftDown;
@@ -39,7 +39,7 @@ public sealed class DesktopClickGestureTests
     {
         var sent = new List<uint>();
 
-        var outcome = Run(false, 1, () => false, flags => { sent.Add(flags); return true; });
+        var outcome = Run(false, 1, _ => false, flags => { sent.Add(flags); return true; });
 
         Assert.Equal(DesktopClickSendOutcome.Aborted, outcome);
         Assert.Empty(sent);
@@ -51,7 +51,7 @@ public sealed class DesktopClickGestureTests
         var sent = new List<uint>();
         var calls = 0;
 
-        var outcome = Run(false, 1, () => ++calls < 2, flags => { sent.Add(flags); return true; });
+        var outcome = Run(false, 1, _ => ++calls < 2, flags => { sent.Add(flags); return true; });
 
         Assert.Equal(DesktopClickSendOutcome.Aborted, outcome);
         Assert.Equal([0u], sent);
@@ -65,7 +65,7 @@ public sealed class DesktopClickGestureTests
         var sent = new List<uint>();
         var calls = 0;
 
-        var outcome = Run(right, 1, () => ++calls < 3, flags => { sent.Add(flags); return true; });
+        var outcome = Run(right, 1, _ => ++calls < 3, flags => { sent.Add(flags); return true; });
 
         Assert.Equal(DesktopClickSendOutcome.Interfered, outcome);
         Assert.Equal([0u, right ? RightDown : LeftDown, right ? RightUp : LeftUp], sent);
@@ -78,7 +78,7 @@ public sealed class DesktopClickGestureTests
         var calls = 0;
 
         // Guard calls: move, down, up, down, up. Fail before the second release.
-        var outcome = Run(false, 2, () => ++calls < 5, flags => { sent.Add(flags); return true; });
+        var outcome = Run(false, 2, _ => ++calls < 5, flags => { sent.Add(flags); return true; });
 
         Assert.Equal(DesktopClickSendOutcome.Interfered, outcome);
         Assert.Equal([0u, LeftDown, LeftUp, LeftDown, LeftUp], sent);
@@ -95,7 +95,7 @@ public sealed class DesktopClickGestureTests
         Assert.Throws<InvalidOperationException>(() => Run(
             right,
             1,
-            () => ++calls < 3 ? true : throw new InvalidOperationException("guard"),
+            _ => ++calls < 3 ? true : throw new InvalidOperationException("guard"),
             flags => { sent.Add(flags); return true; }));
 
         Assert.Equal([0u, right ? RightDown : LeftDown, right ? RightUp : LeftUp], sent);
@@ -110,7 +110,7 @@ public sealed class DesktopClickGestureTests
         Assert.Throws<InvalidOperationException>(() => Run(
             false,
             2,
-            () => ++calls < 5 ? true : throw new InvalidOperationException("guard"),
+            _ => ++calls < 5 ? true : throw new InvalidOperationException("guard"),
             flags => { sent.Add(flags); return true; }));
 
         Assert.Equal([0u, LeftDown, LeftUp, LeftDown, LeftUp], sent);
@@ -127,7 +127,7 @@ public sealed class DesktopClickGestureTests
             steps,
             LeftDown,
             LeftUp,
-            () => true,
+            _ => true,
             flags => { sent.Add(flags); return true; },
             _ =>
             {
@@ -146,7 +146,7 @@ public sealed class DesktopClickGestureTests
         var sent = new List<uint>();
         var releases = 0;
 
-        Assert.Throws<InvalidOperationException>(() => Run(false, 1, () => true, flags =>
+        Assert.Throws<InvalidOperationException>(() => Run(false, 1, _ => true, flags =>
         {
             sent.Add(flags);
             if (flags == LeftUp && ++releases == 1)
@@ -168,7 +168,7 @@ public sealed class DesktopClickGestureTests
         var sent = new List<uint>();
         var up = right ? RightUp : LeftUp;
 
-        var outcome = Run(right, 1, () => true, flags => { sent.Add(flags); return flags != up; });
+        var outcome = Run(right, 1, _ => true, flags => { sent.Add(flags); return flags != up; });
 
         Assert.Equal(DesktopClickSendOutcome.Failed, outcome);
         Assert.Equal(2, sent.Count(flags => flags == up));
@@ -179,13 +179,13 @@ public sealed class DesktopClickGestureTests
     {
         var sent = new List<uint>();
 
-        var outcome = Run(false, 1, () => true, flags => { sent.Add(flags); return flags != LeftDown; });
+        var outcome = Run(false, 1, _ => true, flags => { sent.Add(flags); return flags != LeftDown; });
 
         Assert.Equal(DesktopClickSendOutcome.Failed, outcome);
         Assert.DoesNotContain(LeftUp, sent);
     }
 
-    private static DesktopClickSendOutcome Run(bool right, int count, Func<bool> guard, Func<uint, bool> send) =>
+    private static DesktopClickSendOutcome Run(bool right, int count, Func<bool, bool> guard, Func<uint, bool> send) =>
         DesktopClickGesture.Run(
             WindowsDesktopInputNativeAdapter.BuildClickSteps(right, count),
             right ? RightDown : LeftDown,

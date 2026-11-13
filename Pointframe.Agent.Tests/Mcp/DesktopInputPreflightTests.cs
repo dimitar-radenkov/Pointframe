@@ -114,21 +114,59 @@ public sealed class DesktopInputPreflightTests
         Assert.DoesNotContain("down", adapter.SentSteps);
     }
 
-    [Fact]
-    public async Task ClickToleratesAnUnknownZeroReadingWhileTheGestureRuns()
+    private static async Task<(DesktopInputPreflightResult Result, FakeAdapter Adapter)> ClickWithScriptAsync(string step, params nint[] script)
     {
-        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), ChangeBeforeStep = "down", ForegroundOnChange = nint.Zero, RootOnChange = nint.Zero };
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), ChangeBeforeStep = step, ForegroundScript = [.. script] };
         var service = new WindowsDesktopInputService(new FakeFactory(adapter));
         var process = Process("approved");
         var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
-
         var result = await service.ClickAsync(
             new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
             process);
+        return (result, adapter);
+    }
+
+    [Fact]
+    public async Task TransientZeroForegroundThatResolvesToTheTargetClicksWithoutWarning()
+    {
+        var (result, adapter) = await ClickWithScriptAsync("down", nint.Zero, nint.Zero, new nint(10));
 
         Assert.True(result.IsValid);
         Assert.Null(result.Warning);
         Assert.Equal(["move", "down", "up"], adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task PersistentZeroForegroundBeforeThePressSendsNoPress()
+    {
+        var (result, adapter) = await ClickWithScriptAsync("down", nint.Zero);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("FocusRequired", result.Code);
+        Assert.Contains("could not be verified", result.Message);
+        Assert.DoesNotContain("down", adapter.SentSteps);
+        Assert.DoesNotContain("up", adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task ZeroForegroundThenAnotherWindowBeforeThePressSendsNoPress()
+    {
+        var (result, adapter) = await ClickWithScriptAsync("down", nint.Zero, new nint(20));
+
+        Assert.False(result.IsValid);
+        Assert.Equal("FocusRequired", result.Code);
+        Assert.DoesNotContain("down", adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task PersistentZeroForegroundWhileTheButtonIsHeldStillReleasesAndWarns()
+    {
+        var (result, adapter) = await ClickWithScriptAsync("up", nint.Zero);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(["move", "down", "up"], adapter.SentSteps);
+        Assert.Contains("could not be verified", result.Warning);
+        Assert.Contains("desktop_check_ui", result.Warning);
     }
 
     [Fact]
@@ -225,6 +263,7 @@ public sealed class DesktopInputPreflightTests
         var adapter = new FakeAdapter
         {
             Foreground = new nint(20),
+            RootAtPoint = new nint(20),
             ProcessForeground = true,
             ProcessPointVisible = true,
         };
@@ -479,7 +518,19 @@ public sealed class DesktopInputPreflightTests
         public nint RootAtPoint { get; set; }
         public List<string> SentSteps { get; } = [];
 
-        public nint GetForegroundWindow() => Foreground;
+        public List<nint>? ForegroundScript { get; set; }
+        private Queue<nint>? _foregroundScript;
+
+        public nint GetForegroundWindow()
+        {
+            // Once armed, successive reads walk the script and then repeat its last value.
+            if (_foregroundScript is { Count: > 0 } script)
+            {
+                return script.Count > 1 ? script.Dequeue() : script.Peek();
+            }
+
+            return Foreground;
+        }
         public nint GetRootWindowFromPoint(int x, int y) => RootAtPoint;
         // Unset keeps the interface default (any foreground window counts), which older tests rely on.
         public bool IsForegroundForProcess(DesktopProcessIdentity expectedProcess) => ProcessForeground ?? Foreground != nint.Zero;
@@ -556,7 +607,7 @@ public sealed class DesktopInputPreflightTests
             Clicks += count;
             return true;
         }
-        public DesktopClickSendOutcome SendClickGuarded(int x, int y, bool rightButton, int count, Func<bool> targetUnchanged)
+        public DesktopClickSendOutcome SendClickGuarded(int x, int y, bool rightButton, int count, Func<bool, bool> targetUnchanged)
         {
             // Runs the shipping gesture loop; only the native sends and the scripted desktop changes are fake.
             var steps = WindowsDesktopInputNativeAdapter.BuildClickSteps(rightButton, count);
@@ -568,7 +619,7 @@ public sealed class DesktopInputPreflightTests
                 steps,
                 down,
                 up,
-                () =>
+                held =>
                 {
                     var step = guardCalls < names.Length ? names[guardCalls] : "later";
                     guardCalls++;
@@ -576,9 +627,13 @@ public sealed class DesktopInputPreflightTests
                     {
                         Foreground = ForegroundOnChange ?? Foreground;
                         RootAtPoint = RootOnChange ?? RootAtPoint;
+                        if (ForegroundScript is not null)
+                        {
+                            _foregroundScript = new Queue<nint>(ForegroundScript);
+                        }
                     }
 
-                    return targetUnchanged();
+                    return targetUnchanged(held);
                 },
                 flags =>
                 {
