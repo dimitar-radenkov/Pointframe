@@ -219,7 +219,9 @@ public sealed class AutomationApp : IDisposable
         Exception? lastFailure = null;
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            foreach (var window in GetProcessWindows(_processId, _automation))
+            var windows = GetProcessWindowsChecked(_processId, _automation, out var enumerationFailure);
+            lastFailure = enumerationFailure ?? lastFailure;
+            foreach (var window in windows)
             {
                 if (!TryReadName(window, out var name, out var failure))
                 {
