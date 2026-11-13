@@ -140,31 +140,108 @@ public sealed class AutomationApp : IDisposable
 
     internal static bool ProcessHasWindowAutomationId(int processId, UIA3Automation automation, string automationId, string expectedTitle)
     {
-        foreach (var handle in GetTopLevelWindowHandles(processId))
+        // Absence is reported only from a complete pass: every live window either read its AutomationId or, when UIA
+        // cannot read it, read its Win32 title. A native failure is retried until the deadline, never taken as absence.
+        var stopwatch = Stopwatch.StartNew();
+        Exception? lastFailure = null;
+        while (true)
         {
+            var complete = TryGetTopLevelWindowHandles(processId, out var handles, out var enumerationFailure);
+            lastFailure = enumerationFailure ?? lastFailure;
+            foreach (var handle in handles)
+            {
+                if (!IsWindow(handle))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var value = automation.FromHandle(handle).Properties.AutomationId.Value;
+                    if (string.Equals(value, automationId, StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+                }
+                catch (Exception exception) when (IsTransientUiaFailure(exception))
+                {
+                    switch (TryGetWindowTitle(handle, out var title, out var titleFailure))
+                    {
+                        case TitleRead.Read when string.Equals(title, expectedTitle, StringComparison.Ordinal):
+                            return true;
+                        case TitleRead.Failed:
+                            complete = false;
+                            lastFailure = titleFailure;
+                            break;
+                    }
+                }
+            }
+
+            if (complete)
+            {
+                return false;
+            }
+
+            if (stopwatch.Elapsed >= WindowTimeout)
+            {
+                throw new TimeoutException(
+                    $"Could not establish whether a window '{automationId}' ('{expectedTitle}') exists. Process windows: [{DescribeProcessWindows(processId)}]. Last failure: {Describe(lastFailure)}",
+                    lastFailure);
+            }
+
+            Thread.Sleep(100);
+        }
+    }
+
+    private enum TitleRead
+    {
+        Read,
+        Gone,
+        Failed,
+    }
+
+    private static TitleRead TryGetWindowTitle(IntPtr handle, out string title, out Exception? failure)
+    {
+        // GetWindowTextLength and GetWindowText return 0 both for an empty title and on failure; only the last error
+        // tells them apart. A failure on a handle that is no longer a window means the window is gone.
+        title = string.Empty;
+        failure = null;
+        Marshal.SetLastPInvokeError(0);
+        var length = GetWindowTextLengthW(handle);
+        if (length == 0)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            if (error == 0)
+            {
+                return TitleRead.Read;
+            }
+
             if (!IsWindow(handle))
             {
-                continue;
+                return TitleRead.Gone;
             }
 
-            try
-            {
-                var value = automation.FromHandle(handle).Properties.AutomationId.Value;
-                if (string.Equals(value, automationId, StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-            catch (Exception exception) when (IsTransientUiaFailure(exception))
-            {
-                if (string.Equals(GetWindowTitle(handle), expectedTitle, StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
+            failure = new Win32Exception(error, $"GetWindowTextLengthW failed for window 0x{handle.ToInt64():X}");
+            return TitleRead.Failed;
         }
 
-        return false;
+        var buffer = new System.Text.StringBuilder(length + 1);
+        Marshal.SetLastPInvokeError(0);
+        var copied = GetWindowTextW(handle, buffer, buffer.Capacity);
+        if (copied == 0)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            if (!IsWindow(handle))
+            {
+                return TitleRead.Gone;
+            }
+
+            failure = new Win32Exception(error, $"GetWindowTextW failed for window 0x{handle.ToInt64():X}");
+            return TitleRead.Failed;
+        }
+
+        title = buffer.ToString();
+        return TitleRead.Read;
     }
 
     private static string Describe(Exception? exception) =>
@@ -173,17 +250,8 @@ public sealed class AutomationApp : IDisposable
     private static bool IsTransientUiaFailure(Exception exception) =>
         exception is PropertyNotSupportedException or ElementNotAvailableException or COMException;
 
-    private static string GetWindowTitle(IntPtr handle)
-    {
-        var length = GetWindowTextLengthW(handle);
-        if (length <= 0)
-        {
-            return string.Empty;
-        }
-
-        var buffer = new System.Text.StringBuilder(length + 1);
-        return GetWindowTextW(handle, buffer, buffer.Capacity) > 0 ? buffer.ToString() : string.Empty;
-    }
+    private static string GetWindowTitle(IntPtr handle) =>
+        TryGetWindowTitle(handle, out var title, out _) == TitleRead.Read ? title : "<unreadable>";
 
     private static string GetWindowClassName(IntPtr handle)
     {
@@ -198,10 +266,10 @@ public sealed class AutomationApp : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder className, int maxCount);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int GetWindowTextW(IntPtr hWnd, System.Text.StringBuilder text, int maxCount);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern int GetWindowTextLengthW(IntPtr hWnd);
 
     public void WaitForWindowTitle(string title)
@@ -210,9 +278,22 @@ public sealed class AutomationApp : IDisposable
         Exception? lastFailure = null;
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            foreach (var handle in GetTopLevelWindowHandles(_processId))
+            TryGetTopLevelWindowHandles(_processId, out var handles, out var enumerationFailure);
+            lastFailure = enumerationFailure ?? lastFailure;
+            foreach (var handle in handles)
             {
-                if (!IsWindow(handle) || !string.Equals(GetWindowTitle(handle), title, StringComparison.Ordinal))
+                if (!IsWindow(handle))
+                {
+                    continue;
+                }
+
+                var read = TryGetWindowTitle(handle, out var windowTitle, out var titleFailure);
+                if (read == TitleRead.Failed)
+                {
+                    lastFailure = titleFailure;
+                }
+
+                if (read != TitleRead.Read || !string.Equals(windowTitle, title, StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -238,12 +319,34 @@ public sealed class AutomationApp : IDisposable
 
     public void WaitForWindowTitleToClose(string title)
     {
+        // Closed only when a complete enumeration finds no live window with that title; a window whose title cannot be
+        // read may be the one we wait for.
         var stopwatch = Stopwatch.StartNew();
+        Exception? lastFailure = null;
         while (stopwatch.Elapsed < WindowTimeout)
         {
-            var isOpen = GetTopLevelWindowHandles(_processId)
-                .Any(handle => IsWindow(handle) && string.Equals(GetWindowTitle(handle), title, StringComparison.Ordinal));
-            if (!isOpen)
+            var possiblyOpen = !TryGetTopLevelWindowHandles(_processId, out var handles, out var enumerationFailure);
+            lastFailure = enumerationFailure ?? lastFailure;
+            foreach (var handle in handles)
+            {
+                if (!IsWindow(handle))
+                {
+                    continue;
+                }
+
+                var read = TryGetWindowTitle(handle, out var windowTitle, out var titleFailure);
+                if (read == TitleRead.Failed)
+                {
+                    possiblyOpen = true;
+                    lastFailure = titleFailure;
+                }
+                else if (read == TitleRead.Read && string.Equals(windowTitle, title, StringComparison.Ordinal))
+                {
+                    possiblyOpen = true;
+                }
+            }
+
+            if (!possiblyOpen)
             {
                 return;
             }
@@ -252,7 +355,8 @@ public sealed class AutomationApp : IDisposable
         }
 
         throw new TimeoutException(
-            $"Window '{title}' did not close within the expected timeout. Process windows: [{DescribeProcessWindows(_processId)}].");
+            $"Window '{title}' did not close within the expected timeout. Process windows: [{DescribeProcessWindows(_processId)}]. Last failure: {Describe(lastFailure)}",
+            lastFailure);
     }
 
     public static AutomationApp LaunchSettingsWindow(string settingsPath)
@@ -459,7 +563,7 @@ public sealed class AutomationApp : IDisposable
 
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
 
     [DllImport("user32.dll")]
@@ -495,20 +599,30 @@ public sealed class AutomationApp : IDisposable
 
     private static List<IntPtr> GetTopLevelWindowHandles(int processId)
     {
-        var handles = new List<IntPtr>();
-        EnumWindows(
+        TryGetTopLevelWindowHandles(processId, out var handles, out _);
+        return handles;
+    }
+
+    // False when EnumWindows reports a failure: the list may then be incomplete and must not be read as absence.
+    private static bool TryGetTopLevelWindowHandles(int processId, out List<IntPtr> handles, out Exception? failure)
+    {
+        var found = new List<IntPtr>();
+        Marshal.SetLastPInvokeError(0);
+        var ok = EnumWindows(
             (handle, _) =>
             {
                 GetWindowThreadProcessId(handle, out var owner);
                 if (owner == (uint)processId)
                 {
-                    handles.Add(handle);
+                    found.Add(handle);
                 }
 
                 return true;
             },
             IntPtr.Zero);
-        return handles;
+        handles = found;
+        failure = ok ? null : new Win32Exception(Marshal.GetLastPInvokeError(), "EnumWindows failed; the window list may be incomplete");
+        return ok;
     }
 
     private static Window WaitForMainWindow(Application application, UIA3Automation automation)
