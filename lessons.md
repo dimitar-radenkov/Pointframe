@@ -1807,7 +1807,7 @@ When focus fails on an unlocked desktop, check who holds the foreground before s
 
 ### Root cause
 
-`Image.Save(Stream|string, ImageFormat)` looks the encoder up through `ImageCodecInfo.GetImageEncoders()` on every call. Concurrent lookups race inside GDI+ and one returns no encoder. With 32 threads on a fresh process it failed in 44 of 60 processes, and a single warm-up `GetImageEncoders()` still failed in 18 of 60.
+`Image.Save(Stream|string, ImageFormat)` resolves the encoder through `ImageFormat.Encoder`, which in .NET 10 reads a managed codec cache (`ImageCodecInfoHelper`) that is published before it is populated, so a concurrent first reader can find no PNG entry and Save gets an empty encoder. A codec passed explicitly bypasses that cache. With 32 threads on a fresh process it failed in 44 of 60 processes, and a single warm-up `GetImageEncoders()` still failed in 18 of 60.
 
 ### What fixed it
 

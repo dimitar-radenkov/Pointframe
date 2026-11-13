@@ -22,12 +22,15 @@ public class ImageEncodersTests
         Assert.Equal("image/jpeg", ImageEncoders.Jpeg.MimeType);
     }
 
+    // Smoke coverage only: the race is in the first concurrent lookup of a process, and other tests in this process may
+    // already have filled the codec cache. The fresh-process repro is recorded in lessons.md.
     [Fact]
     public void SavePng_ConcurrentCallers_AllProduceDecodablePngs()
     {
         const int threadCount = 32;
         var results = new byte[threadCount][];
         var errors = new Exception?[threadCount];
+        using var ready = new CountdownEvent(threadCount);
         using var start = new ManualResetEventSlim(false);
         var threads = Enumerable.Range(0, threadCount).Select(index => new Thread(() =>
         {
@@ -35,6 +38,7 @@ public class ImageEncodersTests
             {
                 using var bitmap = new Bitmap(8, 8);
                 using var stream = new MemoryStream();
+                ready.Signal();
                 start.Wait();
                 ImageEncoders.SavePng(bitmap, stream);
                 results[index] = stream.ToArray();
@@ -46,6 +50,7 @@ public class ImageEncodersTests
         })).ToList();
 
         threads.ForEach(thread => thread.Start());
+        Assert.True(ready.Wait(TimeSpan.FromSeconds(30)), "Not every worker reached the start barrier.");
         start.Set();
         threads.ForEach(thread => thread.Join());
 
