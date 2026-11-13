@@ -7,6 +7,7 @@ namespace Pointframe.Tests.Services;
 
 // TranscriptModelResolver is internal, so reach it the same way the app does:
 // through the AppContext override that exists as its test seam.
+[Collection("WhisperModelPathOverride")]
 public sealed class TranscriptModelResolverTests : IDisposable
 {
     private const string ModelPathOverrideKey = "Pointframe.WhisperModelPath";

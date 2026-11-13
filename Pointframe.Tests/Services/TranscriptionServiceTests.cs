@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Pointframe.Tests.Services;
 
+[Collection("WhisperModelPathOverride")]
 public sealed class TranscriptionServiceTests : IDisposable
 {
     private const string ModelPathOverrideKey = "Pointframe.WhisperModelPath";
