@@ -383,6 +383,13 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
             return DesktopInputPreflightResult.Invalid("InvalidClickCount", "Click count must be one or two.");
         }
 
+        // The target the preflight validates, read before any check so a window that covers the point
+        // between the checks and the press cannot become the new baseline. A strict window target must be
+        // the foreground window, so that handle is the baseline itself.
+        var expectedForeground = request.Target.Window is { } strictWindow && !request.AcceptAnyVisibleWindowInProcess
+            ? strictWindow.NativeHandle
+            : _native.GetForegroundWindow();
+        var expectedRoot = _native.GetRootWindowFromPoint(request.X, request.Y);
         var validation = ValidateTarget(
             request.Target,
             expectedProcess,
@@ -410,10 +417,8 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
 
         await Task.Yield();
         cancellationToken.ThrowIfCancellationRequested();
-        // The preflight target: compared again before each step of the gesture, never after the last
+        // Compared with the preflight target before each step of the gesture, never after the last
         // release, because a click that opens a dialog legitimately moves the foreground then.
-        var foregroundBefore = _native.GetForegroundWindow();
-        var rootBefore = _native.GetRootWindowFromPoint(request.X, request.Y);
         var foregroundChanged = false;
         var rootChanged = false;
         var outcome = _native.SendClickGuarded(
@@ -423,8 +428,8 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
             request.Count,
             () =>
             {
-                foregroundChanged |= _native.GetForegroundWindow() != foregroundBefore;
-                rootChanged |= _native.GetRootWindowFromPoint(request.X, request.Y) != rootBefore;
+                foregroundChanged |= _native.GetForegroundWindow() != expectedForeground;
+                rootChanged |= _native.GetRootWindowFromPoint(request.X, request.Y) != expectedRoot;
                 return !foregroundChanged && !rootChanged;
             });
         switch (outcome)
@@ -815,58 +820,27 @@ internal sealed class WindowsDesktopInputNativeAdapter : IDesktopInputNativeAdap
             ? WindowsDesktopNativeMethods.MouseEventRightDown
             : WindowsDesktopNativeMethods.MouseEventLeftDown;
 
-        var interfered = false;
-        var pressed = false;
-        var buttonHeld = false;
-        foreach (var (flags, delay) in BuildClickSteps(rightButton, count))
-        {
-            if (!interfered && !targetUnchanged())
+        return DesktopClickGesture.Run(
+            BuildClickSteps(rightButton, count),
+            down,
+            up,
+            targetUnchanged,
+            flags =>
             {
-                if (!buttonHeld)
+                var sent = Send([Mouse(x, y, flags)]);
+                if (sent && flags == down)
                 {
-                    // Before a press: stop cleanly. After a completed first click of a double click the
-                    // gesture is partial, which is reported as interference rather than as nothing sent.
-                    return pressed ? DesktopClickSendOutcome.Interfered : DesktopClickSendOutcome.Aborted;
+                    // Owned from press to release, so a failure mid-click cannot leave the button held.
+                    _ownedMouseButtons.Add(up);
+                }
+                else if (sent && flags == up)
+                {
+                    _ownedMouseButtons.Remove(up);
                 }
 
-                // A button is down: the release below is still sent, and then the gesture ends.
-                interfered = true;
-            }
-
-            if (interfered && flags != up)
-            {
-                continue;
-            }
-
-            if (!Send([Mouse(x, y, flags)]))
-            {
-                return DesktopClickSendOutcome.Failed;
-            }
-
-            if (flags == down)
-            {
-                // Owned from press to release, so a failure mid-click cannot leave the button held.
-                _ownedMouseButtons.Add(up);
-                buttonHeld = true;
-                pressed = true;
-            }
-            else if (flags == up)
-            {
-                _ownedMouseButtons.Remove(up);
-                buttonHeld = false;
-                if (interfered)
-                {
-                    return DesktopClickSendOutcome.Interfered;
-                }
-            }
-
-            if (delay > 0)
-            {
-                Thread.Sleep(delay);
-            }
-        }
-
-        return DesktopClickSendOutcome.Sent;
+                return sent;
+            },
+            Thread.Sleep);
     }
 
     internal static IReadOnlyList<(uint Flags, int DelayAfterMilliseconds)> BuildClickSteps(bool rightButton, int count)
@@ -1229,4 +1203,84 @@ internal sealed class WindowsDesktopInputNativeAdapter : IDesktopInputNativeAdap
             (uint)inputs.Length,
             inputs,
             System.Runtime.InteropServices.Marshal.SizeOf<WindowsDesktopNativeMethods.INPUT>()) == inputs.Length;
+}
+
+internal static class DesktopClickGesture
+{
+    // Sequences move, press and release (twice for a double click) and asks the guard before each step.
+    // Before a press a failed guard sends nothing more (Aborted; a cursor move may already have happened).
+    // With a button held the release is still sent and the result is Interfered. After any successful press
+    // every exit path, exceptions included, attempts the matching release; a release that fails is Failed.
+    internal static DesktopClickSendOutcome Run(
+        IReadOnlyList<(uint Flags, int DelayAfterMilliseconds)> steps,
+        uint down,
+        uint up,
+        Func<bool> targetUnchanged,
+        Func<uint, bool> send,
+        Action<int> sleep)
+    {
+        var held = false;
+        var pressed = false;
+        var interfered = false;
+        try
+        {
+            foreach (var (flags, delay) in steps)
+            {
+                if (!interfered && !targetUnchanged())
+                {
+                    if (!held)
+                    {
+                        return pressed ? DesktopClickSendOutcome.Interfered : DesktopClickSendOutcome.Aborted;
+                    }
+
+                    interfered = true;
+                }
+
+                if (interfered && flags != up)
+                {
+                    continue;
+                }
+
+                if (!send(flags))
+                {
+                    return DesktopClickSendOutcome.Failed;
+                }
+
+                if (flags == down)
+                {
+                    held = true;
+                    pressed = true;
+                }
+                else if (flags == up)
+                {
+                    held = false;
+                    if (interfered)
+                    {
+                        return DesktopClickSendOutcome.Interfered;
+                    }
+                }
+
+                if (delay > 0)
+                {
+                    sleep(delay);
+                }
+            }
+
+            return DesktopClickSendOutcome.Sent;
+        }
+        finally
+        {
+            if (held)
+            {
+                try
+                {
+                    send(up);
+                }
+                catch (Exception)
+                {
+                    // The original failure is the one to report; this is a last attempt to free the button.
+                }
+            }
+        }
+    }
 }

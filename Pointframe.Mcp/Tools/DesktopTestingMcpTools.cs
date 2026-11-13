@@ -432,7 +432,7 @@ internal sealed class DesktopTestingMcpTools(
         EnterTextCoreAsync(sessionId, actionId, observationRef, imageRef, x, y, text, semanticValue, elementRef, automationId, role, name, windowRef, cancellationToken);
 
     [McpServerTool(Name = "desktop_invoke", Title = "Invoke desktop element", ReadOnly = false, Destructive = true, UseStructuredContent = true)]
-    [Description("Clicks the center of the element like a user. Name the element with elementRef from a recent desktop_observe_app, or with a selector (automationId, or role and name, optionally scoped by windowRef) and no observation at all: a selector is resolved against a fresh inspection when the action runs and must match exactly one element, otherwise nothing is clicked and the call fails with ElementNotFound, AmbiguousTarget (add windowRef or narrow the selector) or InspectionIncomplete (retry with a new actionId). Pass exactly one way to name the element. If its window cannot be foregrounded while another visible window of the app is already foreground (for example, a popup menu), it clicks only after same-process hit-test preflight. If click preflight cannot target it, falls back to its UI Automation invoke or toggle pattern.")]
+    [Description("Clicks the center of the element like a user. Name the element with elementRef from a recent desktop_observe_app, or with a selector (automationId, or role and name, optionally scoped by windowRef) and no observation at all: a selector is resolved against a fresh inspection when the action runs and must match exactly one element, otherwise nothing is clicked and the call fails with ElementNotFound, AmbiguousTarget (add windowRef or narrow the selector) or InspectionIncomplete (retry with a new actionId). Pass exactly one way to name the element. If its window cannot be foregrounded while another visible window of the app is already foreground (for example, a popup menu), it clicks only after same-process hit-test preflight. If click preflight cannot target it, falls back to its UI Automation invoke or toggle pattern. dispatch Complete means the input was accepted, not that the app reacted; verify with desktop_check_ui. An optional warning says the foreground or the window under the click changed while the click was being sent (a press that legitimately activates another window also warns).")]
     public async Task<DesktopTestingActionResponse> InvokeAsync(
         [Description("Session id from desktop_start_test_session.")] string sessionId,
         [Description("A UUID action identifier.")] string actionId,
@@ -523,21 +523,6 @@ internal sealed class DesktopTestingMcpTools(
                         && focus.ApprovedProcessForeground;
                     var released = (focus.IsValid || clickWithoutFocusingPopup) && input.TryReleaseOwnedInput();
                     var clickElement = element;
-                    if (selector is null && released && hitTest is not null
-                        && !hitTest.ElementOwnsPoint(
-                            invokeRef!,
-                            element!.BoundsPixels.X + element.BoundsPixels.Width / 2,
-                            element.BoundsPixels.Y + element.BoundsPixels.Height / 2))
-                    {
-                        // The bounds come from an earlier observation. Same refusal as a selector whose
-                        // click point no longer lands on the element: nothing is sent.
-                        return new DesktopActionExecution(
-                            DesktopDispatchStatus.NotStarted,
-                            DesktopVerificationStatus.Failed,
-                            DesktopObservationStatus.NotRequested,
-                            new DesktopOperationError("TargetOccluded", "The click point does not land on the selected element (another control, popup, or dialog covers it). No input was sent."));
-                    }
-
                     if (selector is not null && released)
                     {
                         // Foregrounding can move things and an app modal can cover the point, so the target is

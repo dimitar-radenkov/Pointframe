@@ -96,6 +96,23 @@ public sealed class DesktopInputPreflightTests
     }
 
     [Fact]
+    public async Task ClickWhoseWindowIsCoveredAfterThePreflightChecksSendsNoPress()
+    {
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), CoverAfterPointVisibleCheck = new nint(30) };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("OccludedOrOutOfBounds", result.Code);
+        Assert.DoesNotContain("down", adapter.SentSteps);
+    }
+
+    [Fact]
     public async Task ClickWithUnchangedForegroundAndPointCarriesNoWarning()
     {
         var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10) };
@@ -461,7 +478,17 @@ public sealed class DesktopInputPreflightTests
         public bool? IsWindowCloaked(nint handle) => ForegroundCloaked;
         public bool IsWindowValid(nint handle) => true;
         public bool IsWindowVisible(nint handle) => true;
-        public bool IsPointVisible(PixelBounds bounds, int x, int y) => x >= bounds.X && y >= bounds.Y && x < bounds.X + bounds.Width && y < bounds.Y + bounds.Height;
+        public nint? CoverAfterPointVisibleCheck { get; set; }
+        public bool IsPointVisible(PixelBounds bounds, int x, int y)
+        {
+            var visible = x >= bounds.X && y >= bounds.Y && x < bounds.X + bounds.Width && y < bounds.Y + bounds.Height;
+            if (CoverAfterPointVisibleCheck is { } cover)
+            {
+                RootAtPoint = cover;
+            }
+
+            return visible;
+        }
         public bool IsPointVisibleForProcess(PixelBounds bounds, int x, int y, int processId, nint expectedWindow) => ProcessPointVisible && IsPointVisible(bounds, x, y);
         public bool SendClick(int x, int y, bool rightButton, int count)
         {
@@ -470,38 +497,44 @@ public sealed class DesktopInputPreflightTests
         }
         public DesktopClickSendOutcome SendClickGuarded(int x, int y, bool rightButton, int count, Func<bool> targetUnchanged)
         {
-            // Scripted stand-in for the real step loop: the foreground (or root) moves just before the named step.
-            var pressed = false;
-            foreach (var step in new[] { "move", "down", "up" })
-            {
-                if (ChangeBeforeStep == step)
+            // Runs the shipping gesture loop; only the native sends and the scripted desktop changes are fake.
+            var steps = WindowsDesktopInputNativeAdapter.BuildClickSteps(rightButton, count);
+            var down = rightButton ? WindowsDesktopNativeMethods.MouseEventRightDown : WindowsDesktopNativeMethods.MouseEventLeftDown;
+            var up = rightButton ? WindowsDesktopNativeMethods.MouseEventRightUp : WindowsDesktopNativeMethods.MouseEventLeftUp;
+            var names = new[] { "move", "down", "up" };
+            var guardCalls = 0;
+            var outcome = DesktopClickGesture.Run(
+                steps,
+                down,
+                up,
+                () =>
                 {
-                    Foreground = ForegroundOnChange ?? Foreground;
-                    RootAtPoint = RootOnChange ?? RootAtPoint;
-                }
-
-                if (!targetUnchanged())
-                {
-                    if (!pressed)
+                    var step = guardCalls < names.Length ? names[guardCalls] : "later";
+                    guardCalls++;
+                    if (ChangeBeforeStep == step)
                     {
-                        return DesktopClickSendOutcome.Aborted;
+                        Foreground = ForegroundOnChange ?? Foreground;
+                        RootAtPoint = RootOnChange ?? RootAtPoint;
                     }
 
-                    SentSteps.Add("up");
-                    return DesktopClickSendOutcome.Interfered;
-                }
-
-                SentSteps.Add(step);
-                pressed |= step == "down";
-            }
-
-            Clicks += count;
-            if (ChangeBeforeStep == "afterUp")
+                    return targetUnchanged();
+                },
+                flags =>
+                {
+                    SentSteps.Add(flags == down ? "down" : flags == up ? "up" : "move");
+                    return true;
+                },
+                _ => { });
+            if (outcome is DesktopClickSendOutcome.Sent)
             {
-                Foreground = ForegroundOnChange ?? Foreground;
+                Clicks += count;
+                if (ChangeBeforeStep == "afterUp")
+                {
+                    Foreground = ForegroundOnChange ?? Foreground;
+                }
             }
 
-            return DesktopClickSendOutcome.Sent;
+            return outcome;
         }
         public bool SendKeys(IReadOnlyList<ushort> virtualKeys) => true;
         public bool SendDrag(IReadOnlyList<PixelBounds> points, int durationMilliseconds) => true;

@@ -449,5 +449,7 @@ public sealed record DesktopActionResult
 
     public DesktopOperationError? Error { get; }
 
+    // Omitted when null so the canonical JSON that signed reports hash stays byte-identical to older reports.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Warning { get; }
 }
