@@ -207,7 +207,7 @@ public sealed class CaptureCatalogIntegrityTests : IDisposable
         using var bitmap = new Bitmap(2, 2);
         using var graphics = Graphics.FromImage(bitmap);
         graphics.Clear(color);
-        bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+        ImageEncoders.SavePng(bitmap, path);
     }
 
     private static string HashFile(string path)

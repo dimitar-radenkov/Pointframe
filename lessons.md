@@ -1798,3 +1798,21 @@ One real user click on a normal window cleared the stale foreground and the qual
 ### Takeaway
 
 When focus fails on an unlocked desktop, check who holds the foreground before suspecting the code: a cloaked window can hold it indefinitely, and only real user input clears it.
+
+## System.Drawing Save(..., ImageFormat) races on the encoder lookup
+
+### Problem
+
+`McpCompactModesTests` and `DesktopObservationPixelTests` failed intermittently with `ArgumentNullException (Parameter 'encoder')` from `System.Drawing.CoreImageExtensions.Save`, raised in `CapturePreviewImage.CreateDownscaledPng` under `DesktopObservationService.ObserveAsync`. The MCP server could hit it under concurrent captures too.
+
+### Root cause
+
+`Image.Save(Stream|string, ImageFormat)` looks the encoder up through `ImageCodecInfo.GetImageEncoders()` on every call. Concurrent lookups race inside GDI+ and one returns no encoder. With 32 threads on a fresh process it failed in 44 of 60 processes, and a single warm-up `GetImageEncoders()` still failed in 18 of 60.
+
+### What fixed it
+
+`ImageEncoders` (`Pointframe.Engine/Capture/Services/ImageEncoders.cs`) resolves the PNG and JPEG `ImageCodecInfo` once through a `Lazy` (ExecutionAndPublication) over one `GetImageEncoders()` call, and `SavePng` calls `Save(stream, codec, null)`. That failed in 0 of 60 processes.
+
+### Takeaway
+
+Never call `Save` with an `ImageFormat` in this repo, product or test code; use `ImageEncoders.SavePng` or `ImageEncoders.Jpeg`, and never call `GetImageEncoders()` anywhere else.

@@ -659,7 +659,7 @@ public sealed class McpCompactModesTests : IDisposable
     {
         using var bitmap = new Bitmap(width, height);
         using var stream = new MemoryStream();
-        bitmap.Save(stream, ImageFormat.Png);
+        ImageEncoders.SavePng(bitmap, stream);
         return stream.ToArray();
     }
 
@@ -676,7 +676,7 @@ public sealed class McpCompactModesTests : IDisposable
         }
 
         using var stream = new MemoryStream();
-        bitmap.Save(stream, ImageFormat.Png);
+        ImageEncoders.SavePng(bitmap, stream);
         return stream.ToArray();
     }
 

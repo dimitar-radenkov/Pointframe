@@ -210,7 +210,7 @@ public sealed class CaptureCatalogPersistenceTests : IDisposable
         using var bitmap = new System.Drawing.Bitmap(2, 2);
         using var graphics = System.Drawing.Graphics.FromImage(bitmap);
         graphics.Clear(color);
-        bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+        ImageEncoders.SavePng(bitmap, path);
     }
 
     private sealed class TestCaptureLibrarySources : ICaptureLibrarySources
