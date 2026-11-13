@@ -421,6 +421,8 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
         // release, because a click that opens a dialog legitimately moves the foreground then.
         var foregroundChanged = false;
         var rootChanged = false;
+        nint seenForeground = 0;
+        nint seenRoot = 0;
         var outcome = _native.SendClickGuarded(
             request.X,
             request.Y,
@@ -428,8 +430,22 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
             request.Count,
             () =>
             {
-                foregroundChanged |= _native.GetForegroundWindow() != expectedForeground;
-                rootChanged |= _native.GetRootWindowFromPoint(request.X, request.Y) != expectedRoot;
+                // A zero reading means "unknown" (Windows reports no foreground window for a moment while one
+                // activates), not "another window", so it never counts as interference.
+                var foreground = _native.GetForegroundWindow();
+                var root = _native.GetRootWindowFromPoint(request.X, request.Y);
+                if (foreground != nint.Zero && foreground != expectedForeground)
+                {
+                    foregroundChanged = true;
+                    seenForeground = foreground;
+                }
+
+                if (root != nint.Zero && root != expectedRoot)
+                {
+                    rootChanged = true;
+                    seenRoot = root;
+                }
+
                 return !foregroundChanged && !rootChanged;
             });
         switch (outcome)
@@ -438,8 +454,8 @@ public sealed class WindowsDesktopInputService : IWindowsDesktopInputService
                 return DesktopInputPreflightResult.Invalid("InputDispatchFailed", "The native click was not accepted.");
             case DesktopClickSendOutcome.Aborted:
                 return foregroundChanged
-                    ? DesktopInputPreflightResult.Invalid("FocusRequired", "The target window is no longer foreground. No input was sent.")
-                    : DesktopInputPreflightResult.Invalid("OccludedOrOutOfBounds", "The click point is no longer visible within the approved target. No input was sent.");
+                    ? DesktopInputPreflightResult.Invalid("FocusRequired", $"The target window is no longer foreground (expected 0x{expectedForeground:X}, saw 0x{seenForeground:X}). No input was sent.")
+                    : DesktopInputPreflightResult.Invalid("OccludedOrOutOfBounds", $"The click point is no longer visible within the approved target (expected window 0x{expectedRoot:X}, saw 0x{seenRoot:X}). No input was sent.");
             case DesktopClickSendOutcome.Interfered:
                 var changed = foregroundChanged && rootChanged
                     ? "the foreground window and the window under the click point"

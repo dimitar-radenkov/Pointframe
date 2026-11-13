@@ -115,6 +115,41 @@ public sealed class DesktopInputPreflightTests
     }
 
     [Fact]
+    public async Task ClickToleratesAnUnknownZeroReadingWhileTheGestureRuns()
+    {
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), ChangeBeforeStep = "down", ForegroundOnChange = nint.Zero, RootOnChange = nint.Zero };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.True(result.IsValid);
+        Assert.Null(result.Warning);
+        Assert.Equal(["move", "down", "up"], adapter.SentSteps);
+    }
+
+    [Fact]
+    public async Task ClickOnAChildWindowUnderAnUnchangedTopLevelTargetClicksWithoutWarning()
+    {
+        // The point hits a child control; the root under it is the validated top-level target throughout.
+        var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10) };
+        var service = new WindowsDesktopInputService(new FakeFactory(adapter));
+        var process = Process("approved");
+        var window = new DesktopWindowIdentity("window-1", process.ProcessRef, new nint(10));
+
+        var result = await service.ClickAsync(
+            new DesktopClickRequest(new DesktopInputTarget(window, BoundsPixels: new PixelBounds(0, 0, 100, 100)), 10, 10),
+            process);
+
+        Assert.True(result.IsValid);
+        Assert.Null(result.Warning);
+        Assert.Equal(["move", "down", "up"], adapter.SentSteps);
+    }
+
+    [Fact]
     public async Task ClickWhoseWindowIsCoveredAfterThePreflightChecksSendsNoPress()
     {
         var adapter = new FakeAdapter { Foreground = new nint(10), RootAtPoint = new nint(10), CoverAfterPointVisibleCheck = new nint(30) };
