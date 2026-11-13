@@ -65,7 +65,8 @@ $SelfTestScripts = @(
     'measure-mcp-payloads.ps1',
     'test-agent-onboarding.ps1',
     'trial.ps1',
-    'weekly-trial.ps1'
+    'weekly-trial.ps1',
+    'run-integration-tests.ps1'
 )
 
 $HeavyScripts = @('package.ps1')
@@ -105,6 +106,8 @@ $SelfTestDependencies = [ordered]@{
     'trial.ps1' = @('scripts/trial.ps1', 'scripts/agent-release.ps1', 'scripts/release-model.ps1', 'scripts/tests/trial/**', 'scripts/tests/agent-release/**', 'scripts/trials/apps.json', 'samples/verify/wpf/**')
     # Every resolver and the trial runner are faked; it loads agent-release.ps1 for Resolve-NewestAgentVersion only.
     'weekly-trial.ps1' = @('scripts/weekly-trial.ps1', 'scripts/agent-release.ps1', 'scripts/release-model.ps1', 'scripts/tests/weekly-trial/**', 'scripts/tests/agent-release/**')
+    # Reads only its own TRX fixtures; dotnet test is never invoked by -SelfTest.
+    'run-integration-tests.ps1' = @('scripts/run-integration-tests.ps1', 'scripts/tests/run-integration-tests/**')
 }
 # scripts/ files that no listed self-test loads, runs or reads (checked by searching every listed script and the kit for
 # their names; agent-release.ps1 only writes a stub update-plugin-pin.ps1 into a temporary root). Changing one runs no self-test.
@@ -201,18 +204,24 @@ function Get-ScriptsChange
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     # -z gives raw, NUL-separated paths: without it git quotes names with non-ASCII or special characters, and a
     # quoted name would match no dependency glob and no unmapped-path rule.
-    $savedEncoding = [Console]::OutputEncoding
-    [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-    try
+    # git's output is read as UTF-8 through a Process: [Console]::OutputEncoding has no effect in a process without a
+    # console (verify.ps1 starts its gates that way), so a native call would turn non-ASCII path characters into '?'.
+    foreach ($gitArgs in @(@('diff','--name-only','--no-renames','-z',"$base..HEAD"), @('diff','--name-only','--no-renames','-z',$base), @('diff','--cached','--name-only','--no-renames','-z',$base), @('ls-files','--others','--exclude-standard','-z')))
     {
-        foreach ($gitArgs in @(@('diff','--name-only','--no-renames','-z',"$base..HEAD"), @('diff','--name-only','--no-renames','-z',$base), @('diff','--cached','--name-only','--no-renames','-z',$base), @('ls-files','--others','--exclude-standard','-z')))
-        {
-            $raw = @(& git -C $repoRoot -c core.quotepath=off @gitArgs 2>$null) -join "`n"
-            if ($LASTEXITCODE -ne 0) { return @{ Mode='all'; Base=$base; Reason='git could not enumerate changed paths'; Changed=$true; Paths=@() } }
-            foreach ($item in $raw.Split([char]0)) { if ($item) { [void]$paths.Add($item.Replace('\','/')) } }
-        }
+        $psi = [Diagnostics.ProcessStartInfo]::new('git')
+        foreach ($argument in @('-C', $repoRoot, '-c', 'core.quotepath=off') + $gitArgs) { $psi.ArgumentList.Add($argument) }
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+        $process = [Diagnostics.Process]::Start($psi)
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $raw = $process.StandardOutput.ReadToEnd()
+        $process.WaitForExit()
+        [void]$stderrTask.Result
+        if ($process.ExitCode -ne 0) { return @{ Mode='all'; Base=$base; Reason='git could not enumerate changed paths'; Changed=$true; Paths=@() } }
+        foreach ($item in $raw.Split([char]0)) { if ($item) { [void]$paths.Add($item.Replace('\','/')) } }
     }
-    finally { [Console]::OutputEncoding = $savedEncoding }
     $shortOut = @(& git -C $repoRoot rev-parse --short $base 2>$null)
     $short = if ($LASTEXITCODE -eq 0 -and $shortOut) { "$($shortOut[0])".Trim() } else { $base }
     $changedPaths = @($paths | Sort-Object)
@@ -339,7 +348,7 @@ if ($SelfTest)
         $cases.Add([pscustomobject]@{case='empty SHA';mode=$empty.Mode;reason=$empty.Reason})
 
         # Per-script selection on the real dependency map. Only paths are compared, so the fixture needs no script bodies.
-        $allNames = @('merge-pr.ps1','record-review.ps1','codex-ask.ps1','status.ps1','agent-run.ps1','package.ps1','release-impact.ps1','publish-release.ps1','check-alias-lag.ps1','check-latest-release.ps1','agent-release.ps1','write-release-receipt.ps1','check-release-channels.ps1','check-released-desktop.ps1','usage-report.ps1','update-download-badges.ps1','measure-mcp-payloads.ps1','test-agent-onboarding.ps1','trial.ps1','weekly-trial.ps1')
+        $allNames = @('merge-pr.ps1','record-review.ps1','codex-ask.ps1','status.ps1','agent-run.ps1','package.ps1','release-impact.ps1','publish-release.ps1','check-alias-lag.ps1','check-latest-release.ps1','agent-release.ps1','write-release-receipt.ps1','check-release-channels.ps1','check-released-desktop.ps1','usage-report.ps1','update-download-badges.ps1','measure-mcp-payloads.ps1','test-agent-onboarding.ps1','trial.ps1','weekly-trial.ps1','run-integration-tests.ps1')
         $quickAlways = @('package.ps1','release-impact.ps1')
         $modelDependents = @('publish-release.ps1','check-alias-lag.ps1','check-latest-release.ps1','agent-release.ps1','write-release-receipt.ps1','check-release-channels.ps1','check-released-desktop.ps1','test-agent-onboarding.ps1','trial.ps1','weekly-trial.ps1')
         $agentReleaseDependents = @('agent-release.ps1','check-released-desktop.ps1','test-agent-onboarding.ps1','trial.ps1','weekly-trial.ps1')
@@ -363,7 +372,7 @@ if ($SelfTest)
         & $check 'scripts: product-only change' (& $selection) 'skip' @('release-impact.ps1')
         $productOnly = & $selection
         $skippedCount = @($productOnly.scripts | Where-Object { -not $_.run }).Count
-        if ($skippedCount -ne 19) { throw "scripts: product-only change expected 19 skipped scripts, got $skippedCount" }
+        if ($skippedCount -ne 20) { throw "scripts: product-only change expected 20 skipped scripts, got $skippedCount" }
 
         & $reset
         & $write 'scripts/update-download-badges.ps1'
@@ -508,7 +517,8 @@ $decision['scripts'] = $scriptSelection
 # Printed before -SelectionOnly exits, so the self-test exercises this for every decision shape.
 Write-Host "Selection: $($decision.Mode); base=$($decision.Base); reason=$($decision.Reason)"
 if ($decision.ContainsKey('Match') -and $decision['Match']) { Write-Host "Full-run path matched: $($decision['Match'])" }
-if ($SelectionOnly) { [pscustomobject]$decision | ConvertTo-Json -Compress -Depth 5; exit 0 }
+# Non-ASCII is escaped: without a console stdout uses the OEM code page, which would turn path characters into '?'.
+if ($SelectionOnly) { [pscustomobject]$decision | ConvertTo-Json -Compress -Depth 5 -EscapeHandling EscapeNonAscii; exit 0 }
 $allRun = $decision.Mode -eq 'all'
 $skipHeavy = $decision.Mode -eq 'skip'
 $ran = 0

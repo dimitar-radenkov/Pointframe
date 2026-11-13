@@ -267,6 +267,22 @@
       "gate": "discovery"
     },
     {
+      "id": "scripts-selftest",
+      "exe": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "scripts/test-scripts.ps1",
+        "-SelfTest"
+      ],
+      "cwd": ".",
+      "timeoutMinutes": 10,
+      "dependsOn": [],
+      "failSummary": "The script self-test selector failed its own self-test (CI step \"Script self-tests\" runs it first).",
+      "detailPattern": "\\S"
+    },
+    {
       "id": "scripts",
       "exe": "pwsh",
       "args": [

@@ -92,7 +92,7 @@ One brief serves either executor. Required headings, checked by `scripts/agent-r
 | Authorized repairs | The executor repairs without asking |
 | Absolute worktree paths, explicit working directory per write and process | The shell starts in the main checkout |
 | Stop conditions | Stop after the first real environment failure (sandbox, missing tool, authentication) and report. Missing build outputs are not one; build them. Never retry an identical failing command |
-| Exact checks | Sandbox-safe: `dotnet format Pointframe/Pointframe.csproj --no-restore`, and every `dotnet test --filter` adds `&Category!=Integration` |
+| Exact checks | Sandbox-safe: `dotnet format Pointframe/Pointframe.csproj --no-restore`, and every `dotnet test --filter` adds `&Category!=Integration`; integration tests run only through a manifest `extra` entry calling `scripts/run-integration-tests.ps1` |
 
 - Lesson: An executor's relative path or default working directory can write into the main checkout
 - Lesson: A background command that reads stdin can hang an agent for hours

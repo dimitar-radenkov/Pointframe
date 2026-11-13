@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="11111111-1111-1111-1111-111111111111" name="fixture" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Results>
+    <UnitTestResult executionId="e1" testId="00000000-0000-0000-0000-000000000001" testName="Pointframe.Tests.Services.AlphaTests.Works" outcome="Passed" />
+    <UnitTestResult executionId="e2" testId="00000000-0000-0000-0000-000000000002" testName="Pointframe.Tests.Services.AlphaTests.Breaks" outcome="Failed" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Works" id="00000000-0000-0000-0000-000000000001"><TestMethod codeBase="Pointframe.Tests.dll" className="Pointframe.Tests.Services.AlphaTests, Pointframe.Tests" name="Works" /></UnitTest>
+    <UnitTest name="Breaks" id="00000000-0000-0000-0000-000000000002"><TestMethod codeBase="Pointframe.Tests.dll" className="Pointframe.Tests.Services.AlphaTests, Pointframe.Tests" name="Breaks" /></UnitTest>
+  </TestDefinitions>
+</TestRun>
