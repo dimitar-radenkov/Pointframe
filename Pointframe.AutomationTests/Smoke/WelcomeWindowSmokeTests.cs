@@ -53,9 +53,8 @@ public sealed class WelcomeWindowSmokeTests : IClassFixture<DesktopAutomationFix
 
             Assert.False(process.HasExited);
             using var desktopAutomation = new FlaUI.UIA3.UIA3Automation();
-            var processWindows = desktopAutomation.GetDesktop()
-                .FindAllChildren(criteria => criteria.ByProcessId(process.Id));
-            Assert.DoesNotContain(processWindows, window => window.AutomationId == AutomationIds.WelcomeWindowRoot);
+            var processWindows = AutomationApp.GetProcessWindows(process.Id, desktopAutomation);
+            Assert.DoesNotContain(processWindows, window => AutomationApp.ReadAutomationId(window) == AutomationIds.WelcomeWindowRoot);
         }
         finally
         {

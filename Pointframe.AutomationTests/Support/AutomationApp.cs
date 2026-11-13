@@ -16,6 +16,7 @@ public sealed class AutomationApp : IDisposable
     private static readonly TimeSpan WindowTimeout = TimeSpan.FromSeconds(10);
     private readonly int _processId;
     private readonly UIA3Automation _automation;
+    private Exception? _lastFindFailure;
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
@@ -135,7 +136,34 @@ public sealed class AutomationApp : IDisposable
     }
 
     public bool HasWindowAutomationId(string automationId) => GetProcessWindows(_processId, _automation)
-        .Any(window => string.Equals(window.Properties.AutomationId.ValueOrDefault, automationId, StringComparison.Ordinal));
+        .Any(window => string.Equals(ReadAutomationId(window), automationId, StringComparison.Ordinal));
+
+    internal static string? ReadName(AutomationElement element)
+    {
+        try
+        {
+            return element.Properties.Name.ValueOrDefault;
+        }
+        catch (Exception exception) when (IsTransientUiaFailure(exception))
+        {
+            return null;
+        }
+    }
+
+    internal static string? ReadAutomationId(AutomationElement element)
+    {
+        try
+        {
+            return element.Properties.AutomationId.ValueOrDefault;
+        }
+        catch (Exception exception) when (IsTransientUiaFailure(exception))
+        {
+            return null;
+        }
+    }
+
+    private static bool IsTransientUiaFailure(Exception exception) =>
+        exception is PropertyNotSupportedException or ElementNotAvailableException or COMException;
 
     public void WaitForWindowTitle(string title)
     {
@@ -143,7 +171,7 @@ public sealed class AutomationApp : IDisposable
         while (stopwatch.Elapsed < WindowTimeout)
         {
             var candidate = GetProcessWindows(_processId, _automation)
-                .FirstOrDefault(window => string.Equals(window.Name, title, StringComparison.Ordinal));
+                .FirstOrDefault(window => string.Equals(ReadName(window), title, StringComparison.Ordinal));
             if (candidate is not null)
             {
                 MainWindow = candidate.AsWindow();
@@ -153,7 +181,7 @@ public sealed class AutomationApp : IDisposable
             Thread.Sleep(100);
         }
 
-        var seen = string.Join(", ", GetProcessWindows(_processId, _automation).Select(window => $"'{window.Properties.Name.ValueOrDefault}'"));
+        var seen = string.Join(", ", GetProcessWindows(_processId, _automation).Select(window => $"'{ReadName(window)}'"));
         throw new TimeoutException($"Timed out waiting for window '{title}'. Process windows: [{seen}].");
     }
 
@@ -163,7 +191,7 @@ public sealed class AutomationApp : IDisposable
         while (stopwatch.Elapsed < WindowTimeout)
         {
             var isOpen = GetProcessWindows(_processId, _automation)
-                .Any(window => string.Equals(window.Name, title, StringComparison.Ordinal));
+                .Any(window => string.Equals(ReadName(window), title, StringComparison.Ordinal));
             if (!isOpen)
             {
                 return;
@@ -255,7 +283,21 @@ public sealed class AutomationApp : IDisposable
 
     public void ClickButton(string automationId)
     {
-        FindButton(automationId).Invoke();
+        const int maxAttempts = 3;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                FindButton(automationId).Invoke();
+                return;
+            }
+            catch (Exception exception) when (attempt < maxAttempts
+                && exception is ElementNotAvailableException or COMException
+                && TryFindElement(automationId) is not null)
+            {
+                Thread.Sleep(100);
+            }
+        }
     }
 
     public void HoverElement(string automationId)
@@ -525,6 +567,7 @@ public sealed class AutomationApp : IDisposable
         }
 
         var stopwatch = Stopwatch.StartNew();
+        _lastFindFailure = null;
 
         while (stopwatch.Elapsed < WindowTimeout)
         {
@@ -540,13 +583,24 @@ public sealed class AutomationApp : IDisposable
             Thread.Sleep(100);
         }
 
-        throw new TimeoutException($"Timed out waiting for automation element '{string.Join("' or '", automationIds)}'.");
+        throw new TimeoutException(
+            $"Timed out waiting for automation element '{string.Join("' or '", automationIds)}'."
+            + (_lastFindFailure is null ? string.Empty : $" Last UIA failure: {_lastFindFailure.GetType().Name}: {_lastFindFailure.Message}"),
+            _lastFindFailure);
     }
 
     public AutomationElement? TryFindElement(string automationId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(automationId);
-        return MainWindow.FindFirstDescendant(criteria => criteria.ByAutomationId(automationId));
+        try
+        {
+            return MainWindow.FindFirstDescendant(criteria => criteria.ByAutomationId(automationId));
+        }
+        catch (Exception exception) when (exception is COMException or ElementNotAvailableException)
+        {
+            _lastFindFailure = exception;
+            return null;
+        }
     }
 
     private bool TryGetRunningProcess(out Process? process)
