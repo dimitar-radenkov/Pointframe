@@ -54,8 +54,11 @@ public sealed class ScreenRecordingServiceTests
 
         public int WrittenFrameCount { get; private set; }
 
+        public ManualResetEventSlim FirstWriteStarted { get; } = new();
+
         public void WriteFrame(byte[] frameData)
         {
+            FirstWriteStarted.Set();
             if (_writeDelay > TimeSpan.Zero)
             {
                 Thread.Sleep(_writeDelay);
@@ -66,6 +69,7 @@ public sealed class ScreenRecordingServiceTests
 
         public void Dispose()
         {
+            FirstWriteStarted.Dispose();
         }
     }
 
@@ -762,6 +766,23 @@ public sealed class ScreenRecordingServiceTests
         microphoneService.Verify(service => service.TrySetCaptureDeviceMuted("Studio Mic", false), Times.Once);
     }
 
+    private static void AssertPaddedToServiceElapsedDuration(ScreenRecordingService svc, TestVideoWriter writer, int fps)
+    {
+        // The service stopwatch starts inside Start, so the expected count comes from the duration the service itself reports
+        // (the writer is not recoverable, so the stop result carries the stop-time elapsed value), not from a clock in the test.
+        Assert.True(writer.FirstWriteStarted.Wait(TimeSpan.FromSeconds(30)), "The writer never received a frame.");
+        Thread.Sleep(650);
+        svc.Stop();
+
+        Assert.False(svc.LastStopFailed, $"Stop failed: {svc.LastStopError}");
+        Assert.Equal(RecordingStopStatus.Complete, svc.LastStopResult.Status);
+        var expectedFrames = (int)Math.Ceiling(svc.LastStopResult.Duration.TotalSeconds * fps);
+
+        Assert.True(expectedFrames >= 1);
+        Assert.True(writer.WrittenFrameCount >= expectedFrames,
+            $"Expected at least {expectedFrames} written frames for elapsed time {svc.LastStopResult.Duration}, but saw {writer.WrittenFrameCount}.");
+    }
+
     [Fact]
     public void Stop_WhenWriterBackpressureOccurs_PadsFramesToElapsedDuration()
     {
@@ -772,19 +793,11 @@ public sealed class ScreenRecordingServiceTests
             .Returns(writer);
         var settings = new UserSettings { RecordingFps = 10 };
 
-        using var svc = CreateSut(mockFactory.Object, settings: settings);
+        using var capture = new SignalingFrameCapture();
+        using var svc = CreateSut(mockFactory.Object, settings: settings, frameCapture: capture);
 
-        var stopwatch = Stopwatch.StartNew();
         svc.Start(0, 0, 100, 100, "test.mp4");
-        Thread.Sleep(650);
-        var elapsedBeforeStop = stopwatch.Elapsed;
-        svc.Stop();
-        stopwatch.Stop();
-
-        var minimumExpectedFrames = (int)Math.Floor(elapsedBeforeStop.TotalSeconds * settings.RecordingFps) - 1;
-
-        Assert.True(writer.WrittenFrameCount >= minimumExpectedFrames,
-            $"Expected at least {minimumExpectedFrames} written frames for elapsed time {elapsedBeforeStop}, but saw {writer.WrittenFrameCount}.");
+        AssertPaddedToServiceElapsedDuration(svc, writer, settings.RecordingFps);
     }
 
     [Fact]
@@ -805,20 +818,13 @@ public sealed class ScreenRecordingServiceTests
             RecordMicrophone = true,
         };
 
-        using var svc = CreateSut(mockFactory.Object, microphoneService, settings);
+        using var capture = new SignalingFrameCapture();
+        using var svc = CreateSut(mockFactory.Object, microphoneService, settings, frameCapture: capture);
 
-        var stopwatch = Stopwatch.StartNew();
         svc.Start(0, 0, 100, 100, "test.mp4");
-        Thread.Sleep(650);
-        var elapsedBeforeStop = stopwatch.Elapsed;
-        svc.Stop();
-        stopwatch.Stop();
-
-        var minimumExpectedFrames = (int)Math.Floor(elapsedBeforeStop.TotalSeconds * settings.RecordingFps) - 1;
+        AssertPaddedToServiceElapsedDuration(svc, writer, settings.RecordingFps);
 
         mockFactory.Verify(f => f.Create(100, 100, settings.RecordingFps, "test.mp4", "Studio Mic"), Times.Once);
-        Assert.True(writer.WrittenFrameCount >= minimumExpectedFrames,
-            $"Expected at least {minimumExpectedFrames} written frames for elapsed time {elapsedBeforeStop}, but saw {writer.WrittenFrameCount}.");
     }
 
     [Fact]
