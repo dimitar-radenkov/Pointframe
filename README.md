@@ -38,7 +38,7 @@
 | | Desktop app | MCP server | CLI |
 |---|---|---|---|
 | **For** | People who share screenshots and recordings | AI coding agents (Claude Code, Codex, Cursor, VS Code) | Scripts, CI and agents that prefer a shell |
-| **Does** | Capture, annotate, blur, OCR, pin and record to MP4 or GIF | Lets an agent see the screen, read text, record, and drive an approved app's UI | The same captures, OCR, recordings and `verify run` as JSON commands |
+| **Does** | Capture, annotate, blur, OCR, pin, record to MP4 and export GIF | Lets an agent see the screen, read text, record, and drive an approved app's UI | The same captures, OCR, recordings and `verify run` as JSON commands |
 | **Get it** | `winget install DimitarRadenkov.Pointframe` | [Connect your MCP client](docs/mcp/README.md#connect-your-mcp-client) | [Install the CLI](docs/cli/README.md#install) |
 
 The CLI and the MCP server are standalone: no tray app, no .NET runtime. They only observe until you approve one app for interaction (`pointframe verify setup`; see [desktop testing](docs/mcp-desktop-testing/README.md)).
@@ -50,7 +50,7 @@ Press `Print Screen`, draw a region, mark it up and share it. The screen freezes
 - **Annotate:** arrow, line, rectangle, circle, pen, highlighter, text, numbered steps, callout, color picker and a pixel ruler, with style presets and full undo and redo.
 - **Hide what is private:** drag a blur over emails, passwords or tokens before you share.
 - **Copy text from anything:** lasso text on screen, even inside an image or a video, and Pointframe copies it with OCR.
-- **Record:** a region or the whole screen to MP4 or GIF, with microphone audio and annotations drawn live while you record. Trim the result from the tray.
+- **Record:** a region or the whole screen to MP4, with optional microphone audio and annotations drawn live while you record. Trim it or export it to GIF from the tray.
 - **Keep and reuse:** pin a capture as an always-on-top window, frame it with the Beautifier, search old captures by their text in the Capture Library, or upload and copy a link.
 
 ### Download the screenshot app
