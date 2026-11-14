@@ -7,49 +7,75 @@
 <h1 align="center">Pointframe</h1>
 
 <p align="center">
-  <b>Let your coding agent test the real Windows UI.</b><br>
-  Pointframe lets agents inspect your app, interact with its controls, and run repeatable checks with screenshots and signed evidence.<br>
-  Free, open source, Windows x64.
+  <b>Screen capture, annotation and recording for Windows, and the same desktop eyes and hands for AI agents.</b><br>
+  A tray app for people, an MCP server for coding agents, and a CLI for scripts. Free, open source, Windows x64.
 </p>
 
 <p align="center">
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdimitar-radenkov.github.io%2FPointframe%2Fbadges%2Fdownloads-total.json&color=brightgreen" alt="Total downloads"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdimitar-radenkov.github.io%2FPointframe%2Fbadges%2Fdownloads-mcp.json&color=blue" alt="MCP server downloads"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Cli-win-x64.zip"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdimitar-radenkov.github.io%2FPointframe%2Fbadges%2Fdownloads-cli.json&color=blue" alt="CLI downloads"></a>
+  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest"><img src="https://img.shields.io/github/v/release/dimitar-radenkov/Pointframe?label=release&color=success" alt="Latest release"></a>
+  <a href="https://github.com/microsoft/winget-pkgs/tree/master/manifests/d/DimitarRadenkov/Pointframe"><img src="https://img.shields.io/winget/v/DimitarRadenkov.Pointframe?label=winget&color=blue" alt="winget"></a>
+</p>
+
+<p align="center">
+  <b><a href="#download-the-screenshot-app">Desktop app</a></b> &nbsp;|&nbsp;
+  <b><a href="#mcp-server-for-ai-agents">MCP server</a></b> &nbsp;|&nbsp;
+  <b><a href="#cli-for-scripts-and-ci">CLI</a></b> &nbsp;|&nbsp;
   <b><a href="#set-up-your-agent">Set up your agent</a></b> &nbsp;|&nbsp;
-  <b><a href="#download-the-screenshot-app">Download the screenshot app</a></b>
+  <b><a href="https://dimitar-radenkov.github.io/Pointframe/">Website</a></b>
+</p>
+
+<p align="center">
+  <img src="docs/images/pointframe-editor.png" alt="The Pointframe annotation editor: an arrow, numbered steps, a blurred email column and a red rectangle on a captured web page, with the tool bar and actions" width="820">
 </p>
 
 **Coding agents:** read [the complete Windows desktop verification recipe](docs/cli/verify.md#coding-agents-start-here) before starting.
 
-## An agent checks its UI change in the real app
+## One engine, three ways to use it
 
-`pointframe verify run` runs your build and test gates and, for each scenario in the spec, launches your built app, drives it through its real controls (invoke, type, check), and writes a verdict with a signed evidence bundle: `report.json`, `evidence/` screenshots and an `index.html`. A good scenario also carries a negative control, a check with a deliberately wrong expectation that must fail.
+| | Desktop app | MCP server | CLI |
+|---|---|---|---|
+| **For** | People who share screenshots and recordings | AI coding agents (Claude Code, Codex, Cursor, VS Code) | Scripts, CI and agents that prefer a shell |
+| **Does** | Capture, annotate, blur, OCR, pin, record to MP4 and export GIF | Lets an agent see the screen, read text, record, and drive an approved app's UI | The same captures, OCR, recordings and `verify run` as JSON commands |
+| **Get it** | `winget install DimitarRadenkov.Pointframe` | [Connect your MCP client](docs/mcp/README.md#connect-your-mcp-client) | [Install the CLI](docs/cli/README.md#install) |
 
-<p align="center">
-  <img src="docs/images/verify-evidence-wpf-sample.png" alt="Evidence screenshot from a passing verify run: the Contacts sample shows Ada Lovelace in the list and the status line reads Added Ada Lovelace" width="400">
-</p>
+The CLI and the MCP server are standalone: no tray app, no .NET runtime. They only observe until you approve one app for interaction (`pointframe verify setup`; see [desktop testing](docs/mcp-desktop-testing/README.md)).
+
+## Desktop app
+
+Press `Print Screen`, draw a region, mark it up and share it. The screen freezes the moment you press the key, so menus and tooltips stay exactly as they were.
+
+- **Annotate:** arrow, line, rectangle, circle, pen, highlighter, text, numbered steps, callout, color picker and a pixel ruler, with style presets and full undo and redo.
+- **Hide what is private:** drag a blur over emails, passwords or tokens before you share.
+- **Copy text from anything:** lasso text on screen, even inside an image or a video, and Pointframe copies it with OCR.
+- **Record:** a region or the whole screen to MP4, with optional microphone audio and annotations drawn live while you record. Trim it or export it to GIF from the tray.
+- **Keep and reuse:** pin a capture as an always-on-top window, frame it with the Beautifier, search old captures by their text in the Capture Library, or upload and copy a link.
+
+### Download the screenshot app
+
+```powershell
+winget install DimitarRadenkov.Pointframe
+```
+
+Or take the installer from [Releases](https://github.com/dimitar-radenkov/Pointframe/releases). Features, settings and shortcuts: [desktop app guide](docs/app.md).
+
+## MCP server for AI agents
+
+Give your coding agent eyes on the Windows desktop, and, for an app you approve, hands. Eleven always-on tools list displays and windows, capture a monitor or a window, read text with OCR, search past captures and record (`capture_window`, `read_text_from_monitor`, `start_recording`, ...). Captures come back inline as an image plus a PNG on disk with SHA-256, monitor geometry and DPI. The opt-in `desktop_*` tools launch an approved app, click, type and check its UI, and write a signed report. Details: [MCP reference](docs/mcp/README.md#mcp-capabilities).
+
+### An agent checks its UI change in the real app
+
+`pointframe verify run` runs your build and test gates and, for each scenario in the spec, launches your built app, drives it through its real controls (invoke, type, check), and writes a verdict with a signed evidence bundle: `report.json`, `evidence/` screenshots and an `index.html`.
 
 <p align="center">
   <a href="https://dimitar-radenkov.github.io/Pointframe/verify-demo.mp4"><img src="website/verify-demo-poster.png" alt="Poster of a 30-second demo: a failing verify run, the fix, the same check passing, and the evidence page" width="640"></a>
 </p>
 
-<p align="center"><sub>30-second demo on the same sample: fail, fix, pass, evidence. Click to watch.</sub></p>
+<p align="center"><sub>30-second demo on the <a href="samples/verify/wpf">WPF sample</a>: fail, fix, pass, evidence. Click to watch.</sub></p>
 
-This is a real evidence screenshot from a passing run of the [WPF sample](samples/verify/wpf) (its [reference spec](samples/verify/wpf/reference/verify.json) is in the repo, so you can reproduce it).
-
-## Pick your door
-
-| I want to... | Use | First example |
-|---|---|---|
-| Give my agent eyes on the desktop, and optionally hands | [MCP server](docs/mcp/README.md) | Ask the agent to list your displays; it calls `list_displays` |
-| Script captures, OCR and recordings, or gate an agent on a verified pass | [CLI](docs/cli/README.md) | `pointframe displays`, then `pointframe verify run` |
-| Capture, annotate and record by hand | [Desktop app](docs/app.md) | Press `Print Screen` |
-
-The CLI and the MCP server run on their own: neither needs the tray app. Capture, OCR and recording only observe. Interacting with an app's controls is off until you set it up for one app (`pointframe verify setup`, or a policy file; see [desktop testing](docs/mcp-desktop-testing/README.md)).
-
-### What the MCP server gives an agent
-
-Eleven always-on tools: `list_displays`, `list_windows`, `capture_monitor`, `capture_window`, `read_text_from_monitor`, `read_text_from_window`, `search_captures`, `get_capture`, `start_recording`, `stop_recording` and `get_recording_status`. Captures come back inline as an image plus a PNG on disk with SHA-256, monitor geometry and DPI. The opt-in `desktop_*` tools launch an approved app, click, type and check its UI, and write a signed report. Details: [MCP reference](docs/mcp/README.md#mcp-capabilities).
-
-### What the CLI gives a script
+## CLI for scripts and CI
 
 ```powershell
 pointframe displays
@@ -60,7 +86,7 @@ pointframe record --monitor '\\.\DISPLAY1' --seconds 10 --output .\take1.mp4
 pointframe verify run
 ```
 
-The discovery, capture, OCR and recording commands write a single-line JSON response to standard output, on success and on failure. Exit code `0` is success and `1` a runtime failure with a stable `Error.Code`. Invalid command-line arguments exit `2` and write usage text to standard error instead of JSON. For other commands, follow their command-specific output contracts in the [CLI reference](docs/cli/README.md) and the [verify docs](docs/cli/verify.md). `pointframe mcp serve` speaks the MCP stdio protocol. `record` needs `ffmpeg.exe`. Every command and flag: [CLI reference](docs/cli/README.md#commands).
+Discovery, capture, OCR and recording commands print one JSON line on standard output, on success and on failure: exit `0` is success, `1` a runtime failure with a stable `Error.Code`, `2` invalid arguments (usage on standard error). `pointframe mcp serve` speaks the MCP stdio protocol; `record` needs `ffmpeg.exe`. Every command, flag and output contract: [CLI reference](docs/cli/README.md#commands) and [verify docs](docs/cli/verify.md).
 
 ## Quick start
 
@@ -68,27 +94,17 @@ The discovery, capture, OCR and recording commands write a single-line JSON resp
 
 - **Claude Code plugin.** From a clone, `claude --plugin-dir ./plugin/pointframe` starts the MCP server and adds the `verify-desktop-work` skill ([plugin README](plugin/pointframe/README.md)). The plugin is not yet in the plugin directory.
 - **Other MCP clients** (Claude Desktop, Codex, Cursor, VS Code): [connect your MCP client](docs/mcp/README.md#connect-your-mcp-client).
-- **CLI.** Download `Pointframe.Cli-win-x64.zip` from the [latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest), extract it, and run this from that folder (checksum step: [CLI install](docs/cli/README.md#install)). Open a new terminal afterwards, so the user `Path` change takes effect. Then `pointframe displays` lists your monitors, and the [verify guide](docs/cli/verify.md) covers your own app.
+- **CLI.** Download `Pointframe.Cli-win-x64.zip` from the [latest release](https://github.com/dimitar-radenkov/Pointframe/releases/latest), extract it, and run this from that folder, then open a new terminal ([CLI install](docs/cli/README.md#install), [verify guide](docs/cli/verify.md)).
 
 ```powershell
 .\Pointframe.Cli.exe install
 ```
 
-### Download the screenshot app
-
-```powershell
-winget install DimitarRadenkov.Pointframe
-```
-
-Press `Print Screen` to capture a region, add arrows, text or blur, then copy, save, pin or record. Or take the installer from [Releases](https://github.com/dimitar-radenkov/Pointframe/releases). Features, settings and shortcuts: [desktop app guide](docs/app.md).
-
 ## FAQ
-
-**Does it need the desktop app?** No. The CLI and the MCP server are standalone: no tray app and no .NET runtime. The desktop app is the separate screenshot tool for people.
 
 **Can it run headless?** Build and test gates can, including in CI. Checks of the real UI need an unlocked, interactive Windows session; a Windows service in session 0 cannot capture the user desktop.
 
-**What does a pass establish?** That the gates and scenarios your spec configures all passed. A spec with only gates passes without launching an app, so UI coverage is only what your scenarios check. Trust a pass only when `pointframe verify status` reports `fresh: true`. Freshness covers the Git-visible working tree, the spec and the active-task snapshot. A spec with scenarios but no gates can pass but is never fresh (`no_build_gate`). Files ignored by `.gitignore` and verify's own output are not counted. It does not prove your code is correct.
+**What does a pass establish?** That the gates and scenarios your spec configures passed; UI coverage is only what your scenarios check. Trust a pass only when `pointframe verify status` reports `fresh: true` (it covers the Git-visible tree, the spec and the active task). It does not prove your code is correct. Details: [verify docs](docs/cli/verify.md).
 
 ## Privacy and telemetry
 
@@ -103,11 +119,6 @@ If you find Pointframe useful, a star on GitHub helps others discover it.
 <p align="center">
   <a href="https://github.com/dimitar-radenkov/Pointframe/actions/workflows/ci.yml"><img src="https://github.com/dimitar-radenkov/Pointframe/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://codecov.io/gh/dimitar-radenkov/Pointframe"><img src="https://codecov.io/gh/dimitar-radenkov/Pointframe/branch/master/graph/badge.svg" alt="codecov"></a>
-  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest"><img src="https://img.shields.io/github/v/release/dimitar-radenkov/Pointframe?color=success" alt="Latest release"></a>
-  <a href="https://github.com/microsoft/winget-pkgs/tree/master/manifests/d/DimitarRadenkov/Pointframe"><img src="https://img.shields.io/winget/v/DimitarRadenkov.Pointframe?label=winget&color=blue" alt="winget"></a>
-  <a href="https://github.com/dimitar-radenkov/Pointframe/releases"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdimitar-radenkov.github.io%2FPointframe%2Fbadges%2Fdownloads-total.json&color=purple" alt="Downloads"></a>
-  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Cli-win-x64.zip"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdimitar-radenkov.github.io%2FPointframe%2Fbadges%2Fdownloads-cli.json&color=orange" alt="CLI downloads"></a>
-  <a href="https://github.com/dimitar-radenkov/Pointframe/releases/latest/download/Pointframe.Mcp-win-x64.mcpb"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdimitar-radenkov.github.io%2FPointframe%2Fbadges%2Fdownloads-mcp.json&color=orange" alt="MCP downloads"></a>
 </p>
 
 <p align="center">
