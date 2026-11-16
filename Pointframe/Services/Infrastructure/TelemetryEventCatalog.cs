@@ -257,10 +257,11 @@ public static class TelemetryEventCatalog
             .OrderBy(key => key, StringComparer.Ordinal)
             .ToArray();
 
-        // The recovery properties are closed value sets, so a free-text value is reported like an undeclared key.
+        // The recovery properties are closed value sets; a declared key with a value outside its set is reported
+        // separately from an undeclared key, and the service drops that property before export.
+        var invalidValues = new List<string>();
         if (string.Equals(eventName, TelemetryEvents.RecordingFailed, StringComparison.Ordinal) && properties is not null)
         {
-            var invalidValues = new List<string>();
             if (properties.TryGetValue(TelemetryPropertyKeys.Recovered, out var recovered)
                 && recovered is not ("true" or "false"))
             {
@@ -273,12 +274,15 @@ public static class TelemetryEventCatalog
                 invalidValues.Add(TelemetryPropertyKeys.RecoveredDurationBucket);
             }
 
-            unknown = unknown.Concat(invalidValues).OrderBy(key => key, StringComparer.Ordinal).ToArray();
         }
 
-        return missing.Length == 0 && unknown.Length == 0
+        return missing.Length == 0 && unknown.Length == 0 && invalidValues.Count == 0
             ? TelemetrySchemaValidationResult.Valid(definition)
-            : TelemetrySchemaValidationResult.SchemaMismatch(definition, missing, unknown);
+            : TelemetrySchemaValidationResult.SchemaMismatch(
+                definition,
+                missing,
+                unknown,
+                invalidValues.OrderBy(key => key, StringComparer.Ordinal).ToArray());
     }
 
     private static TelemetryEventDefinition Product(string name, params string[] requiredProperties)
@@ -300,6 +304,7 @@ public sealed class TelemetrySchemaValidationResult
         TelemetryEventDefinition? definition,
         IReadOnlyList<string> missingProperties,
         IReadOnlyList<string> unknownProperties,
+        IReadOnlyList<string> invalidValueProperties,
         string eventName)
     {
         IsValid = isValid;
@@ -307,6 +312,7 @@ public sealed class TelemetrySchemaValidationResult
         Definition = definition;
         MissingProperties = missingProperties;
         UnknownProperties = unknownProperties;
+        InvalidValueProperties = invalidValueProperties;
         EventName = eventName;
     }
 
@@ -320,22 +326,25 @@ public sealed class TelemetrySchemaValidationResult
 
     public IReadOnlyList<string> UnknownProperties { get; }
 
+    public IReadOnlyList<string> InvalidValueProperties { get; }
+
     public string EventName { get; }
 
     public static TelemetrySchemaValidationResult Valid(TelemetryEventDefinition definition)
     {
-        return new TelemetrySchemaValidationResult(true, true, definition, [], [], definition.Name);
+        return new TelemetrySchemaValidationResult(true, true, definition, [], [], [], definition.Name);
     }
 
     public static TelemetrySchemaValidationResult UnknownEvent(string eventName)
     {
-        return new TelemetrySchemaValidationResult(false, false, null, [], [], eventName);
+        return new TelemetrySchemaValidationResult(false, false, null, [], [], [], eventName);
     }
 
     public static TelemetrySchemaValidationResult SchemaMismatch(
         TelemetryEventDefinition definition,
         IReadOnlyList<string> missingProperties,
-        IReadOnlyList<string> unknownProperties)
+        IReadOnlyList<string> unknownProperties,
+        IReadOnlyList<string> invalidValueProperties)
     {
         return new TelemetrySchemaValidationResult(
             false,
@@ -343,6 +352,7 @@ public sealed class TelemetrySchemaValidationResult
             definition,
             missingProperties,
             unknownProperties,
+            invalidValueProperties,
             definition.Name);
     }
 }
