@@ -236,6 +236,29 @@ public sealed class WasapiSystemAudioCaptureServiceTests : IDisposable
     }
 
     [Fact]
+    public void ExcludeSpan_RemovesDroppedVideoTimeFromTheAudio()
+    {
+        var source = new FakeSource();
+        var service = Create(source);
+        Assert.True(service.TryStart(_folder.File("x.wav"), out _));
+        service.BeginTimeline();
+        service.ExcludeSpan(TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(1100));
+        var data = Enumerable.Repeat((byte)1, Format.AverageBytesPerSecond / 100).ToArray();
+        _now = TimeSpan.FromMilliseconds(1210);
+        source.Raise(data, false, true, TimeSpan.FromMilliseconds(500));
+        source.Raise(data, false, true, TimeSpan.FromMilliseconds(1200));
+        _now = TimeSpan.FromMilliseconds(2000);
+
+        var result = service.Stop();
+
+        using var reader = new WaveFileReader(result.WavPath!);
+        Assert.InRange(reader.TotalTime.TotalMilliseconds, 895, 905);
+        var all = new byte[reader.Length];
+        reader.ReadExactly(all);
+        Assert.Equal(Format.AverageBytesPerSecond / 100, all.Count(value => value == 1));
+    }
+
+    [Fact]
     public void WriterOptions_EnableRf64SoLongRecordingsPastFourGigabytesSurvive()
     {
         Assert.True(WasapiSystemAudioCaptureService.CreateWriterOptions().EnableRf64);

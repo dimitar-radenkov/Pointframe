@@ -32,8 +32,6 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private bool _systemAudioFailureReported;
     private bool _videoHasMicrophone;
     private bool _videoHasMicrophoneToMix;
-    private DateTimeOffset? _firstFrameCapturedUtc;
-    private double? _ffmpegVideoStartEpochToMix;
 
     public bool IsRecording { get; private set; }
     public bool IsPaused { get; private set; }
@@ -104,7 +102,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             StartSystemAudio(outputPath);
             _pipeline = new RawFrameRecordingPipeline(
                 new VideoWriterRawFrameWriter(_writer),
-                new RawFrameRecordingOptions(new PixelBounds(x, y, width, height), fps, () => _redactionSession?.SnapshotPixelBounds() ?? ReadOnlyMemory<PixelBounds>.Empty, FirstFrameCaptured: OnFirstVideoFrameCaptured),
+                new RawFrameRecordingOptions(new PixelBounds(x, y, width, height), fps, () => _redactionSession?.SnapshotPixelBounds() ?? ReadOnlyMemory<PixelBounds>.Empty, FirstFrameCaptured: OnFirstVideoFrameCaptured, FrameDropped: OnVideoFrameDropped),
                 _frameCapture);
             IsRecording = true;
             _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps (MP4) to {Path}", width, height, fps, outputPath);
@@ -434,8 +432,6 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _systemAudioWavPath = null;
         _systemAudioWavToMix = null;
         _systemAudioFailureReported = false;
-        _firstFrameCapturedUtc = null;
-        _ffmpegVideoStartEpochToMix = null;
         IsRecordingSystemAudio = false;
         if (_systemAudioFactory is null || !_settings.Current.RecordSystemAudio)
         {
@@ -469,9 +465,13 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     }
 
     // The video timeline starts at the first captured frame (frame-count timestamps), so that instant is the audio origin.
+    private void OnVideoFrameDropped(TimeSpan start, TimeSpan duration)
+    {
+        _systemAudio?.ExcludeSpan(start, duration);
+    }
+
     private void OnFirstVideoFrameCaptured()
     {
-        _firstFrameCapturedUtc = DateTimeOffset.UtcNow;
         _systemAudio?.BeginTimeline();
     }
 
@@ -502,7 +502,6 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private void StopSystemAudio()
     {
         _videoHasMicrophoneToMix = _videoHasMicrophone;
-        _ffmpegVideoStartEpochToMix = (_writer as IVideoStartTimeSource)?.InputStartEpochSeconds;
         _videoHasMicrophone = false;
         IsRecordingSystemAudio = false;
         _systemAudioWavToMix = null;
@@ -577,31 +576,6 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         }
     }
 
-    // Only with a microphone: ffmpeg then timestamps video by wall clock from its first read, so the audio origin
-    // (first captured frame) must be moved by the startup delay. Without a microphone video is frame-count timed
-    // and no shift applies. An unknown or implausible measurement keeps the unshifted behaviour.
-    private TimeSpan? ResolveSystemAudioOffset()
-    {
-        if (!_videoHasMicrophoneToMix)
-        {
-            return null;
-        }
-
-        var offset = _firstFrameCapturedUtc is { } captured
-            ? FfmpegInputBanner.ComputeVideoStartOffset(captured, _ffmpegVideoStartEpochToMix)
-            : null;
-        if (offset is null)
-        {
-            _logger.LogInformation("System audio start offset unavailable (ffmpeg start {Start}); mixing without a shift", _ffmpegVideoStartEpochToMix);
-        }
-        else
-        {
-            _logger.LogInformation("System audio shifted by {Offset} to match the ffmpeg video start", offset);
-        }
-
-        return offset;
-    }
-
     private void MixSystemAudio(string videoPath)
     {
         var wavPath = _systemAudioWavToMix;
@@ -613,7 +587,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         var mixed = false;
         try
         {
-            mixed = _systemAudioMixer.TryMix(videoPath, wavPath, _videoHasMicrophoneToMix, ResolveSystemAudioOffset());
+            mixed = _systemAudioMixer.TryMix(videoPath, wavPath, _videoHasMicrophoneToMix);
         }
         catch (Exception exception)
         {

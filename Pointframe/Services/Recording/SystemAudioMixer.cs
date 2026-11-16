@@ -4,7 +4,7 @@ namespace Pointframe.Services;
 
 public interface ISystemAudioMixer
 {
-    bool TryMix(string videoPath, string wavPath, bool videoHasMicrophone, TimeSpan? systemAudioOffset = null);
+    bool TryMix(string videoPath, string wavPath, bool videoHasMicrophone);
 }
 
 // Adds the system audio WAV to the finished MP4 (video stream-copied). The original file is replaced only after
@@ -17,29 +17,29 @@ public sealed class SystemAudioMixer : ISystemAudioMixer
 
     private readonly ILogger<SystemAudioMixer> _logger;
     private readonly Func<string, TimeSpan?> _probeDuration;
-    private readonly Func<string, string, string, bool, TimeSpan?, bool>? _runFfmpeg;
+    private readonly Func<string, string, string, bool, bool>? _runFfmpeg;
 
     public SystemAudioMixer(ILogger<SystemAudioMixer> logger)
         : this(logger, ProbeDuration, null)
     {
     }
 
-    internal SystemAudioMixer(ILogger<SystemAudioMixer> logger, Func<string, TimeSpan?> probeDuration, Func<string, string, string, bool, TimeSpan?, bool>? runFfmpeg)
+    internal SystemAudioMixer(ILogger<SystemAudioMixer> logger, Func<string, TimeSpan?> probeDuration, Func<string, string, string, bool, bool>? runFfmpeg)
     {
         _logger = logger;
         _probeDuration = probeDuration;
         _runFfmpeg = runFfmpeg;
     }
 
-    public bool TryMix(string videoPath, string wavPath, bool videoHasMicrophone, TimeSpan? systemAudioOffset = null)
+    public bool TryMix(string videoPath, string wavPath, bool videoHasMicrophone)
     {
         var temporaryPath = GetTemporaryPath(videoPath);
         try
         {
             File.Delete(temporaryPath);
             var ran = _runFfmpeg is not null
-                ? _runFfmpeg(videoPath, wavPath, temporaryPath, videoHasMicrophone, systemAudioOffset)
-                : RunFfmpeg(videoPath, wavPath, temporaryPath, videoHasMicrophone, systemAudioOffset);
+                ? _runFfmpeg(videoPath, wavPath, temporaryPath, videoHasMicrophone)
+                : RunFfmpeg(videoPath, wavPath, temporaryPath, videoHasMicrophone);
             if (!ran || !File.Exists(temporaryPath) || new FileInfo(temporaryPath).Length == 0)
             {
                 DeleteQuietly(temporaryPath);
@@ -71,7 +71,7 @@ public sealed class SystemAudioMixer : ISystemAudioMixer
         return original is { } before && mixed is { } after && before > TimeSpan.Zero && (before - after).Duration() <= DurationTolerance;
     }
 
-    private bool RunFfmpeg(string videoPath, string wavPath, string temporaryPath, bool videoHasMicrophone, TimeSpan? systemAudioOffset)
+    private bool RunFfmpeg(string videoPath, string wavPath, string temporaryPath, bool videoHasMicrophone)
     {
         var ffmpeg = FfmpegResolver.ResolveRequired("System audio mixing");
         var startInfo = new ProcessStartInfo
@@ -81,7 +81,7 @@ public sealed class SystemAudioMixer : ISystemAudioMixer
             CreateNoWindow = true,
             RedirectStandardError = true,
         };
-        BuildArguments(startInfo.ArgumentList, videoPath, wavPath, temporaryPath, videoHasMicrophone, systemAudioOffset);
+        BuildArguments(startInfo.ArgumentList, videoPath, wavPath, temporaryPath, videoHasMicrophone);
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("ffmpeg did not start.");
         var stderr = process.StandardError.ReadToEndAsync();
@@ -149,7 +149,7 @@ public sealed class SystemAudioMixer : ISystemAudioMixer
         return Path.Combine(directory, $".{Path.GetFileNameWithoutExtension(outputPath)}.sysaudio.wav");
     }
 
-    internal static void BuildArguments(ICollection<string> args, string videoPath, string wavPath, string outputPath, bool videoHasMicrophone, TimeSpan? systemAudioOffset = null)
+    internal static void BuildArguments(ICollection<string> args, string videoPath, string wavPath, string outputPath, bool videoHasMicrophone)
     {
         args.Add("-y");
         args.Add("-hide_banner");
@@ -164,7 +164,7 @@ public sealed class SystemAudioMixer : ISystemAudioMixer
         args.Add("-filter_complex");
         if (videoHasMicrophone)
         {
-            args.Add($"[0:a:0]apad[mic];[1:a:0]{BuildSystemAudioShift(systemAudioOffset)}apad[sys];[mic][sys]amix=inputs=2:duration=first:dropout_transition=0[mix]");
+            args.Add("[0:a:0]apad[mic];[1:a:0]apad[sys];[mic][sys]amix=inputs=2:duration=first:dropout_transition=0[mix]");
         }
         else
         {
@@ -186,21 +186,6 @@ public sealed class SystemAudioMixer : ISystemAudioMixer
         args.Add("-movflags");
         args.Add("+faststart");
         args.Add(outputPath);
-    }
-
-    // With a microphone the output timeline starts when ffmpeg first reads the video, which is later than the first
-    // captured frame the WAV is aligned to. A positive offset trims that much from the WAV start; a negative one delays it.
-    internal static string BuildSystemAudioShift(TimeSpan? offset)
-    {
-        if (offset is not { } shift || shift.Duration() < TimeSpan.FromMilliseconds(1))
-        {
-            return string.Empty;
-        }
-
-        var seconds = shift.TotalSeconds;
-        return seconds > 0
-            ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"atrim=start={seconds:0.###},asetpts=PTS-STARTPTS,")
-            : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"adelay={-shift.TotalMilliseconds:0}:all=1,");
     }
 
     private static void DeleteQuietly(string path)

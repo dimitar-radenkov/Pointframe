@@ -296,6 +296,10 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
         public Func<bool>? FirstFrameDone { get; set; }
         public bool BeganBeforeFirstFrame { get; private set; }
 
+        public List<(TimeSpan Start, TimeSpan Duration)> Excluded { get; } = [];
+
+        public void ExcludeSpan(TimeSpan start, TimeSpan duration) => Excluded.Add((start, duration));
+
         public void BeginTimeline()
         {
             BeganBeforeFirstFrame |= FirstFrameDone?.Invoke() == false;
@@ -334,11 +338,8 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
         public bool Throws { get; set; }
         public List<(string Video, string Wav, bool VideoHasMicrophone)> Calls { get; } = [];
 
-        public List<TimeSpan?> Offsets { get; } = [];
-
-        public bool TryMix(string videoPath, string wavPath, bool videoHasMicrophone, TimeSpan? systemAudioOffset = null)
+        public bool TryMix(string videoPath, string wavPath, bool videoHasMicrophone)
         {
-            Offsets.Add(systemAudioOffset);
             Calls.Add((videoPath, wavPath, videoHasMicrophone));
             if (Throws)
             {

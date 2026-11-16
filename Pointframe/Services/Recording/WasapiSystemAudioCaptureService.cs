@@ -162,6 +162,15 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
         return false;
     }
 
+    // Wall-clock time the video lost to dropped frames; the audio follows the video, so these spans are removed.
+    public void ExcludeSpan(TimeSpan start, TimeSpan duration)
+    {
+        lock (_gate)
+        {
+            _timeline?.AddExcludedSpan(start, duration);
+        }
+    }
+
     public void Pause()
     {
         lock (_gate)

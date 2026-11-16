@@ -12,6 +12,7 @@ internal sealed record SystemAudioPacketPlan(long SilenceBytesBefore, SystemAudi
 internal sealed class SystemAudioTimeline
 {
     internal static readonly TimeSpan ContinuityBound = TimeSpan.FromMilliseconds(100);
+    internal static readonly TimeSpan DropCoalesceTolerance = TimeSpan.FromMilliseconds(10);
     internal static readonly TimeSpan GapTolerance = TimeSpan.FromMilliseconds(20);
 
     private readonly int _bytesPerSecond;
@@ -19,6 +20,7 @@ internal sealed class SystemAudioTimeline
     private readonly Func<TimeSpan> _clock;
     private readonly TimeSpan _start;
     private readonly List<(TimeSpan Start, TimeSpan End)> _pauses = [];
+    private readonly List<(TimeSpan Start, TimeSpan End)> _dropped = [];
     private TimeSpan _pausedAt;
     private TimeSpan? _previousPacketEnd;
 
@@ -67,6 +69,26 @@ internal sealed class SystemAudioTimeline
 
         _pauses.Add((_pausedAt, _clock()));
         IsPaused = false;
+    }
+
+    // A span of wall-clock time whose video frames were dropped. The video timeline does not contain it, so the audio
+    // must not either; it is treated exactly like a pause. Consecutive frame drops coalesce into one span.
+    public void AddExcludedSpan(TimeSpan start, TimeSpan duration)
+    {
+        if (duration <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        var end = start + duration;
+        if (_dropped.Count > 0 && start <= _dropped[^1].End + DropCoalesceTolerance)
+        {
+            var last = _dropped[^1];
+            _dropped[^1] = (last.Start < start ? last.Start : start, last.End > end ? last.End : end);
+            return;
+        }
+
+        _dropped.Add((start, end));
     }
 
     // Plans what to write for one packet that was captured starting at packetStart. The plan is committed:
@@ -141,17 +163,33 @@ internal sealed class SystemAudioTimeline
         plans.Add(new SystemAudioPacketPlan(silence, new SystemAudioSegment(offset, length)));
     }
 
-    private IEnumerable<(TimeSpan Start, TimeSpan End)> PauseIntervals()
+    // Pauses and dropped-frame spans, sorted and merged so overlaps are not counted twice.
+    private IReadOnlyList<(TimeSpan Start, TimeSpan End)> PauseIntervals()
     {
-        foreach (var pause in _pauses)
-        {
-            yield return pause;
-        }
-
+        var all = new List<(TimeSpan Start, TimeSpan End)>(_pauses.Count + _dropped.Count + 1);
+        all.AddRange(_pauses);
+        all.AddRange(_dropped);
         if (IsPaused)
         {
-            yield return (_pausedAt, TimeSpan.MaxValue);
+            all.Add((_pausedAt, TimeSpan.MaxValue));
         }
+
+        all.Sort((left, right) => left.Start.CompareTo(right.Start));
+        var merged = new List<(TimeSpan Start, TimeSpan End)>(all.Count);
+        foreach (var interval in all)
+        {
+            if (merged.Count > 0 && interval.Start <= merged[^1].End)
+            {
+                var last = merged[^1];
+                merged[^1] = (last.Start, last.End > interval.End ? last.End : interval.End);
+            }
+            else
+            {
+                merged.Add(interval);
+            }
+        }
+
+        return merged;
     }
 
     private TimeSpan ActiveAt(TimeSpan time)

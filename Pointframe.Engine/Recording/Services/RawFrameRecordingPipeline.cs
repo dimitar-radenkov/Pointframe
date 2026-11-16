@@ -172,10 +172,12 @@ public sealed class RawFrameRecordingPipeline : IDisposable
 
     private void CaptureFrameToChannel()
     {
+        var tickTime = QpcNow();
         Interlocked.Increment(ref _attemptedFrameCount);
         if (!_bufferPool.TryDequeue(out var buffer))
         {
             Interlocked.Increment(ref _droppedFrameCount);
+            ReportFrameDropped(tickTime);
             return;
         }
 
@@ -196,6 +198,7 @@ public sealed class RawFrameRecordingPipeline : IDisposable
             }
 
             Interlocked.Increment(ref _droppedFrameCount);
+            ReportFrameDropped(tickTime);
         }
         catch
         {
@@ -205,6 +208,22 @@ public sealed class RawFrameRecordingPipeline : IDisposable
 
         _bufferPool.Enqueue(buffer);
     }
+
+    // Time spans the video loses to dropped frames, reported as (start, duration) on the QueryPerformanceCounter clock
+    // so an audio track can follow the video timeline instead of the wall clock.
+    private void ReportFrameDropped(TimeSpan tickTime)
+    {
+        try
+        {
+            _options.FrameDropped?.Invoke(tickTime, TimeSpan.FromSeconds(1d / _options.FramesPerSecond));
+        }
+        catch (Exception)
+        {
+            // The notification is advisory; a failing observer must not stop the recording.
+        }
+    }
+
+    private static TimeSpan QpcNow() => TimeSpan.FromTicks((long)(Stopwatch.GetTimestamp() * (10_000_000d / Stopwatch.Frequency)));
 
     private void ReportFirstFrameCaptured()
     {

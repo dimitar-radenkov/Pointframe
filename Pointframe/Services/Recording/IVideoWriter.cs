@@ -12,12 +12,6 @@ public interface IRecordingFailureDiagnostics
     string? FailureReason { get; }
 }
 
-public interface IVideoStartTimeSource
-{
-    // Epoch seconds of the first video frame ffmpeg read, parsed from its input banner; null when not reported.
-    double? InputStartEpochSeconds { get; }
-}
-
 public interface IRecoverableVideoWriter
 {
     string IntermediatePath { get; }

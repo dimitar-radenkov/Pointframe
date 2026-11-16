@@ -11,6 +11,7 @@ public interface ISystemAudioCaptureService : IDisposable
     event Action<string>? CaptureFailed;
     bool TryStart(string wavPath, out string? failureReason);
     void BeginTimeline();
+    void ExcludeSpan(TimeSpan start, TimeSpan duration);
     void Pause();
     void Resume();
     SystemAudioStopResult Stop();

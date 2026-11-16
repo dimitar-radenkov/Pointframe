@@ -58,48 +58,6 @@ public sealed class SystemAudioMixerTests : IDisposable
     }
 
     [Fact]
-    public void BuildArguments_WithMicrophoneAndPositiveOffset_TrimsTheStartOfTheSystemAudio()
-    {
-        var args = new List<string>();
-
-        SystemAudioMixer.BuildArguments(args, "in.mp4", "sys.wav", "out.mp4", videoHasMicrophone: true, TimeSpan.FromSeconds(1.5));
-
-        Assert.Contains("[1:a:0]atrim=start=1.5,asetpts=PTS-STARTPTS,apad[sys]", args[args.IndexOf("-filter_complex") + 1]);
-    }
-
-    [Fact]
-    public void BuildArguments_WithMicrophoneAndNegativeOffset_DelaysTheSystemAudio()
-    {
-        var args = new List<string>();
-
-        SystemAudioMixer.BuildArguments(args, "in.mp4", "sys.wav", "out.mp4", videoHasMicrophone: true, TimeSpan.FromMilliseconds(-250));
-
-        Assert.Contains("[1:a:0]adelay=250:all=1,apad[sys]", args[args.IndexOf("-filter_complex") + 1]);
-    }
-
-    [Fact]
-    public void BuildArguments_WithoutMicrophone_IgnoresTheOffset()
-    {
-        var withOffset = new List<string>();
-        var without = new List<string>();
-
-        SystemAudioMixer.BuildArguments(withOffset, "in.mp4", "sys.wav", "out.mp4", videoHasMicrophone: false, TimeSpan.FromSeconds(1.2));
-        SystemAudioMixer.BuildArguments(without, "in.mp4", "sys.wav", "out.mp4", videoHasMicrophone: false);
-
-        Assert.Equal(without, withOffset);
-    }
-
-    [Fact]
-    public void BuildArguments_WithMicrophoneAndNoOffset_KeepsTheUnshiftedFilter()
-    {
-        var args = new List<string>();
-
-        SystemAudioMixer.BuildArguments(args, "in.mp4", "sys.wav", "out.mp4", videoHasMicrophone: true, null);
-
-        Assert.Equal("[0:a:0]apad[mic];[1:a:0]apad[sys];[mic][sys]amix=inputs=2:duration=first:dropout_transition=0[mix]", args[args.IndexOf("-filter_complex") + 1]);
-    }
-
-    [Fact]
     public void TryMix_WhenTheMixedFileIsShorterThanTheOriginal_KeepsTheOriginal()
     {
         var (video, wav) = Files();
@@ -150,7 +108,7 @@ public sealed class SystemAudioMixerTests : IDisposable
         return (video, wav);
     }
 
-    private static bool WriteTemp(string video, string wav, string temporary, bool microphone, TimeSpan? offset)
+    private static bool WriteTemp(string video, string wav, string temporary, bool microphone)
     {
         File.WriteAllBytes(temporary, [7, 7]);
         return true;

@@ -5,7 +5,7 @@ using System.Globalization;
 
 namespace Pointframe.Services;
 
-public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnostics, IRecoverableVideoWriter, IVideoStartTimeSource
+public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnostics, IRecoverableVideoWriter
 {
     private static readonly ConcurrentDictionary<string, bool> DrawtextSupportCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, FfmpegOptionSupport> OptionSupportCache = new(StringComparer.OrdinalIgnoreCase);
@@ -15,22 +15,11 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
     private readonly ILogger _logger;
     private Task? _stderrTask;
     private bool _closed;
-    private bool _inFirstInput;
-    private long _inputStartBits = long.MinValue;
     private readonly ConcurrentQueue<string> _recentStandardError = new();
     public int? FfmpegExitCode { get; private set; }
     public string RecentStandardError => string.Join(Environment.NewLine, _recentStandardError);
     public string? FailureReason { get; private set; }
     public string IntermediatePath { get; }
-
-    public double? InputStartEpochSeconds
-    {
-        get
-        {
-            var bits = Interlocked.Read(ref _inputStartBits);
-            return bits == long.MinValue ? null : BitConverter.Int64BitsToDouble(bits);
-        }
-    }
 
     public FFMpegVideoWriter(
         int width,
@@ -487,21 +476,6 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         }
     }
 
-    private void TrackInputStart(string line)
-    {
-        if (FfmpegInputBanner.IsInputHeader(line, out var inputIndex))
-        {
-            _inFirstInput = inputIndex == 0;
-            return;
-        }
-
-        if (_inFirstInput && FfmpegInputBanner.TryParseStartEpoch(line) is { } start)
-        {
-            _inFirstInput = false;
-            Interlocked.Exchange(ref _inputStartBits, BitConverter.DoubleToInt64Bits(start));
-        }
-    }
-
     private async Task ConsumeStderr(Process process)
     {
         try
@@ -510,7 +484,6 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
             while ((line = await process.StandardError.ReadLineAsync().ConfigureAwait(false)) is not null)
             {
                 _recentStandardError.Enqueue(line);
-                TrackInputStart(line);
                 while (_recentStandardError.Count > 12)
                 {
                     _recentStandardError.TryDequeue(out _);

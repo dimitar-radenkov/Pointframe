@@ -5,7 +5,8 @@ public sealed record RawFrameRecordingOptions(
     int FramesPerSecond,
     Func<ReadOnlyMemory<PixelBounds>> RedactionRegionsProvider,
     int BufferPoolSize = 4,
-    Action? FirstFrameCaptured = null);
+    Action? FirstFrameCaptured = null,
+    Action<TimeSpan, TimeSpan>? FrameDropped = null);
 
 public sealed record RawFrameRecordingStatistics(
     int AttemptedFrameCount,

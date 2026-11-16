@@ -244,6 +244,85 @@ public sealed class SystemAudioTimelineTests
     }
 
     [Fact]
+    public void AddExcludedSpan_StartupDrop_TrimsThatSpanSoLaterAudioLandsAtWallMinusTheDrop()
+    {
+        var timeline = Create();
+        _now = Ms(50);
+        for (var i = 0; i < 5; i++)
+        {
+            timeline.PlanPacket(Ms(i * 10), TenMs);
+        }
+
+        // ffmpeg was busy opening the microphone: frames due from 50 ms to 1150 ms were dropped.
+        timeline.AddExcludedSpan(Ms(50), Ms(1100));
+        _now = Ms(1300);
+        var duringDrop = timeline.PlanPacket(Ms(500), TenMs);
+        var afterDrop = timeline.PlanPacket(Ms(1150), TenMs);
+
+        Assert.Empty(duringDrop);
+        Assert.Equal(0, afterDrop.Single().SilenceBytesBefore);
+        Assert.Equal(6 * TenMs, timeline.WrittenBytes);
+        Assert.Equal(Ms(200), timeline.ActiveElapsed);
+    }
+
+    [Fact]
+    public void AddExcludedSpan_MidRecordingDrop_TrimsOnlyThatSpan()
+    {
+        var timeline = Create();
+        _now = Ms(3000);
+        var before = timeline.PlanPacket(Ms(0), 2 * BytesPerSecond);
+        timeline.AddExcludedSpan(Ms(2000), Ms(500));
+
+        var inside = timeline.PlanPacket(Ms(2100), TenMs);
+        var after = timeline.PlanPacket(Ms(2500), TenMs);
+
+        Assert.Equal(2 * BytesPerSecond, before.Single().Segment.Length);
+        Assert.Empty(inside);
+        Assert.Equal(0, after.Single().SilenceBytesBefore);
+        Assert.Equal(2 * BytesPerSecond + TenMs, timeline.WrittenBytes);
+    }
+
+    [Fact]
+    public void AddExcludedSpan_ConsecutiveFrameDrops_CoalesceIntoOneSpan()
+    {
+        var timeline = Create();
+        for (var i = 0; i < 20; i++)
+        {
+            timeline.AddExcludedSpan(Ms(1000 + i * 50), Ms(50));
+        }
+
+        _now = Ms(3000);
+
+        Assert.Equal(Ms(2000), timeline.ActiveElapsed);
+    }
+
+    [Fact]
+    public void AddExcludedSpan_OverlappingAPause_IsNotCountedTwice()
+    {
+        var timeline = Create();
+        _now = Ms(1000);
+        timeline.Pause();
+        _now = Ms(2000);
+        timeline.Resume();
+        timeline.AddExcludedSpan(Ms(1500), Ms(1000));
+        _now = Ms(4000);
+
+        Assert.Equal(Ms(2500), timeline.ActiveElapsed);
+    }
+
+    [Fact]
+    public void WithoutDrops_TheTimelineIsUnchanged()
+    {
+        var timeline = Create();
+        _now = Ms(100);
+
+        var plans = timeline.PlanPacket(Ms(0), 10 * TenMs);
+
+        Assert.Equal(0, plans.Single().SilenceBytesBefore);
+        Assert.Equal(Ms(100), timeline.ActiveElapsed);
+    }
+
+    [Fact]
     public void Constructor_RejectsAnInvalidFormat()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new SystemAudioTimeline(0, BlockAlign, () => _now));
