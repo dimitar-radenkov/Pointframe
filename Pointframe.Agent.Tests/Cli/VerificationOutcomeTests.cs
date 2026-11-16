@@ -22,6 +22,7 @@ public sealed class VerificationOutcomeTests : IDisposable
 
         Assert.Equal(2, exitCode);
         Assert.Equal(TelemetryOutcome.InvalidRequest, application.Outcome);
+        Assert.Equal("spec_invalid", application.ErrorCode);
     }
 
     [Fact]
@@ -49,6 +50,7 @@ public sealed class VerificationOutcomeTests : IDisposable
 
         Assert.Equal(1, exitCode);
         Assert.Equal(TelemetryOutcome.VerificationFailed, application.Outcome);
+        Assert.Null(application.ErrorCode);
     }
 
     [Fact]
@@ -64,6 +66,7 @@ public sealed class VerificationOutcomeTests : IDisposable
 
         Assert.Equal(1, exitCode);
         Assert.Null(application.Outcome);
+        Assert.Equal("infrastructure_failure", application.ErrorCode);
     }
 
     [Fact]

@@ -32,28 +32,37 @@ internal static class McpTelemetryFilter
             var started = Stopwatch.GetTimestamp();
             var outcome = TelemetryOutcome.Error;
             var track = true;
+            string? errorCode = null;
             try
             {
                 var result = await next(context, cancellationToken);
                 outcome = Classify(result);
+                errorCode = outcome == TelemetryOutcome.Success ? null : ErrorCodeOf(result);
                 track = !IsRestartPollRefused(context, result);
                 return result;
             }
             catch (McpProtocolException exception) when (exception.ErrorCode == McpErrorCode.InvalidParams)
             {
                 outcome = TelemetryOutcome.InvalidRequest;
+                errorCode = "invalid_params";
                 throw;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 outcome = TelemetryOutcome.Cancelled;
+                errorCode = "cancelled";
+                throw;
+            }
+            catch (Exception exception)
+            {
+                errorCode = TelemetryAllowlist.ErrorCodeFor(exception);
                 throw;
             }
             finally
             {
                 if (track)
                 {
-                    Track(telemetry, context, outcome, Stopwatch.GetElapsedTime(started));
+                    Track(telemetry, context, outcome, Stopwatch.GetElapsedTime(started), errorCode);
                 }
             }
         };
@@ -93,12 +102,18 @@ internal static class McpTelemetryFilter
             && string.Equals(ErrorCode(result.StructuredContent), StillRunningErrorCode, StringComparison.Ordinal);
     }
 
+    // The raw value is only a candidate: the telemetry allowlist turns anything it does not list into "other".
+    internal static string? ErrorCodeOf(CallToolResult result)
+    {
+        return ErrorCode(result.StructuredContent) ?? (result.IsError == true ? SingleText(result) : null);
+    }
+
     private static string? SingleText(CallToolResult result)
     {
         return result.Content is [TextContentBlock text] ? text.Text : null;
     }
 
-    private static void Track(IOperationTelemetry telemetry, RequestContext<CallToolRequestParams> context, TelemetryOutcome outcome, TimeSpan duration)
+    private static void Track(IOperationTelemetry telemetry, RequestContext<CallToolRequestParams> context, TelemetryOutcome outcome, TimeSpan duration, string? errorCode)
     {
         try
         {
@@ -106,7 +121,8 @@ internal static class McpTelemetryFilter
                 TelemetryAllowlist.OperationName(TelemetryHost.Mcp, context.Params?.Name),
                 outcome,
                 duration,
-                context.Server.ClientInfo?.Name);
+                context.Server.ClientInfo?.Name,
+                errorCode);
         }
         catch (Exception)
         {

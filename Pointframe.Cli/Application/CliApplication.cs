@@ -40,6 +40,8 @@ internal sealed class CliApplication
 
     internal TelemetryOutcome? Outcome { get; private set; }
 
+    internal string? ErrorCode { get; private set; }
+
     internal CliApplication(
         IDirectCaptureService directCaptureService,
         IDirectRecordingService directRecordingService,
@@ -68,7 +70,8 @@ internal sealed class CliApplication
         string? commandName = null;
         var started = Stopwatch.GetTimestamp();
         TelemetryOutcome? classified = null;
-        var exitCode = await RunCoreAsync(args, standardOutput, standardError, cancellationToken, name => commandName = name, value => classified = value, seams);
+        string? errorCode = null;
+        var exitCode = await RunCoreAsync(args, standardOutput, standardError, cancellationToken, name => commandName = name, value => classified = value, value => errorCode = value, seams);
         if (commandName is not ("help" or "version"))
         {
             var outcome = exitCode == 0
@@ -76,7 +79,11 @@ internal sealed class CliApplication
                 : cancellationToken.IsCancellationRequested ? TelemetryOutcome.Cancelled : classified ?? TelemetryOutcome.Error;
             try
             {
-                telemetry.Track(commandName ?? TelemetryAllowlist.Other, outcome, Stopwatch.GetElapsedTime(started));
+                telemetry.Track(
+                    commandName ?? TelemetryAllowlist.Other,
+                    outcome,
+                    Stopwatch.GetElapsedTime(started),
+                    errorCode: outcome == TelemetryOutcome.Cancelled ? "cancelled" : errorCode);
                 telemetry.Flush();
             }
             catch (Exception)
@@ -95,6 +102,7 @@ internal sealed class CliApplication
         CancellationToken cancellationToken,
         Action<string> onCommand,
         Action<TelemetryOutcome> onOutcome,
+        Action<string?> onError,
         CliHostSeams? seams)
     {
         try
@@ -106,6 +114,7 @@ internal sealed class CliApplication
                 await standardError.WriteLineAsync(parseError);
                 await standardError.WriteLineAsync(CliCommandParser.Usage);
                 onOutcome(TelemetryOutcome.InvalidRequest);
+                onError("InvalidRequest");
                 return 2;
             }
 
@@ -138,6 +147,8 @@ internal sealed class CliApplication
                     onOutcome(verifyOutcome);
                 }
 
+                onError(verifyApplication.ErrorCode);
+
                 return verifyExitCode;
             }
 
@@ -148,7 +159,9 @@ internal sealed class CliApplication
                 using var httpClient = CreateHttpClient(seams);
                 var installer = new McpPackageInstaller(CreateMcpPackageSource(httpClient, seams, standardError), seams?.InstallRoot ?? McpInstallRoot());
                 var verifyApplication = CreateVerificationApplication(installer, TextWriter.Null, standardError, seams);
-                return await verifyApplication.ServeAsync(command, Environment.CurrentDirectory, cancellationToken);
+                var serveExitCode = await verifyApplication.ServeAsync(command, Environment.CurrentDirectory, cancellationToken);
+                onError(verifyApplication.ErrorCode);
+                return serveExitCode;
             }
 
             if (string.Equals(command.Name, "mcp", StringComparison.Ordinal))
@@ -166,7 +179,9 @@ internal sealed class CliApplication
                     seams?.HealthChecker ?? new McpStdioHealthChecker(),
                     standardOutput,
                     standardError);
-                return await mcpApplication.RunAsync(command, cancellationToken);
+                var mcpExitCode = await mcpApplication.RunAsync(command, cancellationToken);
+                onError(mcpApplication.ErrorCode);
+                return mcpExitCode;
             }
 
             Directory.CreateDirectory(PointframePaths.LocalAppDataDirectory);
@@ -189,11 +204,14 @@ internal sealed class CliApplication
                 onOutcome(outcome);
             }
 
+            onError(cliApplication.ErrorCode);
+
             return exitCode;
         }
         catch (Exception exception)
         {
             onOutcome(OutcomeOf(exception) ?? TelemetryOutcome.Error);
+            onError(FailureCodeOf(exception));
             return await WriteFailureResponseAsync(standardOutput, standardError, exception);
         }
     }
@@ -249,6 +267,7 @@ internal sealed class CliApplication
         catch (Exception exception)
         {
             Outcome = OutcomeOf(exception);
+            ErrorCode = FailureCodeOf(exception);
             return await WriteFailureResponseAsync(_standardOutput, _standardError, exception);
         }
     }
@@ -269,6 +288,15 @@ internal sealed class CliApplication
 
     private static TelemetryOutcome? OutcomeOf(Exception exception) =>
         InvalidRequestCodes.Contains(ToErrorCode(exception)) ? TelemetryOutcome.InvalidRequest : null;
+
+    // The command's own typed code, or a closed category (io_error, timeout...) when it only knows "capture_failed".
+    private static string FailureCodeOf(Exception exception)
+    {
+        var code = ToErrorCode(exception);
+        return string.Equals(code, "capture_failed", StringComparison.Ordinal) && TelemetryAllowlist.ErrorCodeFor(exception) is var category && category != TelemetryAllowlist.Other
+            ? category
+            : code;
+    }
 
     private static string ToErrorCode(Exception exception)
     {
@@ -303,6 +331,7 @@ internal sealed class CliApplication
                 new DirectCaptureError(startResult.ErrorCode ?? "recording_start_failed", startResult.ErrorMessage ?? "Unknown error."));
             await _standardOutput.WriteLineAsync(JsonSerializer.Serialize(failureResponse));
             Outcome = InvalidRequestCodes.Contains(startResult.ErrorCode) ? TelemetryOutcome.InvalidRequest : null;
+            ErrorCode = startResult.ErrorCode ?? "recording_start_failed";
             return 1;
         }
 
@@ -323,6 +352,7 @@ internal sealed class CliApplication
             startResult.Session,
             stopResult.Artifact);
         await _standardOutput.WriteLineAsync(JsonSerializer.Serialize(response));
+        ErrorCode = stopResult.Success ? null : stopResult.ErrorCode ?? "recording_stop_failed";
         return stopResult.Success ? 0 : 1;
     }
 

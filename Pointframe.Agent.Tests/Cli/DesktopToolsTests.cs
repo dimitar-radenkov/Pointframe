@@ -152,6 +152,30 @@ public sealed class DesktopToolsTests : IDisposable
     }
 
     [Fact]
+    public async Task Serve_ThatCannotStart_ExposesATypedCodeForTelemetry()
+    {
+        _fixture.WriteSpec(VerificationFixture.ValidScenario);
+        _fixture.CreateAppAndMcp();
+        var built = _services.Build(_store, serverHost: _host);
+        var missing = new VerificationApplication(built, TextWriter.Null, _error);
+        var exited = new VerificationApplication(built, TextWriter.Null, _error);
+        var noSpec = new VerificationApplication(built, TextWriter.Null, _error);
+
+        await missing.ServeAsync(new CliCommand("mcp", McpAction: "serve", ProjectPath: _fixture.Root, McpExecutablePath: Path.Combine(_fixture.Root, "missing", "Pointframe.Mcp.exe")), _outside, CancellationToken.None);
+        _host.ExitCode = 3;
+        await exited.ServeAsync(new CliCommand("mcp", McpAction: "serve", ProjectPath: _fixture.Root, McpExecutablePath: _fixture.McpPath), _outside, CancellationToken.None);
+        await noSpec.ServeAsync(new CliCommand("mcp", McpAction: "serve", ProjectPath: Path.Combine(_outside, "empty")), _outside, CancellationToken.None);
+
+        Assert.Equal("mcp_not_found", missing.ErrorCode);
+        Assert.Equal("mcp_exited", exited.ErrorCode);
+        Assert.Equal("spec_invalid", noSpec.ErrorCode);
+        foreach (var code in new[] { missing.ErrorCode, exited.ErrorCode, noSpec.ErrorCode })
+        {
+            Assert.Equal(code, Pointframe.Telemetry.TelemetryAllowlist.ErrorCode(code));
+        }
+    }
+
+    [Fact]
     public async Task Serve_OlderInstalledServer_UpdatesAndKeepsStdoutEmpty()
     {
         _fixture.WriteSpec(VerificationFixture.ValidScenario);

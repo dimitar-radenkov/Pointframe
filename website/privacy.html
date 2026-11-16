@@ -45,6 +45,7 @@
                     <ul>
                         <li><code>name</code>: the MCP tool or CLI command, taken from a fixed list; any other value is reported as <code>other</code>.</li>
                         <li><code>outcome</code>: <code>success</code>, <code>error</code>, <code>cancelled</code>, <code>denied</code>, <code>verification_failed</code> (a verification that ran and reported a failing or not-fresh result), or <code>invalid_request</code> (the call was rejected as malformed or invalid input). Error text is never sent.</li>
+                        <li><code>error_code</code>: sent only when the outcome is not <code>success</code>. A category from a fixed list of typed failure codes (for example <code>target_not_found</code>, <code>ElementNotFound</code>, <code>timeout</code>, or <code>io_error</code>); anything not on the list is reported as <code>other</code>. The error message is never sent.</li>
                         <li><code>duration_bucket</code>: <code>lt_1s</code>, <code>1_5s</code>, <code>5_30s</code>, or <code>gt_30s</code>.</li>
                         <li><code>host</code>: <code>cli</code> or <code>mcp</code>.</li>
                         <li><code>client</code> (MCP only): <code>claude-desktop</code>, <code>claude-code</code>, <code>codex</code>, <code>vscode</code>, <code>cursor</code>, or <code>other</code>, mapped from the client name in the MCP initialize request.</li>

@@ -14,6 +14,7 @@ internal sealed class OperationTelemetry : IOperationTelemetry, IDisposable
     internal const string DurationBucketKey = "duration_bucket";
     internal const string HostKey = "host";
     internal const string ClientKey = "client";
+    internal const string ErrorCodeKey = "error_code";
     internal const string VersionKey = "version";
     // Not "install_id": the desktop app's install IDs use that key, and the usage report counts them as desktop installs.
     internal const string InstallIdKey = "agent_install_id";
@@ -48,11 +49,11 @@ internal sealed class OperationTelemetry : IOperationTelemetry, IDisposable
 
     // Emitting happens on a pool thread so a tool call or command never waits for the exporter's setup
     // (loading the Azure SDK takes noticeable time on a cold start) or for the network.
-    public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null)
+    public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null, string? errorCode = null)
     {
         try
         {
-            var properties = BuildProperties(name, outcome, duration, mcpClientName);
+            var properties = BuildProperties(name, outcome, duration, mcpClientName, errorCode);
             lock (_syncRoot)
             {
                 if (_disposed || _unavailable)
@@ -120,7 +121,7 @@ internal sealed class OperationTelemetry : IOperationTelemetry, IDisposable
         }
     }
 
-    internal Dictionary<string, object?> BuildProperties(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName)
+    internal Dictionary<string, object?> BuildProperties(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName, string? errorCode = null)
     {
         var properties = new Dictionary<string, object?>
         {
@@ -130,6 +131,11 @@ internal sealed class OperationTelemetry : IOperationTelemetry, IDisposable
             [HostKey] = TelemetryAllowlist.HostName(_host),
             [VersionKey] = _version,
         };
+
+        if (outcome != TelemetryOutcome.Success)
+        {
+            properties[ErrorCodeKey] = TelemetryAllowlist.ErrorCode(errorCode);
+        }
 
         if (_host == TelemetryHost.Mcp)
         {

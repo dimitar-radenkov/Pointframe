@@ -81,6 +81,9 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
     // Typed provenance for agent telemetry; null leaves a failing exit code classified as an error.
     internal TelemetryOutcome? Outcome { get; private set; }
 
+    // Typed failure category for agent telemetry. Only ever a code from the allowlist or null, never message text.
+    internal string? ErrorCode { get; set; }
+
     internal Task<int> RunAsync(CliCommand command, CancellationToken cancellationToken) => command.VerifyAction switch
     {
         "init" => InitAsync(command, cancellationToken),
@@ -171,6 +174,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or VerificationSpecException or InvalidOperationException or ArgumentException)
         {
             Outcome = exception is IOException or UnauthorizedAccessException or InvalidOperationException ? null : TelemetryOutcome.InvalidRequest;
+            ErrorCode = exception is VerificationSpecException or JsonException or ArgumentException ? "spec_invalid" : TelemetryAllowlist.ErrorCodeFor(exception);
             await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new { status = "error", error = exception.Message }, CompactJson));
             return 2;
         }
@@ -354,7 +358,9 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
         if (status == VerificationStatus.Fail)
         {
-            Outcome = results.Any(item => item.InfrastructureFailure) || gates.Any(gate => gate.InfrastructureFailure) ? null : TelemetryOutcome.VerificationFailed;
+            var infrastructureFailure = results.Any(item => item.InfrastructureFailure) || gates.Any(gate => gate.InfrastructureFailure);
+            Outcome = infrastructureFailure ? null : TelemetryOutcome.VerificationFailed;
+            ErrorCode = infrastructureFailure ? "infrastructure_failure" : null;
             return 1;
         }
 
@@ -556,6 +562,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         catch (VerificationSpecException exception)
         {
             Outcome = TelemetryOutcome.InvalidRequest;
+            ErrorCode = "spec_invalid";
             await standardError.WriteLineAsync($"Pointframe verify failed: {exception.Message}");
             return 2;
         }
@@ -582,6 +589,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
         if (!services.Confirmation.CanAsk)
         {
+            ErrorCode = "trust_needs_terminal";
             await standardError.WriteLineAsync("Approval needs a person at an interactive terminal; this input is redirected.");
             await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new { schemaVersion = SchemaVersion, status = "not_approved", errorCode = "trust_needs_terminal", nextStep = VerificationNextSteps.For("not_approved", "trust_needs_terminal") }, VerdictJson));
             return 1;
@@ -589,6 +597,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
 
         if (!services.Confirmation.Confirm("Allow these commands for this project?"))
         {
+            ErrorCode = "not_approved";
             await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new { schemaVersion = SchemaVersion, status = "not_approved" }, VerdictJson));
             return 1;
         }
@@ -1107,6 +1116,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
         IReadOnlyList<VerificationGateResult>? gates = null)
     {
         Outcome = _invalidRequestErrorCodes.Contains(code) ? TelemetryOutcome.InvalidRequest : null;
+        ErrorCode = code;
         await standardError.WriteLineAsync($"Pointframe verify failed: {message}");
         foreach (var line in details ?? [])
         {
@@ -1129,6 +1139,7 @@ internal sealed class VerificationApplication(VerificationServices services, Tex
     private async Task<int> TaskErrorAsync(string taskId, int exitCode, string code, string message)
     {
         Outcome = _invalidRequestErrorCodes.Contains(code) ? TelemetryOutcome.InvalidRequest : null;
+        ErrorCode = code;
         await standardError.WriteLineAsync($"Pointframe verify failed: {message}");
         await standardOutput.WriteLineAsync(JsonSerializer.Serialize(new TaskStartResponse(SchemaVersion, "error", taskId, ErrorCode: code, Error: message, NextStep: VerificationNextSteps.For("error", code, message, taskId: taskId)), VerdictJson));
         return exitCode;

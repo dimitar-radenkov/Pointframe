@@ -100,7 +100,13 @@ internal sealed class DesktopToolsApplication(
             var policyPath = VerificationApplication.WritePolicy(app, projectDirectory, policyName);
             sessionPolicy = policyName == "serve" ? null : policyPath;
             var host = services.ServerHost ?? new InheritedStdioMcpServerHost();
-            return await host.RunAsync(mcp, ["--desktop-testing", "--desktop-policy", policyPath], environment, cancellationToken);
+            var serverExitCode = await host.RunAsync(mcp, ["--desktop-testing", "--desktop-policy", policyPath], environment, cancellationToken);
+            if (serverExitCode != 0)
+            {
+                verification.ErrorCode = "mcp_exited";
+            }
+
+            return serverExitCode;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
@@ -119,7 +125,8 @@ internal sealed class DesktopToolsApplication(
         var (spec, refusal) = await AuthorizeAsync(specPath, cancellationToken);
         if (spec is null)
         {
-            await standardError.WriteLineAsync($"Pointframe verify setup failed [{refusal!.Code}]: {refusal.Message}");
+            verification.ErrorCode = refusal!.Code;
+            await standardError.WriteLineAsync($"Pointframe verify setup failed [{refusal.Code}]: {refusal.Message}");
             await WriteAsync(Failure(refusal.Code, refusal.Message, clients));
             return refusal.ExitCode;
         }
@@ -226,6 +233,7 @@ internal sealed class DesktopToolsApplication(
             success ? new { tool = "desktop_start_test_session", arguments = new { actionId = Guid.NewGuid().ToString(), profileId = spec.App.Id } } : null));
         if (!success)
         {
+            verification.ErrorCode = failureCode;
             await standardError.WriteLineAsync($"Pointframe verify setup failed [{failureCode}]: {failureMessage}");
         }
 
@@ -324,6 +332,7 @@ internal sealed class DesktopToolsApplication(
 
     private async Task<int> RefuseServeAsync(Refusal refusal)
     {
+        verification.ErrorCode = refusal.Code;
         var nextStep = VerificationNextSteps.For("error", refusal.Code, refusal.Message);
         var command = nextStep.Command is null ? string.Empty : $" Command: `{nextStep.Command}`.";
         await standardError.WriteLineAsync($"Pointframe mcp serve failed [{refusal.Code}]: {refusal.Message} Next step: {nextStep.Text}{command}");

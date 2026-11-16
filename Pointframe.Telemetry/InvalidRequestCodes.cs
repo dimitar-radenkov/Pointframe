@@ -31,5 +31,7 @@ public static class InvalidRequestCodes
         "InvalidRequest",
     };
 
+    public static IReadOnlyCollection<string> All => _codes;
+
     public static bool Contains(string? code) => code is not null && _codes.Contains(code);
 }

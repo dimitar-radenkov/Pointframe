@@ -177,6 +177,32 @@ public sealed class McpTelemetryTests
         Assert.Equal(TelemetryOutcome.Success, McpTelemetryFilter.Classify(Typed(succeeded)));
     }
 
+    [Theory]
+    [InlineData("SessionNotFound")]
+    [InlineData("ElementNotFound")]
+    [InlineData("TargetStillRunning")]
+    public void ErrorCodeOf_TypedDesktopFailure_IsTheAllowlistedCode(string code)
+    {
+        var result = Typed(DesktopAction(code));
+
+        var raw = McpTelemetryFilter.ErrorCodeOf(result);
+
+        Assert.Equal(code, raw);
+        Assert.Equal(code, TelemetryAllowlist.ErrorCode(raw));
+    }
+
+    [Fact]
+    public void ErrorCodeOf_UnknownCodeAndFreeText_NeverLeaveAsAnything_ButOther()
+    {
+        var unknown = Typed(DesktopAction("SomethingNobodyListed"));
+        var message = new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = @"Could not read C:\Users\someone\secret.png" }] };
+        var success = Typed(DesktopAction(null));
+
+        Assert.Equal("other", TelemetryAllowlist.ErrorCode(McpTelemetryFilter.ErrorCodeOf(unknown)));
+        Assert.Equal("other", TelemetryAllowlist.ErrorCode(McpTelemetryFilter.ErrorCodeOf(message)));
+        Assert.Null(McpTelemetryFilter.ErrorCodeOf(success));
+    }
+
     [Fact]
     public void Classify_CaptureResultWithIsError_IsStillError()
     {
@@ -211,6 +237,30 @@ public sealed class McpTelemetryTests
         var tracked = Assert.Single(telemetry.Tracked);
         Assert.Equal(("get_recording_status", TelemetryOutcome.Success, "claude-code"), (tracked.Name, tracked.Outcome, tracked.Client));
         AssertEveryLineIsJsonRpc(transcript);
+    }
+
+    [Theory]
+    [InlineData("recording_not_active", "recording_not_active")]
+    [InlineData("SomethingNobodyListed", "SomethingNobodyListed")]
+    public async Task ToolCall_ThatReturnsATypedFailure_ForwardsItsCodeToTrack(string code, string forwarded)
+    {
+        var telemetry = new RecordingTelemetry();
+
+        await CallStatusToolAsync(telemetry, "codex", "{\"SchemaVersion\":1,\"Success\":false,\"Error\":{\"Code\":\"" + code + "\",\"Message\":\"x\"}}");
+
+        var tracked = Assert.Single(telemetry.Tracked);
+        Assert.Equal(TelemetryOutcome.Error, tracked.Outcome);
+        Assert.Equal(forwarded, Assert.Single(telemetry.ErrorCodes));
+    }
+
+    [Fact]
+    public async Task ToolCall_ThatSucceeds_ForwardsNoErrorCode()
+    {
+        var telemetry = new RecordingTelemetry();
+
+        await CallStatusToolAsync(telemetry, "codex");
+
+        Assert.Null(Assert.Single(telemetry.ErrorCodes));
     }
 
     [Fact]
@@ -356,10 +406,11 @@ public sealed class McpTelemetryTests
         }
     }
 
-    private static async Task<(CallToolResult Result, string Transcript)> CallStatusToolAsync(IOperationTelemetry telemetry, string clientName)
+    private static async Task<(CallToolResult Result, string Transcript)> CallStatusToolAsync(IOperationTelemetry telemetry, string clientName, string? stopJson = null)
     {
         var recording = new Mock<IDirectRecordingMcpService>();
         recording.Setup(service => service.GetRecordingStatus()).Returns("{\"SchemaVersion\":1,\"Success\":true,\"IsRecording\":false}");
+        recording.Setup(service => service.StopRecordingAsync(It.IsAny<CancellationToken>())).ReturnsAsync(stopJson ?? "{\"SchemaVersion\":1,\"Success\":true}");
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
         var transcript = new MemoryStream();
@@ -379,7 +430,7 @@ public sealed class McpTelemetryTests
         await using var client = await McpClient.CreateAsync(
             new StreamClientTransport(clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream()),
             new McpClientOptions { ClientInfo = new Implementation { Name = clientName, Version = "1.0" } });
-        var result = await client.CallToolAsync("get_recording_status", new Dictionary<string, object?>());
+        var result = await client.CallToolAsync(stopJson is null ? "get_recording_status" : "stop_recording", new Dictionary<string, object?>());
         await client.DisposeAsync();
         await host.StopAsync();
         return (result, Encoding.UTF8.GetString(transcript.ToArray()));
@@ -434,11 +485,13 @@ public sealed class McpTelemetryTests
     {
         public List<(string Name, TelemetryOutcome Outcome, string? Client)> Tracked { get; } = [];
 
+        public List<string?> ErrorCodes { get; } = [];
+
         public bool ThrowOnTrack { get; init; }
 
         public int TrackAttempts { get; private set; }
 
-        public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null)
+        public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null, string? errorCode = null)
         {
             TrackAttempts++;
             if (ThrowOnTrack)
@@ -447,6 +500,7 @@ public sealed class McpTelemetryTests
             }
 
             Tracked.Add((name, outcome, mcpClientName));
+            ErrorCodes.Add(errorCode);
         }
 
         public void Flush()

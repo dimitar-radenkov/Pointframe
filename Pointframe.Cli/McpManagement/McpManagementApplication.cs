@@ -11,6 +11,8 @@ internal sealed class McpManagementApplication(
 {
     private const int SchemaVersion = 1;
 
+    internal string? ErrorCode { get; private set; }
+
     internal async Task<int> RunAsync(CliCommand command, CancellationToken cancellationToken)
     {
         try
@@ -23,10 +25,12 @@ internal sealed class McpManagementApplication(
                 _ => throw new InvalidOperationException($"Unsupported MCP action '{command.McpAction}'."),
             };
             await standardOutput.WriteLineAsync(JsonSerializer.Serialize(response));
+            ErrorCode = response.Success ? null : response.Code;
             return response.Success ? 0 : 1;
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
         {
+            ErrorCode = ToErrorCode(exception);
             await standardError.WriteLineAsync($"Pointframe MCP management failed: {exception.Message}");
             var response = new McpCommandResponse(
                 SchemaVersion, false, command.McpAction ?? "unknown", command.McpClient ?? "unknown",
