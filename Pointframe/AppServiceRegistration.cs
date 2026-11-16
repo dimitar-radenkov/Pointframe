@@ -52,6 +52,7 @@ internal static class AppServiceRegistration
         services.AddSingleton<IMessageBoxService, MessageBoxService>();
         services.AddSingleton<IFileSystemService, FileSystemService>();
         services.AddSingleton<IMicrophoneDeviceService, MicrophoneDeviceService>();
+        services.AddSingleton<IMicrophoneWarningService, MicrophoneWarningService>();
         services.AddSingleton<IUserSettingsService, UserSettingsService>();
         services.AddSingleton<IDisplayCaptureEngine, DisplayCaptureEngine>();
         services.AddSingleton<IGlobalHotkeyService, GlobalHotkeyService>();
@@ -156,5 +157,6 @@ internal static class AppServiceRegistration
         sp.GetRequiredService<IOcrService>(),
         sp.GetRequiredService<ITelemetryService>(),
         sp.GetRequiredService<RecordingAnnotationViewModel>(),
-        sp.GetRequiredService<Func<BitmapSource, BeautifierWindow>>());
+        sp.GetRequiredService<Func<BitmapSource, BeautifierWindow>>(),
+        sp.GetRequiredService<IMicrophoneWarningService>());
 }

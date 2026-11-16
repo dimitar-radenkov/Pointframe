@@ -528,7 +528,8 @@ public sealed class OverlayWindowInteractionTests
             ocrServiceMock.Object,
             telemetryMock.Object,
             recordingAnnotationViewModel,
-            _ => throw new NotImplementedException());
+            _ => throw new NotImplementedException(),
+            Mock.Of<IMicrophoneWarningService>());
 
         return new TestContext(
             window,
