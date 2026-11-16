@@ -699,6 +699,116 @@ public sealed class TelemetryServiceTests
         }
     }
 
+    private static Dictionary<string, string> RecordingFailedProperties(string recovered, string bucket) => new()
+    {
+        [TelemetryPropertyKeys.Phase] = "encode",
+        [TelemetryPropertyKeys.Reason] = "ffmpeg_failed",
+        [TelemetryPropertyKeys.InnerTypes] = "IOException",
+        [TelemetryPropertyKeys.Recovered] = recovered,
+        [TelemetryPropertyKeys.RecoveredDurationBucket] = bucket,
+    };
+
+    [Fact]
+    public void TrackEvent_DropsDeclaredPropertyWhoseValueIsRejectedAndKeepsTheRest()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.RecordingFailed, RecordingFailedProperties("maybe", "1-5m"));
+
+        // Assert
+        var scope = logger.Entries[0].Scope;
+        Assert.DoesNotContain(TelemetryPropertyKeys.Recovered, scope.Keys);
+        Assert.Equal("1-5m", scope[TelemetryPropertyKeys.RecoveredDurationBucket]);
+        Assert.Equal("encode", scope[TelemetryPropertyKeys.Phase]);
+        Assert.Equal("ffmpeg_failed", scope[TelemetryPropertyKeys.Reason]);
+        Assert.Equal("IOException", scope[TelemetryPropertyKeys.InnerTypes]);
+    }
+
+    [Fact]
+    public void TrackEvent_ExportsValidClosedSetValuesUnchanged()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.RecordingFailed, RecordingFailedProperties("true", "10-60s"));
+
+        // Assert
+        var scope = logger.Entries[0].Scope;
+        Assert.Equal("true", scope[TelemetryPropertyKeys.Recovered]);
+        Assert.Equal("10-60s", scope[TelemetryPropertyKeys.RecoveredDurationBucket]);
+    }
+
+    [Fact]
+    public void TrackEvent_StillDropsUndeclaredKeyWhileKeepingValidOnes()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var sut = CreateSut(logger);
+        var properties = RecordingFailedProperties("true", "<10s");
+        properties["file_path"] = "secret-path";
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.RecordingFailed, properties);
+
+        // Assert
+        var scope = logger.Entries[0].Scope;
+        Assert.DoesNotContain("file_path", scope.Keys);
+        Assert.Equal("true", scope[TelemetryPropertyKeys.Recovered]);
+    }
+
+    [Fact]
+    public void TrackEvent_LogsDroppedValueByKeyAndReasonNeverByValue()
+    {
+        // Arrange
+        var logger = new CapturingLogger();
+        var localLogger = new CapturingLogger();
+        var sut = new TelemetryService(logger, SettingsWithInstallId("id"), AppVersion(), localLogger);
+        const string rejectedValue = "SECRET-REJECTED-VALUE";
+
+        // Act
+        sut.TrackEvent(TelemetryEvents.RecordingFailed, RecordingFailedProperties(rejectedValue, "1-5m"));
+
+        // Assert
+        var warning = Assert.Single(localLogger.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Contains(TelemetryEvents.RecordingFailed, warning.Message, StringComparison.Ordinal);
+        Assert.Contains(TelemetryPropertyKeys.Recovered, warning.Message, StringComparison.Ordinal);
+        Assert.Contains("outside the allowed set", warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(rejectedValue, warning.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExporterPayload_OmitsRejectedValueAndKeepsValidProperties()
+    {
+        var port = GetFreePort();
+        using var listener = new HttpListener();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+        var configuration = new Mock<IConfiguration>();
+        configuration.SetupGet(config => config["ApplicationInsights:ConnectionString"])
+            .Returns($"InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=http://127.0.0.1:{port}/");
+        using var sut = new TelemetryService(
+            configuration.Object,
+            SettingsWithInstallId("anonymous-install-id"),
+            AppVersion(),
+            Mock.Of<ILogger<TelemetryService>>(),
+            AutomationLaunchOptions.Parse([]));
+
+        var payloadTask = CaptureRequestPayloadAsync(listener);
+        sut.TrackEvent(TelemetryEvents.RecordingFailed, RecordingFailedProperties("REJECTED-VALUE-XYZ", "1-5m"));
+        sut.Flush();
+
+        var payload = await payloadTask.WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Contains("recording_failed", payload, StringComparison.Ordinal);
+        Assert.Contains("recovered_duration_bucket", payload, StringComparison.Ordinal);
+        Assert.Contains("ffmpeg_failed", payload, StringComparison.Ordinal);
+        Assert.DoesNotContain("REJECTED-VALUE-XYZ", payload, StringComparison.Ordinal);
+    }
+
     private static int GetFreePort()
     {
         using var socket = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);

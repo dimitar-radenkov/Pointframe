@@ -227,8 +227,10 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
             return null;
         }
 
+        // A declared key whose value the catalog rejects never leaves the process, like an undeclared key.
         return properties
-            .Where(property => validation.Definition.AllowsProperty(property.Key))
+            .Where(property => validation.Definition.AllowsProperty(property.Key)
+                && !validation.InvalidValueProperties.Contains(property.Key))
             .ToDictionary(property => property.Key, property => property.Value);
     }
 
@@ -255,6 +257,14 @@ internal sealed class TelemetryService : ITelemetryService, IDisposable
                 "Telemetry schema mismatch for {EventName}. Missing required properties: {Properties}",
                 validation.EventName,
                 string.Join(",", validation.MissingProperties));
+        }
+
+        if (validation.InvalidValueProperties.Count > 0)
+        {
+            LogWarningLocally(
+                "Telemetry schema mismatch for {EventName}. Dropped properties with values outside the allowed set: {Properties}",
+                validation.EventName,
+                string.Join(",", validation.InvalidValueProperties));
         }
 
         if (validation.UnknownProperties.Count > 0)
