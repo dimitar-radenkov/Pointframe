@@ -63,13 +63,7 @@ public partial class OverlayWindow
             [TelemetryPropertyKeys.Type] = "region",
         });
 
-        if (_userSettings.Current.RecordMicrophone && !_recorder.IsRecordingMicrophoneEnabled)
-        {
-            _telemetry.TrackEvent(TelemetryEvents.MicrophoneUnavailable);
-            _messageBox.ShowWarning(
-                "Microphone recording is enabled, but no compatible microphone device was available. The recording will continue without microphone audio.",
-                "Microphone unavailable");
-        }
+        _microphoneWarning.ReportIfUnavailable(_recorder.IsRecordingMicrophoneEnabled);
 
         RecordingOverlayWindow? recordingOverlay = null;
         DpiAwarenessScope.RunPerMonitorV2(() =>

@@ -354,13 +354,7 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
             [TelemetryPropertyKeys.Type] = "whole_screen",
         });
 
-        if (_userSettings.Current.RecordMicrophone && !recorder.IsRecordingMicrophoneEnabled)
-        {
-            _telemetry.TrackEvent(TelemetryEvents.MicrophoneUnavailable);
-            _messageBox.ShowWarning(
-                "Microphone recording is enabled, but no compatible microphone device was available. The recording will continue without microphone audio.",
-                "Microphone unavailable");
-        }
+        _services.GetRequiredService<IMicrophoneWarningService>().ReportIfUnavailable(recorder.IsRecordingMicrophoneEnabled);
 
         RecordingOverlayWindow? recordingOverlay = null;
         DpiAwarenessScope.RunPerMonitorV2(() =>

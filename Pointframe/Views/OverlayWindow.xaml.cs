@@ -25,6 +25,7 @@ public partial class OverlayWindow : Window
     private readonly IFileSystemService _fileSystem;
     private readonly IOcrService _ocrService;
     private readonly ITelemetryService _telemetry;
+    private readonly IMicrophoneWarningService _microphoneWarning;
     private readonly RecordingAnnotationViewModel _recordingAnnotationViewModel;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IEventSubscription _redoSubscription;
@@ -64,7 +65,8 @@ public partial class OverlayWindow : Window
         IOcrService ocrService,
         ITelemetryService telemetry,
         RecordingAnnotationViewModel recordingAnnotationViewModel,
-        Func<BitmapSource, BeautifierWindow> beautifierWindowFactory)
+        Func<BitmapSource, BeautifierWindow> beautifierWindowFactory,
+        IMicrophoneWarningService microphoneWarning)
     {
         _vm = vm;
         _screenCapture = screenCapture;
@@ -79,6 +81,7 @@ public partial class OverlayWindow : Window
         _fileSystem = fileSystem;
         _ocrService = ocrService;
         _telemetry = telemetry;
+        _microphoneWarning = microphoneWarning;
         _recordingAnnotationViewModel = recordingAnnotationViewModel;
         _beautifierWindowFactory = beautifierWindowFactory;
         InitializeComponent();
