@@ -184,7 +184,7 @@ public sealed class SystemAudioTimelineTests
     public void PlanPacket_FlaggedZeroTimestamp_IsPlacedAfterThePreviousPacketAndNotDropped()
     {
         var timeline = Create();
-        _now = Ms(1000);
+        _now = Ms(520);
         timeline.PlanPacket(Ms(500), TenMs);
 
         var plans = timeline.PlanPacket(TimeSpan.Zero, TenMs, timestampValid: false);
@@ -205,6 +205,42 @@ public sealed class SystemAudioTimelineTests
 
         Assert.Equal(0, plans.Single().SilenceBytesBefore);
         Assert.Equal(2 * TenMs, timeline.WrittenBytes);
+    }
+
+    [Fact]
+    public void PlanPacket_FlaggedPacketAfterALongQuietStretch_LandsAtItsArrivalTimeWithSilenceBefore()
+    {
+        var timeline = Create();
+        _now = Ms(10);
+        timeline.PlanPacket(Ms(0), TenMs);
+        _now = Ms(5000);
+
+        var plans = timeline.PlanPacket(Ms(5000), TenMs, timestampValid: false);
+
+        var plan = plans.Single();
+        Assert.Equal(4990 * BytesPerSecond / 1000 - TenMs, plan.SilenceBytesBefore);
+        Assert.Equal(5000 * BytesPerSecond / 1000, timeline.WrittenBytes);
+    }
+
+    [Fact]
+    public void PlanPacket_FlaggedPacketAfterAPacketlessPause_IsPlacedAfterResumeNotInsideThePause()
+    {
+        var timeline = Create();
+        _now = Ms(10);
+        timeline.PlanPacket(Ms(0), TenMs);
+        _now = Ms(100);
+        timeline.Pause();
+        _now = Ms(1000);
+        timeline.Resume();
+        _now = Ms(1020);
+
+        var plans = timeline.PlanPacket(Ms(0), TenMs, timestampValid: false);
+
+        var plan = plans.Single();
+        Assert.Equal(TenMs, plan.Segment.Length);
+        Assert.Equal(0, plan.Segment.Offset);
+        Assert.Equal(100 * BytesPerSecond / 1000, plan.SilenceBytesBefore);
+        Assert.Equal(120 * BytesPerSecond / 1000, timeline.WrittenBytes);
     }
 
     [Fact]

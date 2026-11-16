@@ -20,6 +20,7 @@ public sealed class RawFrameRecordingPipeline : IDisposable
     private readonly CancellationTokenSource _cancellation = new();
     private readonly byte[] _latestFrameBytes;
     private bool _hasLatestFrame;
+    private bool _firstFrameReported;
     private int _attemptedFrameCount;
     private int _writtenFrameCount;
     private int _droppedFrameCount;
@@ -181,6 +182,7 @@ public sealed class RawFrameRecordingPipeline : IDisposable
         try
         {
             _capture.Capture(buffer);
+            ReportFirstFrameCaptured();
             RawFramePixelation.Render(
                 buffer,
                 _options.CaptureBoundsPixels.Width,
@@ -202,6 +204,24 @@ public sealed class RawFrameRecordingPipeline : IDisposable
         }
 
         _bufferPool.Enqueue(buffer);
+    }
+
+    private void ReportFirstFrameCaptured()
+    {
+        if (_firstFrameReported)
+        {
+            return;
+        }
+
+        _firstFrameReported = true;
+        try
+        {
+            _options.FirstFrameCaptured?.Invoke();
+        }
+        catch (Exception)
+        {
+            // The notification is advisory; a failing observer must not stop the recording.
+        }
     }
 
     private async Task EncodeLoopAsync()

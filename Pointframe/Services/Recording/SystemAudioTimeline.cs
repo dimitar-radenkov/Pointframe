@@ -11,6 +11,7 @@ internal sealed record SystemAudioPacketPlan(long SilenceBytesBefore, SystemAudi
 // share one time base (the QPC clock in production).
 internal sealed class SystemAudioTimeline
 {
+    internal static readonly TimeSpan ContinuityBound = TimeSpan.FromMilliseconds(100);
     internal static readonly TimeSpan GapTolerance = TimeSpan.FromMilliseconds(20);
 
     private readonly int _bytesPerSecond;
@@ -70,8 +71,9 @@ internal sealed class SystemAudioTimeline
 
     // Plans what to write for one packet that was captured starting at packetStart. The plan is committed:
     // the caller must write the silence and then the segments, in order.
-    // When timestampValid is false (WASAPI flagged the timestamp as uncertain) the packet is placed right after the
-    // previous one, or at its arrival time when it is the first, instead of trusting the reported time.
+    // When timestampValid is false (WASAPI flagged the timestamp as uncertain) the reported time is not trusted: the packet
+    // is placed right after the previous one if its arrival time says it is continuous (within ContinuityBound),
+    // otherwise at its arrival time minus its duration. Pause trimming then applies as for any packet.
     public IReadOnlyList<SystemAudioPacketPlan> PlanPacket(TimeSpan packetStart, int packetBytes, bool timestampValid = true)
     {
         var plans = new List<SystemAudioPacketPlan>();
@@ -82,7 +84,10 @@ internal sealed class SystemAudioTimeline
 
         if (!timestampValid)
         {
-            packetStart = _previousPacketEnd ?? _clock() - DurationOf(packetBytes);
+            var arrivalEstimate = _clock() - DurationOf(packetBytes);
+            packetStart = _previousPacketEnd is { } previousEnd && (arrivalEstimate - previousEnd).Duration() <= ContinuityBound
+                ? previousEnd
+                : arrivalEstimate;
         }
 
         var packetEnd = packetStart + DurationOf(packetBytes);

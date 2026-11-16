@@ -24,6 +24,28 @@ public sealed class RawFrameRecordingPipelineTests
     }
 
     [Fact]
+    public void FirstFrameCaptured_IsReportedOnceAfterTheFirstCapture_AndAFailingObserverDoesNotStopRecording()
+    {
+        using var writer = new CollectingWriter();
+        using var capture = new StaticFrameCapture([1, 2, 3, 4]);
+        var calls = 0;
+        using var pipeline = new RawFrameRecordingPipeline(
+            writer,
+            new RawFrameRecordingOptions(new PixelBounds(0, 0, 1, 1), 50, () => ReadOnlyMemory<PixelBounds>.Empty, FirstFrameCaptured: () =>
+            {
+                calls++;
+                throw new InvalidOperationException("observer failed");
+            }),
+            capture);
+
+        Assert.True(writer.FirstFrameWritten.Wait(TimeSpan.FromSeconds(10)));
+        Assert.True(writer.Frames.Count >= 1);
+        pipeline.Stop(TimeSpan.FromMilliseconds(200));
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
     public void Pipeline_PixelatesRedactionsBeforeWritingFrames()
     {
         using var writer = new CollectingWriter();

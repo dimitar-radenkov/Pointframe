@@ -17,6 +17,7 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
     private readonly UserSettings _settings = new() { RecordMicrophone = false };
     private string? _writerMicrophone = "unset";
     private int _factoryCalls;
+    private IdleFrameCapture _frames = new();
 
     public void Dispose() => _folder.Dispose();
 
@@ -43,7 +44,7 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
         var service = CreateService();
         service.Start(0, 0, 100, 100, _folder.File("sys.mp4"));
         Assert.True(service.IsRecordingSystemAudio);
-        Assert.Equal(1, _capture.BeginTimelineCalls);
+        Assert.True(SpinWait.SpinUntil(() => _capture.BeginTimelineCalls == 1, TimeSpan.FromSeconds(10)));
 
         service.Stop();
 
@@ -157,6 +158,22 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
     }
 
     [Fact]
+    public void BeginTimeline_WaitsForTheFirstCapturedFrame_SoADelayedFirstFrameDoesNotOffsetAudio()
+    {
+        _settings.RecordSystemAudio = true;
+        _frames = new IdleFrameCapture { FirstFrameDelay = TimeSpan.FromMilliseconds(500) };
+        _capture.FirstFrameDone = () => _frames.FirstCaptureDone;
+        var service = CreateService();
+
+        service.Start(0, 0, 100, 100, _folder.File("late.mp4"));
+        Assert.Equal(0, _capture.BeginTimelineCalls);
+        Assert.True(SpinWait.SpinUntil(() => _capture.BeginTimelineCalls == 1, TimeSpan.FromSeconds(10)));
+        service.Stop();
+
+        Assert.False(_capture.BeganBeforeFirstFrame);
+    }
+
+    [Fact]
     public void PauseAndResume_AreForwardedToTheCaptureSoPausedSpansStayOutOfTheAudio()
     {
         _settings.RecordSystemAudio = true;
@@ -195,7 +212,7 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
             microphones.Object,
             settings.Object,
             factory.Object,
-            new IdleFrameCapture(),
+            _frames,
             null,
             new RecordingRecovery(_remuxer, NullLogger<RecordingRecovery>.Instance),
             () =>
@@ -209,7 +226,19 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
 
     private sealed class IdleFrameCapture : IRawFrameCapture
     {
-        public void Capture(byte[] frameData) => Array.Clear(frameData);
+        public TimeSpan FirstFrameDelay { get; init; }
+        public bool FirstCaptureDone { get; private set; }
+
+        public void Capture(byte[] frameData)
+        {
+            if (!FirstCaptureDone && FirstFrameDelay > TimeSpan.Zero)
+            {
+                Thread.Sleep(FirstFrameDelay);
+            }
+
+            Array.Clear(frameData);
+            FirstCaptureDone = true;
+        }
 
         public void Dispose()
         {
@@ -264,8 +293,14 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
         }
 
         public int BeginTimelineCalls { get; private set; }
+        public Func<bool>? FirstFrameDone { get; set; }
+        public bool BeganBeforeFirstFrame { get; private set; }
 
-        public void BeginTimeline() => BeginTimelineCalls++;
+        public void BeginTimeline()
+        {
+            BeganBeforeFirstFrame |= FirstFrameDone?.Invoke() == false;
+            BeginTimelineCalls++;
+        }
 
         public void Pause() => PauseCalls++;
 

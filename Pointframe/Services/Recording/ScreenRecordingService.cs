@@ -100,10 +100,9 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _redactionSession = new RecordingRedactionSession(_eventTrack);
             _eventTrack.Write("recording.started", new RecordingEventPayload(CaptureX: x, CaptureY: y, CaptureWidth: width, CaptureHeight: height, FramesPerSecond: fps, IsEnabled: IsRecordingMicrophoneEnabled, IsMuted: IsMicrophoneMuted));
             StartSystemAudio(outputPath);
-            _systemAudio?.BeginTimeline();
             _pipeline = new RawFrameRecordingPipeline(
                 new VideoWriterRawFrameWriter(_writer),
-                new RawFrameRecordingOptions(new PixelBounds(x, y, width, height), fps, () => _redactionSession?.SnapshotPixelBounds() ?? ReadOnlyMemory<PixelBounds>.Empty),
+                new RawFrameRecordingOptions(new PixelBounds(x, y, width, height), fps, () => _redactionSession?.SnapshotPixelBounds() ?? ReadOnlyMemory<PixelBounds>.Empty, FirstFrameCaptured: OnFirstVideoFrameCaptured),
                 _frameCapture);
             IsRecording = true;
             _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps (MP4) to {Path}", width, height, fps, outputPath);
@@ -463,6 +462,12 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _systemAudio.CaptureFailed -= OnSystemAudioCaptureFailed;
         ReleaseSystemAudio();
         ReportSystemAudioFailure(failureReason ?? "start_failed", "start");
+    }
+
+    // The video timeline starts at the first captured frame (frame-count timestamps), so that instant is the audio origin.
+    private void OnFirstVideoFrameCaptured()
+    {
+        _systemAudio?.BeginTimeline();
     }
 
     private void OnSystemAudioCaptureFailed(string reason)
