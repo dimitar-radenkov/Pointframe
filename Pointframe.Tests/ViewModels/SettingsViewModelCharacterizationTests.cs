@@ -36,7 +36,7 @@ public sealed class SettingsViewModelCharacterizationTests
         {
             SettingsSection.Recording,
             [
-                nameof(UserSettings.RecordingOutputPath), nameof(UserSettings.RecordMicrophone),
+                nameof(UserSettings.RecordingOutputPath), nameof(UserSettings.RecordMicrophone), nameof(UserSettings.RecordSystemAudio),
                 nameof(UserSettings.RecordingTranscriptEnabled), nameof(UserSettings.GifFps),
                 nameof(UserSettings.RecordingCursorHighlightEnabled), nameof(UserSettings.RecordingClickRippleEnabled),
                 nameof(UserSettings.RecordingCursorHighlightSize),

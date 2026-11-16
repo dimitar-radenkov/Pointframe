@@ -20,6 +20,7 @@ public sealed class RawFrameRecordingPipeline : IDisposable
     private readonly CancellationTokenSource _cancellation = new();
     private readonly byte[] _latestFrameBytes;
     private bool _hasLatestFrame;
+    private bool _firstFrameReported;
     private int _attemptedFrameCount;
     private int _writtenFrameCount;
     private int _droppedFrameCount;
@@ -171,16 +172,19 @@ public sealed class RawFrameRecordingPipeline : IDisposable
 
     private void CaptureFrameToChannel()
     {
+        var tickTime = QpcNow();
         Interlocked.Increment(ref _attemptedFrameCount);
         if (!_bufferPool.TryDequeue(out var buffer))
         {
             Interlocked.Increment(ref _droppedFrameCount);
+            ReportFrameDropped(tickTime);
             return;
         }
 
         try
         {
             _capture.Capture(buffer);
+            ReportFirstFrameCaptured();
             RawFramePixelation.Render(
                 buffer,
                 _options.CaptureBoundsPixels.Width,
@@ -194,6 +198,7 @@ public sealed class RawFrameRecordingPipeline : IDisposable
             }
 
             Interlocked.Increment(ref _droppedFrameCount);
+            ReportFrameDropped(tickTime);
         }
         catch
         {
@@ -202,6 +207,40 @@ public sealed class RawFrameRecordingPipeline : IDisposable
         }
 
         _bufferPool.Enqueue(buffer);
+    }
+
+    // Time spans the video loses to dropped frames, reported as (start, duration) on the QueryPerformanceCounter clock
+    // so an audio track can follow the video timeline instead of the wall clock.
+    private void ReportFrameDropped(TimeSpan tickTime)
+    {
+        try
+        {
+            _options.FrameDropped?.Invoke(tickTime, TimeSpan.FromSeconds(1d / _options.FramesPerSecond));
+        }
+        catch (Exception)
+        {
+            // The notification is advisory; a failing observer must not stop the recording.
+        }
+    }
+
+    private static TimeSpan QpcNow() => TimeSpan.FromTicks((long)(Stopwatch.GetTimestamp() * (10_000_000d / Stopwatch.Frequency)));
+
+    private void ReportFirstFrameCaptured()
+    {
+        if (_firstFrameReported)
+        {
+            return;
+        }
+
+        _firstFrameReported = true;
+        try
+        {
+            _options.FirstFrameCaptured?.Invoke();
+        }
+        catch (Exception)
+        {
+            // The notification is advisory; a failing observer must not stop the recording.
+        }
     }
 
     private async Task EncodeLoopAsync()

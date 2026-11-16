@@ -24,6 +24,48 @@ public sealed class RawFrameRecordingPipelineTests
     }
 
     [Fact]
+    public void FirstFrameCaptured_IsReportedOnceAfterTheFirstCapture_AndAFailingObserverDoesNotStopRecording()
+    {
+        using var writer = new CollectingWriter();
+        using var capture = new StaticFrameCapture([1, 2, 3, 4]);
+        var calls = 0;
+        using var pipeline = new RawFrameRecordingPipeline(
+            writer,
+            new RawFrameRecordingOptions(new PixelBounds(0, 0, 1, 1), 50, () => ReadOnlyMemory<PixelBounds>.Empty, FirstFrameCaptured: () =>
+            {
+                calls++;
+                throw new InvalidOperationException("observer failed");
+            }),
+            capture);
+
+        Assert.True(writer.FirstFrameWritten.Wait(TimeSpan.FromSeconds(10)));
+        Assert.True(writer.Frames.Count >= 1);
+        pipeline.Stop(TimeSpan.FromMilliseconds(200));
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void FrameDropped_ReportsEachDroppedFrameWithItsDueTimeAndOnePeriodDuration()
+    {
+        using var writer = new BlockingWriter();
+        using var capture = new StaticFrameCapture([1, 2, 3, 4]);
+        var drops = new System.Collections.Concurrent.ConcurrentQueue<(TimeSpan Start, TimeSpan Duration)>();
+        using var pipeline = new RawFrameRecordingPipeline(
+            writer,
+            new RawFrameRecordingOptions(new PixelBounds(0, 0, 1, 1), 50, () => ReadOnlyMemory<PixelBounds>.Empty, BufferPoolSize: 1, FrameDropped: (start, duration) => drops.Enqueue((start, duration))),
+            capture);
+
+        Assert.True(SpinWait.SpinUntil(() => drops.Count >= 3, TimeSpan.FromSeconds(10)));
+        writer.Release.Set();
+        pipeline.Stop(TimeSpan.FromMilliseconds(100));
+
+        var list = drops.ToList();
+        Assert.All(list, drop => Assert.InRange(drop.Duration.TotalMilliseconds, 19.9, 20.1));
+        Assert.True(list[1].Start > list[0].Start);
+    }
+
+    [Fact]
     public void Pipeline_PixelatesRedactionsBeforeWritingFrames()
     {
         using var writer = new CollectingWriter();
@@ -47,6 +89,15 @@ public sealed class RawFrameRecordingPipelineTests
     {
         var offset = ((y * width) + x) * 4;
         return frame[offset..(offset + 4)];
+    }
+
+    private sealed class BlockingWriter : IRawFrameWriter, IDisposable
+    {
+        public ManualResetEventSlim Release { get; } = new();
+
+        public void WriteFrame(byte[] frameData) => Release.Wait(TimeSpan.FromSeconds(10));
+
+        public void Dispose() => Release.Dispose();
     }
 
     private sealed class CollectingWriter : IRawFrameWriter, IDisposable

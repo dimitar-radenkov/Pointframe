@@ -352,6 +352,7 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         _telemetry.TrackEvent(TelemetryEvents.RecordingStarted, new Dictionary<string, string>
         {
             [TelemetryPropertyKeys.Type] = "whole_screen",
+            [TelemetryPropertyKeys.SystemAudio] = recorder.IsRecordingSystemAudio ? "true" : "false",
         });
 
         _services.GetRequiredService<IMicrophoneWarningService>().ReportIfUnavailable(recorder.IsRecordingMicrophoneEnabled);

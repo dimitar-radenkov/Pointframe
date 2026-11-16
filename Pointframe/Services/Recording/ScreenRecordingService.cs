@@ -14,6 +14,10 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private readonly IRawFrameCapture? _frameCapture;
     private readonly ITelemetryService _telemetry;
     private readonly RecordingRecovery _recovery;
+    private readonly Func<ISystemAudioCaptureService>? _systemAudioFactory;
+    private ISystemAudioCaptureService? _systemAudio;
+    private readonly ISystemAudioMixer? _systemAudioMixer;
+    private readonly ISystemAudioNoticeService? _systemAudioNotice;
     private IVideoWriter? _writer;
     private RawFrameRecordingPipeline? _pipeline;
     private int _fps;
@@ -23,18 +27,24 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private IRecordingRedactionSession? _redactionSession;
     private string? _outputPath;
     private string? _intermediatePath;
+    private string? _systemAudioWavPath;
+    private string? _systemAudioWavToMix;
+    private bool _systemAudioFailureReported;
+    private bool _videoHasMicrophone;
+    private bool _videoHasMicrophoneToMix;
 
     public bool IsRecording { get; private set; }
     public bool IsPaused { get; private set; }
     public bool IsRecordingMicrophoneEnabled { get; private set; }
     public bool CanToggleMicrophone { get; private set; }
     public bool IsMicrophoneMuted { get; private set; }
+    public bool IsRecordingSystemAudio { get; private set; }
     public RecordingEventTrackSummary? EventTrackSummary { get; private set; }
     public bool LastStopFailed { get; private set; }
     public string? LastStopError { get; private set; }
     public RecordingStopResult LastStopResult { get; private set; } = new(RecordingStopStatus.Failed, null, TimeSpan.Zero);
 
-    public ScreenRecordingService(ILogger<ScreenRecordingService> logger, IMicrophoneDeviceService microphoneDeviceService, IUserSettingsService settings, IVideoWriterFactory writerFactory, IRawFrameCapture? frameCapture = null, ITelemetryService? telemetry = null, RecordingRecovery? recovery = null)
+    public ScreenRecordingService(ILogger<ScreenRecordingService> logger, IMicrophoneDeviceService microphoneDeviceService, IUserSettingsService settings, IVideoWriterFactory writerFactory, IRawFrameCapture? frameCapture = null, ITelemetryService? telemetry = null, RecordingRecovery? recovery = null, Func<ISystemAudioCaptureService>? systemAudioFactory = null, ISystemAudioMixer? systemAudioMixer = null, ISystemAudioNoticeService? systemAudioNotice = null)
     {
         _logger = logger;
         _recovery = recovery ?? new RecordingRecovery(
@@ -45,6 +55,9 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _writerFactory = writerFactory;
         _frameCapture = frameCapture;
         _telemetry = telemetry ?? NullTelemetryService.Instance;
+        _systemAudioFactory = systemAudioFactory;
+        _systemAudioMixer = systemAudioMixer;
+        _systemAudioNotice = systemAudioNotice;
     }
 
     public void Start(int x, int y, int width, int height, string outputPath)
@@ -76,6 +89,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         try
         {
             var microphoneDeviceName = ResolveMicrophoneDeviceName();
+            _videoHasMicrophone = microphoneDeviceName is not null;
             _writer = _writerFactory.Create(width, height, fps, outputPath, microphoneDeviceName);
             _intermediatePath = (_writer as IRecoverableVideoWriter)?.IntermediatePath;
             _microphoneSession = new RecordingMicrophoneSession(_microphoneDeviceService, _logger, microphoneDeviceName);
@@ -85,9 +99,10 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _eventTrack = new RecordingEventTrack(outputPath, _sessionStopwatch);
             _redactionSession = new RecordingRedactionSession(_eventTrack);
             _eventTrack.Write("recording.started", new RecordingEventPayload(CaptureX: x, CaptureY: y, CaptureWidth: width, CaptureHeight: height, FramesPerSecond: fps, IsEnabled: IsRecordingMicrophoneEnabled, IsMuted: IsMicrophoneMuted));
+            StartSystemAudio(outputPath);
             _pipeline = new RawFrameRecordingPipeline(
                 new VideoWriterRawFrameWriter(_writer),
-                new RawFrameRecordingOptions(new PixelBounds(x, y, width, height), fps, () => _redactionSession?.SnapshotPixelBounds() ?? ReadOnlyMemory<PixelBounds>.Empty),
+                new RawFrameRecordingOptions(new PixelBounds(x, y, width, height), fps, () => _redactionSession?.SnapshotPixelBounds() ?? ReadOnlyMemory<PixelBounds>.Empty, FirstFrameCaptured: OnFirstVideoFrameCaptured, FrameDropped: OnVideoFrameDropped),
                 _frameCapture);
             IsRecording = true;
             _logger.LogInformation("Recording started: {W}x{H} @ {Fps}fps (MP4) to {Path}", width, height, fps, outputPath);
@@ -97,6 +112,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             IsRecording = false;
             IsPaused = false;
             ResetMicrophoneFlags();
+            AbortSystemAudio();
             ReportFailure(exception, "start", _writer as IRecordingFailureDiagnostics);
             _pipeline?.Dispose();
             _pipeline = null;
@@ -128,6 +144,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         RawFrameRecordingStatistics? statistics = null;
         Exception? failure = null;
         var phase = "stop";
+        StopSystemAudio();
         var failureDiagnostics = _writer as IRecordingFailureDiagnostics;
         try
         {
@@ -185,7 +202,14 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             }
         }
 
-        FinishStop(failure, phase, failureDiagnostics, elapsed);
+        try
+        {
+            FinishStop(failure, phase, failureDiagnostics, elapsed);
+        }
+        finally
+        {
+            DeleteSystemAudioWav();
+        }
     }
 
     private void FinishStop(Exception? failure, string phase, IRecordingFailureDiagnostics? diagnostics, TimeSpan elapsed)
@@ -198,6 +222,11 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         {
             if (failure is null)
             {
+                if (outputPath is not null)
+                {
+                    MixSystemAudio(outputPath);
+                }
+
                 LastStopResult = new RecordingStopResult(RecordingStopStatus.Complete, outputPath, elapsed);
             }
             else
@@ -217,6 +246,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
 
         if (failure is null && recovered.Remuxed)
         {
+            MixSystemAudio(recovered.FilePath);
             LastStopResult = new RecordingStopResult(RecordingStopStatus.Complete, recovered.FilePath, recovered.Duration);
             return;
         }
@@ -329,6 +359,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         }
 
         _pipeline?.Pause();
+        _systemAudio?.Pause();
         IsPaused = true;
         _eventTrack?.Write("recording.paused", new RecordingEventPayload());
         _logger.LogInformation("Recording paused");
@@ -342,6 +373,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         }
 
         _pipeline?.Resume();
+        _systemAudio?.Resume();
         IsPaused = false;
         _eventTrack?.Write("recording.resumed", new RecordingEventPayload());
         _logger.LogInformation("Recording resumed");
@@ -393,6 +425,198 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     public void Dispose()
     {
         Stop();
+    }
+
+    private void StartSystemAudio(string outputPath)
+    {
+        _systemAudioWavPath = null;
+        _systemAudioWavToMix = null;
+        _systemAudioFailureReported = false;
+        IsRecordingSystemAudio = false;
+        if (_systemAudioFactory is null || !_settings.Current.RecordSystemAudio)
+        {
+            return;
+        }
+
+        var wavPath = SystemAudioMixer.GetWavPath(outputPath);
+        try
+        {
+            _systemAudio = _systemAudioFactory();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "System audio capture service could not be created");
+            ReportSystemAudioFailure("start_failed", "start");
+            return;
+        }
+
+        _systemAudio.CaptureFailed += OnSystemAudioCaptureFailed;
+        if (_systemAudio.TryStart(wavPath, out var failureReason))
+        {
+            _systemAudioWavPath = wavPath;
+            IsRecordingSystemAudio = true;
+            _logger.LogInformation("System audio loopback recording enabled");
+            return;
+        }
+
+        _systemAudio.CaptureFailed -= OnSystemAudioCaptureFailed;
+        ReleaseSystemAudio();
+        ReportSystemAudioFailure(failureReason ?? "start_failed", "start");
+    }
+
+    // The video timeline starts at the first captured frame (frame-count timestamps), so that instant is the audio origin.
+    private void OnVideoFrameDropped(TimeSpan start, TimeSpan duration)
+    {
+        _systemAudio?.ExcludeSpan(start, duration);
+    }
+
+    private void OnFirstVideoFrameCaptured()
+    {
+        _systemAudio?.BeginTimeline();
+    }
+
+    private void OnSystemAudioCaptureFailed(string reason)
+    {
+        IsRecordingSystemAudio = false;
+        ReportSystemAudioFailure(reason, "capture");
+    }
+
+    private void ReportSystemAudioFailure(string reason, string phase)
+    {
+        if (_systemAudioFailureReported)
+        {
+            return;
+        }
+
+        _systemAudioFailureReported = true;
+        try
+        {
+            _systemAudioNotice?.ReportUnavailable(reason, phase);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Could not report that system audio is unavailable");
+        }
+    }
+
+    private void StopSystemAudio()
+    {
+        _videoHasMicrophoneToMix = _videoHasMicrophone;
+        _videoHasMicrophone = false;
+        IsRecordingSystemAudio = false;
+        _systemAudioWavToMix = null;
+        if (_systemAudioWavPath is null || _systemAudio is null)
+        {
+            return;
+        }
+
+        _systemAudio.CaptureFailed -= OnSystemAudioCaptureFailed;
+        var wavPath = _systemAudioWavPath;
+        _systemAudioWavPath = null;
+        SystemAudioStopResult result;
+        try
+        {
+            result = _systemAudio.Stop();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "System audio could not be stopped");
+            result = new SystemAudioStopResult(null, "stop_failed");
+        }
+
+        ReleaseSystemAudio();
+
+        if (result.HasAudio)
+        {
+            _systemAudioWavToMix = result.WavPath;
+            return;
+        }
+
+        ReportSystemAudioFailure(result.FailureReason ?? "capture_failed", "capture");
+        DeleteSystemAudioWav(wavPath);
+    }
+
+    private void AbortSystemAudio()
+    {
+        _videoHasMicrophone = false;
+        IsRecordingSystemAudio = false;
+        var wavPath = _systemAudioWavPath;
+        _systemAudioWavPath = null;
+        if (_systemAudio is null || wavPath is null)
+        {
+            return;
+        }
+
+        _systemAudio.CaptureFailed -= OnSystemAudioCaptureFailed;
+        try
+        {
+            _systemAudio.Stop();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "System audio could not be stopped after a failed start");
+        }
+
+        ReleaseSystemAudio();
+
+        DeleteSystemAudioWav(wavPath);
+    }
+
+    private void ReleaseSystemAudio()
+    {
+        var audio = _systemAudio;
+        _systemAudio = null;
+        try
+        {
+            audio?.Dispose();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogDebug(exception, "System audio capture service dispose failed");
+        }
+    }
+
+    private void MixSystemAudio(string videoPath)
+    {
+        var wavPath = _systemAudioWavToMix;
+        if (wavPath is null || _systemAudioMixer is null || !File.Exists(wavPath))
+        {
+            return;
+        }
+
+        var mixed = false;
+        try
+        {
+            mixed = _systemAudioMixer.TryMix(videoPath, wavPath, _videoHasMicrophoneToMix);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "System audio mix threw; the recording was kept without system audio");
+        }
+
+        if (!mixed)
+        {
+            ReportSystemAudioFailure("mix_failed", "mix");
+        }
+    }
+
+    private void DeleteSystemAudioWav(string? path = null)
+    {
+        path ??= _systemAudioWavToMix;
+        _systemAudioWavToMix = null;
+        if (path is null)
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogDebug(exception, "Could not delete the system audio WAV {Path}", path);
+        }
     }
 
     private void ResetMicrophoneFlags()

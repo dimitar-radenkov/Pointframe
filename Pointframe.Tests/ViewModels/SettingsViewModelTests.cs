@@ -386,6 +386,34 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void DefaultSettings_RecordSystemAudio_IsDisabled()
+    {
+        var vm = CreateVm();
+
+        Assert.False(vm.RecordSystemAudio);
+        Assert.False(new UserSettings().RecordSystemAudio);
+    }
+
+    [Fact]
+    public void Save_PersistsRecordSystemAudio_AndRestoreDefaultsTurnsItOff()
+    {
+        var mock = new Mock<IUserSettingsService>();
+        mock.SetupGet(s => s.Current).Returns(new UserSettings());
+        UserSettings? saved = null;
+        mock.Setup(s => s.Save(It.IsAny<UserSettings>())).Callback<UserSettings>(s => saved = s);
+        var vm = new SettingsViewModel(mock.Object, Mock.Of<IThemeService>(), Mock.Of<IDialogService>(), CreateMicrophoneDeviceService());
+        vm.RecordSystemAudio = true;
+
+        vm.SaveCommand.Execute(null);
+        Assert.True(saved?.RecordSystemAudio);
+
+        vm.RestoreDefaultsCommand.Execute(null);
+        Assert.False(vm.RecordSystemAudio);
+        vm.SaveCommand.Execute(null);
+        Assert.False(saved?.RecordSystemAudio);
+    }
+
+    [Fact]
     public void LoadsFromSettings_RecordingMicrophoneDeviceName()
     {
         var vm = CreateVm(new UserSettings { RecordingMicrophoneDeviceName = "USB Mic" });

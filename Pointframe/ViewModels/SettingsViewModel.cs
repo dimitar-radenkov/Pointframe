@@ -117,6 +117,7 @@ public partial class SettingsViewModel : ObservableObject
         _autoSaveScreenshots = s.AutoSaveScreenshots;
         _recordingOutputPath = s.RecordingOutputPath;
         _recordMicrophone = s.RecordMicrophone;
+        _recordSystemAudio = s.RecordSystemAudio;
         _recordingTranscriptEnabled = s.RecordingTranscriptEnabled;
         _selectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(s.RecordingMicrophoneDeviceName);
         _gifFps = s.GifFps;
@@ -221,6 +222,9 @@ public partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanEnableTranscript))]
     [NotifyPropertyChangedFor(nameof(TranscriptStatusText))]
     private bool _recordMicrophone;
+
+    [ObservableProperty]
+    private bool _recordSystemAudio;
 
     [ObservableProperty]
     private bool _recordingTranscriptEnabled;
@@ -612,6 +616,7 @@ public partial class SettingsViewModel : ObservableObject
             AutoSaveScreenshots = AutoSaveScreenshots,
             RecordingOutputPath = RecordingOutputPath,
             RecordMicrophone = RecordMicrophone,
+            RecordSystemAudio = RecordSystemAudio,
             RecordingMicrophoneDeviceName = SelectedMicrophoneDeviceName,
             RecordingTranscriptEnabled = RecordingTranscriptEnabled,
             RecordingFps = _recordingFps,
@@ -842,6 +847,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         RecordingOutputPath = defaults.RecordingOutputPath;
         RecordMicrophone = defaults.RecordMicrophone;
+        RecordSystemAudio = defaults.RecordSystemAudio;
         RecordingTranscriptEnabled = defaults.RecordingTranscriptEnabled;
         SelectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(defaults.RecordingMicrophoneDeviceName);
         GifFps = defaults.GifFps;

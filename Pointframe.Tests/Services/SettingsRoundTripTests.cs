@@ -105,6 +105,7 @@ public sealed class SettingsRoundTripTests : IDisposable
             AutoSaveScreenshots = false,
             RecordingOutputPath = @"C:\changed\videos",
             RecordMicrophone = false,
+            RecordSystemAudio = true,
             RecordingMicrophoneDeviceName = "Changed Mic",
             RecordingFps = 60,
             GifFps = 15,
