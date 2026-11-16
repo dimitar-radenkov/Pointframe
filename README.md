@@ -108,7 +108,7 @@ Discovery, capture, OCR and recording commands print one JSON line on standard o
 
 ## Privacy and telemetry
 
-Official release builds of the CLI and the MCP server send anonymous usage counts (command or tool name, outcome, duration bucket, `host`, MCP client type, version, a random install ID), never screenshots, text or paths. Opt out with `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1`; this applies to the CLI and the MCP server only. The desktop app's official builds send the events listed in [PRIVACY.md](PRIVACY.md), which holds the full policy; source builds send nothing.
+Official release builds of the CLI and the MCP server send anonymous usage counts (command or tool name, outcome, a fixed `error_code` category when it fails, duration bucket, `host`, MCP client type, version, a random install ID), never screenshots, text or paths. Opt out with `POINTFRAME_TELEMETRY_OPTOUT=1` or `DO_NOT_TRACK=1`; this applies to the CLI and the MCP server only. The desktop app's official builds send the events listed in [PRIVACY.md](PRIVACY.md), which holds the full policy; source builds send nothing.
 
 ## Links
 

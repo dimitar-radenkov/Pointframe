@@ -17,14 +17,14 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 
 ## CLI and MCP operation telemetry
 
-**Responsibility.** Emit the `agent_operation` event, which is deliberately outside `TelemetryEvents` and the desktop catalog. Count which MCP tools and CLI commands are used, how they end, and by how many installs, without content or personal identity. Allowlist only name, outcome, duration bucket, host, version, and a random install ID ([D-015](#d-015-agent-telemetry-carries-a-random-install-id)); no content, arguments, raw errors, user or machine names; a visible first-run notice and a reliable opt-out.
+**Responsibility.** Emit the `agent_operation` event, which is deliberately outside `TelemetryEvents` and the desktop catalog. Count which MCP tools and CLI commands are used, how they end, and by how many installs, without content or personal identity. Allowlist only name, outcome, a bounded error code on failures, duration bucket, host, version, and a random install ID ([D-015](#d-015-agent-telemetry-carries-a-random-install-id)); no content, arguments, raw errors, user or machine names; a visible first-run notice and a reliable opt-out.
 
 **Key types.**
 
 | Type | Role |
 |---|---|
 | `Pointframe.Telemetry` project | Shared by `Pointframe.Cli` and `Pointframe.Mcp`; references only Azure Monitor exporter and OpenTelemetry, never WPF |
-| `TelemetryAllowlist` | Fixed command and tool names (unknown becomes `other`), outcome names, duration buckets (`lt_1s`, `1_5s`, `5_30s`, `gt_30s`), and the MCP client mapping |
+| `TelemetryAllowlist` | Fixed command and tool names (unknown becomes `other`), outcome names, the closed `error_code` set (`ErrorCode` maps anything else to `other`; `ErrorCodeFor(Exception)` maps IO, network, timeout, access and cancellation exceptions to categories), duration buckets (`lt_1s`, `1_5s`, `5_30s`, `gt_30s`), and the MCP client mapping |
 | `TelemetryPreferences` | Opt-out from `POINTFRAME_TELEMETRY_OPTOUT`, `DO_NOT_TRACK`, or `agent-telemetry.json` (`{"optOut": true}`) in the Pointframe data directory; the notice-shown marker file; the `agent-install-id` file (created on the first tracked run, deleted on opt-out) |
 | `OperationTelemetryFactory` | Returns a no-op when the connection string is empty or the user opted out; otherwise shows the notice once and returns `OperationTelemetry` |
 | `OperationTelemetry` | Emits `agent_operation` on a pool thread through the same OpenTelemetry log pipeline as the desktop app; `Flush` waits at most two seconds |
@@ -33,7 +33,7 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 
 **Invariants.**
 
-- The event carries exactly `name`, `outcome`, `duration_bucket`, `host`, `version`, `agent_install_id` when the ID file is usable, and for MCP `client`. The key is not `install_id`, because `scripts/usage-report.ps1` counts that key as a desktop install. A change to what the notice says bumps `TelemetryPreferences.NoticeFileName`, so every user sees the new notice once. The README and `website/privacy.html` list every key declared in `OperationTelemetry.cs`; `scripts/check-agent-discovery.ps1` fails when one is missing.
+- The event carries exactly `name`, `outcome`, `error_code` (only when `outcome` is not `success`, always an allowlisted value or `other`, [D-020](#d-020-failing-agent-operations-carry-a-bounded-error-category)), `duration_bucket`, `host`, `version`, `agent_install_id` when the ID file is usable, and for MCP `client`. The key is not `install_id`, because `scripts/usage-report.ps1` counts that key as a desktop install. A change to what the notice says bumps `TelemetryPreferences.NoticeFileName`, so every user sees the new notice once. The README and `website/privacy.html` list every key declared in `OperationTelemetry.cs`; `scripts/check-agent-discovery.ps1` fails when one is missing.
 - `outcome` is one of `success`, `error`, `cancelled`, `denied`, `verification_failed`, `invalid_request` ([D-017](#d-017-agent-outcomes-separate-failing-verdicts-and-invalid-input)). Classify from typed provenance, never from the exit code alone: `verification_failed` only when the checks ran against the app and the verdict is negative or not fresh; for scenarios that means every failed step has a code on the allowlist `DesktopScenarioRunner.VerificationResultCodes` (`ElementNotFound` and `NoVisibleWindow` only when the last observation succeeded), so an unknown code is an `error`; `invalid_request` only for recognized invalid input; infrastructure failures (gate not started, provider or I/O exceptions the scenario runner swallows, failed report read or cleanup, a session that did not start) stay `error` even when the verdict is fail, and so does anything unresolved. Exit codes and MCP results never change for telemetry.
 - One scenario restart step counts as one `desktop_restart_app` call from the release that ships [D-017](#d-017-agent-outcomes-separate-failing-verdicts-and-invalid-input): the runner marks wait polls, and only a marked call refused with `TargetStillRunning` is dropped. When the last poll ends after the deadline, the runner makes one final unmarked (counted) attempt, so a failed wait emits exactly one error event; and a cancelled wait emits none (the CLI `verify` event records `cancelled`). Direct agent calls are always counted. Older versions count every poll.
 - The resource is empty plus `service.name` (`Pointframe.Cli` or `Pointframe.Mcp`) and a constant `service.instance.id` (`cli` or `mcp`). Offline storage is disabled so nothing outlives an opt-out.
@@ -41,6 +41,8 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 - Telemetry never blocks or fails a tool call: `Track` queues work, every telemetry path catches its own exceptions, and the CLI and MCP host flush with a short timeout on exit.
 - Standard output carries only protocol or command output. The notice goes to standard error, and once into the MCP server instructions. `help` and `version` are not tracked.
 - The desktop app keeps its own pipeline and event catalog; this one is independent of `TelemetryEvents`.
+
+- The `error_code` comes from typed provenance only: the MCP result's structured `error` code (`McpTelemetryFilter.ErrorCodeOf`), the CLI's own codes (`CliApplication.ErrorCode`, `McpManagementApplication.ErrorCode`, `VerificationApplication.ErrorCode`, set at the failure site such as `RefuseServeAsync`, `ErrorAsync`, the gate `infrastructure_failure`, `mcp_exited`), or an exception category. A new typed code that should be reported joins `TelemetryAllowlist._errorCodes`, otherwise it is exported as `other`.
 
 **Tests.** `OperationTelemetryTests` captures the exported properties with a fake exporter, proves zero requests when opted out against a loopback listener, and inspects the real exporter payload. `McpTelemetryTests` hosts the real executable with telemetry on and asserts stdout is JSON-RPC only; it also holds the tool annotation contract (every tool has a title and explicit `readOnlyHint` and `destructiveHint`) and the allowlist-versus-advertised-tools check.
 
@@ -107,3 +109,15 @@ The first-run welcome is documented under [F-43](tray.md#first-run-welcome). Its
 **Alternatives rejected.** Five values (`stale`, `unavailable`, `precondition_failed` too): no decision needs them yet. Classifying by exit code: exit 2 includes I/O failures, and provider exceptions surface as failed scenarios. Collapsing poll bursts in the report: events carry no correlation ID. A server-side held poll: shared state broke under parallel calls and changed the restart deadline. Opting trials out of telemetry: loses QA evidence.
 
 **Files.** `Pointframe.Telemetry/TelemetryContracts.cs`, `Pointframe.Telemetry/InvalidRequestCodes.cs`, `Pointframe.Cli/Verification/VerificationApplication.cs`, `Pointframe.Cli/Verification/DesktopScenarioRunner.cs`, `Pointframe.Mcp/McpTelemetryFilter.cs`, `scripts/usage-report.ps1`.
+
+## D-020 Failing agent operations carry a bounded error category
+
+**Decided.** 2026-11-16, by the owner. Notice v4.
+
+**Context.** In 30 days the first four external agent users produced errors the event could not explain: one user retried `mcp serve` twelve times about eight seconds apart and then abandoned MCP, and MCP users hit `capture_window` errors. `outcome=error` alone does not say whether the cause is the spec, the install, the target window, or a timeout.
+
+**Decision.** One new key, `error_code`, sent only when `outcome` is not `success`. Its value is from a closed allowlist (`TelemetryAllowlist`) of typed codes the code already produces (MCP structured error codes, the CLI capture, install, verify and `mcp serve` codes, and exception categories such as `io_error`, `network_error`, `timeout`); anything else, including any message text, is `other`. Exception type names are not sent. Exit codes, MCP results, and outcome classification do not change.
+
+**Alternatives rejected.** Sending the exception type name or a message prefix: an open set that can carry paths. Parsing messages to guess a code: brittle and unbounded; failure sites that had no code now set a constant instead.
+
+**Files.** `Pointframe.Telemetry/TelemetryAllowlist.cs`, `Pointframe.Telemetry/OperationTelemetry.cs`, `Pointframe.Mcp/McpTelemetryFilter.cs`, `Pointframe.Cli/Application/CliApplication.cs`, `Pointframe.Cli/Verification/VerificationApplication.cs`, `Pointframe.Cli/Verification/DesktopToolsApplication.cs`, `Pointframe.Cli/McpManagement/McpManagementApplication.cs`, `website/privacy.html`, `PRIVACY.md`.

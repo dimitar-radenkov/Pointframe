@@ -31,6 +31,64 @@ public sealed class CliTelemetryTests
         Assert.Equal(2, exitCode);
         var tracked = Assert.Single(telemetry.Tracked);
         Assert.Equal(("other", TelemetryOutcome.InvalidRequest), (tracked.Name, tracked.Outcome));
+        Assert.Equal("InvalidRequest", Assert.Single(telemetry.ErrorCodes));
+    }
+
+    [Fact]
+    public async Task RunAsync_ForASuccessfulCommand_TracksNoErrorCode()
+    {
+        var telemetry = new RecordingTelemetry();
+
+        await CliApplication.RunAsync(["displays"], new StringWriter(), new StringWriter(), CancellationToken.None, telemetry);
+
+        Assert.Null(Assert.Single(telemetry.ErrorCodes));
+    }
+
+    [Fact]
+    public async Task RunAsync_McpServeThatFailsToStart_TracksItsTypedCodeAndNotTheMessage()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PointframeCliTelemetryTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var telemetry = new RecordingTelemetry();
+            var error = new StringWriter();
+
+            var exitCode = await CliApplication.RunAsync(["mcp", "serve", "--project", directory], new StringWriter(), error, CancellationToken.None, telemetry);
+
+            Assert.Equal(1, exitCode);
+            Assert.Equal("mcp", Assert.Single(telemetry.Tracked).Name);
+            var code = Assert.Single(telemetry.ErrorCodes);
+            Assert.Equal("spec_invalid", code);
+            Assert.Equal(code, TelemetryAllowlist.ErrorCode(code));
+            Assert.DoesNotContain(directory, code, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(typeof(ArgumentException), "target_not_found")]
+    [InlineData(typeof(InvalidOperationException), "target_not_capturable")]
+    [InlineData(typeof(IOException), "io_error")]
+    [InlineData(typeof(HttpRequestException), "network_error")]
+    [InlineData(typeof(UnauthorizedAccessException), "access_denied")]
+    [InlineData(typeof(TimeoutException), "timeout")]
+    [InlineData(typeof(NotSupportedException), "capture_failed")]
+    public async Task CaptureFailure_ExposesAClosedCodeNeverTheMessage(Type exceptionType, string expected)
+    {
+        var capture = new Mock<IDirectCaptureService>();
+        capture
+            .Setup(service => service.CaptureMonitorAsync(It.IsAny<string>(), It.IsAny<CaptureRegion?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync((Exception)Activator.CreateInstance(exceptionType, @"C:\Users\someone\secret.png")!);
+        var application = new CliApplication(capture.Object, new Mock<IDirectRecordingService>().Object, new StringWriter(), new StringWriter());
+
+        await application.RunAsync(["capture", "--monitor", @"\.\DISPLAY1"]);
+
+        Assert.Equal(expected, application.ErrorCode);
+        Assert.Equal(expected, TelemetryAllowlist.ErrorCode(application.ErrorCode));
     }
 
     [Theory]
@@ -128,6 +186,8 @@ public sealed class CliTelemetryTests
 
         Assert.Equal(1, exitCode);
         Assert.Equal(expected, application.Outcome);
+        Assert.Equal(code, application.ErrorCode);
+        Assert.Equal(code, TelemetryAllowlist.ErrorCode(application.ErrorCode));
     }
 
     [Fact]
@@ -152,16 +212,22 @@ public sealed class CliTelemetryTests
     {
         public List<(string Name, TelemetryOutcome Outcome)> Tracked { get; } = [];
 
+        public List<string?> ErrorCodes { get; } = [];
+
         public int Flushes { get; private set; }
 
-        public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null) => Tracked.Add((name, outcome));
+        public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null, string? errorCode = null)
+        {
+            Tracked.Add((name, outcome));
+            ErrorCodes.Add(errorCode);
+        }
 
         public void Flush() => Flushes++;
     }
 
     private sealed class ThrowingTelemetry : IOperationTelemetry
     {
-        public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null) => throw new InvalidOperationException("telemetry failure");
+        public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null, string? errorCode = null) => throw new InvalidOperationException("telemetry failure");
 
         public void Flush()
         {

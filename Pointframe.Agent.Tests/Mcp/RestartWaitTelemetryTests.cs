@@ -338,7 +338,7 @@ public sealed class RestartWaitTelemetryTests : IDisposable
             }
         }
 
-        public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null)
+        public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null, string? errorCode = null)
         {
             lock (_gate)
             {

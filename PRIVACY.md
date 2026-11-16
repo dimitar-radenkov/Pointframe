@@ -12,6 +12,7 @@ This policy covers the Pointframe desktop app, the Pointframe CLI, the Pointfram
 |---|---|
 | `name` | the MCP tool or CLI command, from a fixed list; anything else is `other` |
 | `outcome` | `success`, `error`, `cancelled`, `denied`, `verification_failed`, or `invalid_request` (never an error message) |
+| `error_code` | only when `outcome` is not `success`: a category from a fixed list of typed failure codes (for example `target_not_found`, `ElementNotFound`, `timeout`, `io_error`), or `other`; never the error message |
 | `duration_bucket` | `lt_1s`, `1_5s`, `5_30s`, or `gt_30s` |
 | `host` | `cli` or `mcp` |
 | `client` (MCP only) | `claude-desktop`, `claude-code`, `codex`, `vscode`, `cursor`, or `other` |

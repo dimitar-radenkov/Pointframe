@@ -177,6 +177,32 @@ public sealed class McpTelemetryTests
         Assert.Equal(TelemetryOutcome.Success, McpTelemetryFilter.Classify(Typed(succeeded)));
     }
 
+    [Theory]
+    [InlineData("SessionNotFound")]
+    [InlineData("ElementNotFound")]
+    [InlineData("TargetStillRunning")]
+    public void ErrorCodeOf_TypedDesktopFailure_IsTheAllowlistedCode(string code)
+    {
+        var result = Typed(DesktopAction(code));
+
+        var raw = McpTelemetryFilter.ErrorCodeOf(result);
+
+        Assert.Equal(code, raw);
+        Assert.Equal(code, TelemetryAllowlist.ErrorCode(raw));
+    }
+
+    [Fact]
+    public void ErrorCodeOf_UnknownCodeAndFreeText_NeverLeaveAsAnything_ButOther()
+    {
+        var unknown = Typed(DesktopAction("SomethingNobodyListed"));
+        var message = new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = @"Could not read C:\Users\someone\secret.png" }] };
+        var success = Typed(DesktopAction(null));
+
+        Assert.Equal("other", TelemetryAllowlist.ErrorCode(McpTelemetryFilter.ErrorCodeOf(unknown)));
+        Assert.Equal("other", TelemetryAllowlist.ErrorCode(McpTelemetryFilter.ErrorCodeOf(message)));
+        Assert.Null(McpTelemetryFilter.ErrorCodeOf(success));
+    }
+
     [Fact]
     public void Classify_CaptureResultWithIsError_IsStillError()
     {
@@ -438,7 +464,7 @@ public sealed class McpTelemetryTests
 
         public int TrackAttempts { get; private set; }
 
-        public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null)
+        public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null, string? errorCode = null)
         {
             TrackAttempts++;
             if (ThrowOnTrack)

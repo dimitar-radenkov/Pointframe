@@ -18,7 +18,7 @@ public enum TelemetryOutcome
 
 public interface IOperationTelemetry
 {
-    void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null);
+    void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null, string? errorCode = null);
 
     void Flush();
 }
@@ -27,7 +27,7 @@ public sealed class NullOperationTelemetry : IOperationTelemetry
 {
     public static NullOperationTelemetry Instance { get; } = new();
 
-    public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null)
+    public void Track(string name, TelemetryOutcome outcome, TimeSpan duration, string? mcpClientName = null, string? errorCode = null)
     {
     }
 

@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Compression;
 using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using OpenTelemetry;
@@ -63,8 +64,9 @@ public sealed class OperationTelemetryTests : IDisposable
 
         var export = Assert.Single(exporter.Exports);
         Assert.Equal(
-            new[] { "agent_install_id", "duration_bucket", "host", "name", "outcome", "version" },
+            new[] { "agent_install_id", "duration_bucket", "error_code", "host", "name", "outcome", "version" },
             export.Properties.Keys.Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal("other", export.Properties["error_code"]);
         Assert.Equal("record", export.Properties["name"]);
         Assert.Equal("cancelled", export.Properties["outcome"]);
         Assert.Equal("gt_30s", export.Properties["duration_bucket"]);
@@ -88,9 +90,58 @@ public sealed class OperationTelemetryTests : IDisposable
 
         var export = Assert.Single(exporter.Exports);
         Assert.Equal(expected, export.Properties["outcome"]);
-        Assert.Equal(
-            new[] { "agent_install_id", "duration_bucket", "host", "name", "outcome", "version" },
-            export.Properties.Keys.Order(StringComparer.Ordinal).ToArray());
+        var keys = new List<string> { "agent_install_id", "duration_bucket", "host", "name", "outcome", "version" };
+        if (outcome != TelemetryOutcome.Success)
+        {
+            keys.Add("error_code");
+        }
+
+        Assert.Equal(keys.Order(StringComparer.Ordinal).ToArray(), export.Properties.Keys.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
+    public void SuccessEvent_HasNoErrorCode_EvenWhenOneIsPassed()
+    {
+        var exporter = new CapturingExporter();
+        var sut = Create(TelemetryHost.Mcp, exporter);
+
+        sut.Track("capture_monitor", TelemetryOutcome.Success, TimeSpan.FromSeconds(2), "claude-code", "ElementNotFound");
+        sut.Flush();
+
+        var export = Assert.Single(exporter.Exports);
+        Assert.False(export.Properties.ContainsKey("error_code"));
+    }
+
+    [Theory]
+    [InlineData("ElementNotFound", "ElementNotFound")]
+    [InlineData("target_not_found", "target_not_found")]
+    [InlineData("invalid_region", "invalid_region")]
+    [InlineData("SomethingNobodyListed", "other")]
+    [InlineData(@"Could not read C:\Users\someone\secret.png", "other")]
+    [InlineData("", "other")]
+    [InlineData(null, "other")]
+    public void FailingEvent_ExportsOnlyAnAllowlistedErrorCode(string? raw, string expected)
+    {
+        var exporter = new CapturingExporter();
+        var sut = Create(TelemetryHost.Mcp, exporter);
+
+        sut.Track("capture_window", TelemetryOutcome.Error, TimeSpan.FromSeconds(2), "claude-code", raw);
+        sut.Flush();
+
+        var export = Assert.Single(exporter.Exports);
+        Assert.Equal(expected, export.Properties["error_code"]);
+    }
+
+    [Fact]
+    public void ErrorCodeFor_MapsExceptionsToAClosedSet_NeverTheirText()
+    {
+        Assert.Equal("io_error", TelemetryAllowlist.ErrorCodeFor(new IOException(@"C:\secret")));
+        Assert.Equal("network_error", TelemetryAllowlist.ErrorCodeFor(new HttpRequestException("host")));
+        Assert.Equal("timeout", TelemetryAllowlist.ErrorCodeFor(new TimeoutException()));
+        Assert.Equal("cancelled", TelemetryAllowlist.ErrorCodeFor(new OperationCanceledException()));
+        Assert.Equal("access_denied", TelemetryAllowlist.ErrorCodeFor(new UnauthorizedAccessException()));
+        Assert.Equal("other", TelemetryAllowlist.ErrorCodeFor(new NotSupportedException("x")));
+        Assert.All(new[] { "io_error", "network_error", "timeout", "cancelled", "access_denied" }, code => Assert.Contains(code, TelemetryAllowlist.ErrorCodes));
     }
 
     [Fact]
@@ -118,16 +169,17 @@ public sealed class OperationTelemetryTests : IDisposable
     }
 
     [Fact]
-    public void Notice_IsV3AndNamesTheTwoNewOutcomes()
+    public void Notice_IsV4AndNamesTheErrorCategory()
     {
         var notices = new List<string>();
         var preferences = new TelemetryPreferences(_directory, _ => null);
-        File.WriteAllText(Path.Combine(_directory, "agent-telemetry-notice-v2"), "1");
+        File.WriteAllText(Path.Combine(_directory, "agent-telemetry-notice-v3"), "1");
 
         _ = OperationTelemetryFactory.Create(TelemetryHost.Cli, "1.2.3", preferences, () => new CapturingExporter(), notices.Add);
 
         var notice = Assert.Single(notices);
-        Assert.Equal("agent-telemetry-notice-v3", TelemetryPreferences.NoticeFileName);
+        Assert.Equal("agent-telemetry-notice-v4", TelemetryPreferences.NoticeFileName);
+        Assert.Contains("error category", notice, StringComparison.Ordinal);
         Assert.Contains("verification_failed", notice, StringComparison.Ordinal);
         Assert.Contains("invalid_request", notice, StringComparison.Ordinal);
     }
