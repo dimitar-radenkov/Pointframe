@@ -42,6 +42,7 @@ public static class TelemetryPropertyKeys
     public const string RecoveredDurationBucket = "recovered_duration_bucket";
     public const string StopReason = "stop_reason";
     public const string State = "state";
+    public const string SystemAudio = "system_audio";
     public const string Success = "success";
     public const string TimeFromInstallMinutes = "time_from_install_minutes";
     public const string TargetVersion = "target_version";
@@ -107,6 +108,7 @@ public static class TelemetryEvents
     public const string SnipCancelled = "snip_cancelled";
     public const string SnipStarted = "snip_started";
     public const string StartupCompleted = "startup_completed";
+    public const string SystemAudioUnavailable = "system_audio_unavailable";
     public const string UnhandledException = "unhandled_exception";
     public const string UpdateAvailable = "update_available";
     public const string UpdateCheckManual = "update_check_manual";
@@ -197,7 +199,7 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.RecordingHudUndoAnnotations] = Product(TelemetryEvents.RecordingHudUndoAnnotations),
             [TelemetryEvents.RecordingCompleted] = Product(TelemetryEvents.RecordingCompleted).WithOptional(TelemetryPropertyKeys.DurationSeconds),
             [TelemetryEvents.RecordingFailed] = Diagnostic(TelemetryEvents.RecordingFailed, TelemetryPropertyKeys.Phase, TelemetryPropertyKeys.Reason, TelemetryPropertyKeys.InnerTypes).WithOptional(TelemetryPropertyKeys.FfmpegExitCode, TelemetryPropertyKeys.Recovered, TelemetryPropertyKeys.RecoveredDurationBucket),
-            [TelemetryEvents.RecordingStarted] = Product(TelemetryEvents.RecordingStarted, TelemetryPropertyKeys.Type),
+            [TelemetryEvents.RecordingStarted] = Product(TelemetryEvents.RecordingStarted, TelemetryPropertyKeys.Type).WithOptional(TelemetryPropertyKeys.SystemAudio),
             [TelemetryEvents.TranscriptCompleted] = Product(TelemetryEvents.TranscriptCompleted, TelemetryPropertyKeys.Success, TelemetryPropertyKeys.DurationSeconds).WithOptional(TelemetryPropertyKeys.SegmentCount, TelemetryPropertyKeys.SkipReason),
             [TelemetryEvents.TranscriptFailed] = Diagnostic(TelemetryEvents.TranscriptFailed, TelemetryPropertyKeys.ExceptionType),
             [TelemetryEvents.SettingsCanceled] = Product(TelemetryEvents.SettingsCanceled),
@@ -212,6 +214,7 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.SnipCancelled] = Product(TelemetryEvents.SnipCancelled, TelemetryPropertyKeys.Type),
             [TelemetryEvents.SnipStarted] = Product(TelemetryEvents.SnipStarted, TelemetryPropertyKeys.Type, TelemetryPropertyKeys.Source),
             [TelemetryEvents.StartupCompleted] = Diagnostic(TelemetryEvents.StartupCompleted, TelemetryPropertyKeys.DurationMilliseconds),
+            [TelemetryEvents.SystemAudioUnavailable] = Diagnostic(TelemetryEvents.SystemAudioUnavailable, TelemetryPropertyKeys.Reason, TelemetryPropertyKeys.Phase),
             [TelemetryEvents.UnhandledException] = Diagnostic(TelemetryEvents.UnhandledException, TelemetryPropertyKeys.ExceptionType).WithOptional(TelemetryPropertyKeys.Context, TelemetryPropertyKeys.LastAction),
             [TelemetryEvents.UpdateAvailable] = Product(TelemetryEvents.UpdateAvailable, TelemetryPropertyKeys.FromVersion, TelemetryPropertyKeys.TargetVersion),
             [TelemetryEvents.UpdateApplied] = Product(TelemetryEvents.UpdateApplied, TelemetryPropertyKeys.FromVersion, TelemetryPropertyKeys.TargetVersion),

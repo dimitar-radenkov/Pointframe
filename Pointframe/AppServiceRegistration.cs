@@ -69,6 +69,9 @@ internal static class AppServiceRegistration
         services.AddSingleton<IRecordingRemuxer, FfmpegRecordingRemuxer>();
         services.AddSingleton<RecordingRecovery>();
         services.AddTransient<IScreenRecordingService, ScreenRecordingService>();
+        services.AddTransient<ISystemAudioCaptureService, WasapiSystemAudioCaptureService>();
+        services.AddSingleton<ISystemAudioMixer, SystemAudioMixer>();
+        services.AddSingleton<ISystemAudioNoticeService, SystemAudioNoticeService>();
         services.AddSingleton<IGifExportService, GifExportService>();
         services.AddSingleton<IVideoTrimService, VideoTrimService>();
         services.AddSingleton<IAudioExtractor, FfmpegAudioExtractor>();

@@ -18,6 +18,7 @@ public interface IScreenRecordingService : IDisposable
     bool IsRecordingMicrophoneEnabled { get; }
     bool CanToggleMicrophone { get; }
     bool IsMicrophoneMuted { get; }
+    bool IsRecordingSystemAudio { get; }
     RecordingEventTrackSummary? EventTrackSummary { get; }
     bool LastStopFailed { get; }
     string? LastStopError { get; }

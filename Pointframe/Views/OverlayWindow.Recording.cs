@@ -61,6 +61,7 @@ public partial class OverlayWindow
         _telemetry.TrackEvent(TelemetryEvents.RecordingStarted, new System.Collections.Generic.Dictionary<string, string>
         {
             [TelemetryPropertyKeys.Type] = "region",
+            [TelemetryPropertyKeys.SystemAudio] = _recorder.IsRecordingSystemAudio ? "true" : "false",
         });
 
         _microphoneWarning.ReportIfUnavailable(_recorder.IsRecordingMicrophoneEnabled);

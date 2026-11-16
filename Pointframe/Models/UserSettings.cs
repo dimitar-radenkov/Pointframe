@@ -15,6 +15,7 @@ public sealed class UserSettings
             "Pointframe", "Videos");
 
     public bool RecordMicrophone { get; set; } = true;
+    public bool RecordSystemAudio { get; set; }
     public string? RecordingMicrophoneDeviceName { get; set; }
     public int RecordingFps { get; set; } = 20;
     public bool RecordingTranscriptEnabled { get; set; } = true;

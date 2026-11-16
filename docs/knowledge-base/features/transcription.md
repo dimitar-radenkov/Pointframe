@@ -12,7 +12,7 @@ Part of the [Pointframe knowledge base](../knowledge-base.md). Read the cross-cu
 
 ## Recording transcription
 
-**Responsibility.** After a recording that captured microphone audio, produce `.srt` and `.txt` transcripts next to the MP4, entirely on the local machine. Nothing is uploaded and no API key exists. English only, narration only: the recorder captures a microphone, never system audio, so a meeting or a played video produces nothing.
+**Responsibility.** After a recording that captured microphone audio, produce `.srt` and `.txt` transcripts next to the MP4, entirely on the local machine. Nothing is uploaded and no API key exists. English only. Transcription runs only for recordings that had microphone audio and reads the finished MP4: a meeting or played video with the microphone off produces nothing, and when "Include system audio" is also on, speech in the mixed system audio is transcribed too ([F-46](recording.md#system-audio-is-captured-to-a-wav-and-mixed-in-at-finalize)).
 
 **Entry points.**
 

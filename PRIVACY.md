@@ -80,7 +80,7 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 
 | Event | Properties |
 |---|---|
-| `recording_started` | `type` (region / whole_screen) |
+| `recording_started` | `type` (region / whole_screen); `system_audio` (true / false) when known |
 | `recording_completed` | `duration_seconds` when available |
 | `recording_failed` | `phase`, `reason`, `inner_types`, and `ffmpeg_exit_code` when known; `recovered` (true when a partial recording was saved, otherwise false), and `recovered_duration_bucket` (a range such as `1-5m`) only when a partial recording was saved |
 | `transcript_completed` | `success`, `duration_seconds`, plus `segment_count` on success or `skip_reason` when skipped |
@@ -96,6 +96,7 @@ Every event below is defined in [`TelemetryEventCatalog.cs`](Pointframe/Services
 | `recording_hud_clear_annotations` | — |
 | `ffmpeg_missing` | — |
 | `microphone_unavailable` | — |
+| `system_audio_unavailable` | `reason` (a fixed code such as start_failed, device_lost, write_failed, mix_failed), `phase` (start / capture / mix) |
 
 **Export and editing**
 

@@ -805,11 +805,15 @@
                                         <TextBlock Text="Record microphone audio alongside the screen capture when a recording starts."
                                                    Style="{StaticResource RowDescription}"/>
                                     </StackPanel>
-                                    <CheckBox Grid.Row="0"
-                                              Grid.Column="1"
-                                              Content="Include microphone audio"
-                                              IsChecked="{Binding RecordMicrophone}"
-                                              VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
+                                        <CheckBox Content="Include microphone audio"
+                                                  IsChecked="{Binding RecordMicrophone}"/>
+                                        <CheckBox Content="Include system audio"
+                                                  ToolTip="Records what Windows plays through the default speakers or headphones, for example the other side of a call. Off by default."
+                                                  IsChecked="{Binding RecordSystemAudio}"
+                                                  Margin="0,8,0,0"
+                                                  AutomationProperties.AutomationId="SettingsWindow.RecordSystemAudio"/>
+                                    </StackPanel>
 
                                     <Border Grid.Row="1"
                                             Grid.ColumnSpan="2"
@@ -854,7 +858,7 @@
 
                                     <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,16,0">
                                         <TextBlock Text="Transcript" Style="{StaticResource RowTitle}"/>
-                                        <TextBlock Text="Writes a .txt and .srt transcript next to the recording. Transcribes your narration only — system audio is not recorded. English speech, transcribed on this machine."
+                                        <TextBlock Text="Writes a .txt and .srt transcript next to the recording. Made from the recording's audio, so it needs microphone audio; speech in system audio is included when both are recorded. English speech, transcribed on this machine."
                                                    Style="{StaticResource RowDescription}"/>
                                     </StackPanel>
                                     <StackPanel Grid.Row="4" Grid.Column="1" VerticalAlignment="Center">

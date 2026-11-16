@@ -46,7 +46,7 @@ The Pointframe tray app is the screenshot and recording tool for people: capture
 - **Cursor highlight** — Configurable glowing ring around the cursor during recording so viewers never lose track of your pointer
 - **Click ripple** — Visual ripple effect on mouse clicks during recording to make interactions obvious
 - **GIF export** — Export any recent recording to GIF directly from the tray's Recent recordings menu (requires ffmpeg)
-- **Recording transcripts** — Automatically transcribe narrated recordings to `.txt` and `.srt` sidecar files. Runs entirely on your machine with Whisper — no cloud, no API key, nothing uploaded. English only; transcribes microphone narration, not system audio
+- **Recording transcripts** — Automatically transcribe narrated recordings to `.txt` and `.srt` sidecar files. Runs entirely on your machine with Whisper — no cloud, no API key, nothing uploaded. English only; needs microphone audio and transcribes the recording's audio, so speech in system audio is included when both are recorded
 - **Capture delay** — Configurable countdown (0 / 3 / 5 / 10 s) before the selection overlay appears, useful for capturing menus and hover states
 - **Auto-updates** — A background service checks GitHub Releases on launch and on a configurable schedule (every 2 hours / 6 hours / 12 hours / day / 2 days / 3 days / never). When a new version is found a tray balloon appears; click it to confirm and install without opening the browser
 - **System tray** — Runs silently in the background; all actions accessible from the tray icon
