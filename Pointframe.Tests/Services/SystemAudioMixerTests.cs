@@ -19,9 +19,9 @@ public sealed class SystemAudioMixerTests : IDisposable
         SystemAudioMixer.BuildArguments(args, "in.mp4", "sys.wav", "out.mp4", videoHasMicrophone: false);
 
         Assert.Equal(["-i", "in.mp4", "-i", "sys.wav"], args.Skip(args.IndexOf("-i")).Take(4));
-        Assert.DoesNotContain("-filter_complex", args);
+        Assert.Equal("[1:a:0]apad[mix]", args[args.IndexOf("-filter_complex") + 1]);
         Assert.Contains("-shortest", args);
-        AssertSequence(args, "-map", "0:v:0", "-map", "1:a:0");
+        AssertSequence(args, "-map", "0:v:0", "-map", "[mix]");
         AssertSequence(args, "-c:v", "copy", "-c:a", "aac");
         Assert.Equal("out.mp4", args[^1]);
     }
@@ -34,7 +34,8 @@ public sealed class SystemAudioMixerTests : IDisposable
         SystemAudioMixer.BuildArguments(args, "in.mp4", "sys.wav", "out.mp4", videoHasMicrophone: true);
 
         var filter = args[args.IndexOf("-filter_complex") + 1];
-        Assert.Contains("[0:a:0][1:a:0]amix=inputs=2", filter);
+        Assert.Contains("[0:a:0]apad[mic];[1:a:0]apad[sys];[mic][sys]amix=inputs=2", filter);
+        Assert.Contains("-shortest", args);
         AssertSequence(args, "-map", "0:v:0", "-map", "[mix]");
         Assert.Equal(1, args.Count(argument => argument == "-c:a"));
         Assert.Equal("out.mp4", args[^1]);
@@ -54,6 +55,63 @@ public sealed class SystemAudioMixerTests : IDisposable
         Assert.False(mixed);
         Assert.Equal([1, 2, 3, 4, 5], File.ReadAllBytes(video));
         Assert.False(File.Exists(SystemAudioMixer.GetTemporaryPath(video)));
+    }
+
+    [Fact]
+    public void TryMix_WhenTheMixedFileIsShorterThanTheOriginal_KeepsTheOriginal()
+    {
+        var (video, wav) = Files();
+        var mixer = new SystemAudioMixer(NullLogger<SystemAudioMixer>.Instance, path => path == video ? TimeSpan.FromSeconds(60) : TimeSpan.FromSeconds(20), WriteTemp);
+
+        var mixed = mixer.TryMix(video, wav, videoHasMicrophone: false);
+
+        Assert.False(mixed);
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(video));
+        Assert.False(File.Exists(SystemAudioMixer.GetTemporaryPath(video)));
+    }
+
+    [Fact]
+    public void TryMix_WhenTheDurationCannotBeRead_KeepsTheOriginal()
+    {
+        var (video, wav) = Files();
+        var mixer = new SystemAudioMixer(NullLogger<SystemAudioMixer>.Instance, _ => null, WriteTemp);
+
+        Assert.False(mixer.TryMix(video, wav, videoHasMicrophone: false));
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(video));
+    }
+
+    [Fact]
+    public void TryMix_WhenTheLengthIsPreserved_ReplacesTheVideo()
+    {
+        var (video, wav) = Files();
+        var mixer = new SystemAudioMixer(NullLogger<SystemAudioMixer>.Instance, _ => TimeSpan.FromSeconds(60.2), WriteTemp);
+
+        Assert.True(mixer.TryMix(video, wav, videoHasMicrophone: false));
+        Assert.Equal([7, 7], File.ReadAllBytes(video));
+        Assert.False(File.Exists(SystemAudioMixer.GetTemporaryPath(video)));
+    }
+
+    [Fact]
+    public void DurationsMatch_AllowsSmallDifferencesOnly()
+    {
+        Assert.True(SystemAudioMixer.DurationsMatch(TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60.5)));
+        Assert.False(SystemAudioMixer.DurationsMatch(TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(58)));
+        Assert.False(SystemAudioMixer.DurationsMatch(null, TimeSpan.FromSeconds(60)));
+    }
+
+    private (string Video, string Wav) Files()
+    {
+        var video = _folder.File("clip.mp4");
+        var wav = _folder.File("clip.wav");
+        File.WriteAllBytes(video, [1, 2, 3]);
+        File.WriteAllBytes(wav, [9]);
+        return (video, wav);
+    }
+
+    private static bool WriteTemp(string video, string wav, string temporary, bool microphone)
+    {
+        File.WriteAllBytes(temporary, [7, 7]);
+        return true;
     }
 
     [Fact]

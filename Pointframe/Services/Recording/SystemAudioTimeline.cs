@@ -1,17 +1,23 @@
 namespace Pointframe.Services;
 
-// Keeps the loopback WAV the same length as the active (unpaused) video timeline.
-// Loopback delivers no data while nothing plays, so the gaps are filled with silence,
-// and data that arrives while the recording is paused is dropped.
+internal readonly record struct SystemAudioSegment(int Offset, int Length);
+
+internal sealed record SystemAudioPacketPlan(long SilenceBytesBefore, SystemAudioSegment Segment);
+
+// Places loopback packets on the active (unpaused) recording timeline by the packet's own capture timestamp,
+// not by when the callback ran. Silence fills real gaps (nothing playing, or audio that starts after the
+// recording did), audio captured during a pause is trimmed away, and packets delivered late in a batch
+// land at their own position instead of piling up behind a false gap. The clock and the packet timestamps
+// share one time base (the QPC clock in production).
 internal sealed class SystemAudioTimeline
 {
-    internal static readonly TimeSpan GapTolerance = TimeSpan.FromMilliseconds(100);
+    internal static readonly TimeSpan GapTolerance = TimeSpan.FromMilliseconds(20);
 
     private readonly int _bytesPerSecond;
     private readonly int _blockAlign;
     private readonly Func<TimeSpan> _clock;
     private readonly TimeSpan _start;
-    private TimeSpan _pausedTotal;
+    private readonly List<(TimeSpan Start, TimeSpan End)> _pauses = [];
     private TimeSpan _pausedAt;
 
     public SystemAudioTimeline(int bytesPerSecond, int blockAlign, Func<TimeSpan> clock)
@@ -31,7 +37,7 @@ internal sealed class SystemAudioTimeline
 
     public long WrittenBytes { get; private set; }
 
-    public TimeSpan ActiveElapsed => (IsPaused ? _pausedAt : _clock()) - _start - _pausedTotal;
+    public TimeSpan ActiveElapsed => ActiveAt(IsPaused ? _pausedAt : _clock());
 
     public void Pause()
     {
@@ -51,34 +57,105 @@ internal sealed class SystemAudioTimeline
             return;
         }
 
-        _pausedTotal += _clock() - _pausedAt;
+        _pauses.Add((_pausedAt, _clock()));
         IsPaused = false;
     }
 
-    // Returns how many bytes of silence to write before the incoming block (0 when the block is dropped or on time),
-    // and whether the block itself should be written. Call RecordWritten with every byte count actually written.
-    public (long SilenceBytes, bool WriteData) PlanBlock(int incomingBytes)
+    // Plans what to write for one packet that was captured starting at packetStart. The plan is committed:
+    // the caller must write the silence and then the segments, in order.
+    public IReadOnlyList<SystemAudioPacketPlan> PlanPacket(TimeSpan packetStart, int packetBytes)
     {
-        if (IsPaused || incomingBytes <= 0)
+        var plans = new List<SystemAudioPacketPlan>();
+        if (packetBytes <= 0)
         {
-            return (0, false);
+            return plans;
         }
 
-        var expectedAtBlockStart = ExpectedBytes(ActiveElapsed) - incomingBytes;
-        var gap = expectedAtBlockStart - WrittenBytes;
-        var toleranceBytes = ExpectedBytes(GapTolerance);
-        return (gap >= toleranceBytes ? gap : 0, true);
-    }
+        var packetEnd = packetStart + DurationOf(packetBytes);
+        var cursor = packetStart > _start ? packetStart : _start;
+        foreach (var (pauseStart, pauseEnd) in PauseIntervals())
+        {
+            if (cursor >= packetEnd)
+            {
+                break;
+            }
 
-    public void RecordWritten(long bytes)
-    {
-        WrittenBytes += bytes;
+            if (pauseStart > cursor)
+            {
+                AddSegment(plans, packetStart, packetBytes, cursor, pauseStart < packetEnd ? pauseStart : packetEnd);
+            }
+
+            if (pauseEnd > cursor)
+            {
+                cursor = pauseEnd;
+            }
+        }
+
+        if (cursor < packetEnd)
+        {
+            AddSegment(plans, packetStart, packetBytes, cursor, packetEnd);
+        }
+
+        return plans;
     }
 
     public long SilenceBytesToFinish()
     {
-        return Math.Max(0, ExpectedBytes(ActiveElapsed) - WrittenBytes);
+        var silence = Math.Max(0, ExpectedBytes(ActiveElapsed) - WrittenBytes);
+        WrittenBytes += silence;
+        return silence;
     }
+
+    private void AddSegment(List<SystemAudioPacketPlan> plans, TimeSpan packetStart, int packetBytes, TimeSpan from, TimeSpan to)
+    {
+        var offset = AlignDown(BytesOf(from - packetStart));
+        var length = Math.Min(AlignDown(BytesOf(to - from)), packetBytes - offset);
+        if (length <= 0)
+        {
+            return;
+        }
+
+        var gap = ExpectedBytes(ActiveAt(from)) - WrittenBytes;
+        var silence = gap >= ExpectedBytes(GapTolerance) ? gap : 0;
+        WrittenBytes += silence + length;
+        plans.Add(new SystemAudioPacketPlan(silence, new SystemAudioSegment(offset, length)));
+    }
+
+    private IEnumerable<(TimeSpan Start, TimeSpan End)> PauseIntervals()
+    {
+        foreach (var pause in _pauses)
+        {
+            yield return pause;
+        }
+
+        if (IsPaused)
+        {
+            yield return (_pausedAt, TimeSpan.MaxValue);
+        }
+    }
+
+    private TimeSpan ActiveAt(TimeSpan time)
+    {
+        var paused = TimeSpan.Zero;
+        foreach (var (pauseStart, pauseEnd) in PauseIntervals())
+        {
+            var from = pauseStart > _start ? pauseStart : _start;
+            var to = pauseEnd < time ? pauseEnd : time;
+            if (to > from)
+            {
+                paused += to - from;
+            }
+        }
+
+        var active = time - _start - paused;
+        return active > TimeSpan.Zero ? active : TimeSpan.Zero;
+    }
+
+    private TimeSpan DurationOf(long bytes) => TimeSpan.FromSeconds((double)bytes / _bytesPerSecond);
+
+    private long BytesOf(TimeSpan duration) => (long)Math.Round(duration.TotalSeconds * _bytesPerSecond);
+
+    private int AlignDown(long bytes) => (int)(bytes - bytes % _blockAlign);
 
     private long ExpectedBytes(TimeSpan elapsed)
     {

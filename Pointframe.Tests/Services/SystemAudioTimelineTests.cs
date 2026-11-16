@@ -7,67 +7,141 @@ public sealed class SystemAudioTimelineTests
 {
     private const int BytesPerSecond = 192000;
     private const int BlockAlign = 8;
+    private const int TenMs = BytesPerSecond / 100;
 
     private TimeSpan _now = TimeSpan.Zero;
 
     private SystemAudioTimeline Create() => new(BytesPerSecond, BlockAlign, () => _now);
 
+    private static TimeSpan Ms(double value) => TimeSpan.FromMilliseconds(value);
+
+    private static long Total(IReadOnlyList<SystemAudioPacketPlan> plans) => plans.Sum(plan => plan.SilenceBytesBefore + plan.Segment.Length);
+
     [Fact]
-    public void PlanBlock_WhenDataArrivesOnTime_NeedsNoSilence()
+    public void PlanPacket_WhenPacketsAreContiguous_NeedsNoSilence()
     {
         var timeline = Create();
-        _now = TimeSpan.FromMilliseconds(10);
+        _now = Ms(30);
 
-        var (silence, write) = timeline.PlanBlock(BytesPerSecond / 100);
+        var first = timeline.PlanPacket(Ms(0), TenMs);
+        var second = timeline.PlanPacket(Ms(10), TenMs);
 
-        Assert.Equal(0, silence);
-        Assert.True(write);
+        Assert.Equal(0, first.Single().SilenceBytesBefore);
+        Assert.Equal(0, second.Single().SilenceBytesBefore);
+        Assert.Equal(2 * TenMs, timeline.WrittenBytes);
     }
 
     [Fact]
-    public void PlanBlock_AfterQuietPeriod_FillsTheGapWithSilence()
+    public void PlanPacket_BatchedPacketsDeliveredLate_DoNotCreateFalseSilence()
     {
         var timeline = Create();
-        _now = TimeSpan.FromSeconds(2);
-        var blockBytes = BytesPerSecond / 10;
+        _now = Ms(200);
 
-        var (silence, write) = timeline.PlanBlock(blockBytes);
+        var plans = Enumerable.Range(0, 10).SelectMany(i => timeline.PlanPacket(Ms(i * 10), TenMs)).ToList();
 
-        Assert.True(write);
-        Assert.Equal(2 * BytesPerSecond - blockBytes, silence);
+        Assert.All(plans, plan => Assert.Equal(0, plan.SilenceBytesBefore));
+        Assert.Equal(10 * TenMs, timeline.WrittenBytes);
+        Assert.Equal(10 * TenMs, Total(plans));
     }
 
     [Fact]
-    public void PlanBlock_GapBelowTolerance_IsNotFilled()
+    public void PlanPacket_WhenNothingPlayedForAWhile_FillsTheRealGapOnce()
     {
         var timeline = Create();
-        _now = TimeSpan.FromMilliseconds(150);
-        var blockBytes = BytesPerSecond / 10;
+        _now = Ms(2100);
+        timeline.PlanPacket(Ms(0), TenMs);
 
-        var (silence, _) = timeline.PlanBlock(blockBytes);
+        var plans = timeline.PlanPacket(Ms(2000), TenMs);
 
-        Assert.Equal(0, silence);
+        Assert.Equal(2000 * BytesPerSecond / 1000 - TenMs, plans.Single().SilenceBytesBefore);
+        Assert.Equal(2010 * BytesPerSecond / 1000, timeline.WrittenBytes);
     }
 
     [Fact]
-    public void Pause_DropsDataAndExcludesPausedTimeFromTheTimeline()
+    public void PlanPacket_WhenAudioStartsAfterTheRecordingStarted_LeadPadsSilence()
     {
         var timeline = Create();
-        _now = TimeSpan.FromSeconds(1);
-        timeline.RecordWritten(BytesPerSecond);
+        _now = Ms(500);
+
+        var plans = timeline.PlanPacket(Ms(400), TenMs);
+
+        Assert.Equal(400 * BytesPerSecond / 1000, plans.Single().SilenceBytesBefore);
+    }
+
+    [Fact]
+    public void PlanPacket_TrimsTheBeginningOfAPacketCapturedBeforeTheRecordingStarted()
+    {
+        _now = Ms(100);
+        var timeline = Create();
+
+        var plans = timeline.PlanPacket(Ms(90), 2 * TenMs);
+
+        var segment = plans.Single().Segment;
+        Assert.Equal(TenMs, segment.Offset);
+        Assert.Equal(TenMs, segment.Length);
+    }
+
+    [Fact]
+    public void PlanPacket_PacketCapturedDuringPauseButDeliveredAfterResume_IsDropped()
+    {
+        _now = Ms(0);
+        var timeline = Create();
+        timeline.PlanPacket(Ms(0), TenMs);
+        _now = Ms(100);
         timeline.Pause();
-        _now = TimeSpan.FromSeconds(11);
-
-        var (silence, write) = timeline.PlanBlock(1000);
-        Assert.False(write);
-        Assert.Equal(0, silence);
-        Assert.Equal(TimeSpan.FromSeconds(1), timeline.ActiveElapsed);
-
+        _now = Ms(1100);
         timeline.Resume();
-        _now = TimeSpan.FromSeconds(12);
+        _now = Ms(1110);
 
-        Assert.Equal(TimeSpan.FromSeconds(2), timeline.ActiveElapsed);
-        Assert.Equal(BytesPerSecond, timeline.SilenceBytesToFinish());
+        var plans = timeline.PlanPacket(Ms(500), TenMs);
+
+        Assert.Empty(plans);
+        Assert.Equal(TenMs, timeline.WrittenBytes);
+    }
+
+    [Fact]
+    public void PlanPacket_PacketStraddlingTheResumeBoundary_KeepsOnlyTheActivePart()
+    {
+        var timeline = Create();
+        timeline.PlanPacket(Ms(0), 10 * TenMs);
+        _now = Ms(100);
+        timeline.Pause();
+        _now = Ms(1000);
+        timeline.Resume();
+        _now = Ms(1020);
+
+        var plans = timeline.PlanPacket(Ms(995), 2 * TenMs);
+
+        var plan = plans.Single();
+        Assert.Equal(5 * BytesPerSecond / 1000, plan.Segment.Offset);
+        Assert.Equal(15 * BytesPerSecond / 1000, plan.Segment.Length);
+        Assert.Equal(0, plan.SilenceBytesBefore);
+    }
+
+    [Fact]
+    public void PlanPacket_PacketStraddlingThePauseBoundary_KeepsOnlyTheActivePart()
+    {
+        var timeline = Create();
+        _now = Ms(100);
+        timeline.Pause();
+
+        var plans = timeline.PlanPacket(Ms(90), 2 * TenMs);
+
+        Assert.Equal(TenMs, Assert.Single(plans).Segment.Length);
+    }
+
+    [Fact]
+    public void ActiveElapsed_ExcludesPausedTime()
+    {
+        var timeline = Create();
+        _now = Ms(1000);
+        timeline.Pause();
+        _now = Ms(11000);
+        Assert.Equal(Ms(1000), timeline.ActiveElapsed);
+        timeline.Resume();
+        _now = Ms(12000);
+
+        Assert.Equal(Ms(2000), timeline.ActiveElapsed);
     }
 
     [Fact]
@@ -75,7 +149,7 @@ public sealed class SystemAudioTimelineTests
     {
         var timeline = Create();
         _now = TimeSpan.FromSeconds(3) + TimeSpan.FromTicks(1);
-        timeline.RecordWritten(BytesPerSecond);
+        timeline.PlanPacket(Ms(0), BytesPerSecond);
 
         var padding = timeline.SilenceBytesToFinish();
 
@@ -87,8 +161,8 @@ public sealed class SystemAudioTimelineTests
     public void SilenceBytesToFinish_WhenAudioIsAlreadyLongEnough_IsZero()
     {
         var timeline = Create();
-        _now = TimeSpan.FromSeconds(1);
-        timeline.RecordWritten(2 * BytesPerSecond);
+        _now = Ms(1000);
+        timeline.PlanPacket(Ms(0), 2 * BytesPerSecond);
 
         Assert.Equal(0, timeline.SilenceBytesToFinish());
     }

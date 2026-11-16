@@ -16,6 +16,7 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
     private readonly Mock<ISystemAudioNoticeService> _notice = new();
     private readonly UserSettings _settings = new() { RecordMicrophone = false };
     private string? _writerMicrophone = "unset";
+    private int _factoryCalls;
 
     public void Dispose() => _folder.Dispose();
 
@@ -27,6 +28,7 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
 
         service.Stop();
 
+        Assert.Equal(0, _factoryCalls);
         Assert.Equal(0, _capture.StartCalls);
         Assert.Empty(_mixer.Calls);
         Assert.False(service.IsRecordingSystemAudio);
@@ -195,7 +197,11 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
             new IdleFrameCapture(),
             null,
             new RecordingRecovery(_remuxer, NullLogger<RecordingRecovery>.Instance),
-            _capture,
+            () =>
+            {
+                _factoryCalls++;
+                return _capture;
+            },
             _mixer,
             _notice.Object);
     }
