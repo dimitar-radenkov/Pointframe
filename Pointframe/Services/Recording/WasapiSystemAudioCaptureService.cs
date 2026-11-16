@@ -68,6 +68,7 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
     private WaveFileWriter? _writer;
     private SystemAudioTimeline? _timeline;
     private WaveFormat? _format;
+    private bool _pauseRequested;
     private string? _wavPath;
     private string? _failureReason;
     private bool _stopping;
@@ -114,6 +115,11 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
             }
 
             _timeline = new SystemAudioTimeline(_format.AverageBytesPerSecond, _format.BlockAlign, _clock, _clock());
+            if (_pauseRequested)
+            {
+                // The recording was paused before the first frame set the origin; audio stays out until resume.
+                _timeline.Pause();
+            }
         }
     }
 
@@ -137,6 +143,7 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
                 _stopping = false;
                 _format = format;
                 _timeline = null;
+                _pauseRequested = false;
                 _source.PacketAvailable += OnPacket;
                 _source.Stopped += OnStopped;
                 _source.Start();
@@ -159,6 +166,7 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
     {
         lock (_gate)
         {
+            _pauseRequested = true;
             _timeline?.Pause();
         }
     }
@@ -167,6 +175,7 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
     {
         lock (_gate)
         {
+            _pauseRequested = false;
             _timeline?.Resume();
         }
     }

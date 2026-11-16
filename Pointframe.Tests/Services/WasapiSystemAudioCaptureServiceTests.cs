@@ -186,6 +186,56 @@ public sealed class WasapiSystemAudioCaptureServiceTests : IDisposable
     }
 
     [Fact]
+    public void Pause_BeforeBeginTimeline_KeepsAudioOutUntilResume()
+    {
+        var source = new FakeSource();
+        var service = Create(source);
+        Assert.True(service.TryStart(_folder.File("p1.wav"), out _));
+        service.Pause();
+        service.BeginTimeline();
+        var origin = _now;
+        var data = Enumerable.Repeat((byte)1, Format.AverageBytesPerSecond / 100).ToArray();
+        _now = origin + TimeSpan.FromMilliseconds(500);
+        source.Raise(data, false, true, _now - TimeSpan.FromMilliseconds(10));
+        service.Resume();
+        _now = origin + TimeSpan.FromMilliseconds(520);
+        source.Raise(data, false, true, _now - TimeSpan.FromMilliseconds(10));
+        _now = origin + TimeSpan.FromMilliseconds(1020);
+
+        var result = service.Stop();
+
+        using var reader = new WaveFileReader(result.WavPath!);
+        Assert.InRange(reader.TotalTime.TotalMilliseconds, 495, 525);
+        var all = new byte[reader.Length];
+        reader.ReadExactly(all);
+        Assert.Equal(Format.AverageBytesPerSecond / 100, all.Count(value => value == 1));
+    }
+
+    [Fact]
+    public void PauseAndResume_BothBeforeBeginTimeline_LeaveTheTimelineRunning()
+    {
+        var source = new FakeSource();
+        var service = Create(source);
+        Assert.True(service.TryStart(_folder.File("p2.wav"), out _));
+        service.Pause();
+        service.Resume();
+        service.BeginTimeline();
+        var origin = _now;
+        var data = Enumerable.Repeat((byte)1, Format.AverageBytesPerSecond / 100).ToArray();
+        _now = origin + TimeSpan.FromMilliseconds(10);
+        source.Raise(data, false, true, origin);
+        _now = origin + TimeSpan.FromSeconds(1);
+
+        var result = service.Stop();
+
+        using var reader = new WaveFileReader(result.WavPath!);
+        Assert.InRange(reader.TotalTime.TotalSeconds, 0.99, 1.01);
+        var all = new byte[reader.Length];
+        reader.ReadExactly(all);
+        Assert.Equal(Format.AverageBytesPerSecond / 100, all.Count(value => value == 1));
+    }
+
+    [Fact]
     public void WriterOptions_EnableRf64SoLongRecordingsPastFourGigabytesSurvive()
     {
         Assert.True(WasapiSystemAudioCaptureService.CreateWriterOptions().EnableRf64);
