@@ -45,8 +45,9 @@ public sealed class VideoWriterFactoryTests
         }
         finally
         {
-            System.IO.File.Delete(fakeFfmpeg);
-            System.IO.File.Delete(tempPath);
+            // The writer may still be releasing the fake ffmpeg process when Dispose returns (#322).
+            DeleteWithRetry(fakeFfmpeg);
+            DeleteWithRetry(tempPath);
         }
     }
 
@@ -59,6 +60,26 @@ public sealed class VideoWriterFactoryTests
 
         Assert.Throws<System.IO.FileNotFoundException>(() =>
             factory.Create(100, 100, 10, "test.mp4", null));
+    }
+
+    private static void DeleteWithRetry(string path)
+    {
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+
+                return;
+            }
+            catch (Exception ex) when (attempt < 49 && ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(100);
+            }
+        }
     }
 
     private sealed class ActionDisposable : IDisposable
