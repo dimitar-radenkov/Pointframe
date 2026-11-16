@@ -43,6 +43,7 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
         var service = CreateService();
         service.Start(0, 0, 100, 100, _folder.File("sys.mp4"));
         Assert.True(service.IsRecordingSystemAudio);
+        Assert.Equal(1, _capture.BeginTimelineCalls);
 
         service.Stop();
 
@@ -261,6 +262,10 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
             IsCapturing = true;
             return true;
         }
+
+        public int BeginTimelineCalls { get; private set; }
+
+        public void BeginTimeline() => BeginTimelineCalls++;
 
         public void Pause() => PauseCalls++;
 

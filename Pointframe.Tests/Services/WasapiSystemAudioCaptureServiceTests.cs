@@ -46,6 +46,7 @@ public sealed class WasapiSystemAudioCaptureServiceTests : IDisposable
         var source = new FakeSource();
         var service = Create(source);
         Assert.True(service.TryStart(_folder.File("c.wav"), out _));
+        service.BeginTimeline();
         _now = TimeSpan.FromSeconds(2);
 
         var result = service.Stop();
@@ -61,11 +62,12 @@ public sealed class WasapiSystemAudioCaptureServiceTests : IDisposable
         var source = new FakeSource();
         var service = Create(source);
         Assert.True(service.TryStart(_folder.File("d.wav"), out _));
+        service.BeginTimeline();
         _now = TimeSpan.FromSeconds(1);
         var tenMs = new byte[Format.AverageBytesPerSecond / 100];
         for (var i = 0; i < 10; i++)
         {
-            source.Raise(tenMs, false, TimeSpan.FromMilliseconds(i * 10));
+            source.Raise(tenMs, false, true, TimeSpan.FromMilliseconds(i * 10));
         }
 
         var result = service.Stop();
@@ -104,6 +106,86 @@ public sealed class WasapiSystemAudioCaptureServiceTests : IDisposable
     }
 
     [Fact]
+    public void BeginTimeline_UsesTheVideoStartAsOrigin_SoASlowDeviceInitDoesNotShiftAudio()
+    {
+        var source = new FakeSource { OnStart = () => _now += TimeSpan.FromMilliseconds(500) };
+        var service = Create(source);
+        Assert.True(service.TryStart(_folder.File("o.wav"), out _));
+        service.BeginTimeline();
+        var origin = _now;
+        var data = Enumerable.Repeat((byte)1, Format.AverageBytesPerSecond / 100).ToArray();
+        source.Raise(data, false, true, origin);
+        _now = origin + TimeSpan.FromSeconds(1);
+
+        var result = service.Stop();
+
+        using var reader = new WaveFileReader(result.WavPath!);
+        Assert.InRange(reader.TotalTime.TotalSeconds, 0.99, 1.01);
+        var first = new byte[8];
+        reader.ReadExactly(first);
+        Assert.Contains(first, value => value == 1);
+    }
+
+    [Fact]
+    public void Stop_WhileAnotherThreadDisposes_ReturnsTheWavAndDisposeWaits()
+    {
+        var gate = new ManualResetEventSlim();
+        var source = new FakeSource { BlockDispose = gate };
+        var service = Create(source);
+        Assert.True(service.TryStart(_folder.File("r1.wav"), out _));
+        service.BeginTimeline();
+        _now = TimeSpan.FromSeconds(1);
+
+        var stop = Task.Run(() => service.Stop());
+        Assert.True(source.DisposeEntered.Wait(TimeSpan.FromSeconds(10)));
+        var dispose = Task.Run(service.Dispose);
+        Thread.Sleep(100);
+        Assert.False(dispose.IsCompleted);
+        gate.Set();
+
+        Assert.True(stop.Wait(TimeSpan.FromSeconds(10)));
+        Assert.True(dispose.Wait(TimeSpan.FromSeconds(10)));
+        Assert.True(stop.Result.HasAudio);
+        Assert.True(File.Exists(stop.Result.WavPath));
+    }
+
+    [Fact]
+    public void TryStart_WhileAnotherThreadStops_DoesNotTouchTheFirstSessionsFile()
+    {
+        var gate = new ManualResetEventSlim();
+        var first = new FakeSource { BlockDispose = gate };
+        var second = new FakeSource();
+        var sources = new Queue<FakeSource>([first, second]);
+        var service = new WasapiSystemAudioCaptureService(NullLogger<WasapiSystemAudioCaptureService>.Instance, () => sources.Dequeue(), () => _now);
+        Assert.True(service.TryStart(_folder.File("s1.wav"), out _));
+        service.BeginTimeline();
+        _now = TimeSpan.FromSeconds(1);
+
+        var stop = Task.Run(() => service.Stop());
+        Assert.True(first.DisposeEntered.Wait(TimeSpan.FromSeconds(10)));
+        var restart = Task.Run(() =>
+        {
+            var started = service.TryStart(_folder.File("s2.wav"), out _);
+            service.BeginTimeline();
+            return started;
+        });
+        Thread.Sleep(100);
+        Assert.False(restart.IsCompleted);
+        gate.Set();
+
+        Assert.True(stop.Wait(TimeSpan.FromSeconds(10)));
+        Assert.True(restart.Wait(TimeSpan.FromSeconds(10)));
+        Assert.True(restart.Result);
+        using (var reader = new WaveFileReader(stop.Result.WavPath!))
+        {
+            Assert.InRange(reader.TotalTime.TotalSeconds, 0.99, 1.01);
+        }
+
+        _now = TimeSpan.FromSeconds(3);
+        Assert.True(service.Stop().HasAudio);
+    }
+
+    [Fact]
     public void WriterOptions_EnableRf64SoLongRecordingsPastFourGigabytesSurvive()
     {
         Assert.True(WasapiSystemAudioCaptureService.CreateWriterOptions().EnableRf64);
@@ -128,8 +210,13 @@ public sealed class WasapiSystemAudioCaptureServiceTests : IDisposable
         private LoopbackPacketHandler? _packetHandler;
         public event Action<Exception?>? Stopped;
 
+        public Action? OnStart { get; init; }
+        public ManualResetEventSlim? BlockDispose { get; init; }
+        public ManualResetEventSlim DisposeEntered { get; } = new();
+
         public void Start()
         {
+            OnStart?.Invoke();
             if (StartFailure is not null)
             {
                 throw StartFailure;
@@ -140,7 +227,7 @@ public sealed class WasapiSystemAudioCaptureServiceTests : IDisposable
         {
         }
 
-        public void Raise(byte[] data, bool silent, TimeSpan time) => _packetHandler?.Invoke(data, silent, time);
+        public void Raise(byte[] data, bool silent, bool timestampValid, TimeSpan time) => _packetHandler?.Invoke(data, silent, timestampValid, time);
 
         public void RaiseStopped(Exception? exception) => Stopped?.Invoke(exception);
 
@@ -148,12 +235,14 @@ public sealed class WasapiSystemAudioCaptureServiceTests : IDisposable
         public void Dispose()
         {
             Disposed = true;
+            DisposeEntered.Set();
+            BlockDispose?.Wait();
             if (!DeliverFromDisposeThread)
             {
                 return;
             }
 
-            var thread = new Thread(() => Raise(new byte[Format.AverageBytesPerSecond / 100], false, TimeSpan.Zero));
+            var thread = new Thread(() => Raise(new byte[Format.AverageBytesPerSecond / 100], false, true, TimeSpan.Zero));
             thread.Start();
             thread.Join();
         }

@@ -19,8 +19,15 @@ internal sealed class SystemAudioTimeline
     private readonly TimeSpan _start;
     private readonly List<(TimeSpan Start, TimeSpan End)> _pauses = [];
     private TimeSpan _pausedAt;
+    private TimeSpan? _previousPacketEnd;
 
     public SystemAudioTimeline(int bytesPerSecond, int blockAlign, Func<TimeSpan> clock)
+        : this(bytesPerSecond, blockAlign, clock, clock())
+    {
+    }
+
+    // origin is the instant the video timeline starts, on the same clock as the packet timestamps.
+    public SystemAudioTimeline(int bytesPerSecond, int blockAlign, Func<TimeSpan> clock, TimeSpan origin)
     {
         if (bytesPerSecond <= 0 || blockAlign <= 0)
         {
@@ -30,7 +37,7 @@ internal sealed class SystemAudioTimeline
         _bytesPerSecond = bytesPerSecond;
         _blockAlign = blockAlign;
         _clock = clock;
-        _start = clock();
+        _start = origin;
     }
 
     public bool IsPaused { get; private set; }
@@ -63,7 +70,9 @@ internal sealed class SystemAudioTimeline
 
     // Plans what to write for one packet that was captured starting at packetStart. The plan is committed:
     // the caller must write the silence and then the segments, in order.
-    public IReadOnlyList<SystemAudioPacketPlan> PlanPacket(TimeSpan packetStart, int packetBytes)
+    // When timestampValid is false (WASAPI flagged the timestamp as uncertain) the packet is placed right after the
+    // previous one, or at its arrival time when it is the first, instead of trusting the reported time.
+    public IReadOnlyList<SystemAudioPacketPlan> PlanPacket(TimeSpan packetStart, int packetBytes, bool timestampValid = true)
     {
         var plans = new List<SystemAudioPacketPlan>();
         if (packetBytes <= 0)
@@ -71,7 +80,13 @@ internal sealed class SystemAudioTimeline
             return plans;
         }
 
+        if (!timestampValid)
+        {
+            packetStart = _previousPacketEnd ?? _clock() - DurationOf(packetBytes);
+        }
+
         var packetEnd = packetStart + DurationOf(packetBytes);
+        _previousPacketEnd = packetEnd;
         var cursor = packetStart > _start ? packetStart : _start;
         foreach (var (pauseStart, pauseEnd) in PauseIntervals())
         {

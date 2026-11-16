@@ -10,6 +10,7 @@ public interface ISystemAudioCaptureService : IDisposable
     bool IsCapturing { get; }
     event Action<string>? CaptureFailed;
     bool TryStart(string wavPath, out string? failureReason);
+    void BeginTimeline();
     void Pause();
     void Resume();
     SystemAudioStopResult Stop();

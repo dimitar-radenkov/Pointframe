@@ -100,6 +100,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             _redactionSession = new RecordingRedactionSession(_eventTrack);
             _eventTrack.Write("recording.started", new RecordingEventPayload(CaptureX: x, CaptureY: y, CaptureWidth: width, CaptureHeight: height, FramesPerSecond: fps, IsEnabled: IsRecordingMicrophoneEnabled, IsMuted: IsMicrophoneMuted));
             StartSystemAudio(outputPath);
+            _systemAudio?.BeginTimeline();
             _pipeline = new RawFrameRecordingPipeline(
                 new VideoWriterRawFrameWriter(_writer),
                 new RawFrameRecordingOptions(new PixelBounds(x, y, width, height), fps, () => _redactionSession?.SnapshotPixelBounds() ?? ReadOnlyMemory<PixelBounds>.Empty),

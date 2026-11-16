@@ -4,7 +4,7 @@ using NAudio.Wave;
 
 namespace Pointframe.Services;
 
-internal delegate void LoopbackPacketHandler(ReadOnlySpan<byte> data, bool silent, TimeSpan captureTime);
+internal delegate void LoopbackPacketHandler(ReadOnlySpan<byte> data, bool silent, bool timestampValid, TimeSpan captureTime);
 
 internal interface ILoopbackSource : IDisposable
 {
@@ -45,7 +45,7 @@ internal sealed class WasapiLoopbackSource : ILoopbackSource
     private void OnDataAvailable(ReadOnlySpan<byte> buffer, AudioClientBufferFlags flags, long devicePosition, long qpcPosition)
     {
         // qpcPosition is the QueryPerformanceCounter value in 100 ns units, the same base as WasapiSystemAudioCaptureService.QpcNow.
-        PacketAvailable?.Invoke(buffer, (flags & AudioClientBufferFlags.Silent) != 0, TimeSpan.FromTicks(qpcPosition));
+        PacketAvailable?.Invoke(buffer, (flags & AudioClientBufferFlags.Silent) != 0, (flags & AudioClientBufferFlags.TimestampError) == 0, TimeSpan.FromTicks(qpcPosition));
     }
 
     private void OnRecordingStopped(object? sender, StoppedEventArgs e)
@@ -63,9 +63,11 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
     private readonly Func<ILoopbackSource> _sourceFactory;
     private readonly Func<TimeSpan> _clock;
     private readonly object _gate = new();
+    private readonly object _lifecycle = new();
     private ILoopbackSource? _source;
     private WaveFileWriter? _writer;
     private SystemAudioTimeline? _timeline;
+    private WaveFormat? _format;
     private string? _wavPath;
     private string? _failureReason;
     private bool _stopping;
@@ -94,6 +96,30 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
     public bool TryStart(string wavPath, out string? failureReason)
     {
         failureReason = null;
+        lock (_lifecycle)
+        {
+            return TryStartCore(wavPath, out failureReason);
+        }
+    }
+
+    // Starts the loopback device. The timeline origin is set separately by BeginTimeline, once the video starts,
+    // so a slow device initialization cannot shift the audio against the video.
+    public void BeginTimeline()
+    {
+        lock (_gate)
+        {
+            if (_source is null || _timeline is not null || _format is null)
+            {
+                return;
+            }
+
+            _timeline = new SystemAudioTimeline(_format.AverageBytesPerSecond, _format.BlockAlign, _clock, _clock());
+        }
+    }
+
+    private bool TryStartCore(string wavPath, out string? failureReason)
+    {
+        failureReason = null;
         lock (_gate)
         {
             if (IsCapturing)
@@ -109,7 +135,8 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
                 _wavPath = wavPath;
                 _failureReason = null;
                 _stopping = false;
-                _timeline = new SystemAudioTimeline(format.AverageBytesPerSecond, format.BlockAlign, _clock);
+                _format = format;
+                _timeline = null;
                 _source.PacketAvailable += OnPacket;
                 _source.Stopped += OnStopped;
                 _source.Start();
@@ -124,7 +151,7 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
             }
         }
 
-        Shutdown(discard: true);
+        ShutdownCore(discard: true);
         return false;
     }
 
@@ -150,6 +177,15 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
 
     // The capture thread is joined by StopRecording/Dispose and its callbacks take _gate, so neither may run while _gate is held.
     private SystemAudioStopResult Shutdown(bool discard)
+    {
+        lock (_lifecycle)
+        {
+            return ShutdownCore(discard);
+        }
+    }
+
+    // Callers hold _lifecycle, so Stop, Dispose and TryStart never interleave; the callbacks only take _gate.
+    private SystemAudioStopResult ShutdownCore(bool discard)
     {
         ILoopbackSource? source;
         lock (_gate)
@@ -210,7 +246,7 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
         }
     }
 
-    private void OnPacket(ReadOnlySpan<byte> data, bool silent, TimeSpan captureTime)
+    private void OnPacket(ReadOnlySpan<byte> data, bool silent, bool timestampValid, TimeSpan captureTime)
     {
         string? failure = null;
         lock (_gate)
@@ -222,7 +258,7 @@ public sealed class WasapiSystemAudioCaptureService : ISystemAudioCaptureService
 
             try
             {
-                foreach (var plan in _timeline.PlanPacket(captureTime, data.Length))
+                foreach (var plan in _timeline.PlanPacket(captureTime, data.Length, timestampValid))
                 {
                     WriteSilence(plan.SilenceBytesBefore);
                     var segment = plan.Segment;

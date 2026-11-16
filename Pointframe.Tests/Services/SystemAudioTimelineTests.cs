@@ -168,6 +168,46 @@ public sealed class SystemAudioTimelineTests
     }
 
     [Fact]
+    public void PlanPacket_WithAnExplicitOrigin_PlacesAudioRelativeToIt()
+    {
+        _now = Ms(1000);
+        var timeline = new SystemAudioTimeline(BytesPerSecond, BlockAlign, () => _now, Ms(500));
+
+        var plans = timeline.PlanPacket(Ms(500), TenMs);
+
+        Assert.Equal(0, plans.Single().SilenceBytesBefore);
+        Assert.Equal(0, plans.Single().Segment.Offset);
+        Assert.Equal(Ms(500), timeline.ActiveElapsed);
+    }
+
+    [Fact]
+    public void PlanPacket_FlaggedZeroTimestamp_IsPlacedAfterThePreviousPacketAndNotDropped()
+    {
+        var timeline = Create();
+        _now = Ms(1000);
+        timeline.PlanPacket(Ms(500), TenMs);
+
+        var plans = timeline.PlanPacket(TimeSpan.Zero, TenMs, timestampValid: false);
+
+        var plan = plans.Single();
+        Assert.Equal(0, plan.SilenceBytesBefore);
+        Assert.Equal(TenMs, plan.Segment.Length);
+    }
+
+    [Fact]
+    public void PlanPacket_FlaggedForwardJump_DoesNotInsertSilence()
+    {
+        var timeline = Create();
+        _now = Ms(100);
+        timeline.PlanPacket(Ms(0), TenMs);
+
+        var plans = timeline.PlanPacket(Ms(60000), TenMs, timestampValid: false);
+
+        Assert.Equal(0, plans.Single().SilenceBytesBefore);
+        Assert.Equal(2 * TenMs, timeline.WrittenBytes);
+    }
+
+    [Fact]
     public void Constructor_RejectsAnInvalidFormat()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new SystemAudioTimeline(0, BlockAlign, () => _now));
