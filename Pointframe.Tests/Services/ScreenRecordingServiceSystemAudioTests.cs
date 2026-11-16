@@ -334,8 +334,11 @@ public sealed class ScreenRecordingServiceSystemAudioTests : IDisposable
         public bool Throws { get; set; }
         public List<(string Video, string Wav, bool VideoHasMicrophone)> Calls { get; } = [];
 
-        public bool TryMix(string videoPath, string wavPath, bool videoHasMicrophone)
+        public List<TimeSpan?> Offsets { get; } = [];
+
+        public bool TryMix(string videoPath, string wavPath, bool videoHasMicrophone, TimeSpan? systemAudioOffset = null)
         {
+            Offsets.Add(systemAudioOffset);
             Calls.Add((videoPath, wavPath, videoHasMicrophone));
             if (Throws)
             {
