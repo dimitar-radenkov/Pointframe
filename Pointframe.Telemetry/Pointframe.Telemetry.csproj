@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Azure.Monitor.OpenTelemetry.Exporter" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" VersionOverride="11.0.0" />
     <PackageReference Include="OpenTelemetry" />
   </ItemGroup>
 
