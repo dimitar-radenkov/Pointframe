@@ -75,8 +75,9 @@ public sealed class VideoWriterFactoryTests
 
                 return;
             }
-            catch (Exception ex) when (attempt < 49 && ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Best-effort cleanup: after the last attempt a leftover temp file must not replace a pending assertion failure.
                 Thread.Sleep(100);
             }
         }
