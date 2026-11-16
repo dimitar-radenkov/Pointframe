@@ -69,6 +69,49 @@ public sealed class CliTelemetryTests
         }
     }
 
+    [Fact]
+    public async Task RunAsync_VerifyWithAnInvalidSpec_ForwardsItsCodeToTrack()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PointframeCliTelemetryTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var spec = Path.Combine(directory, "verify.json");
+            File.WriteAllText(spec, "{ \"schemaVersion\": 99 }");
+            var telemetry = new RecordingTelemetry();
+
+            await CliApplication.RunAsync(["verify", "run", "--spec", spec], new StringWriter(), new StringWriter(), CancellationToken.None, telemetry);
+
+            Assert.Equal("spec_invalid", Assert.Single(telemetry.ErrorCodes));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_VerifyInfrastructureFailure_ForwardsItsCodeToTrack()
+    {
+        using var fixture = new VerificationFixture();
+        var specPath = fixture.WriteSpecWith(VerificationFixture.DefaultApp, """[ { "id": "build", "run": "dotnet build" } ]""", VerificationFixture.ValidScenario);
+        var commands = new Mock<ICommandRunner>();
+        commands
+            .Setup(item => item.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new System.ComponentModel.Win32Exception("The system cannot find the file specified."));
+        var telemetry = new RecordingTelemetry();
+        var seams = new CliHostSeams
+        {
+            Store = fixture.Store,
+            CustomizeVerification = services => services with { Commands = commands.Object },
+        };
+
+        var exitCode = await CliApplication.RunAsync(["verify", "run", "--spec", specPath], new StringWriter(), new StringWriter(), CancellationToken.None, telemetry, seams);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("infrastructure_failure", Assert.Single(telemetry.ErrorCodes));
+    }
+
     [Theory]
     [InlineData(typeof(ArgumentException), "target_not_found")]
     [InlineData(typeof(InvalidOperationException), "target_not_capturable")]

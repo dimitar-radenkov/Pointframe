@@ -239,6 +239,30 @@ public sealed class McpTelemetryTests
         AssertEveryLineIsJsonRpc(transcript);
     }
 
+    [Theory]
+    [InlineData("recording_not_active", "recording_not_active")]
+    [InlineData("SomethingNobodyListed", "SomethingNobodyListed")]
+    public async Task ToolCall_ThatReturnsATypedFailure_ForwardsItsCodeToTrack(string code, string forwarded)
+    {
+        var telemetry = new RecordingTelemetry();
+
+        await CallStatusToolAsync(telemetry, "codex", "{\"SchemaVersion\":1,\"Success\":false,\"Error\":{\"Code\":\"" + code + "\",\"Message\":\"x\"}}");
+
+        var tracked = Assert.Single(telemetry.Tracked);
+        Assert.Equal(TelemetryOutcome.Error, tracked.Outcome);
+        Assert.Equal(forwarded, Assert.Single(telemetry.ErrorCodes));
+    }
+
+    [Fact]
+    public async Task ToolCall_ThatSucceeds_ForwardsNoErrorCode()
+    {
+        var telemetry = new RecordingTelemetry();
+
+        await CallStatusToolAsync(telemetry, "codex");
+
+        Assert.Null(Assert.Single(telemetry.ErrorCodes));
+    }
+
     [Fact]
     public async Task ToolCall_Succeeds_WhenTelemetryThrows()
     {
@@ -382,10 +406,11 @@ public sealed class McpTelemetryTests
         }
     }
 
-    private static async Task<(CallToolResult Result, string Transcript)> CallStatusToolAsync(IOperationTelemetry telemetry, string clientName)
+    private static async Task<(CallToolResult Result, string Transcript)> CallStatusToolAsync(IOperationTelemetry telemetry, string clientName, string? stopJson = null)
     {
         var recording = new Mock<IDirectRecordingMcpService>();
         recording.Setup(service => service.GetRecordingStatus()).Returns("{\"SchemaVersion\":1,\"Success\":true,\"IsRecording\":false}");
+        recording.Setup(service => service.StopRecordingAsync(It.IsAny<CancellationToken>())).ReturnsAsync(stopJson ?? "{\"SchemaVersion\":1,\"Success\":true}");
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
         var transcript = new MemoryStream();
@@ -405,7 +430,7 @@ public sealed class McpTelemetryTests
         await using var client = await McpClient.CreateAsync(
             new StreamClientTransport(clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream()),
             new McpClientOptions { ClientInfo = new Implementation { Name = clientName, Version = "1.0" } });
-        var result = await client.CallToolAsync("get_recording_status", new Dictionary<string, object?>());
+        var result = await client.CallToolAsync(stopJson is null ? "get_recording_status" : "stop_recording", new Dictionary<string, object?>());
         await client.DisposeAsync();
         await host.StopAsync();
         return (result, Encoding.UTF8.GetString(transcript.ToArray()));
@@ -460,6 +485,8 @@ public sealed class McpTelemetryTests
     {
         public List<(string Name, TelemetryOutcome Outcome, string? Client)> Tracked { get; } = [];
 
+        public List<string?> ErrorCodes { get; } = [];
+
         public bool ThrowOnTrack { get; init; }
 
         public int TrackAttempts { get; private set; }
@@ -473,6 +500,7 @@ public sealed class McpTelemetryTests
             }
 
             Tracked.Add((name, outcome, mcpClientName));
+            ErrorCodes.Add(errorCode);
         }
 
         public void Flush()
