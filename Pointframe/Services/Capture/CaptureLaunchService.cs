@@ -333,52 +333,73 @@ internal sealed class CaptureLaunchService : ICaptureLaunchService
         _fileSystem.CreateDirectory(videosDir);
         var path = _fileSystem.CombinePath(videosDir, $"SnipRec-{DateTime.Now:yyyyMMdd-HHmmss}.mp4");
 
+        IRecordingCameraSession? cameraSession = null;
+        var cameraHandedToOverlay = false;
         try
         {
-            await System.Threading.Tasks.Task.Run(() => recorder.Start(
-                hostBoundsPixels.X,
-                hostBoundsPixels.Y,
-                hostBoundsPixels.Width,
-                hostBoundsPixels.Height,
-                path));
+            try
+            {
+                // Bounded wait on the UI thread; the camera never delays the recorder beyond it and never runs inside Task.Run.
+                cameraSession = await RecordingCameraStartup.BeginAsync(
+                    _userSettings,
+                    _services.GetService<Func<IRecordingCameraSession>>(),
+                    _logger);
+                await System.Threading.Tasks.Task.Run(() => recorder.Start(
+                    hostBoundsPixels.X,
+                    hostBoundsPixels.Y,
+                    hostBoundsPixels.Width,
+                    hostBoundsPixels.Height,
+                    path));
+            }
+            catch (FileNotFoundException ex)
+            {
+                _telemetry.TrackEvent(TelemetryEvents.FfmpegMissing);
+                _messageBox.ShowWarning(ex.Message, "ffmpeg not found");
+                return;
+            }
+
+            _telemetry.TrackEvent(TelemetryEvents.RecordingStarted, new Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.Type] = "whole_screen",
+                [TelemetryPropertyKeys.SystemAudio] = recorder.IsRecordingSystemAudio ? "true" : "false",
+                [TelemetryPropertyKeys.Camera] = RecordingCameraStartup.TelemetryValue(_userSettings),
+            });
+
+            _services.GetRequiredService<IMicrophoneWarningService>().ReportIfUnavailable(recorder.IsRecordingMicrophoneEnabled);
+
+            RecordingOverlayWindow? recordingOverlay = null;
+            DpiAwarenessScope.RunPerMonitorV2(() =>
+            {
+                recordingOverlay = new RecordingOverlayWindow(
+                    geometry,
+                    path,
+                    recorder,
+                    screenCapture,
+                    _services.GetRequiredService<IMouseHookService>(),
+                    _services.GetRequiredService<Func<IScreenRecordingService, string, RecordingHudViewModel>>(),
+                    _services.GetRequiredService<IEventAggregator>(),
+                    _loggerFactory,
+                    _userSettings,
+                    _services.GetRequiredService<RecordingAnnotationViewModel>(),
+                    cameraSession: cameraSession);
+            });
+
+            if (recordingOverlay is null)
+            {
+                _logger.LogError("Failed to create recording overlay for whole-screen record hotkey");
+                return;
+            }
+
+            // The overlay owns the camera from here and releases it when it closes.
+            cameraHandedToOverlay = true;
+            DpiAwarenessScope.RunPerMonitorV2(() => recordingOverlay.Show());
         }
-        catch (FileNotFoundException ex)
+        finally
         {
-            _telemetry.TrackEvent(TelemetryEvents.FfmpegMissing);
-            _messageBox.ShowWarning(ex.Message, "ffmpeg not found");
-            return;
+            if (!cameraHandedToOverlay)
+            {
+                cameraSession?.Dispose();
+            }
         }
-
-        _telemetry.TrackEvent(TelemetryEvents.RecordingStarted, new Dictionary<string, string>
-        {
-            [TelemetryPropertyKeys.Type] = "whole_screen",
-            [TelemetryPropertyKeys.SystemAudio] = recorder.IsRecordingSystemAudio ? "true" : "false",
-        });
-
-        _services.GetRequiredService<IMicrophoneWarningService>().ReportIfUnavailable(recorder.IsRecordingMicrophoneEnabled);
-
-        RecordingOverlayWindow? recordingOverlay = null;
-        DpiAwarenessScope.RunPerMonitorV2(() =>
-        {
-            recordingOverlay = new RecordingOverlayWindow(
-                geometry,
-                path,
-                recorder,
-                screenCapture,
-                _services.GetRequiredService<IMouseHookService>(),
-                _services.GetRequiredService<Func<IScreenRecordingService, string, RecordingHudViewModel>>(),
-                _services.GetRequiredService<IEventAggregator>(),
-                _loggerFactory,
-                _userSettings,
-                _services.GetRequiredService<RecordingAnnotationViewModel>());
-        });
-
-        if (recordingOverlay is null)
-        {
-            _logger.LogError("Failed to create recording overlay for whole-screen record hotkey");
-            return;
-        }
-
-        DpiAwarenessScope.RunPerMonitorV2(() => recordingOverlay.Show());
     }
 }

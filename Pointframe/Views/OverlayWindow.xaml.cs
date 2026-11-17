@@ -26,6 +26,7 @@ public partial class OverlayWindow : Window
     private readonly IOcrService _ocrService;
     private readonly ITelemetryService _telemetry;
     private readonly IMicrophoneWarningService _microphoneWarning;
+    private readonly Func<IRecordingCameraSession>? _recordingCameraSessionFactory;
     private readonly RecordingAnnotationViewModel _recordingAnnotationViewModel;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IEventSubscription _redoSubscription;
@@ -66,8 +67,10 @@ public partial class OverlayWindow : Window
         ITelemetryService telemetry,
         RecordingAnnotationViewModel recordingAnnotationViewModel,
         Func<BitmapSource, BeautifierWindow> beautifierWindowFactory,
-        IMicrophoneWarningService microphoneWarning)
+        IMicrophoneWarningService microphoneWarning,
+        Func<IRecordingCameraSession>? recordingCameraSessionFactory = null)
     {
+        _recordingCameraSessionFactory = recordingCameraSessionFactory;
         _vm = vm;
         _screenCapture = screenCapture;
         _recorder = recorder;

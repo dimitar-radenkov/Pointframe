@@ -37,6 +37,7 @@ public sealed class SettingsViewModelCharacterizationTests
             SettingsSection.Recording,
             [
                 nameof(UserSettings.RecordingOutputPath), nameof(UserSettings.RecordMicrophone), nameof(UserSettings.RecordSystemAudio),
+                nameof(UserSettings.RecordCamera), nameof(UserSettings.CameraDeviceId), nameof(UserSettings.CameraBubbleSize), nameof(UserSettings.CameraBubbleCorner),
                 nameof(UserSettings.RecordingTranscriptEnabled), nameof(UserSettings.GifFps),
                 nameof(UserSettings.RecordingCursorHighlightEnabled), nameof(UserSettings.RecordingClickRippleEnabled),
                 nameof(UserSettings.RecordingCursorHighlightSize),

@@ -99,8 +99,10 @@ public partial class SettingsViewModel : ObservableObject
         ITelemetryService telemetry,
         ITranscriptModelService transcriptModelService,
         IUpdateStateService? updateStateService = null,
-        IAutoUpdateService? autoUpdateService = null)
+        IAutoUpdateService? autoUpdateService = null,
+        ICameraDeviceService? cameraDeviceService = null)
     {
+        _cameraDeviceService = cameraDeviceService;
         _transcriptModelService = transcriptModelService;
         _transcriptModelInstalled = transcriptModelService.IsModelInstalled;
         _dialogService = dialogService;
@@ -118,6 +120,16 @@ public partial class SettingsViewModel : ObservableObject
         _recordingOutputPath = s.RecordingOutputPath;
         _recordMicrophone = s.RecordMicrophone;
         _recordSystemAudio = s.RecordSystemAudio;
+        _recordCamera = s.RecordCamera;
+        _selectedCameraDeviceId = s.CameraDeviceId ?? string.Empty;
+        _cameraBubbleSize = s.CameraBubbleSize;
+        _cameraBubbleCorner = s.CameraBubbleCorner;
+        AvailableCameras.Add(new CameraDeviceOption(string.Empty, "System default camera"));
+        if (!string.IsNullOrEmpty(s.CameraDeviceId))
+        {
+            AvailableCameras.Add(new CameraDeviceOption(s.CameraDeviceId, "Saved camera"));
+        }
+
         _recordingTranscriptEnabled = s.RecordingTranscriptEnabled;
         _selectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(s.RecordingMicrophoneDeviceName);
         _gifFps = s.GifFps;
@@ -190,6 +202,47 @@ public partial class SettingsViewModel : ObservableObject
         };
 
         TrackSectionEvent(TelemetryEvents.SettingsOpened, SelectedSection);
+        _ = LoadCameraDevicesAsync();
+    }
+
+    private async Task LoadCameraDevicesAsync()
+    {
+        if (_cameraDeviceService is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var devices = await _cameraDeviceService.GetCamerasAsync();
+            foreach (var device in devices)
+            {
+                var existing = AvailableCameras.FirstOrDefault(option => string.Equals(option.Id, device.Id, StringComparison.Ordinal));
+                if (existing is null)
+                {
+                    AvailableCameras.Add(new CameraDeviceOption(device.Id, device.Name));
+                }
+                else
+                {
+                    existing.Name = device.Name;
+                }
+            }
+
+            // A saved camera that is not connected stays selectable so saving does not silently change it.
+            var missing = AvailableCameras.FirstOrDefault(option => option.Id.Length > 0 && devices.All(device => device.Id != option.Id));
+            if (missing is not null)
+            {
+                missing.Name = "Saved camera (not connected)";
+                _savedCameraMissing = true;
+            }
+
+            AvailableCameraCount = devices.Count;
+            OnPropertyChanged(nameof(ShowCameraPicker));
+        }
+        catch (Exception)
+        {
+            AvailableCameraCount = 0;
+        }
     }
 
     public IReadOnlyList<SettingsSectionItem> Sections => SectionItems;
@@ -225,6 +278,56 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _recordSystemAudio;
+
+    [ObservableProperty]
+    private bool _recordCamera;
+
+    [ObservableProperty]
+    private CameraBubbleSize _cameraBubbleSize;
+
+    [ObservableProperty]
+    private CameraBubbleCorner _cameraBubbleCorner;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowCameraPicker))]
+    private int _availableCameraCount;
+
+    private readonly ICameraDeviceService? _cameraDeviceService;
+    private string _selectedCameraDeviceId = string.Empty;
+    private bool _savedCameraMissing;
+
+    public ObservableCollection<CameraDeviceOption> AvailableCameras { get; } = [];
+
+    public bool ShowCameraPicker => AvailableCameraCount > 1 || _savedCameraMissing;
+
+    public IReadOnlyList<CameraChoice<CameraBubbleSize>> CameraBubbleSizes { get; } =
+    [
+        new(CameraBubbleSize.Small, "Small"),
+        new(CameraBubbleSize.Large, "Large"),
+    ];
+
+    public IReadOnlyList<CameraChoice<CameraBubbleCorner>> CameraBubbleCorners { get; } =
+    [
+        new(CameraBubbleCorner.BottomRight, "Bottom right"),
+        new(CameraBubbleCorner.BottomLeft, "Bottom left"),
+        new(CameraBubbleCorner.TopRight, "Top right"),
+        new(CameraBubbleCorner.TopLeft, "Top left"),
+    ];
+
+    // Empty means the system default camera. A null write (a ComboBox clearing its selection while the list refreshes) is ignored.
+    public string SelectedCameraDeviceId
+    {
+        get => _selectedCameraDeviceId;
+        set
+        {
+            if (value is null)
+            {
+                return;
+            }
+
+            SetProperty(ref _selectedCameraDeviceId, value);
+        }
+    }
 
     [ObservableProperty]
     private bool _recordingTranscriptEnabled;
@@ -617,6 +720,10 @@ public partial class SettingsViewModel : ObservableObject
             RecordingOutputPath = RecordingOutputPath,
             RecordMicrophone = RecordMicrophone,
             RecordSystemAudio = RecordSystemAudio,
+            RecordCamera = RecordCamera,
+            CameraDeviceId = string.IsNullOrEmpty(SelectedCameraDeviceId) ? null : SelectedCameraDeviceId,
+            CameraBubbleSize = CameraBubbleSize,
+            CameraBubbleCorner = CameraBubbleCorner,
             RecordingMicrophoneDeviceName = SelectedMicrophoneDeviceName,
             RecordingTranscriptEnabled = RecordingTranscriptEnabled,
             RecordingFps = _recordingFps,
@@ -848,6 +955,10 @@ public partial class SettingsViewModel : ObservableObject
         RecordingOutputPath = defaults.RecordingOutputPath;
         RecordMicrophone = defaults.RecordMicrophone;
         RecordSystemAudio = defaults.RecordSystemAudio;
+        RecordCamera = defaults.RecordCamera;
+        SelectedCameraDeviceId = defaults.CameraDeviceId ?? string.Empty;
+        CameraBubbleSize = defaults.CameraBubbleSize;
+        CameraBubbleCorner = defaults.CameraBubbleCorner;
         RecordingTranscriptEnabled = defaults.RecordingTranscriptEnabled;
         SelectedMicrophoneDeviceName = ResolveInitialMicrophoneDeviceName(defaults.RecordingMicrophoneDeviceName);
         GifFps = defaults.GifFps;

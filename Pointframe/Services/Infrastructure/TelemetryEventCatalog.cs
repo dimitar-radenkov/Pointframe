@@ -13,6 +13,7 @@ public static class TelemetryPropertyKeys
     public const string AnnotationInputState = "annotation_input_state";
     public const string AnnotationTool = "annotation_tool";
     public const string AppSection = "app_section";
+    public const string Camera = "camera";
     public const string Canceled = "canceled";
     public const string CaptureType = "capture_type";
     public const string Context = "context";
@@ -58,6 +59,7 @@ public static class TelemetryEvents
 {
     public const string AnnotationCommitted = "annotation_committed";
     public const string AboutClosed = "about_closed";
+    public const string CameraUnavailable = "camera_unavailable";
     public const string AboutOpened = "about_opened";
     public const string AboutUrlOpened = "about_url_opened";
     public const string AppClosed = "app_closed";
@@ -170,6 +172,7 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.AppHeartbeat] = Diagnostic(TelemetryEvents.AppHeartbeat, TelemetryPropertyKeys.UptimeMinutes),
             [TelemetryEvents.AppStarted] = Product(TelemetryEvents.AppStarted, TelemetryPropertyKeys.OsBuild, TelemetryPropertyKeys.ScreenCount),
             [TelemetryEvents.BeautifyOpened] = Product(TelemetryEvents.BeautifyOpened),
+            [TelemetryEvents.CameraUnavailable] = Diagnostic(TelemetryEvents.CameraUnavailable, TelemetryPropertyKeys.Reason, TelemetryPropertyKeys.Phase),
             [TelemetryEvents.CaptureClosed] = Product(TelemetryEvents.CaptureClosed, TelemetryPropertyKeys.Annotated),
             [TelemetryEvents.CaptureCompleted] = Product(TelemetryEvents.CaptureCompleted, TelemetryPropertyKeys.Action),
             [TelemetryEvents.CaptureDelayUsed] = Product(TelemetryEvents.CaptureDelayUsed, TelemetryPropertyKeys.DelaySeconds),
@@ -199,7 +202,7 @@ public static class TelemetryEventCatalog
             [TelemetryEvents.RecordingHudUndoAnnotations] = Product(TelemetryEvents.RecordingHudUndoAnnotations),
             [TelemetryEvents.RecordingCompleted] = Product(TelemetryEvents.RecordingCompleted).WithOptional(TelemetryPropertyKeys.DurationSeconds),
             [TelemetryEvents.RecordingFailed] = Diagnostic(TelemetryEvents.RecordingFailed, TelemetryPropertyKeys.Phase, TelemetryPropertyKeys.Reason, TelemetryPropertyKeys.InnerTypes).WithOptional(TelemetryPropertyKeys.FfmpegExitCode, TelemetryPropertyKeys.Recovered, TelemetryPropertyKeys.RecoveredDurationBucket),
-            [TelemetryEvents.RecordingStarted] = Product(TelemetryEvents.RecordingStarted, TelemetryPropertyKeys.Type).WithOptional(TelemetryPropertyKeys.SystemAudio),
+            [TelemetryEvents.RecordingStarted] = Product(TelemetryEvents.RecordingStarted, TelemetryPropertyKeys.Type).WithOptional(TelemetryPropertyKeys.SystemAudio, TelemetryPropertyKeys.Camera),
             [TelemetryEvents.TranscriptCompleted] = Product(TelemetryEvents.TranscriptCompleted, TelemetryPropertyKeys.Success, TelemetryPropertyKeys.DurationSeconds).WithOptional(TelemetryPropertyKeys.SegmentCount, TelemetryPropertyKeys.SkipReason),
             [TelemetryEvents.TranscriptFailed] = Diagnostic(TelemetryEvents.TranscriptFailed, TelemetryPropertyKeys.ExceptionType),
             [TelemetryEvents.SettingsCanceled] = Product(TelemetryEvents.SettingsCanceled),

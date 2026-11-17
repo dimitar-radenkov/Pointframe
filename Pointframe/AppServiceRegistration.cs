@@ -72,6 +72,15 @@ internal static class AppServiceRegistration
         services.AddSingleton<Func<ISystemAudioCaptureService>>(sp => () => ActivatorUtilities.CreateInstance<WasapiSystemAudioCaptureService>(sp));
         services.AddSingleton<ISystemAudioMixer, SystemAudioMixer>();
         services.AddSingleton<ISystemAudioNoticeService, SystemAudioNoticeService>();
+        services.AddSingleton<ICameraDeviceService, WindowsCameraDeviceService>();
+        services.AddSingleton<Func<ICameraCaptureService>>(sp => () => ActivatorUtilities.CreateInstance<WindowsCameraCaptureService>(sp));
+        services.AddSingleton<ICameraNoticeService, CameraNoticeService>();
+        services.AddSingleton<Func<IRecordingCameraSession>>(sp => () => new RecordingCameraSession(
+            sp.GetRequiredService<Func<ICameraCaptureService>>(),
+            sp.GetRequiredService<ICameraDeviceService>(),
+            sp.GetRequiredService<IUserSettingsService>(),
+            sp.GetRequiredService<ICameraNoticeService>(),
+            sp.GetRequiredService<ILogger<RecordingCameraSession>>()));
         services.AddSingleton<IGifExportService, GifExportService>();
         services.AddSingleton<IVideoTrimService, VideoTrimService>();
         services.AddSingleton<IAudioExtractor, FfmpegAudioExtractor>();
@@ -113,7 +122,8 @@ internal static class AppServiceRegistration
             sp.GetRequiredService<ITelemetryService>(),
             sp.GetRequiredService<ITranscriptModelService>(),
             sp.GetRequiredService<IUpdateStateService>(),
-            sp.GetRequiredService<IAutoUpdateService>()));
+            sp.GetRequiredService<IAutoUpdateService>(),
+            sp.GetRequiredService<ICameraDeviceService>()));
         services.AddTransient<SettingsWindow>();
         services.AddTransient<WelcomeViewModel>();
         services.AddTransient<WelcomeWindow>(sp => new WelcomeWindow(
@@ -161,5 +171,6 @@ internal static class AppServiceRegistration
         sp.GetRequiredService<ITelemetryService>(),
         sp.GetRequiredService<RecordingAnnotationViewModel>(),
         sp.GetRequiredService<Func<BitmapSource, BeautifierWindow>>(),
-        sp.GetRequiredService<IMicrophoneWarningService>());
+        sp.GetRequiredService<IMicrophoneWarningService>(),
+        sp.GetRequiredService<Func<IRecordingCameraSession>>());
 }

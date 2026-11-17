@@ -37,6 +37,8 @@ public partial class RecordingOverlayWindow : Window
     private readonly RecordingMousePassthroughCoordinator _recordingMousePassthroughCoordinator;
     private readonly IEventSubscription _recordingUndoSubscription;
     private readonly IEventSubscription _recordingRedoSubscription;
+    private readonly IRecordingCameraSession? _cameraSession;
+    private readonly RecordingCameraBubbleCoordinator? _recordingCameraBubbleCoordinator;
     private readonly Func<Point?> _getCursorScreenPoint;
     private readonly Dictionary<UIElement, RecordingRedactionRegion> _recordingRedactions = [];
     private DispatcherTimer? _failureToastTimer;
@@ -54,7 +56,8 @@ public partial class RecordingOverlayWindow : Window
         ILoggerFactory loggerFactory,
         IUserSettingsService userSettings,
         RecordingAnnotationViewModel recordingAnnotationViewModel,
-        Func<Point?>? getCursorScreenPoint = null)
+        Func<Point?>? getCursorScreenPoint = null,
+        IRecordingCameraSession? cameraSession = null)
     {
         _geometry = geometry;
         _outputPath = outputPath;
@@ -66,6 +69,7 @@ public partial class RecordingOverlayWindow : Window
         _userSettings = userSettings;
         _recordingAnnotationViewModel = recordingAnnotationViewModel;
         _getCursorScreenPoint = getCursorScreenPoint ?? RecordingOverlayNativeInterop.GetCursorScreenPoint;
+        _cameraSession = cameraSession;
 
         InitializeComponent();
 
@@ -102,13 +106,28 @@ public partial class RecordingOverlayWindow : Window
             IsPointInsideRecordingHud,
             SetWindowMouseTransparency,
             Dispatcher);
+        if (_cameraSession is not null)
+        {
+            _recordingCameraBubbleCoordinator = new RecordingCameraBubbleCoordinator(
+                RecordingCameraBubble,
+                RecordingCameraBubbleBrush,
+                _geometry,
+                _userSettings,
+                GetActiveHudRectDips,
+                _cameraSession);
+        }
+
         _recordingHudCoordinator = new RecordingHudCoordinator(
             RecordingHudPanel,
             RecordingHudCompactPanel,
             _geometry,
             _userSettings,
             _logger,
-            () => _recordingMousePassthroughCoordinator.Update());
+            () =>
+            {
+                _recordingMousePassthroughCoordinator.Update();
+                _recordingCameraBubbleCoordinator?.UpdateLayout();
+            });
         _recordingUndoSubscription = _eventAggregator.Subscribe<UndoGroupMessage>(HandleRecordingUndoGroup);
         _recordingRedoSubscription = _eventAggregator.Subscribe<RedoGroupMessage>(HandleRecordingRedoGroup);
         _recordingAnnotationViewModel.ClearRequested += HandleRecordingClearRequested;
@@ -137,6 +156,11 @@ public partial class RecordingOverlayWindow : Window
         hudViewModel.SetRecordingSessionGeometry(_geometry);
         hudViewModel.AttachAnnotationSession(_recordingAnnotationViewModel, ToggleRecordingAnnotationInput);
         hudViewModel.InitializeDisplayMode(_geometry.IsFullScreenCapture);
+        if (_cameraSession is not null)
+        {
+            hudViewModel.AttachCameraControl(_cameraSession);
+        }
+
         ShowRecordingHud(hudViewModel);
     }
 
@@ -153,6 +177,7 @@ public partial class RecordingOverlayWindow : Window
         _recordingAnnotationViewModel.ClearRequested -= HandleRecordingClearRequested;
         _recordingCursorEffectsService.Dispose();
         _recordingMousePassthroughCoordinator.Dispose();
+        _recordingCameraBubbleCoordinator?.Dispose();
         _recordingAnnotationViewModel.FlushAnnotationTelemetry();
         HideRecordingHud();
         HideRecordingAnnotationSurface();
@@ -168,6 +193,9 @@ public partial class RecordingOverlayWindow : Window
                 _logger.LogError(exception, "Recording stop failed while closing the recording overlay");
             }
         }
+
+        // The window owns the camera session once it is constructed; releasing it here covers stop, cancel and every close path.
+        _cameraSession?.Dispose();
 
         base.OnClosed(e);
     }
@@ -255,6 +283,28 @@ public partial class RecordingOverlayWindow : Window
 
         return IsVisibleWithBounds(RecordingHudPanel)
             && IsPointInsideHudPanel(RecordingHudPanel, screenPoint);
+    }
+
+    private Rect? GetActiveHudRectDips()
+    {
+        foreach (var panel in new FrameworkElement[] { RecordingHudCompactPanel, RecordingHudPanel })
+        {
+            if (!IsVisibleWithBounds(panel))
+            {
+                continue;
+            }
+
+            var left = Canvas.GetLeft(panel);
+            var top = Canvas.GetTop(panel);
+            if (double.IsNaN(left) || double.IsNaN(top))
+            {
+                return null;
+            }
+
+            return new Rect(left, top, panel.ActualWidth, panel.ActualHeight);
+        }
+
+        return null;
     }
 
     private bool IsPointInsideRecordingCaptureSurface(Point screenPoint)

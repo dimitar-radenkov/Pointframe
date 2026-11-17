@@ -813,6 +813,43 @@
                                                   IsChecked="{Binding RecordSystemAudio}"
                                                   Margin="0,8,0,0"
                                                   AutomationProperties.AutomationId="SettingsWindow.RecordSystemAudio"/>
+                                        <CheckBox Content="Show camera in recordings"
+                                                  ToolTip="Adds a round, mirrored camera bubble in a corner of the recorded area. Off by default; the camera is only used while recording."
+                                                  IsChecked="{Binding RecordCamera}"
+                                                  Margin="0,8,0,0"
+                                                  AutomationProperties.AutomationId="SettingsWindow.RecordCamera"/>
+                                        <StackPanel Margin="0,8,0,0"
+                                                    IsEnabled="{Binding RecordCamera}"
+                                                    AutomationProperties.AutomationId="SettingsWindow.CameraOptions">
+                                            <ComboBox Width="260"
+                                                      HorizontalAlignment="Left"
+                                                      Style="{StaticResource CompactComboBox}"
+                                                      ItemsSource="{Binding AvailableCameras}"
+                                                      DisplayMemberPath="Name"
+                                                      SelectedValuePath="Id"
+                                                      SelectedValue="{Binding SelectedCameraDeviceId}"
+                                                      Visibility="{Binding ShowCameraPicker, Converter={StaticResource BoolToVis}}"
+                                                      AutomationProperties.AutomationId="SettingsWindow.CameraDevice"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                                <ComboBox Width="110"
+                                                          Style="{StaticResource CompactComboBox}"
+                                                          ItemsSource="{Binding CameraBubbleSizes}"
+                                                          DisplayMemberPath="Label"
+                                                          SelectedValuePath="Value"
+                                                          SelectedValue="{Binding CameraBubbleSize}"
+                                                          ToolTip="Bubble size"
+                                                          AutomationProperties.AutomationId="SettingsWindow.CameraBubbleSize"/>
+                                                <ComboBox Width="140"
+                                                          Margin="8,0,0,0"
+                                                          Style="{StaticResource CompactComboBox}"
+                                                          ItemsSource="{Binding CameraBubbleCorners}"
+                                                          DisplayMemberPath="Label"
+                                                          SelectedValuePath="Value"
+                                                          SelectedValue="{Binding CameraBubbleCorner}"
+                                                          ToolTip="Bubble corner"
+                                                          AutomationProperties.AutomationId="SettingsWindow.CameraBubbleCorner"/>
+                                            </StackPanel>
+                                        </StackPanel>
                                     </StackPanel>
 
                                     <Border Grid.Row="1"

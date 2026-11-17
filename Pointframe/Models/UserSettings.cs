@@ -16,6 +16,10 @@ public sealed class UserSettings
 
     public bool RecordMicrophone { get; set; } = true;
     public bool RecordSystemAudio { get; set; }
+    public bool RecordCamera { get; set; }
+    public string? CameraDeviceId { get; set; }
+    public CameraBubbleSize CameraBubbleSize { get; set; } = CameraBubbleSize.Small;
+    public CameraBubbleCorner CameraBubbleCorner { get; set; } = CameraBubbleCorner.BottomRight;
     public string? RecordingMicrophoneDeviceName { get; set; }
     public int RecordingFps { get; set; } = 20;
     public bool RecordingTranscriptEnabled { get; set; } = true;
