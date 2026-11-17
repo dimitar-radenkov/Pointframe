@@ -11,6 +11,7 @@ public partial class RecordingHudViewModel : ObservableObject
     private readonly ITelemetryService _telemetry;
     private RecordingAnnotationViewModel? _annotationViewModel;
     private Func<bool>? _toggleAnnotationInput;
+    private IRecordingCameraControl? _cameraControl;
     private CancellationTokenSource? _elapsedCts;
     private DateTime _startTime;
     private DateTime _pausedAt;
@@ -58,7 +59,20 @@ public partial class RecordingHudViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsExpandedMode))]
     private bool _isCompactMode;
 
+    [ObservableProperty]
+    private bool _canToggleCamera;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CameraActionLabel))]
+    [NotifyPropertyChangedFor(nameof(CameraToolTip))]
+    private bool _isCameraOn;
+
     public string OutputPath { get; }
+
+    public string CameraActionLabel => IsCameraOn ? "Camera on" : "Camera off";
+    public string CameraToolTip => IsCameraOn
+        ? "Turn camera off"
+        : "Turn camera on";
 
     public bool IsAnnotationPanelVisible => CanManageAnnotations && IsAnnotationInputArmed;
     public string CurrentModeLabel => IsAnnotationInputArmed ? "Drawing" : "Interactive";
@@ -123,7 +137,52 @@ public partial class RecordingHudViewModel : ObservableObject
         AnnotationModeLabel = "Annotate";
     }
 
+    public void AttachCameraControl(IRecordingCameraControl cameraControl)
+    {
+        ArgumentNullException.ThrowIfNull(cameraControl);
+
+        if (_cameraControl is not null)
+        {
+            _cameraControl.StateChanged -= HandleCameraStateChanged;
+        }
+
+        _cameraControl = cameraControl;
+        _cameraControl.StateChanged += HandleCameraStateChanged;
+        CanToggleCamera = true;
+        IsCameraOn = cameraControl.IsOn;
+    }
+
     public void CancelElapsedTimer() => _elapsedCts?.Cancel();
+
+    private void HandleCameraStateChanged()
+    {
+        if (_cameraControl is not null)
+        {
+            IsCameraOn = _cameraControl.IsOn;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ToggleCamera()
+    {
+        if (_cameraControl is null)
+        {
+            return;
+        }
+
+        var turnOn = !_cameraControl.IsOn;
+        try
+        {
+            await _cameraControl.SetOnAsync(turnOn);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Recording camera toggle failed");
+        }
+
+        IsCameraOn = _cameraControl.IsOn;
+        _logger.LogInformation("Recording camera toggled from HUD: {State}", IsCameraOn ? "on" : "off");
+    }
 
     public void InitializeDisplayMode(bool startCompact)
     {

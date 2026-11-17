@@ -44,59 +44,78 @@ public partial class OverlayWindow
         _fileSystem.CreateDirectory(videosDir);
         var path = _fileSystem.CombinePath(videosDir, $"SnipRec-{DateTime.Now:yyyyMMdd-HHmmss}.mp4");
 
+        IRecordingCameraSession? cameraSession = null;
+        var cameraHandedToOverlay = false;
         try
         {
-            Visibility = Visibility.Hidden;
-            Dispatcher.Invoke(() => { }, DispatcherPriority.Render);
-            await Task.Run(() => _recorder.Start(screenX, screenY, screenW, screenH, path));
+            try
+            {
+                Visibility = Visibility.Hidden;
+                Dispatcher.Invoke(() => { }, DispatcherPriority.Render);
+                // Bounded wait on the UI thread; the camera never delays the recorder beyond it and never runs inside Task.Run.
+                cameraSession = await RecordingCameraStartup.BeginAsync(_userSettings, _recordingCameraSessionFactory, _logger);
+                await Task.Run(() => _recorder.Start(screenX, screenY, screenW, screenH, path));
+            }
+            catch (System.IO.FileNotFoundException ex)
+            {
+                Visibility = Visibility.Visible;
+                _telemetry.TrackEvent(TelemetryEvents.FfmpegMissing);
+                _messageBox.ShowWarning(ex.Message, "ffmpeg not found");
+                return;
+            }
+
+            _telemetry.TrackEvent(TelemetryEvents.RecordingStarted, new System.Collections.Generic.Dictionary<string, string>
+            {
+                [TelemetryPropertyKeys.Type] = "region",
+                [TelemetryPropertyKeys.SystemAudio] = _recorder.IsRecordingSystemAudio ? "true" : "false",
+                [TelemetryPropertyKeys.Camera] = RecordingCameraStartup.TelemetryValue(_userSettings),
+            });
+
+            _microphoneWarning.ReportIfUnavailable(_recorder.IsRecordingMicrophoneEnabled);
+
+            RecordingOverlayWindow? recordingOverlay = null;
+            DpiAwarenessScope.RunPerMonitorV2(() =>
+            {
+                recordingOverlay = new RecordingOverlayWindow(
+                    _recordingSessionGeometry,
+                    path,
+                    _recorder,
+                    _screenCapture,
+                    _mouseHookService,
+                    _recordingHudViewModelFactory,
+                    _eventAggregator,
+                    _loggerFactory,
+                    _userSettings,
+                    _recordingAnnotationViewModel,
+                    cameraSession: cameraSession);
+            });
+
+            if (recordingOverlay is null)
+            {
+                Visibility = Visibility.Visible;
+                _logger.LogError("Failed to create the recording overlay window");
+                return;
+            }
+
+            // The overlay owns the camera from here and releases it when it closes.
+            cameraHandedToOverlay = true;
+
+            if (System.Windows.Application.Current is App app)
+            {
+                app.RegisterAutomationWindow(recordingOverlay);
+            }
+
+            _closeLeavesRecorderRunning = true;
+            DpiAwarenessScope.RunPerMonitorV2(() => recordingOverlay.Show());
+            Close();
         }
-        catch (System.IO.FileNotFoundException ex)
+        finally
         {
-            Visibility = Visibility.Visible;
-            _telemetry.TrackEvent(TelemetryEvents.FfmpegMissing);
-            _messageBox.ShowWarning(ex.Message, "ffmpeg not found");
-            return;
+            if (!cameraHandedToOverlay)
+            {
+                cameraSession?.Dispose();
+            }
         }
-
-        _telemetry.TrackEvent(TelemetryEvents.RecordingStarted, new System.Collections.Generic.Dictionary<string, string>
-        {
-            [TelemetryPropertyKeys.Type] = "region",
-            [TelemetryPropertyKeys.SystemAudio] = _recorder.IsRecordingSystemAudio ? "true" : "false",
-        });
-
-        _microphoneWarning.ReportIfUnavailable(_recorder.IsRecordingMicrophoneEnabled);
-
-        RecordingOverlayWindow? recordingOverlay = null;
-        DpiAwarenessScope.RunPerMonitorV2(() =>
-        {
-            recordingOverlay = new RecordingOverlayWindow(
-                _recordingSessionGeometry,
-                path,
-                _recorder,
-                _screenCapture,
-                _mouseHookService,
-                _recordingHudViewModelFactory,
-                _eventAggregator,
-                _loggerFactory,
-                _userSettings,
-                _recordingAnnotationViewModel);
-        });
-
-        if (recordingOverlay is null)
-        {
-            Visibility = Visibility.Visible;
-            _logger.LogError("Failed to create the recording overlay window");
-            return;
-        }
-
-        if (System.Windows.Application.Current is App app)
-        {
-            app.RegisterAutomationWindow(recordingOverlay);
-        }
-
-        _closeLeavesRecorderRunning = true;
-        DpiAwarenessScope.RunPerMonitorV2(() => recordingOverlay.Show());
-        Close();
     }
 
     private void CloseRecordingSessionWindows()

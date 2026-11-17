@@ -170,6 +170,23 @@
             Background="#01000000"
             AutomationProperties.AutomationId="RecordingOverlayWindow.AnnotationCanvas"/>
 
+    <Grid x:Name="RecordingCameraBubble"
+          Visibility="Collapsed"
+          IsHitTestVisible="False"
+          Focusable="False"
+          AutomationProperties.AutomationId="RecordingOverlayWindow.CameraBubble">
+      <Ellipse IsHitTestVisible="False">
+        <Ellipse.Fill>
+          <ImageBrush x:Name="RecordingCameraBubbleBrush" Stretch="UniformToFill">
+            <ImageBrush.RelativeTransform>
+              <ScaleTransform ScaleX="-1" CenterX="0.5" CenterY="0.5"/>
+            </ImageBrush.RelativeTransform>
+          </ImageBrush>
+        </Ellipse.Fill>
+      </Ellipse>
+      <Ellipse Stroke="#E6FFFFFF" StrokeThickness="2" IsHitTestVisible="False"/>
+    </Grid>
+
         <Border x:Name="RecordingHudPanel"
           Background="{DynamicResource ToolbarBackground}"
           CornerRadius="6"
@@ -206,6 +223,8 @@
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
               <ColumnDefinition Width="Auto"/>
               <ColumnDefinition Width="Auto"/>
               <ColumnDefinition Width="Auto"/>
@@ -325,6 +344,45 @@
 
             <Button Grid.Row="0" Grid.Column="6"
                     Style="{StaticResource RecordingHudActionBtn}"
+                    Command="{Binding ToggleCameraCommand}"
+                    ToolTip="{Binding CameraToolTip}"
+                    Visibility="{Binding CanToggleCamera, Converter={StaticResource BoolToVisibility}}"
+                    AutomationProperties.AutomationId="RecordingOverlayWindow.ToggleCamera">
+              <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                         FontSize="15"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         Text="&#xE722;">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="{DynamicResource SubLabelText}"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsCameraOn}" Value="True">
+                        <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+            </Button>
+
+            <TextBlock Grid.Row="1" Grid.Column="6"
+                       Text="{Binding CameraActionLabel}"
+                       FontSize="8"
+                       Foreground="{DynamicResource SubLabelText}"
+                       TextAlignment="Center"
+                       Margin="0,2,0,0"
+                       Visibility="{Binding CanToggleCamera, Converter={StaticResource BoolToVisibility}}"/>
+
+            <Rectangle Grid.Row="0" Grid.RowSpan="2" Grid.Column="7"
+                       Width="1"
+                       Fill="{DynamicResource DividerColor}"
+                       Margin="3,7"
+                       VerticalAlignment="Stretch"
+                       Visibility="{Binding CanToggleCamera, Converter={StaticResource BoolToVisibility}}"/>
+
+            <Button Grid.Row="0" Grid.Column="8"
+                    Style="{StaticResource RecordingHudActionBtn}"
                     Command="{Binding StopCommand}"
                     ToolTip="Stop recording"
                     AutomationProperties.AutomationId="RecordingOverlayWindow.Stop">
@@ -336,7 +394,7 @@
                          VerticalAlignment="Center"/>
             </Button>
 
-            <TextBlock Grid.Row="1" Grid.Column="6" Text="Stop" FontSize="8" Foreground="{DynamicResource SubLabelText}" TextAlignment="Center" Margin="0,2,0,0"/>
+            <TextBlock Grid.Row="1" Grid.Column="8" Text="Stop" FontSize="8" Foreground="{DynamicResource SubLabelText}" TextAlignment="Center" Margin="0,2,0,0"/>
           </Grid>
 
           <Border Grid.Column="1"
