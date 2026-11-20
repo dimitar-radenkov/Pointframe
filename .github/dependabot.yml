@@ -9,11 +9,19 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    # EF Core and Microsoft.Extensions majors follow the .NET runtime (11.x targets .NET 11); move them with the
+    # TargetFramework, not through Dependabot.
+    ignore:
+      - dependency-name: "Microsoft.EntityFrameworkCore*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.Extensions*"
+        update-types: ["version-update:semver-major"]
     groups:
       dotnet-servicing:
         patterns:
           - "Microsoft.EntityFrameworkCore*"
           - "Microsoft.Extensions*"
+        update-types: ["minor", "patch"]
 
   # Keep GitHub Actions up to date
   - package-ecosystem: github-actions
