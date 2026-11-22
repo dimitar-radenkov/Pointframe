@@ -10,7 +10,7 @@ Part of the [Pointframe knowledge base](knowledge-base.md).
 
 | File | Purpose | Owner |
 |---|---|---|
-| `logs\pointframe-<date>.log` | Serilog rolling log; `Logging:RetainedFileCountLimit` in `appsettings.json` caps retained files | `AppPaths.RollingLogPath` |
+| `logs\pointframe-<date>.log` | Serilog rolling log; `Logging:RetainedFileCountLimit` in `appsettings.json` caps retained files and `Logging:FileSizeLimitBytes` rolls a file at the cap | `AppPaths.RollingLogPath`, `AppLogging` |
 | `settings.json` | User settings | `UserSettingsService` |
 | `pointframe.db` | SQLite database for the capture text cache | `AppPaths.PointframeDatabasePath`, `Pointframe.Data` |
 
@@ -30,7 +30,7 @@ Screenshots and recordings go to the folder chosen in settings.
 | Key | Where | Effect |
 |---|---|---|
 | `ApplicationInsights:ConnectionString` | `appsettings.json` | Empty in source; CD injects the real value |
-| `Logging:RetainedFileCountLimit` | `appsettings.json` | Rolling log retention |
+| `Logging:RetainedFileCountLimit`, `Logging:FileSizeLimitBytes`, `Logging:MinimumLevelOverrides` | `appsettings.json` | Rolling log retention (10 files), per-file size cap (20 MB, so at most about 200 MB of logs), and per-category minimum levels (`Microsoft` and `System` at Warning so EF Core SQL and framework chatter stay out of the file; `Pointframe.*` keeps Information); built by `AppLogging.CreateConfiguration` |
 | Any key above | `appsettings.Local.json` | Optional local override, loaded after `appsettings.json` and copied to output only if present |
 | `SNIPPINGTOOL_AUTOMATION_SETTINGS_PATH` | environment | Redirects `settings.json` for automation tests |
 | `SNIPPINGTOOL_AUTOMATION_DATA_DIRECTORY` | environment | Redirects app data, database, logs, and the default screenshot import root for isolated desktop tests |
