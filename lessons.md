@@ -1870,3 +1870,22 @@ Treat a zero foreground or window-from-point reading as unknown and re-read it w
 ### Takeaway
 
 A test fixture that fights for foreground must stop as soon as any of its own windows is in front; a z-order or activation change inside a synthesized gesture loses input.
+## A microphone recording must not start capturing before ffmpeg has opened the microphone
+
+### Problem
+
+Stopping a recording with the microphone on took 3-5 s (0.8 s without it), the log showed `droppedFrames=27` (0 without the microphone), the first ~1.2 s of the screen was missing, and the video ended with ~1.2 s of frozen frames.
+
+### Root cause
+
+ffmpeg opens its inputs in command order and probes a rawvideo pipe only when the first frame arrives. With the pipe listed first, ffmpeg read one frame, then spent ~1.2 s opening the dshow microphone without reading stdin. The bounded encode channel dropped every frame captured meanwhile, and `PadToElapsedDuration` synchronously wrote the missing frames (~27 x 14.7 MB) as frozen frames while the user waited at Stop. Blocking stdin writes cannot signal readiness: the OS pipe buffer accepts data before ffmpeg reads, and ffmpeg prints nothing at all until it has read the first frame.
+
+### What fixed it
+
+- list the dshow input first in `FFMpegVideoWriter.BuildArguments` (the maps become `1:v:0` and `0:a:0`), so the slow open finishes before a frame exists and ffmpeg prints `Input #0, dshow, ...` while it waits for the video pipe
+- `FfmpegStderrMonitor` turns that line into a readiness task, `IVideoWriterReadiness.WaitUntilReady` exposes it, and `ScreenRecordingService.Start` waits (5 s, then starts anyway with a warning) before restarting the session stopwatch and creating the pipeline
+- the audio then carries the ~0.25 s between opening the microphone and the first frame (ffmpeg rebases each input to its own start); the audio start is read from the dshow `Duration: N/A, start:` line (QPC seconds, the capture loop's clock), subtracted from the first captured frame's QPC time, and the remux drops that lead from the audio (`-ss` on a second input, stream copy, plain-remux fallback); `-copyts` crawls at 0.13x and must not be used
+
+### Takeaway
+
+Do not start a capture clock before the consumer is reading. Find the consumer's readiness in its own output, and check what it actually prints and when (here: nothing until the first frame, so the signal needs the slow input first). Measure ffmpeg behavior with a lavfi stand-in; never open the real microphone in tests.

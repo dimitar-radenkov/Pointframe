@@ -108,6 +108,47 @@ public sealed class RecordingRecoveryIntegrationTests : IDisposable
 
     [FfmpegFact]
     [Trait("Category", "Integration")]
+    public void TrimmedRemux_EndsAudioAndVideoTogetherAndDropsTheLeadFromTheAudio()
+    {
+        const double LeadSeconds = 0.4;
+        var output = _folder.File("lead.mp4");
+        var intermediate = RecordingRecovery.GetIntermediatePath(output);
+        // Real content is 3 s. The microphone started LeadSeconds early, and the pipeline pads the video by the same lead.
+        var encode = Ffmpeg(
+            "-y", "-hide_banner",
+            "-f", "lavfi", "-i", $"testsrc=size={Width}x{Height}:rate={Fps}:duration=3.4",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=3.4",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", $"{Fps}",
+            "-c:a", "aac", "-b:a", "128k", "-shortest",
+            "-movflags", "+frag_keyframe+empty_moov+default_base_moof", "-flush_packets", "1",
+            intermediate);
+        Assert.Equal(0, encode.ExitCode);
+        var audioBefore = StreamSeconds(intermediate, "0:a:0");
+
+        var recovered = new RecordingRecovery(
+            new FfmpegRecordingRemuxer(NullLogger<FfmpegRecordingRemuxer>.Instance),
+            NullLogger<RecordingRecovery>.Instance).Recover(intermediate, output, TimeSpan.FromSeconds(LeadSeconds));
+
+        Assert.NotNull(recovered);
+        Assert.True(recovered.Remuxed);
+        var audio = StreamSeconds(output, "0:a:0");
+        var video = StreamSeconds(output, "0:v:0");
+        Assert.InRange(Math.Abs(audio - video), 0, 0.05 + 1d / Fps);
+        Assert.InRange(audioBefore - audio, LeadSeconds - 0.05, LeadSeconds + 0.05);
+        Assert.InRange(recovered.Duration.TotalSeconds, 3.0 - 0.1, 3.0 + 0.1);
+    }
+
+    private static double StreamSeconds(string path, string map)
+    {
+        var result = Ffmpeg("-hide_banner", "-i", path, "-map", map, "-f", "null", "-");
+        var matches = System.Text.RegularExpressions.Regex.Matches(result.Stderr, @"time=(\d+):(\d+):(\d+\.\d+)");
+        Assert.NotEmpty(matches);
+        var last = matches[^1];
+        return (int.Parse(last.Groups[1].Value) * 3600) + (int.Parse(last.Groups[2].Value) * 60) + double.Parse(last.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    [FfmpegFact]
+    [Trait("Category", "Integration")]
     public void KilledBeforeFirstFragment_LeavesNothingBehind()
     {
         var output = _folder.File("early.mp4");

@@ -23,6 +23,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     private int _fps;
     private RecordingMicrophoneSession? _microphoneSession;
     private Stopwatch? _sessionStopwatch;
+    private double? _firstFrameQpcSeconds;
+    private TimeSpan _audioLead;
     private IRecordingEventTrack? _eventTrack;
     private IRecordingRedactionSession? _redactionSession;
     private string? _outputPath;
@@ -39,6 +41,10 @@ public sealed class ScreenRecordingService : IScreenRecordingService
     public bool CanToggleMicrophone { get; private set; }
     public bool IsMicrophoneMuted { get; private set; }
     public bool IsRecordingSystemAudio { get; private set; }
+
+    private static readonly TimeSpan MaxAudioLead = TimeSpan.FromSeconds(5);
+
+    internal TimeSpan WriterReadyTimeout { get; init; } = TimeSpan.FromSeconds(5);
     public RecordingEventTrackSummary? EventTrackSummary { get; private set; }
     public bool LastStopFailed { get; private set; }
     public string? LastStopError { get; private set; }
@@ -85,6 +91,8 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _intermediatePath = null;
         _sessionStopwatch = Stopwatch.StartNew();
         _outputPath = outputPath;
+        _firstFrameQpcSeconds = null;
+        _audioLead = TimeSpan.Zero;
         EventTrackSummary = null;
         try
         {
@@ -96,6 +104,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             IsRecordingMicrophoneEnabled = _microphoneSession.IsEnabled;
             CanToggleMicrophone = _microphoneSession.CanToggleMute;
             IsMicrophoneMuted = _microphoneSession.InitialMutedState;
+            WaitForWriterReady();
             _eventTrack = new RecordingEventTrack(outputPath, _sessionStopwatch);
             _redactionSession = new RecordingRedactionSession(_eventTrack);
             _eventTrack.Write("recording.started", new RecordingEventPayload(CaptureX: x, CaptureY: y, CaptureWidth: width, CaptureHeight: height, FramesPerSecond: fps, IsEnabled: IsRecordingMicrophoneEnabled, IsMuted: IsMicrophoneMuted));
@@ -141,6 +150,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         LastStopError = null;
         LastStopResult = new RecordingStopResult(RecordingStopStatus.Failed, null, TimeSpan.Zero);
         var elapsed = _sessionStopwatch?.Elapsed ?? TimeSpan.Zero;
+        _audioLead = ComputeAudioLead();
         RawFrameRecordingStatistics? statistics = null;
         Exception? failure = null;
         var phase = "stop";
@@ -150,7 +160,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         {
             _eventTrack?.Write("recording.stopped", new RecordingEventPayload());
             phase = "capture";
-            statistics = _pipeline?.Stop(elapsed);
+            statistics = _pipeline?.Stop(elapsed + _audioLead);
         }
         catch (Exception exception)
         {
@@ -237,7 +247,7 @@ public sealed class ScreenRecordingService : IScreenRecordingService
             return;
         }
 
-        var recovered = _recovery.Recover(intermediatePath, outputPath);
+        var recovered = _recovery.Recover(intermediatePath, outputPath, _audioLead);
         if (recovered is null)
         {
             ReportFailure(failure ?? new RecordingStopException("no_data", "The recording contained no complete video fragment."), failure is null ? "finalize" : phase, diagnostics, null);
@@ -427,6 +437,28 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         Stop();
     }
 
+    // With a microphone, ffmpeg spends about a second opening the audio device before it reads video frames. Starting the capture
+    // clock only afterwards leaves nothing to drop at the start and nothing to pad at the end.
+    private void WaitForWriterReady()
+    {
+        if (!_videoHasMicrophone || _writer is not IVideoWriterReadiness readiness)
+        {
+            return;
+        }
+
+        var waited = Stopwatch.StartNew();
+        if (readiness.WaitUntilReady(WriterReadyTimeout))
+        {
+            _logger.LogInformation("ffmpeg ready for video frames after {WaitMs} ms", (long)waited.Elapsed.TotalMilliseconds);
+        }
+        else
+        {
+            _logger.LogWarning("ffmpeg did not report ready within {TimeoutMs} ms - starting capture anyway", (long)waited.Elapsed.TotalMilliseconds);
+        }
+
+        _sessionStopwatch?.Restart();
+    }
+
     private void StartSystemAudio(string outputPath)
     {
         _systemAudioWavPath = null;
@@ -470,8 +502,53 @@ public sealed class ScreenRecordingService : IScreenRecordingService
         _systemAudio?.ExcludeSpan(start, duration);
     }
 
+    // ffmpeg rebases each input to its own first packet. The microphone starts delivering when ffmpeg opens it, before the first
+    // video frame exists, so its track carries that lead as extra audio the video lacks. dshow stamps audio with QPC seconds, the
+    // same clock as the capture loop, so the lead is firstFrame - audioStart; the remux drops it from the audio.
+    internal static TimeSpan ComputeAudioLead(double? audioStartQpcSeconds, double? firstFrameQpcSeconds, out string? skipReason)
+    {
+        skipReason = null;
+        if (audioStartQpcSeconds is null)
+        {
+            skipReason = "no audio start time from ffmpeg";
+            return TimeSpan.Zero;
+        }
+
+        if (firstFrameQpcSeconds is null)
+        {
+            skipReason = "no frame was captured";
+            return TimeSpan.Zero;
+        }
+
+        var lead = firstFrameQpcSeconds.Value - audioStartQpcSeconds.Value;
+        if (lead <= 0 || lead > MaxAudioLead.TotalSeconds)
+        {
+            skipReason = $"lead {lead:0.###} s is outside (0, {MaxAudioLead.TotalSeconds:0} s]";
+            return TimeSpan.Zero;
+        }
+
+        return TimeSpan.FromSeconds(lead);
+    }
+
+    private TimeSpan ComputeAudioLead()
+    {
+        if (!_videoHasMicrophone || _writer is not IVideoWriterReadiness readiness)
+        {
+            return TimeSpan.Zero;
+        }
+
+        var lead = ComputeAudioLead(readiness.AudioStartQpcSeconds, _firstFrameQpcSeconds, out var skipReason);
+        if (skipReason is not null)
+        {
+            _logger.LogInformation("Audio lead not trimmed: {Reason}", skipReason);
+        }
+
+        return lead;
+    }
+
     private void OnFirstVideoFrameCaptured()
     {
+        _firstFrameQpcSeconds = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
         _systemAudio?.BeginTimeline();
     }
 

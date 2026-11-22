@@ -5,7 +5,7 @@ using System.Globalization;
 
 namespace Pointframe.Services;
 
-public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnostics, IRecoverableVideoWriter
+public sealed class FFMpegVideoWriter : IVideoWriter, IVideoWriterReadiness, IRecordingFailureDiagnostics, IRecoverableVideoWriter
 {
     private static readonly ConcurrentDictionary<string, bool> DrawtextSupportCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, FfmpegOptionSupport> OptionSupportCache = new(StringComparer.OrdinalIgnoreCase);
@@ -13,11 +13,12 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
     private readonly Process _ffmpeg;
     private readonly Stream _stdin;
     private readonly ILogger _logger;
+    private readonly FfmpegStderrMonitor _stderrMonitor;
+    private readonly bool _hasMicrophone;
     private Task? _stderrTask;
     private bool _closed;
-    private readonly ConcurrentQueue<string> _recentStandardError = new();
     public int? FfmpegExitCode { get; private set; }
-    public string RecentStandardError => string.Join(Environment.NewLine, _recentStandardError);
+    public string RecentStandardError => _stderrMonitor.RecentLines;
     public string? FailureReason { get; private set; }
     public string IntermediatePath { get; }
 
@@ -32,6 +33,8 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         DateTimeOffset? watermarkTimestamp = null)
     {
         _logger = logger;
+        _stderrMonitor = new FfmpegStderrMonitor(logger);
+        _hasMicrophone = !string.IsNullOrWhiteSpace(microphoneDeviceName);
         IntermediatePath = RecordingRecovery.GetIntermediatePath(outputPath);
 
         var ffmpegPath = FfmpegResolver.ResolveRequired("Screen recording");
@@ -62,11 +65,24 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         }
 
         _stdin = _ffmpeg.StandardInput.BaseStream;
-        _stderrTask = ConsumeStderr(_ffmpeg);
+        _stderrTask = _stderrMonitor.RunAsync(_ffmpeg.StandardError);
         _logger.LogInformation("FFMpeg process started (PID {Pid})", _ffmpeg.Id);
     }
 
     public void WriteFrame(byte[] frameData) => _stdin.Write(frameData, 0, frameData.Length);
+
+    public double? AudioStartQpcSeconds => _hasMicrophone ? _stderrMonitor.FirstInputStartSeconds : null;
+
+    public bool WaitUntilReady(TimeSpan timeout)
+    {
+        if (!_hasMicrophone)
+        {
+            return true;
+        }
+
+        var opened = _stderrMonitor.FirstInputOpened;
+        return opened.Wait(timeout) && opened.Result;
+    }
 
     internal static void BuildArguments(ICollection<string> args, int width, int height, int fps, string outputPath, string? microphoneDeviceName)
         => BuildArguments(args, width, height, fps, outputPath, microphoneDeviceName, null, false);
@@ -85,6 +101,27 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         var hasMicrophone = !string.IsNullOrWhiteSpace(microphoneDeviceName);
 
         args.Add("-y");
+
+        if (hasMicrophone)
+        {
+            // The microphone is opened first on purpose: ffmpeg opens inputs in command order but probes a rawvideo pipe only when
+            // its first frame arrives. Listed first, the slow dshow open (about a second) completes before any frame is captured,
+            // and "Input #0" on stderr tells the writer that ffmpeg is ready to consume frames.
+            // ffmpeg master builds since 2026-09 accept -thread_queue_size only as a muxer option and reject it here.
+            if (microphoneThreadQueueSize)
+            {
+                args.Add("-thread_queue_size");
+                args.Add("512");
+            }
+
+            args.Add("-f");
+            args.Add("dshow");
+            args.Add("-audio_buffer_size");
+            args.Add("50");
+            args.Add("-i");
+            args.Add($"audio={microphoneDeviceName}");
+        }
+
         args.Add("-f");
         args.Add("rawvideo");
         args.Add("-pix_fmt");
@@ -105,23 +142,10 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
 
         if (hasMicrophone)
         {
-            // ffmpeg master builds since 2026-09 accept -thread_queue_size only as a muxer option and reject it here.
-            if (microphoneThreadQueueSize)
-            {
-                args.Add("-thread_queue_size");
-                args.Add("512");
-            }
-
-            args.Add("-f");
-            args.Add("dshow");
-            args.Add("-audio_buffer_size");
-            args.Add("50");
-            args.Add("-i");
-            args.Add($"audio={microphoneDeviceName}");
             args.Add("-map");
-            args.Add("0:v:0");
+            args.Add("1:v:0");
             args.Add("-map");
-            args.Add("1:a:0");
+            args.Add("0:a:0");
         }
 
         if (!string.IsNullOrWhiteSpace(drawtextFilter))
@@ -473,37 +497,6 @@ public sealed class FFMpegVideoWriter : IVideoWriter, IRecordingFailureDiagnosti
         {
             FailureReason ??= "ffmpeg_exited";
             throw new InvalidOperationException($"ffmpeg exited with code {FfmpegExitCode} while finalizing the recording.");
-        }
-    }
-
-    private async Task ConsumeStderr(Process process)
-    {
-        try
-        {
-            string? line;
-            while ((line = await process.StandardError.ReadLineAsync().ConfigureAwait(false)) is not null)
-            {
-                _recentStandardError.Enqueue(line);
-                while (_recentStandardError.Count > 12)
-                {
-                    _recentStandardError.TryDequeue(out _);
-                }
-
-                if (line.Contains("error", StringComparison.OrdinalIgnoreCase) ||
-                    line.Contains("warning", StringComparison.OrdinalIgnoreCase) ||
-                    line.Contains("failed", StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogWarning("ffmpeg: {Line}", line);
-                }
-                else
-                {
-                    _logger.LogDebug("ffmpeg: {Line}", line);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to read ffmpeg stderr");
         }
     }
 }
