@@ -72,6 +72,13 @@ internal sealed class FakeRemuxer : IRecordingRemuxer
     public TimeSpan? RemuxResult { get; set; } = TimeSpan.FromSeconds(83);
     public TimeSpan? ReadResult { get; set; }
     public List<(string Intermediate, string Output)> Calls { get; } = [];
+    public List<TimeSpan> LeadCalls { get; } = [];
+
+    public TimeSpan? Remux(string intermediatePath, string outputPath, TimeSpan audioLead)
+    {
+        LeadCalls.Add(audioLead);
+        return Remux(intermediatePath, outputPath);
+    }
 
     public TimeSpan? Remux(string intermediatePath, string outputPath)
     {

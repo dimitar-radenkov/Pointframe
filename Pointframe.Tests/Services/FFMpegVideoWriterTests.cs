@@ -238,8 +238,10 @@ public sealed class FFMpegVideoWriterTests
         Assert.Contains("-use_wallclock_as_timestamps", args);
         Assert.Contains("dshow", args);
         Assert.Contains("audio=Studio Mic", args);
-        Assert.Contains("0:v:0", args);
-        Assert.Contains("1:a:0", args);
+        Assert.Contains("1:v:0", args);
+        Assert.Contains("0:a:0", args);
+        Assert.DoesNotContain("0:v:0", args);
+        Assert.DoesNotContain("1:a:0", args);
         Assert.Contains("aac", args);
         Assert.Contains("-shortest", args);
         Assert.Equal("0.5", args[args.IndexOf("-shortest_buf_duration") + 1]);
@@ -256,6 +258,18 @@ public sealed class FFMpegVideoWriterTests
 
         Assert.True(wallclockIndex >= 0);
         Assert.True(pipeInputIndex > wallclockIndex);
+    }
+
+    [Fact]
+    public void BuildArguments_WithMicrophone_OpensTheMicrophoneBeforeTheVideoPipe()
+    {
+        var args = new List<string>();
+        FFMpegVideoWriter.BuildArguments(args, 128, 72, 20, "capture.mp4", "Studio Mic");
+
+        Assert.True(args.IndexOf("audio=Studio Mic") < args.IndexOf("pipe:0"));
+        Assert.True(args.IndexOf("dshow") < args.IndexOf("rawvideo"));
+        var maps = args.Select((value, index) => (value, index)).Where(item => item.value == "-map").Select(item => args[item.index + 1]).ToArray();
+        Assert.Equal(new[] { "1:v:0", "0:a:0" }, maps);
     }
 
     [Fact]
@@ -276,7 +290,7 @@ public sealed class FFMpegVideoWriterTests
         var queueIndex = args.IndexOf("-thread_queue_size");
         var dshowIndex = args.IndexOf("dshow");
 
-        Assert.True(queueIndex > args.IndexOf("pipe:0"));
+        Assert.True(queueIndex < args.IndexOf("pipe:0"));
         Assert.Equal("512", args[queueIndex + 1]);
         Assert.True(dshowIndex > queueIndex);
     }

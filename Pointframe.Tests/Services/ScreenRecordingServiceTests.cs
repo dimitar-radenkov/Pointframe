@@ -598,6 +598,127 @@ public sealed class ScreenRecordingServiceTests
         }
     }
 
+    private sealed class ReadinessVideoWriter : IVideoWriter, IVideoWriterReadiness
+    {
+        private readonly ManualResetEventSlim _ready = new();
+        private readonly bool _readyResult;
+
+        public ReadinessVideoWriter(bool readyResult = true)
+        {
+            _readyResult = readyResult;
+        }
+
+        public int WaitCalls { get; private set; }
+
+        public ManualResetEventSlim WaitEntered { get; } = new();
+
+        public void Release() => _ready.Set();
+
+        public bool WaitUntilReady(TimeSpan timeout)
+        {
+            WaitCalls++;
+            WaitEntered.Set();
+            return _ready.Wait(timeout) && _readyResult;
+        }
+
+        public void WriteFrame(byte[] frameData)
+        {
+        }
+
+        public void Dispose()
+        {
+            _ready.Dispose();
+            WaitEntered.Dispose();
+        }
+    }
+
+    private sealed class CountingFrameCapture : IRawFrameCapture
+    {
+        private int _captureCount;
+
+        public int CaptureCount => Volatile.Read(ref _captureCount);
+
+        public void Capture(byte[] frameData)
+        {
+            Array.Clear(frameData);
+            Interlocked.Increment(ref _captureCount);
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private static IMicrophoneDeviceService CreateMicrophoneService() =>
+        Mock.Of<IMicrophoneDeviceService>(service =>
+            service.GetAvailableCaptureDeviceNames() == new[] { "Studio Mic" } &&
+            service.GetDefaultCaptureDeviceName() == "Studio Mic" &&
+            service.TryGetCaptureDeviceMuted("Studio Mic") == false);
+
+    [Fact]
+    public async Task Start_WithMicrophone_DoesNotCaptureUntilTheWriterIsReady()
+    {
+        using var writer = new ReadinessVideoWriter();
+        var factory = new Mock<IVideoWriterFactory>();
+        factory.Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>())).Returns(writer);
+        var capture = new CountingFrameCapture();
+        using var svc = CreateSut(factory.Object, CreateMicrophoneService(), new UserSettings { RecordMicrophone = true, RecordingFps = 30 }, frameCapture: capture);
+
+        var start = Task.Run(() => svc.Start(0, 0, 100, 100, "ready.mp4"));
+        Assert.True(writer.WaitEntered.Wait(TimeSpan.FromSeconds(10)));
+        Thread.Sleep(300);
+
+        Assert.Equal(0, capture.CaptureCount);
+        Assert.False(svc.IsRecording);
+
+        writer.Release();
+        await start;
+
+        Assert.True(svc.IsRecording);
+        Assert.True(SpinWait.SpinUntil(() => capture.CaptureCount > 0, TimeSpan.FromSeconds(10)));
+        Assert.Equal(1, writer.WaitCalls);
+    }
+
+    [Fact]
+    public void Start_WithMicrophone_WhenTheWriterNeverBecomesReady_StartsAnywayAndLogsAWarning()
+    {
+        using var writer = new ReadinessVideoWriter(readyResult: false);
+        var factory = new Mock<IVideoWriterFactory>();
+        factory.Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>())).Returns(writer);
+        var capture = new CountingFrameCapture();
+        var logger = new ListLogger<ScreenRecordingService>();
+        using var svc = new ScreenRecordingService(
+            logger,
+            CreateMicrophoneService(),
+            Mock.Of<IUserSettingsService>(s => s.Current == new UserSettings { RecordMicrophone = true, RecordingFps = 30 }),
+            factory.Object,
+            capture)
+        {
+            WriterReadyTimeout = TimeSpan.FromMilliseconds(100),
+        };
+
+        var exception = Record.Exception(() => svc.Start(0, 0, 100, 100, "timeout.mp4"));
+
+        Assert.Null(exception);
+        Assert.True(svc.IsRecording);
+        Assert.True(SpinWait.SpinUntil(() => capture.CaptureCount > 0, TimeSpan.FromSeconds(10)));
+        Assert.Contains(logger.Messages, message => message.Contains("did not report ready", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Start_WithoutMicrophone_DoesNotWaitForTheWriter()
+    {
+        using var writer = new ReadinessVideoWriter();
+        var factory = new Mock<IVideoWriterFactory>();
+        factory.Setup(f => f.Create(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>())).Returns(writer);
+        using var svc = CreateSut(factory.Object, settings: new UserSettings { RecordMicrophone = false }, frameCapture: new CountingFrameCapture());
+
+        svc.Start(0, 0, 100, 100, "nomic.mp4");
+
+        Assert.True(svc.IsRecording);
+        Assert.Equal(0, writer.WaitCalls);
+    }
+
     [Fact]
     public void Start_RecordMicrophoneEnabled_UsesDefaultCaptureDeviceName()
     {

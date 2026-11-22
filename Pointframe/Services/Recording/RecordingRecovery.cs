@@ -6,6 +6,9 @@ namespace Pointframe.Services;
 public interface IRecordingRemuxer
 {
     TimeSpan? Remux(string intermediatePath, string outputPath);
+
+    TimeSpan? Remux(string intermediatePath, string outputPath, TimeSpan audioLead) => Remux(intermediatePath, outputPath);
+
     TimeSpan? ReadDuration(string path);
 }
 
@@ -23,7 +26,7 @@ public sealed class RecordingRecovery(IRecordingRemuxer remuxer, ILogger<Recordi
         return Path.Combine(directory, $".{Path.GetFileNameWithoutExtension(outputPath)}{IntermediateSuffix}");
     }
 
-    public RecoveredRecording? Recover(string intermediatePath, string outputPath)
+    public RecoveredRecording? Recover(string intermediatePath, string outputPath, TimeSpan audioLead = default)
     {
         try
         {
@@ -35,7 +38,9 @@ public sealed class RecordingRecovery(IRecordingRemuxer remuxer, ILogger<Recordi
 
             if (!File.Exists(outputPath))
             {
-                var duration = remuxer.Remux(intermediatePath, outputPath);
+                var duration = audioLead > TimeSpan.Zero
+                    ? remuxer.Remux(intermediatePath, outputPath, audioLead)
+                    : remuxer.Remux(intermediatePath, outputPath);
                 if (duration is not null)
                 {
                     DeleteQuietly(intermediatePath);
@@ -222,22 +227,68 @@ public sealed class RecordingRecovery(IRecordingRemuxer remuxer, ILogger<Recordi
     }
 }
 
-public sealed class FfmpegRecordingRemuxer(ILogger<FfmpegRecordingRemuxer> logger) : IRecordingRemuxer
+public sealed class FfmpegRecordingRemuxer : IRecordingRemuxer
 {
+    private readonly ILogger<FfmpegRecordingRemuxer> _logger;
+    private readonly Func<string> _resolveFfmpeg;
+    private readonly Func<string, string[], TimeSpan, (int ExitCode, string Stderr)> _run;
+
+    public FfmpegRecordingRemuxer(ILogger<FfmpegRecordingRemuxer> logger)
+        : this(logger, () => FfmpegResolver.ResolveRequired("Recording recovery"), Run)
+    {
+    }
+
+    internal FfmpegRecordingRemuxer(ILogger<FfmpegRecordingRemuxer> logger, Func<string> resolveFfmpeg, Func<string, string[], TimeSpan, (int ExitCode, string Stderr)> run)
+    {
+        _logger = logger;
+        _resolveFfmpeg = resolveFfmpeg;
+        _run = run;
+    }
+
     private static readonly TimeSpan RemuxTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(30);
 
-    public TimeSpan? Remux(string intermediatePath, string outputPath)
+    public TimeSpan? Remux(string intermediatePath, string outputPath) => RemuxCore(intermediatePath, outputPath, null);
+
+    public TimeSpan? Remux(string intermediatePath, string outputPath, TimeSpan audioLead)
+    {
+        if (audioLead <= TimeSpan.Zero)
+        {
+            return RemuxCore(intermediatePath, outputPath, null);
+        }
+
+        var trimmed = RemuxCore(intermediatePath, outputPath, audioLead);
+        if (trimmed is not null)
+        {
+            _logger.LogInformation("audio lead trimmed: {LeadMs} ms", (long)audioLead.TotalMilliseconds);
+            return trimmed;
+        }
+
+        _logger.LogWarning("Remux with the audio lead trimmed failed; falling back to a plain remux");
+        return RemuxCore(intermediatePath, outputPath, null);
+    }
+
+    internal static string[] BuildRemuxArguments(string intermediatePath, string outputPath, TimeSpan? audioLead)
+    {
+        if (audioLead is not { } lead || lead <= TimeSpan.Zero)
+        {
+            return ["-y", "-hide_banner", "-loglevel", "error", "-i", intermediatePath, "-c", "copy", "-movflags", "+faststart", outputPath];
+        }
+
+        return ["-y", "-hide_banner", "-loglevel", "error", "-i", intermediatePath, "-ss", lead.TotalSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), "-i", intermediatePath, "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-shortest", "-movflags", "+faststart", outputPath];
+    }
+
+    private TimeSpan? RemuxCore(string intermediatePath, string outputPath, TimeSpan? audioLead)
     {
         var temporaryPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? string.Empty, $".{Path.GetFileNameWithoutExtension(outputPath)}.remux.mp4");
         try
         {
-            var ffmpeg = FfmpegResolver.ResolveRequired("Recording recovery");
+            var ffmpeg = _resolveFfmpeg();
             File.Delete(temporaryPath);
-            var (exitCode, stderr) = Run(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", "-i", intermediatePath, "-c", "copy", "-movflags", "+faststart", temporaryPath], RemuxTimeout);
+            var (exitCode, stderr) = _run(ffmpeg, BuildRemuxArguments(intermediatePath, temporaryPath, audioLead), RemuxTimeout);
             if (exitCode != 0 || !File.Exists(temporaryPath) || new FileInfo(temporaryPath).Length == 0)
             {
-                logger.LogWarning("Recording remux failed with exit code {ExitCode}: {Stderr}", exitCode, stderr);
+                _logger.LogWarning("Recording remux failed with exit code {ExitCode}: {Stderr}", exitCode, stderr);
                 File.Delete(temporaryPath);
                 return null;
             }
@@ -245,7 +296,7 @@ public sealed class FfmpegRecordingRemuxer(ILogger<FfmpegRecordingRemuxer> logge
             var duration = ReadDuration(temporaryPath);
             if (duration is null || duration <= TimeSpan.Zero)
             {
-                logger.LogWarning("Remuxed recording has no readable duration");
+                _logger.LogWarning("Remuxed recording has no readable duration");
                 File.Delete(temporaryPath);
                 return null;
             }
@@ -255,7 +306,7 @@ public sealed class FfmpegRecordingRemuxer(ILogger<FfmpegRecordingRemuxer> logge
         }
         catch (Exception exception)
         {
-            logger.LogWarning(exception, "Recording remux failed");
+            _logger.LogWarning(exception, "Recording remux failed");
             try
             {
                 File.Delete(temporaryPath);
@@ -272,13 +323,13 @@ public sealed class FfmpegRecordingRemuxer(ILogger<FfmpegRecordingRemuxer> logge
     {
         try
         {
-            var ffmpeg = FfmpegResolver.ResolveRequired("Recording recovery");
-            var (_, stderr) = Run(ffmpeg, ["-hide_banner", "-i", path], ProbeTimeout);
+            var ffmpeg = _resolveFfmpeg();
+            var (_, stderr) = _run(ffmpeg, ["-hide_banner", "-i", path], ProbeTimeout);
             return VideoTrimService.ParseDuration(stderr);
         }
         catch (Exception exception)
         {
-            logger.LogWarning(exception, "Could not read the duration of {Path}", path);
+            _logger.LogWarning(exception, "Could not read the duration of {Path}", path);
             return null;
         }
     }
