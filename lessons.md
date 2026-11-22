@@ -1889,3 +1889,21 @@ ffmpeg opens its inputs in command order and probes a rawvideo pipe only when th
 ### Takeaway
 
 Do not start a capture clock before the consumer is reading. Find the consumer's readiness in its own output, and check what it actually prints and when (here: nothing until the first frame, so the signal needs the slow input first). Measure ffmpeg behavior with a lavfi stand-in; never open the real microphone in tests.
+
+## A runner image SDK upgrade silently changed the published app
+
+### Problem
+
+From 2026-11-20 every desktop CD run failed in "Build installer": `No files found matching ...\bin\publish\win-x64\runtimes\win-x64\*`. Agent-only releases still passed, and the first failure landed on an unrelated dependency bump (#350), which hid the cause.
+
+### Root cause
+
+The repository had no `global.json`. `actions/setup-dotnet` installed 10.0.x, but the hosted runner image had gained .NET SDK 11.0.100, and `dotnet` picks the newest installed SDK. SDK 11's single-file publish no longer copies the Whisper.net native DLLs to `runtimes\win-x64` (warning NETSDK1236 lists them as excluded), so the installer source was missing. Local builds used an 11.0 RC SDK the same way.
+
+### What fixed it
+
+`global.json` pins the SDK to 10.0.x (`rollForward: latestFeature`, no prerelease), so CI, CD and local builds use the SDK the publish profile and installer were written for.
+
+### Takeaway
+
+Pin the SDK major in `global.json`. `setup-dotnet`'s `dotnet-version` only installs a version; it does not select it when the image has a newer one. When CD breaks on a change that cannot explain it, compare the SDK path in the passing and failing logs first.

@@ -107,9 +107,11 @@ The rules:
 - `winget/` holds the first manifest of each winget package (`DimitarRadenkov.Pointframe`, `DimitarRadenkov.Pointframe.Cli`). The MCP server is listed in the official MCP Registry, published by CD; see [Packaging and install](features/claude-plugin.md#packaging-and-install).
 - Agent releases carry the immutable versioned CLI/MCP assets; desktop releases (and so GitHub Latest) carry the stable aliases (`Pointframe.Cli-win-x64.zip`, `Pointframe.Mcp-win-x64.mcpb`, and matching `.sha256` files), copied from a qualified agent pair. Use the aliases for `releases/latest/download` links and Shields.io badges; they prevent release-version changes from breaking those links, and may lag the newest agent release by up to 7 days (24 hours for a security fix).
 - Renaming anything in the delivery path (exe name, installer name, package id) touches the workflows, the installer, the winget manifests, and the updater's asset-name expectation together.
+- `global.json` pins the .NET SDK to 10.0.x (`rollForward: latestFeature`). `setup-dotnet` only installs a version; without the pin, `dotnet` picks the newest SDK on the runner image, and SDK 11's single-file publish drops the Whisper native DLLs from `runtimes\win-x64` that the installer packages.
 - Lesson: A floating action tag moved upstream and broke every release
+- Lesson: A runner image SDK upgrade silently changed the published app
 
-**Files.** `.github/workflows/ci.yml`, `.github/codeql/codeql-config.yml`, `.github/workflows/cd.yml`, `.github/workflows/desktop-automation.yml`, `.github/workflows/winget-release.yml`, `scripts/verify.ps1`, `scripts/check-workflow-scripts.ps1`, `version.json`, `dotnet-tools.json`, `installer/Pointframe.iss`. See [Update flow](features/updates.md#update-flow) and [Telemetry](features/telemetry.md#telemetry-pipeline).
+**Files.** `global.json`, `.github/workflows/ci.yml`, `.github/codeql/codeql-config.yml`, `.github/workflows/cd.yml`, `.github/workflows/desktop-automation.yml`, `.github/workflows/winget-release.yml`, `scripts/verify.ps1`, `scripts/check-workflow-scripts.ps1`, `version.json`, `dotnet-tools.json`, `installer/Pointframe.iss`. See [Update flow](features/updates.md#update-flow) and [Telemetry](features/telemetry.md#telemetry-pipeline).
 
 **Lessons.**
 
