@@ -6,7 +6,7 @@ Pointframe is the current product name. The solution, project files, namespaces,
 
 | Requirement | Version |
 |---|---|
-| .NET SDK | 10.0 or later |
+| .NET SDK | 10.0.x (pinned by `global.json`; a newer major SDK alone does not build the repo) |
 | Windows | 10 (build 1903+) or 11 |
 | Visual Studio | 2022 17.12+ **or** VS Code with C# Dev Kit |
 | ffmpeg.exe | Required at runtime for MP4 recording, GIF export, and trim. Resolved from next to the app binary, then `Assets\ffmpeg\`, then `PATH` |
