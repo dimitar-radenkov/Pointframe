@@ -67,17 +67,14 @@ public partial class App : Application
             .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false)
             .Build();
 
-        Log.Logger = new LoggerConfiguration()
-#if DEBUG
-            .MinimumLevel.Debug()
-#else
-            .MinimumLevel.Information()
-#endif
-            .WriteTo.File(
+        Log.Logger = AppLogging.CreateConfiguration(
+                config,
                 AppPaths.RollingLogPath,
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: config.GetValue<int>("Logging:RetainedFileCountLimit", 7),
-                outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
+#if DEBUG
+                Serilog.Events.LogEventLevel.Debug)
+#else
+                Serilog.Events.LogEventLevel.Information)
+#endif
             .WriteTo.Debug()
             .CreateLogger();
 

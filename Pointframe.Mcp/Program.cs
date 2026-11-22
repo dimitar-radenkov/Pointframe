@@ -39,6 +39,7 @@ builder.Services.AddPointframeDataServices($"Data Source={PointframePaths.Pointf
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Logging.ClearProviders();
 builder.Logging.SetMinimumLevel(LogLevel.Debug);
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
 builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
 builder.Services.AddSingleton<IDisplayCaptureEngine, DisplayCaptureEngine>();
 builder.Services.AddSingleton<IOcrEngineService, WindowsOcrEngineService>();
